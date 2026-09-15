@@ -171,7 +171,7 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 	if ie.Bundle == "" {
 		if err := installedAt(ie.Dest); err != nil {
 			writeLine(env.Err, "gropius install: there is nothing to repair at "+redact(ie.Dest, ie.Home)+
-				" — "+err.Error()+".")
+				" — "+redact(err.Error(), ie.Home)+".")
 			writeLine(env.Err, "Install Gropius first: "+bootstrapCommand)
 			return ExitFailed
 		}
@@ -188,7 +188,8 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 		// swap below replaces the bundle regardless.
 		if _, err := os.Lstat(ie.Dest); err == nil {
 			if err := ie.Quit(); err != nil {
-				writeLine(env.Err, "warning: a running copy could not be asked to quit ("+err.Error()+")")
+				writeLine(env.Err, "warning: a running copy could not be asked to quit ("+
+					redact(err.Error(), ie.Home)+")")
 			}
 		}
 		writeLine(env.Err, stagePlace+": "+redact(ie.Dest, ie.Home))
@@ -209,7 +210,7 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 	// an installation that serves loopback, so it is reported with the commands
 	// that make the grant by hand rather than failing the install.
 	if err := ie.Firewall(binary); err != nil {
-		writeLine(env.Err, "warning: "+stageFirewall+" was not made ("+err.Error()+").")
+		writeLine(env.Err, "warning: "+stageFirewall+" was not made ("+redact(err.Error(), ie.Home)+").")
 		writeLine(env.Err, "Other machines may see an empty response until an administrator runs:")
 		for _, c := range firewallGrantCommands(binary, ie.Home) {
 			writeLine(env.Err, "  "+c)
@@ -240,7 +241,8 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 	}
 
 	if err := ie.Launch(ie.Dest); err != nil {
-		writeLine(env.Err, "warning: "+redact(ie.Dest, ie.Home)+" could not be opened ("+err.Error()+")")
+		writeLine(env.Err, "warning: "+redact(ie.Dest, ie.Home)+" could not be opened ("+
+			redact(err.Error(), ie.Home)+")")
 		return ExitOK
 	}
 	if waitUntil(ie.Serving, ie.Poll, 30*time.Second) {
