@@ -304,6 +304,14 @@ func fail(env Env, ie InstallEnv, stage string, err error) int {
 	return ExitFailed
 }
 
+// destinationWritable answers whether this account can write the machine-wide
+// applications directory, by creating and removing a file there. It is a
+// variable for one reason: the door a test opens into the live environment
+// (allowLiveEnvInTest) swaps it for an answer that touches nothing, so no test
+// binary creates a file in the Mac's /Applications — which one did, and raced
+// the installer tripwire in internal/archtest (iss-2609120444017291).
+var destinationWritable = func() bool { return writableDir(systemApplications) == nil }
+
 // installDest is where the bundle belongs on this Mac.
 //
 // The machine-wide directory when this account can write it, and this account's
@@ -312,7 +320,7 @@ func fail(env Env, ie InstallEnv, stage string, err error) int {
 // equivalent, and installing for every account when one asked is not what was
 // asked.
 func installDest(home string) string {
-	if writableDir(systemApplications) == nil {
+	if destinationWritable() {
 		return filepath.Join(systemApplications, bundleName)
 	}
 	return filepath.Join(home, "Applications", bundleName)

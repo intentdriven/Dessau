@@ -37,10 +37,22 @@ var liveEnvAllowedInTest bool
 // allowLiveEnvInTest opens the live builders to the test that calls it, and is
 // the only way past the guard. It takes the testing.TB so it cannot be called
 // from anything but a test, and restores the guard when that test ends.
+//
+// Opening the guard also closes the one probe that touches the Mac: the live
+// install and update environments choose their destination by asking whether
+// this account can write /Applications, which creates and removes a file
+// there. Inside a test that answer is "no" without asking, so the destination
+// is always this account's own and no test binary writes into the machine's
+// applications directory (iss-2609120444017291).
 func allowLiveEnvInTest(tb testing.TB) {
 	tb.Helper()
 	liveEnvAllowedInTest = true
-	tb.Cleanup(func() { liveEnvAllowedInTest = false })
+	probe := destinationWritable
+	destinationWritable = func() bool { return false }
+	tb.Cleanup(func() {
+		liveEnvAllowedInTest = false
+		destinationWritable = probe
+	})
 }
 
 // liveEnvGuard refuses the live environment inside a test binary.
