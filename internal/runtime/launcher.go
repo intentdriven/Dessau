@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -361,7 +362,75 @@ type execProcess struct {
 }
 
 func (p *execProcess) Done() <-chan struct{} { return p.done }
-func (p *execProcess) Pid() int              { return p.cmd.Process.Pid }
+
+// Footprint reads the server's memory footprint the way Activity Monitor and
+// top report it — the physical footprint, which is what the 2026-09-06
+// campaign sampled and what a unified-memory Mac actually spends — through
+// top itself, since no unprivileged pure-Go reader of that figure exists. A
+// launched server runs under this account, so the listing can see it. Zero
+// when the process is gone or the listing fails or stalls.
+func (p *execProcess) Footprint() int64 {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return 0
+	}
+	// A process that has gone is not read: its pid may already be somebody
+	// else's, and the listing is not scoped to this account.
+	select {
+	case <-p.done:
+		return 0
+	default:
+	}
+	// Bounded: the sampler runs off the pool's lock but the pool's close
+	// waits for it, and a process listing on a Mac under memory pressure can
+	// stall. A listing that does not answer in time is no reading.
+	ctx, cancel := context.WithTimeout(context.Background(), footprintTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "/usr/bin/top", "-l", "1", "-stats", "mem", "-pid", strconv.Itoa(p.cmd.Process.Pid)).Output()
+	if err != nil {
+		return 0
+	}
+	select {
+	case <-p.done:
+		return 0
+	default:
+	}
+	return parseTopMem(string(out))
+}
+
+// parseTopMem reads the last figure top printed: a count with a K, M or G
+// suffix, sometimes followed by a + or - that marks a change since the last
+// sample. Zero when there is no such line.
+func parseTopMem(out string) int64 {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) == 0 {
+		return 0
+	}
+	field := strings.TrimRight(strings.TrimSpace(lines[len(lines)-1]), "+-")
+	if field == "" {
+		return 0
+	}
+	unit := int64(1)
+	switch field[len(field)-1] {
+	case 'K':
+		unit, field = 1<<10, field[:len(field)-1]
+	case 'M':
+		unit, field = 1<<20, field[:len(field)-1]
+	case 'G':
+		unit, field = 1<<30, field[:len(field)-1]
+	case 'B':
+		field = field[:len(field)-1]
+	}
+	n, err := strconv.ParseInt(field, 10, 64)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n * unit
+}
+
+// footprintTimeout bounds one process listing.
+const footprintTimeout = 3 * time.Second
+
+func (p *execProcess) Pid() int { return p.cmd.Process.Pid }
 
 func (p *execProcess) Err() error {
 	p.mu.Lock()

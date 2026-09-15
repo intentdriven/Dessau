@@ -209,6 +209,7 @@ func TestTheEmptyStateIsJudgedOnEveryTable(t *testing.T) {
 // the renderer itself rather than grep its source for the name of an element.
 var historyFunctions = []string{
 	"renderHistory", "historyBoundsLine", "dayRowHtml", "latencyRowHtml",
+	"sizesRow", "sizesRowHtml", "overridesRow", "overridesRowHtml", "footprintRow", "footprintRowHtml", "tokensLabel", "sparkline",
 	"spreadRowHtml", "hourRowHtml", "bucketLabels", "sharePercent",
 	"msFigure", "rateFigure", "millis", "figure", "showHistoryBusy", "busyLine",
 	"stopReason",

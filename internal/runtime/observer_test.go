@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"github.com/intentdriven/Gropius/internal/config"
 	"sync"
 	"testing"
 	"time"
@@ -12,11 +13,18 @@ import (
 // small type rather than a channel: the pool reports off its own lock and off
 // the caller's goroutine, so a test has to wait for a report rather than
 // expect it to have happened by the time Acquire returned.
+type footprintReport struct {
+	model string
+	bytes int64
+}
+
 type recordingObserver struct {
-	mu       sync.Mutex
-	starts   []string
-	finishes []loadReport
-	stops    []stopReport
+	mu         sync.Mutex
+	starts     []string
+	finishes   []loadReport
+	stops      []stopReport
+	footprints []footprintReport
+	samplings  []config.Sampling
 	// block, when set, is waited on inside every callback, standing in for an
 	// observer that has gone slow.
 	block chan struct{}
@@ -46,11 +54,26 @@ func (o *recordingObserver) LoadStarted(model string) {
 	o.starts = append(o.starts, model)
 }
 
-func (o *recordingObserver) LoadFinished(model string, took time.Duration, err error) {
+func (o *recordingObserver) LoadFinished(model string, took time.Duration, err error, sampling config.Sampling) {
+	o.mu.Lock()
+	o.samplings = append(o.samplings, sampling)
+	o.mu.Unlock()
 	o.wait()
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.finishes = append(o.finishes, loadReport{model: model, took: took, failed: err != nil})
+}
+
+func (o *recordingObserver) FootprintSampled(model string, bytes int64) {
+	o.mu.Lock()
+	o.footprints = append(o.footprints, footprintReport{model, bytes})
+	o.mu.Unlock()
+}
+
+func (o *recordingObserver) sampled() []footprintReport {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return append([]footprintReport(nil), o.footprints...)
 }
 
 func (o *recordingObserver) EntryStopped(model string, reason StopReason) {
@@ -375,6 +398,90 @@ func TestASlowOrPanickingObserverDoesNotStallTheAcquire(t *testing.T) {
 
 type panickingObserver struct{}
 
-func (panickingObserver) LoadStarted(string)                        { panic("observer panic") }
-func (panickingObserver) LoadFinished(string, time.Duration, error) { panic("observer panic") }
-func (panickingObserver) EntryStopped(string, StopReason)           { panic("observer panic") }
+func (panickingObserver) LoadStarted(string) { panic("observer panic") }
+func (panickingObserver) LoadFinished(string, time.Duration, error, config.Sampling) {
+	panic("observer panic")
+}
+func (panickingObserver) EntryStopped(string, StopReason) { panic("observer panic") }
+
+// The sampler reads each ready server's footprint at the interval, reports
+// it to an observer that listens, and keeps the newest on the pool for a
+// caller to stitch onto a completing request.
+func TestTheSamplerReportsEachServersFootprint(t *testing.T) {
+	l := newFakeLauncher()
+	src := &fakeSource{models: map[string]int64{"org/a": 100}}
+	l.footprint = 7 << 30
+	obs := &recordingObserver{}
+	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30, Observer: obs, FootprintInterval: 5 * time.Millisecond})
+	_, release, err := p.Acquire(context.Background(), "org/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	deadline := time.Now().Add(2 * time.Second)
+	for len(obs.sampled()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	got := obs.sampled()
+	if len(got) == 0 || got[0].model != "org/a" || got[0].bytes != 7<<30 {
+		t.Fatalf("sampled = %+v, want org/a at 7 GiB", got)
+	}
+	if p.Footprint("org/a") != 7<<30 {
+		t.Errorf("Footprint = %d, want the newest sample", p.Footprint("org/a"))
+	}
+	if p.Footprint("org/none") != 0 {
+		t.Error("a model that is not resident has a footprint")
+	}
+}
+
+// The load report carries the sampling the server was launched with, from
+// the pool's own SamplingFor, so the recorder need not stitch two reports.
+func TestALoadEventCarriesTheLaunchSampling(t *testing.T) {
+	l := newFakeLauncher()
+	src := &fakeSource{models: map[string]int64{"org/a": 100}}
+	obs := &recordingObserver{}
+	temp := 0.7
+	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30, Observer: obs,
+		SamplingFor: func(string) config.Sampling { return config.Sampling{Temperature: &temp} }})
+	_, release, err := p.Acquire(context.Background(), "org/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		obs.mu.Lock()
+		n := len(obs.samplings)
+		obs.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	obs.mu.Lock()
+	defer obs.mu.Unlock()
+	if len(obs.samplings) == 0 || obs.samplings[0].Temperature == nil || *obs.samplings[0].Temperature != 0.7 {
+		t.Errorf("the load report carried %+v, want the launch sampling", obs.samplings)
+	}
+}
+
+// A request's acquire stats say how many the model already had when it took
+// its slot.
+func TestAcquireReportsTheInFlightCountAtAdmission(t *testing.T) {
+	l := newFakeLauncher()
+	src := &fakeSource{models: map[string]int64{"org/a": 100}}
+	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30, DecodeConcurrency: 4})
+	first, release1, err := p.Acquire(context.Background(), "org/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, release2, err := p.Acquire(context.Background(), "org/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Waits.InFlight != 0 || second.Waits.InFlight != 1 {
+		t.Errorf("in flight at admission: first %d, second %d; want 0 and 1", first.Waits.InFlight, second.Waits.InFlight)
+	}
+	release1()
+	release2()
+}

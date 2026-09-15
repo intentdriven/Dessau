@@ -44,7 +44,7 @@ Every line carries two fields before anything else:
 | Field | Meaning |
 | --- | --- |
 | `v` | The version of this format the line was written under. A later Gropius can still read an older file. |
-| `kind` | Which of the six kinds below the line is: `request`, `load`, `removed`, `settings`, `summary` or `summary_index`. The first four are the record kinds the [decision record](../.abcd/development/decisions/adrs/2609090716413337-the-statistics-store-s-record-kinds-are-request-load-removed.md) ratifies, and the last two belong to the summary that is kept when detail is dropped, which is why that record counts four kinds and this page counts six. |
+| `kind` | Which of the seven kinds below the line is: `request`, `load`, `removed`, `footprint`, `settings`, `summary` or `summary_index`. The first five are the record kinds the [decision record](../.abcd/development/decisions/adrs/2609121450000000-the-statistics-store-gains-a-fifth-record-kind-a-footprint.md) ratifies, and the last two belong to the summary that is kept when detail is dropped, which is why that record counts five kinds and this page counts seven. |
 
 A reader should ignore a field it does not know, and skip a line it cannot
 parse. A line whose `v` is newer than the reader understands is one to skip:
@@ -83,6 +83,12 @@ no answer, no key, no client address (see
 | `duration_ms` | How long the whole request took, from the moment it arrived. |
 | `queue_wait_ms` | How long it waited for the machine rather than for the model: for a free slot on a model that was already loaded, and for memory to free up under [eviction grace](eviction-grace.md). |
 | `load_wait_ms` | How long it waited for the model to load. |
+| `declared_context`, `served_context` | The two windows the request was judged against: the one the model's own configuration declares, and the one this Mac serves it at. Absent on a request refused before it named a model. |
+| `estimated_prompt_tokens` | Gropius's own estimate of the prompt's size, from the request's bytes, written for every request including one refused for its size — so a refusal still says how big the prompt was. The model server's exact count is `prompt_tokens`, on an answered request only. |
+| `requested_tokens` | The figure the served-window check judged: the estimate above plus the answer the request asked for. A request is refused when this is over `served_context`, so the record, the refusal and the dashboard's bands rest on one number. |
+| `in_flight` | How many requests the model already had when this one was admitted. |
+| `overrides` | The names of the sampling parameters the client set in its own request — the temperature, the top-p, the top-k, the min-p and the maximum tokens; a maximum set under either of its two spellings is recorded as the one name — and never their values. It is the one field derived from a client's body, and it says only which knob was touched. Absent when the client set none. |
+| `footprint_bytes` | The model server's memory footprint as last sampled before the request completed: a periodic reading of the process, joined by time, not a cost attributable to this request. Absent when nothing had been sampled, and on a request that never reached the model. |
 
 ## `kind: "load"` — a model server became ready
 
@@ -92,6 +98,7 @@ no answer, no key, no client address (see
 | `model` | The model's repo id. |
 | `duration_ms` | How long the load took. |
 | `failed` | Present and `true` when the model server started but never became ready. |
+| `sampling` | The sampling values the model server was launched with, by parameter name, only the ones set. It is what a request's `overrides` are overrides of. Absent when every value was the model's own default. |
 
 A load carries no `reason`: nothing in Gropius knows why a model was loaded
 beyond the fact that something asked for it.
@@ -107,6 +114,20 @@ beyond the fact that something asked for it.
 Only `evicted` is an eviction — a model taken out to make room for another.
 Counting an idle reap, an operator's unload or a crash as one would make the
 figures disagree with what happened.
+
+## `kind: "footprint"` — a reading of a model server's memory
+
+| Field | Meaning |
+| --- | --- |
+| `at` | When the reading was taken, in whole UTC seconds. |
+| `model` | The model's repo id. |
+| `bytes` | The server process's resident memory at that moment. |
+
+Taken every thirty seconds for each model server that is ready to serve, so the
+footprint exists as a series over time and not only as the value a completing
+request happened to see. A reading is of the process, not of any request:
+what a long prompt cost is not recoverable from it, only what the server was
+holding while that prompt and any others were in it.
 
 ## `kind: "settings"` — what Gropius was serving under
 
@@ -213,8 +234,10 @@ Anything under one of these names that is not a plain file — a named pipe, a
 device, a folder — is refused rather than read. Gropius never waits on
 something in this folder to answer it.
 
-A record measures about 230 bytes, so 200 MB is roughly three months of ten
-thousand requests a day. How far back the store actually reaches is shown on
+A request record measures about 380 bytes, so 200 MB is roughly seven weeks
+of ten thousand requests a day; a footprint line every thirty seconds per
+model in memory adds about a tenth of a megabyte a day per model, which on a
+quiet Mac is most of the file. How far back the store actually reaches is shown on
 the Settings page beside the two limits, rather than promised here.
 
 ## What removes the files

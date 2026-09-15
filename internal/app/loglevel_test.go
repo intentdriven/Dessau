@@ -134,7 +134,7 @@ func TestALoadAndAnUnloadAreOneSparseLineEach(t *testing.T) {
 	obs := poolObserver{rec: stats.New(stats.Options{}), log: log}
 
 	obs.LoadStarted("org/repo")
-	obs.LoadFinished("org/repo", 4*time.Second, nil)
+	obs.LoadFinished("org/repo", 4*time.Second, nil, config.Sampling{})
 	obs.EntryStopped("org/repo", runtime.StopEvicted)
 
 	got := buf.String()
@@ -156,7 +156,7 @@ func TestALoadThatFailedIsSparseAndItsErrorIsDetailed(t *testing.T) {
 	t.Run("sparse", func(t *testing.T) {
 		log, _, buf := levelledLog(slog.LevelInfo)
 		obs := poolObserver{rec: stats.New(stats.Options{}), log: log}
-		obs.LoadFinished("org/repo", time.Second, errors.New("no such file or directory"))
+		obs.LoadFinished("org/repo", time.Second, errors.New("no such file or directory"), config.Sampling{})
 
 		got := buf.String()
 		if !strings.Contains(got, "model failed to load") || !strings.Contains(got, "org/repo") {
@@ -169,7 +169,7 @@ func TestALoadThatFailedIsSparseAndItsErrorIsDetailed(t *testing.T) {
 	t.Run("detailed", func(t *testing.T) {
 		log, _, buf := levelledLog(slog.LevelDebug)
 		obs := poolObserver{rec: stats.New(stats.Options{}), log: log}
-		obs.LoadFinished("org/repo", time.Second, errors.New("no such file or directory"))
+		obs.LoadFinished("org/repo", time.Second, errors.New("no such file or directory"), config.Sampling{})
 
 		got := buf.String()
 		if !strings.Contains(got, "no such file or directory") {
@@ -188,7 +188,7 @@ func TestDetailedAddsToTheSparseLineRatherThanReplacingIt(t *testing.T) {
 	log, _, buf := levelledLog(slog.LevelDebug)
 	obs := poolObserver{rec: stats.New(stats.Options{}), log: log}
 
-	obs.LoadFinished("org/repo", 4*time.Second, nil)
+	obs.LoadFinished("org/repo", 4*time.Second, nil, config.Sampling{})
 
 	got := buf.String()
 	if !strings.Contains(got, "model loaded") {

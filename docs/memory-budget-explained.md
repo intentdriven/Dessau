@@ -78,6 +78,18 @@ at and the largest of each that would fit, so what to change is in the message.
 Gropius will not quietly charge a model less than it costs: a budget that lies
 by a factor is worse than one that says no.
 
+## The measured window is offered, never assumed
+
+The [context probe](context-probe.md) can find the largest prompt a model
+will actually take on this Mac, and that figure sits on the model's card
+beside the served window. It is not charged. The budget charges the served
+window, and only the served window, because that is the figure the operator
+chose; a measurement is evidence for a choice, not the choice. Pressing
+**Use this window** writes the measured figure into the served window, and
+from then on it is charged and enforced exactly as a typed figure would be.
+The two acts are kept apart so that a measurement can never lower or raise
+what a model is charged without someone deciding it should.
+
 ## Why a change applies to the next load
 
 Lowering the budget unloads nothing. A model in memory is one somebody is

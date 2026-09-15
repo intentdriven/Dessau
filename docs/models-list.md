@@ -47,6 +47,8 @@ curl http://localhost:11535/v1/models
 | `context_length` | The model's maximum context, in tokens. See below. |
 | `max_model_len` | The same figure again, under the name vLLM-derived clients read. |
 | `served_context` | The window this Mac will actually serve the model at, in tokens. A request estimated to be larger is refused. See below. |
+| `measured_context` | The largest prompt, in tokens, that the model's server on this Mac verifiably accepted when Gropius measured it. Absent until a measurement exists and while it is stale. See below. |
+| `measured_bound` | What stopped the measurement's step above `measured_context`: `model`, `prefill_deadline`, `served_window` or `memory_guard`. Only `model` makes the figure the model's limit; the others make it a floor. Present with `measured_context`. |
 | `state` | Whether the model is loaded, still loading, or not loaded. Only for a client connecting over loopback, or on an install with an API key. See below. |
 | `in_flight` | How many requests that model is already handling. Only for a client connecting over loopback, or on an install with an API key. |
 | `last_used` | Unix time at which Gropius last handled a request for that model. Only for a client connecting over loopback, or on an install with an API key, and only while the model is in memory — `loaded` or `loading`. |
@@ -172,6 +174,28 @@ card, labelled `max context`. From 1,024 tokens upwards the card abbreviates
 it to whole units of 1,024, rounded down, so a model declaring 262,143 reads
 `max context 255K`; below 1,024 the card prints the number itself. The models
 list always carries the exact number.
+
+## The measured window
+
+`measured_context` is what the [context probe](context-probe.md) found: the
+largest prompt the model's server on this Mac accepted and answered, in the
+server's own count of prompt tokens, sent the way a client sends one. It is
+the third figure beside the two above, and the three mean different things:
+`context_length` is what the model's configuration claims, `served_context`
+is what this Mac is set to serve, and `measured_context` is what was
+verified here.
+
+`measured_bound` says what stopped the next step. `model` means the server
+refused or crashed above the figure, so it is the model's own limit on this
+Mac. `prefill_deadline`, `served_window` and `memory_guard` mean one of
+Gropius's own limits stopped the probe first: the figure is a verified floor,
+the model takes at least that much, and its own limit is not known.
+
+A measurement changes nothing on its own: the served window, the memory
+charge and the refusal are what they were. Only when the operator adopts it
+does it become `served_context`. Both fields are absent while no measurement
+exists, and while the one there is has gone stale because the runtime, the
+memory budget, the decode concurrency or the served window changed since.
 
 ## Residency
 

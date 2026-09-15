@@ -217,7 +217,7 @@ func TestRecordingWritesOnlyToTheStore(t *testing.T) {
 		a.Stats.Add(stats.Record{Model: "org/a", Class: stats.ClassOK, CompletionTokens: i})
 	}
 	a.Stats.LoadStarted("org/a")
-	a.Stats.LoadFinished("org/a", 0, nil)
+	a.Stats.LoadFinished("org/a", 0, nil, nil)
 	a.Stats.Removed("org/a", stats.ReasonEvicted)
 	getJSON(t, srv, "/api/stats")
 	if err := a.StatsStore.Flush(); err != nil {

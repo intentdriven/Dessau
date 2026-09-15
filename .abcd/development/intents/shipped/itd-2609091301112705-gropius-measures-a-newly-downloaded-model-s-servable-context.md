@@ -138,12 +138,13 @@ named bound rather than the architecture's limit.
 - **How the model's own window is ever learned.** A coordinated pool-side path exempt from the gateway's bounds, a raised `upstream_header_timeout_sec` for the duration, or the manual campaign script staying the only answer. Nothing here decides it.
 - **Whether the probe also samples memory**, which would keep `capability`'s safety factors of 5 and 7 under continuous evidence rather than one evening's. Out of scope here — that package belongs to another lane — and worth a follow-on.
 - **The idle threshold's value**, and how many models one idle window may take: six models at forty minutes each is an evening, and the models load one at a time.
-- **Arbitration with the model self-test**, which also runs at idle and is not yet on `main`. Two idle jobs on one Mac need one idea of "idle" between them, and whichever lands second inherits the question.
+- **Arbitration with the model self-test** — resolved 2026-09-12 at implementation: the self-test landed first and its loop is the one idle primitive; the probe is a `selftest.Job` it schedules, so idleness, yielding, the never-evict check, the held-back reason and the idle threshold (`idle_threshold_sec`) are decided once, in `internal/selftest`, for both.
 - **Whether the yielding seam becomes real preemption in the pool.** The pool has no preemption and no priority today; this intent reads the pool and cancels its own request instead. Any change to the pool itself is a coordinated follow-up with the lane that owns `internal/runtime`.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-4431dce599cc -->
+Fidelity review OWED (receipt rcp-4431dce599cc).
 
 ## Grounds
 

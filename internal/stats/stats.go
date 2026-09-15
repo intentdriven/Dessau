@@ -137,13 +137,60 @@ type Record struct {
 	// waiter on that load pays and not only the request that started it.
 	QueueWaitMS int64 `json:"queue_wait_ms"`
 	LoadWaitMS  int64 `json:"load_wait_ms"`
+
+	// The facts that decide a served window and a concurrency, recorded at
+	// admission and at completion (itd-2609091712141073). DeclaredContext and
+	// ServedContext are the model's two windows as they stood when the
+	// request was judged; EstimatedPromptTokens is the gateway's own estimate
+	// of the prompt's size, written for every request including one refused
+	// for size, so a refusal still says how big the prompt was; InFlight is
+	// how many requests the model already had when this one was admitted.
+	// All zero for a request refused before it named a model.
+	DeclaredContext       int64 `json:"declared_context,omitempty"`
+	ServedContext         int64 `json:"served_context,omitempty"`
+	EstimatedPromptTokens int   `json:"estimated_prompt_tokens,omitempty"`
+	// RequestedTokens is the figure the served-window check judged: the
+	// estimate plus the answer the request asked for. A request is refused
+	// when it is over ServedContext, so the record, the refusal and the
+	// dashboard's bands rest on this one number.
+	RequestedTokens int `json:"requested_tokens,omitempty"`
+	InFlight        int `json:"in_flight,omitempty"`
+	// Overrides names the sampling parameters the client set in its body —
+	// the names only, from the closed set SamplingParameters, never the
+	// values: it is the one field derived from a client's body, and it says
+	// only which knob was touched.
+	Overrides []string `json:"overrides,omitempty"`
+	// FootprintBytes is the model server's latest sampled footprint at the
+	// moment the request completed: a sample of the process, joined by time,
+	// not a cost attributable to this request. Zero when nothing was sampled.
+	FootprintBytes int64 `json:"footprint_bytes,omitempty"`
 }
+
+// SamplingParameters is the closed set of names Overrides may carry, in the
+// order the settings pane lists them. An override outside it is dropped at
+// the recorder.
+var SamplingParameters = []string{"temperature", "top_p", "top_k", "min_p", "max_tokens"}
+
+// MaxContext bounds the windows a record may carry: the registry's own
+// bound on a declared window, restated here because this package imports
+// nothing of ours (internal/archtest holds the two equal).
+const MaxContext = 1 << 23
+
+// maxInFlight and maxFootprintBytes bound the other two figures: more
+// requests in flight than any batch, and more memory than any Mac.
+const (
+	maxInFlight       = 1 << 16
+	maxFootprintBytes = 1 << 50
+)
 
 // RecordFields lists a record's fields in the order they are declared, under
 // the names they are written down as. The documentation's field table is held
 // to this list, so a field added here without a word about it on the page
 // fails the build.
 func RecordFields() []string { return jsonFields(Record{}) }
+
+// EventFields lists an event's fields the same way, for the same test.
+func EventFields() []string { return jsonFields(Event{}) }
 
 // EventKind distinguishes the two things that happen to a model server as
 // against a request.
@@ -152,6 +199,10 @@ type EventKind string
 const (
 	EventLoad    EventKind = "load"
 	EventRemoved EventKind = "removed"
+	// EventFootprint is a periodic reading of a running model server's
+	// memory footprint, so the figure exists as a series over time and not
+	// only as the value a completing request happened to see.
+	EventFootprint EventKind = "footprint"
 )
 
 // Event is a model server loading or leaving, which is what makes a slow
@@ -168,6 +219,12 @@ type Event struct {
 	DurationMS int64 `json:"duration_ms,omitempty"`
 	// Failed reports a load that never became ready.
 	Failed bool `json:"failed,omitempty"`
+	// Sampling is the sampling values the model server was launched with,
+	// by parameter name, only the ones set; on a load. It is what a request's
+	// Overrides are overrides of.
+	Sampling map[string]float64 `json:"sampling,omitempty"`
+	// Bytes is the sampled footprint; on a footprint sample.
+	Bytes int64 `json:"bytes,omitempty"`
 }
 
 // Store is where records go to outlive the process.
@@ -360,6 +417,7 @@ func (r *Recorder) Add(rec Record) {
 	if rec.At == 0 {
 		rec.At = r.now().UTC().Unix()
 	}
+	rec = bound(rec)
 	if !r.addLocked(rec) {
 		return
 	}
@@ -370,6 +428,49 @@ func (r *Recorder) Add(rec Record) {
 		// unbounded record of the traffic this one is meant to bound.
 		_ = r.store.AppendRequest(rec)
 	}
+}
+
+// bound holds a record's persisted numerics and names to what the recorder
+// will believe: registry.json is a file another account can write in
+// shared-cache mode and the windows come from it, and the override names
+// are the one thing derived from a client's body.
+func bound(rec Record) Record {
+	if rec.DeclaredContext < 0 || rec.DeclaredContext > MaxContext {
+		rec.DeclaredContext = 0
+	}
+	if rec.ServedContext < 0 || rec.ServedContext > MaxContext {
+		rec.ServedContext = 0
+	}
+	if rec.EstimatedPromptTokens < 0 || rec.EstimatedPromptTokens > MaxContext {
+		rec.EstimatedPromptTokens = 0
+	}
+	// The judged figure may legitimately be over every window — that is
+	// what a refusal is — but not past what an int can add up.
+	if rec.RequestedTokens < 0 || rec.RequestedTokens > 1<<40 {
+		rec.RequestedTokens = 0
+	}
+	if rec.InFlight < 0 || rec.InFlight > maxInFlight {
+		rec.InFlight = 0
+	}
+	if rec.FootprintBytes < 0 || rec.FootprintBytes > maxFootprintBytes {
+		rec.FootprintBytes = 0
+	}
+	if len(rec.Overrides) > 0 {
+		kept := make([]string, 0, len(rec.Overrides))
+		for _, name := range rec.Overrides {
+			for _, known := range SamplingParameters {
+				if name == known {
+					kept = append(kept, name)
+					break
+				}
+			}
+		}
+		rec.Overrides = kept
+		if len(kept) == 0 {
+			rec.Overrides = nil
+		}
+	}
+	return rec
 }
 
 // addLocked folds one record into everything the recorder holds, reporting
@@ -419,17 +520,36 @@ func (r *Recorder) LoadStarted(model string) {
 	r.modelLocked(model)
 }
 
-// LoadFinished notes that a model server finished loading, or failed to.
-func (r *Recorder) LoadFinished(model string, took time.Duration, err error) {
+// boundSampling keeps only the parameters in the closed set, copied.
+func boundSampling(in map[string]float64) map[string]float64 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := map[string]float64{}
+	for _, name := range SamplingParameters {
+		if v, ok := in[name]; ok {
+			out[name] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// LoadFinished notes that a model server finished loading, or failed to,
+// with the sampling it was launched with, by parameter name.
+func (r *Recorder) LoadFinished(model string, took time.Duration, err error, sampling map[string]float64) {
 	ev := Event{
 		At:         r.now().UTC().Unix(),
 		Model:      model,
 		Kind:       EventLoad,
 		DurationMS: took.Milliseconds(),
 		Failed:     err != nil,
+		Sampling:   boundSampling(sampling),
 	}
 
-	if !r.loadFinishedLocked(model, ev) {
+	if !r.loadFinishedLocked(model, &ev) {
 		return
 	}
 	if r.store != nil {
@@ -437,7 +557,24 @@ func (r *Recorder) LoadFinished(model string, took time.Duration, err error) {
 	}
 }
 
-func (r *Recorder) loadFinishedLocked(model string, ev Event) bool {
+// FootprintSampled notes a reading of a running model server's memory.
+func (r *Recorder) FootprintSampled(model string, bytes int64) {
+	if bytes <= 0 || bytes > maxFootprintBytes {
+		return
+	}
+	ev := Event{At: r.now().UTC().Unix(), Model: model, Kind: EventFootprint, Bytes: bytes}
+	r.mu.Lock()
+	on := r.enabled
+	r.mu.Unlock()
+	if !on {
+		return
+	}
+	if r.store != nil {
+		_ = r.store.AppendEvent(ev)
+	}
+}
+
+func (r *Recorder) loadFinishedLocked(model string, ev *Event) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.enabled {

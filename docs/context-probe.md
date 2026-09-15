@@ -1,0 +1,103 @@
+# Measure a model's real context window
+
+Gropius can measure how long a prompt each model on your Mac can actually
+take, rather than believing the window its configuration declares. It sends
+prompts of growing length through its own OpenAI endpoint, the way a client
+does, bisects between the last one that came back and the first that did
+not, and records the window it verified beside the one the model declares
+and the one it is set to serve. The figure comes from your Mac, your runtime
+and your settings, not from someone else's benchmark.
+
+The probe is off until you turn it on, and even then it runs only while the
+Mac is idle. Nothing it measures leaves this Mac, and nothing it sends is
+anything but its own fixed filler text. Because it reaches the model through
+the same endpoint a client uses, its requests are counted in the
+[request statistics](request-statistics.md) when recording is on — as
+counts and timings only, never as text.
+
+## What it costs
+
+Read this before switching it on. A measurement is not free:
+
+- **About forty minutes of GPU time per model**, at full prefill, on the
+  2026-09-06 campaign's figures. Six models is an evening, one after another.
+- **A single step can take half an hour**: the gateway allows a prompt
+  about a second per 150 tokens plus a minute before it gives up, and a
+  262,144-token prompt is near the top of that.
+- **An unload and a reload between steps**, so a retained prompt cache
+  cannot flatter the next reading. Each reload reads the weights from disk
+  again.
+- **The GPU is nobody else's while a step runs.** The probe never starts
+  while anyone is using the Mac and stops the moment anyone does, but a
+  request that arrives mid-step waits a moment for the probe to stand down.
+- **On a laptop**, that is battery and heat, and the lid must stay open: a
+  Mac that sleeps loses the run.
+- **The probe never pushes another model out** to make room. A model that
+  would need one evicted waits for a time when there is room.
+
+## Switch it on
+
+1. Open the control panel and go to **Settings → Context probe**.
+2. Tick **Measure each model's context window when this Mac is idle**.
+3. **Save settings**.
+
+From then on, whenever the Mac has been idle for the idle threshold (five
+minutes unless you change it, in the same section) and nothing is
+downloading, Gropius measures the first model that has no current
+measurement, one model at a time. A model you download later is measured
+the next time the Mac is idle. In `config.json` the switch is
+`"context_probe": true` and the threshold `"idle_threshold_sec"`.
+
+To measure one model without switching the probe on, open the **Models** tab
+and press **Measure now** on its card. The run starts at the next idle
+minute.
+
+## Read the result
+
+The model's card on the Models tab shows the measured window beside the
+declared and the served ones, with what stopped the step above it:
+
+- **the model** — the server refused or crashed above this size. The figure
+  is the model's own limit on this Mac.
+- **the prefill deadline**, **the served window**, or **the memory guard** —
+  Gropius's own limit stopped the probe first. The figure is a verified
+  floor: the model takes at least this much, and its own limit is not known.
+  On the 2026-09-06 evidence that is the common case.
+
+While a run is in progress the card says which step it is on and the bounds
+so far; if a run is due but held back, it says what held it: a request in
+flight, a caller waiting for a model, a download, or a recent request.
+
+A measurement is marked **stale** when the runtime, the memory budget, the
+decode concurrency or the model's served window has changed since it was
+taken, and the card says which. A stale figure is not published and cannot
+be adopted; measure again.
+
+The figure is also published on the models list as `measured_context` and
+`measured_bound`, beside `context_length` and `served_context`:
+[The models list](models-list.md) says what each means.
+
+## Adopt the figure
+
+A measurement changes nothing on its own: no memory charge, no refusal.
+Press **Use this window** on the card to make it the model's served window.
+That is the same setting as **Settings → Served context**, so the next load
+is charged at it and a request above it is refused, exactly as if you had
+typed the figure yourself. Setting the served window to the measured figure
+does not make the measurement stale: the floor was verified under a window at
+least that large, and still stands. Setting it to any other figure does.
+
+## Stop it
+
+Clear the box and save, or quit Gropius. A run in progress stops at once,
+writes no figure, leaves the model unloaded, and the card says the probe was
+incomplete. It is not retried on its own; press **Measure now** to run it
+again.
+
+## Related
+
+- [The models list](models-list.md) — the three windows a client reads.
+- [The memory budget, explained](memory-budget-explained.md) — what a served
+  window costs, and why adopting a measurement is a separate act.
+- [Test your models while the Mac is idle](self-test.md) — the other idle
+  job, which shares the idle threshold.

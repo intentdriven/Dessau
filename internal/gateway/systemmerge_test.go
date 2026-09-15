@@ -862,3 +862,5 @@ func TestMergeSystemMessagesLeavesAConversationThatNeedsNoRewrite(t *testing.T) 
 		})
 	}
 }
+
+func (p *urlPool) Footprint(string) int64 { return 0 }

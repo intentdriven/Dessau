@@ -75,6 +75,34 @@ func (o *observation) resolved(model string) {
 }
 
 // streaming notes that the client asked for the answer as a stream.
+// judged records what the served-window check judged the request against
+// and measured it as.
+func (o *observation) judged(declared, served, estimate, judged int64) {
+	if o == nil {
+		return
+	}
+	o.record.DeclaredContext = declared
+	o.record.ServedContext = served
+	o.record.EstimatedPromptTokens = int(estimate)
+	o.record.RequestedTokens = int(judged)
+}
+
+// overrides records which sampling parameters the client set, by name.
+func (o *observation) overrides(names []string) {
+	if o == nil || len(names) == 0 {
+		return
+	}
+	o.record.Overrides = names
+}
+
+// footprint records the server's latest sampled memory at completion.
+func (o *observation) footprint(bytes int64) {
+	if o == nil {
+		return
+	}
+	o.record.FootprintBytes = bytes
+}
+
 func (o *observation) streaming(yes bool) {
 	if o == nil {
 		return
@@ -84,6 +112,11 @@ func (o *observation) streaming(yes bool) {
 
 // waited records what the pool said the request spent getting to a model.
 func (o *observation) waited(w runtime.AcquireStats) {
+	if o != nil {
+		// The model's count at the moment this request took its slot: what
+		// it already had in hand.
+		o.record.InFlight = w.InFlight
+	}
 	if o == nil {
 		return
 	}

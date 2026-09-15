@@ -28,6 +28,8 @@ var promptContentReaders = map[string]string{
 	"internal/gateway/systemmerge.go": "the merge itself — the one reader adr-2609061610102325 grants",
 	"internal/runtime/pool.go":        "builds the readiness probe's own one-line conversation; reads nothing from a client",
 	"internal/mlxtest/fake.go":        "the fake mlx server tests relay to, which answers requests rather than making them",
+	"internal/selftest/request.go":    "builds the self-test's own requests from two constants in that file; reads nothing from a client (itd-2609100457007827)",
+	"internal/contextprobe/probe.go":  "builds the context probe's own requests from filler it generates; reads nothing from a client, and keeps nothing of the answer but the server's count of the prompt (itd-2609091301112705)",
 }
 
 // chatMessageFields are the ways a chat message's fields get named in Go: the
@@ -55,8 +57,9 @@ var chatMessageFields = []string{
 // choice, which is the answer itself. Nothing else reads inside one today, and
 // until now nothing would have failed if something started.
 var generatedContentReaders = map[string]string{
-	"internal/gateway/gateway.go": "the relay: it reads whether an event carries a choice, to tell a chunk of the answer from the counts-only event and to time the first token — never what is inside one",
-	"internal/mlxtest/fake.go":    "the fake mlx server tests relay to, which produces the answers rather than reading them",
+	"internal/gateway/gateway.go":  "the relay: it reads whether an event carries a choice, to tell a chunk of the answer from the counts-only event and to time the first token — never what is inside one",
+	"internal/mlxtest/fake.go":     "the fake mlx server tests relay to, which produces the answers rather than reading them",
+	"internal/selftest/request.go": "times the first chunk of the self-test's own answer and counts the chunks; keeps nothing of what they say (itd-2609100457007827)",
 }
 
 // completionFields are the ways a completion's fields get named in Go.

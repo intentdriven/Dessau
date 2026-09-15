@@ -155,7 +155,7 @@ func summaryIndexFields() []string {
 // StoreKinds names every kind of line the store can write, so the
 // documentation's list of them is held to this one.
 func StoreKinds() []string {
-	return []string{KindRequest, KindLoad, KindRemoved, KindSettings, KindSummary, KindSummaryIndex}
+	return []string{KindRequest, KindLoad, KindRemoved, KindFootprint, KindSettings, KindSummary, KindSummaryIndex}
 }
 
 // foldedFile is one detail file already counted in the summary. The size and

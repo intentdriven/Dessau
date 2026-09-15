@@ -131,6 +131,37 @@ never became ready, because the cost this table is about is the loading, which
 a server that failed still spent. It cannot say why a model was loaded: Gropius
 knows only that something asked for it.
 
+## Prompts against the window
+
+One row per model: how the prompts it was asked sat against the window it
+serves, in four bands of that window — up to a quarter of it, up to a half,
+up to three quarters, up to the whole — and beyond it, which is the requests
+the served window turned away. The size is the figure the refusal is judged
+on: Gropius's own estimate of the prompt from the request's bytes, plus the
+answer the request asked for — so a refused request is counted in the last
+band by the figure that refused it. The row
+carries the two windows beside the counts, and the largest prompt anyone
+sent, so a served window can be sized from what was actually asked rather
+than from what the model declares.
+
+## Sampling overrides
+
+One row per model: of the requests it was asked — served, refused or failed
+alike — how many set each sampling parameter themselves — the temperature, the top-p, the top-k, the min-p, the
+maximum tokens — rather than taking the value the server was launched with.
+Only the names are counted; no value a client sent is anywhere in the
+records. A parameter nobody overrides is one whose launch value is doing the
+work, and one everybody overrides is one whose launch value is not.
+
+## Memory over time
+
+One line per model: the model server's resident memory, sampled every thirty
+seconds while it ran, averaged into at most two hundred points across the
+range. It is a reading of the process, so it rises with the prompts in it
+and the cache they build and falls when the server is stopped; it is not a
+cost that can be attributed to any one request. Read it beside the memory
+budget to see how close a model comes to what it is charged.
+
 ## What none of the views can show
 
 **Anything that happened while the switch was off.** The tables draw on the
@@ -155,6 +186,18 @@ folded day carries the mark.
 model and per period and never says who: not which machine on your network,
 not which account on this Mac. On a Mac several people share, the records cover
 every request the server handled and still say nothing about whose they were.
+
+**As far back as the request views once did, on a Mac that keeps models
+loaded.** The pass over the records reads a bounded number of lines, and a
+footprint line every thirty seconds per model in memory is a few thousand
+lines a day that the request views did not have to walk before; on a Mac
+with two models always loaded the tables reach a shorter range than the
+retention alone would give.
+
+**What one request cost in memory.** The footprint is sampled from the
+process every thirty seconds and stitched onto a completing request by time;
+it says what the server was holding, not what that request added. Two long
+prompts in flight together are one reading.
 
 **What was asked or answered.** No prompt, no completion, no API key. The part
 of Gropius that keeps these figures is never handed a request, its headers or

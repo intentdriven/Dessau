@@ -11,6 +11,61 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **The usage dashboard shows what the models actually do, so the settings
+  that matter can be seen before they are chosen.** Every request record now
+  carries the two windows it was judged against, Gropius's own estimate of
+  the prompt's size (for a refused request too), how many requests the model
+  already had, which sampling parameters the client set — the names, never
+  the values — and the model server's memory as last sampled; every load
+  carries the sampling the server was launched with; and a new record kind,
+  `footprint`, is a reading of each running server's memory every thirty
+  seconds. The Statistics tab gains three views: prompts against the served
+  window, sampling overrides per parameter, and memory over time. Nothing in
+  any of it is a prompt or an answer, nothing is exported, and the
+  [reference page](docs/statistics-store-reference.md) names every field.
+
+- **The Models tab adds up what your Mac is spending on Gropius.** A line at
+  its head says how many models are downloaded and loaded, how much disk they
+  take and how much the volume has left, and the memory budget against what is
+  resident, naming the part still exiting. Each card says the window the model
+  declares and, when you have set one below it, the window it is served at.
+  Nothing new is measured: the figures are the ones the panel already had,
+  and free disk now rides the state snapshot from the one reader the search
+  tab uses ([the memory budget](docs/memory-budget.md#what-the-models-tab-adds-up)).
+
+- **The context-window probe: Gropius measures the largest prompt each
+  model on this Mac will actually take.** Off until you turn it on —
+  **Settings → Context probe**, `context_probe` in `config.json` — or per
+  model with **Measure now** on its card. While the Mac is idle, Gropius
+  sends prompts of growing length through its own OpenAI endpoint, bisects to
+  the largest the server accepts, and records the window on the model's entry
+  with what stopped the next step: the model itself, or one of Gropius's own
+  limits — the prefill deadline, the served window, the memory guard — in
+  which case the figure is a floor and says so. It is published on the models
+  list as `measured_context` and `measured_bound`, changes no charge and
+  refuses no request until you press **Use this window**, and is marked stale
+  when the runtime, the budget, the concurrency or the served window changes.
+  A probe costs about forty minutes of GPU per model, never evicts another
+  model, and stands down the moment anyone sends a request. The idle threshold
+  the probe and the self-test share is now a setting, `idle_threshold_sec`
+  ([how to](docs/context-probe.md)).
+
+- **The self-test: Gropius measures its own models while nobody is using the
+  Mac.** Off until you turn it on — **Settings → Self-test**, `self_test` in
+  `config.json`. While it is on, once the Mac has been idle for five minutes,
+  Gropius loads one model at a time through the same path a request takes —
+  and never by evicting another — runs llama-bench's pair and a concurrency figure against it — `pp512`,
+  `tg128`, `tg128xN` at the decode concurrency — plus the load time, writes
+  one line of figures to `selftest/results.jsonl` in this account's data
+  folder, and unloads what it loaded. A request from anyone cancels the run
+  at once and is recorded as such; a request refused room during a run is
+  served on its retry. Each model is measured once a day. The
+  file holds counts and timings only, never a prompt or an answer, and is
+  bounded at 4 MiB ([how to](docs/self-test.md),
+  [reference](docs/self-test-reference.md)).
+
 ## [0.6.0] - 2026-09-12
 
 ### Changed
@@ -220,7 +275,6 @@ GitHub release notes.
   differently.** This is one less thing that has to hold for the queue to
   behave, not a stall anyone was hitting.
 
-
 - **A client connecting over loopback is told which models are loaded, whether
   or not an API key is set.** `GET /v1/models` carries `state`, `in_flight`,
   `last_used` and `pinned`, and used to carry them only on an install that had
@@ -238,7 +292,6 @@ GitHub release notes.
   same `Host` and `Origin` check the control panel is gated on, so a site that
   points its own hostname at `127.0.0.1` is refused. An install with a key
   behaves as before.
-
 
 - **Under a shared model cache, every account now keeps its own settings and
   its own model list.** They used to be one `config.json` and one
@@ -427,7 +480,6 @@ GitHub release notes.
   where the VPN stops. Linked from the README and from the getting-started
   guide.
 
-
 - **The chat client finds servers instead of asking you to name one.**
   Settings now lists every Gropius server advertising itself on your network,
   with the name it publishes, whether it wants an API key, and how many models
@@ -497,7 +549,6 @@ GitHub release notes.
   closed on a pin it cannot read; and a repository with no pin is unaffected.
   Contributors whose git identity already matches see no change.
 
-
 - **A first launch of the chat client no longer dead-ends.** It opened on a
   documentation example's host name, which resolves for nobody, and the message
   box stays disabled until a server answers — so the first thing a new user met
@@ -506,7 +557,6 @@ GitHub release notes.
   `http://localhost:11535`, the server on the same Mac that the documented
   install order puts there; the empty chat names Settings and has a button that
   opens it; and the disabled message box says why it is disabled.
-
 
 - **Saving settings no longer empties the bind address.** The bind control
   offers two addresses, and a browser's `<select>` has no notion of a value it
@@ -519,7 +569,6 @@ GitHub release notes.
   The bind in force is now offered as an option of its own, labelled with the
   address itself, so the pane shows the address Gropius is serving on and saves
   it back unchanged.
-
 
 - **A disk that has stopped answering no longer holds the usage dashboard
   open.** Every reading of the statistics store starts by flushing the writer,
@@ -546,7 +595,6 @@ GitHub release notes.
   that reached its terminal event is now recorded as delivered, with its
   counts, whatever happens to the tidying-up after it.
 
-
 - **The Bonjour advertisement is republished, not edited, when what it says
   changes.** Setting or clearing the API key, or a change in how many models
   are servable, used to rewrite the advertised record in place while the
@@ -570,7 +618,6 @@ GitHub release notes.
   what it already claimed rather than starting over each time. An outage is
   reported once when it begins and once when it ends, instead of every fifteen
   seconds for as long as the network is away.
-
 
 - **Deleting a model now holds the model until the deletion is finished.**
   Removing a model is not one step — its record goes first and its files
@@ -604,7 +651,6 @@ GitHub release notes.
   and the request that asked for the deletion hung for the life of the process.
   In shared-cache mode, where another account owns the index file, a failed
   registry write is routine rather than a disk-full hypothetical.
-
 
 - **A model server that stops mid-sentence no longer grows the gateway's
   memory.** A streamed answer is relayed a line at a time, and a server that
@@ -651,7 +697,6 @@ GitHub release notes.
   file already carrying more is trimmed to fit and says so as it loads, rather
   than being refused: the key is shortened, never cleared, so a server exposed
   to the network is never opened by a value in a file.
-
 
 - **A second account can serve a model the first account has already served.**
   Each model server writes a log named after the model, and while those logs
@@ -819,7 +864,6 @@ GitHub release notes.
   checksums and clears the quarantine, and keeps the link to the repository
   beside it. Release assets are still named with their sizes; none is linked.
 
-
 - **The landing page no longer scrolls sideways.** A grid track held at the
   intrinsic width of the install one-liner — 894 pixels of unbreakable
   command — and pushed the column beside it off the page, so the release list
@@ -908,7 +952,6 @@ GitHub release notes.
 - **The application is renamed.** The server is Gropius and the chat client is
   GropiusChat. The bundle identifiers, the Bonjour service, the environment
   variable, the module path and the released asset names all follow.
-
 
 - **Eviction grace**, in Settings, off until you turn it on. Gropius unloads the
   least recently used idle model to make room for a new one, and that rule

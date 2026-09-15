@@ -44,10 +44,24 @@ function size(n) { return n ? bytes(n) : '0 B'; }
 // a reader sizing a prompt from the card. The result is composed from a
 // number, so it is safe in the innerHTML the card is built from; anything
 // that is not a positive number gives no label at all.
-function contextLabel(m) {
+// tokensLabel writes a token count the way the cards do: whole kibitokens
+// above a thousand, the figure itself below.
+function tokensLabel(n) {
+  return n >= 1024 ? `${Math.floor(n / 1024)}K` : String(n);
+}
+
+// contextLabel is the card's word on the model's windows: the declared one,
+// and the served one when the operator has set it below. A model that
+// declares none gets no label, never a zero. The served window is resolved
+// the fold-aware way every other reader resolves it.
+function contextLabel(m, config) {
   const n = m.context_length;
   if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '';
-  return `max context ${n >= 1024 ? `${Math.floor(n / 1024)}K` : n}`;
+  const served = servedContext(config, m.repo_id, n);
+  if (served > 0 && served < n) {
+    return `context ${tokensLabel(n)} declared · ${tokensLabel(served)} served`;
+  }
+  return `max context ${tokensLabel(n)}`;
 }
 
 // modelInfoLine is the whole info line of a model's card: what it says
@@ -55,14 +69,52 @@ function contextLabel(m) {
 // function of the model, so the panel's one piece of real logic can be
 // tested without a DOM (see panel_test.go); renderModels does nothing with
 // it but place the string it returns.
-function modelInfoLine(m) {
+function modelInfoLine(m, config) {
   if (m.state === 'downloading') {
     const of = m.size_bytes ? ` of ${bytes(m.size_bytes)}` : '';
     return `downloading… ${m.progress.toFixed(0)}%${of}`;
   }
   if (m.state === 'failed') return escapeHtml(m.err || 'failed');
-  const ctx = contextLabel(m);
+  const ctx = contextLabel(m, config);
   return ctx ? `${bytes(m.bytes)} · ${ctx}` : bytes(m.bytes);
+}
+
+// resourcesSummary adds up what the Models tab already knows, from the state
+// snapshot alone — no walk, no second reader: how many models are downloaded
+// and loaded, the disk they take against what the volume has left, and the
+// memory budget against what is resident, naming the part still exiting. A
+// pure function of the snapshot, so a test can hold every figure.
+function resourcesSummary(state) {
+  const st = state || {};
+  const models = st.models || [];
+  const resident = st.resident || [];
+  const machine = st.machine || {};
+  const ready = models.filter((m) => m.state === 'ready');
+  const loaded = resident.filter((r) => r.state === 'loaded').length;
+  const loading = resident.filter((r) => r.state === 'loading').length;
+  const disk = ready.reduce((sum, m) => sum + (m.bytes || 0), 0);
+  const out = {
+    downloaded: ready.length, loaded, loading, disk,
+    freeDisk: machine.free_disk || 0,
+    budget: machine.budget || 0,
+    resident: machine.resident_bytes || 0,
+    exiting: machine.exiting_bytes || 0,
+    stuck: machine.stuck_servers || 0,
+  };
+  const parts = [];
+  parts.push(`${out.downloaded} model${out.downloaded === 1 ? '' : 's'} downloaded, ${out.loaded} loaded` +
+    (out.loading ? `, ${out.loading} loading` : ''));
+  if (out.downloaded > 0) {
+    parts.push(`${bytes(out.disk)} on disk` + (out.freeDisk ? `, ${bytes(out.freeDisk)} free` : ''));
+  }
+  if (out.budget > 0) {
+    let mem = `memory: ${bytes(out.resident)} of ${bytes(out.budget)} budget resident`;
+    if (out.exiting > 0) mem += `, of which ${bytes(out.exiting)} still exiting`;
+    if (out.stuck > 0) mem += ` (${out.stuck} server${out.stuck === 1 ? '' : 's'} stuck)`;
+    parts.push(mem);
+  }
+  out.text = parts.join(' · ');
+  return out;
 }
 
 async function api(path, opts) {
@@ -213,6 +265,7 @@ function waitingLine(waiting) {
 }
 
 function renderModels() {
+  $('resources').textContent = resourcesSummary(state).text;
   const list = $('modelList');
   // Live state, drawn here rather than in Settings, which stops redrawing
   // while the form is being edited.
@@ -244,12 +297,14 @@ function renderModels() {
     const pinText = pinLabel(m, pinned, loaded);
     if (pinText) pill += `<span class="pill pinned">${pinText}</span>`;
 
-    const info = modelInfoLine(m);
+    const info = modelInfoLine(m, state.config);
+    const measured = measurementText(m, state.idle_jobs, state.probe_queue);
 
     card.innerHTML = `
       <div class="meta">
         <div class="name">${escapeHtml(m.repo_id)}${pill}</div>
         <div class="info">${info}</div>
+        ${measured ? `<div class="info measured">${escapeHtml(measured)}</div>` : ''}
         ${m.state === 'downloading'
           ? `<div class="bar"><i style="width:${m.progress}%"></i></div>` : ''}
       </div>
@@ -274,12 +329,72 @@ function renderModels() {
             postModel('/api/models/unload', m.repo_id).catch(alertErr))
         : btn('Load', 'ghost', () =>
             postModel('/api/models/load', m.repo_id).catch(alertErr)));
+      // The context probe: one run whatever the switch says, and adoption of
+      // a current figure as the served window. A model that declares no
+      // window has nothing to measure between.
+      if (m.context_length > 0) {
+        actions.append(btn('Measure now', 'ghost', () =>
+          postModel('/api/models/measure', m.repo_id).catch(alertErr)));
+      }
+      if (m.measured && !m.measured.stale) {
+        actions.append(btn('Use this window', 'ghost', () =>
+          postModel('/api/models/adopt', m.repo_id).catch(alertErr)));
+      }
       // A ready model is real data, so require a deliberate second click.
       actions.append(confirmBtn('Delete', 'Confirm?', 'danger', () =>
         postModel('/api/models/delete', m.repo_id).catch(alertErr)));
     }
     list.appendChild(card);
   });
+}
+
+// boundText says what stopped the probe's step above the measured window,
+// in words: the model's own limit, or one of Gropius's bounds, in which case
+// the figure is a floor.
+function boundText(bound) {
+  switch (bound) {
+    case 'model': return 'the model refused above this: its own limit here';
+    case 'prefill_deadline': return 'a floor: the prefill deadline stopped the probe first';
+    case 'served_window': return 'a floor: the served window stopped the probe first';
+    case 'memory_guard': return 'a floor: the memory guard stopped the probe first';
+    default: return '';
+  }
+}
+
+// staleText names why a measurement no longer holds.
+function staleText(stale) {
+  switch (stale) {
+    case 'runtime': return 'the runtime changed';
+    case 'budget': return 'the memory budget changed';
+    case 'decode_concurrency': return 'the decode concurrency changed';
+    case 'served_context': return 'the served window changed';
+    default: return 'settings changed';
+  }
+}
+
+// measurementText is the card's line about the context probe: the run in
+// progress or what held it back, else the measurement and its bound, else
+// that a probe was interrupted, else nothing. A pure function a test holds.
+function measurementText(m, jobs, queue) {
+  const j = jobs || {};
+  const same = (a, b) => (a || '').toLowerCase() === (b || '').toLowerCase();
+  if (j.job === 'context-probe' && same(j.model, m.repo_id)) {
+    return `Measuring: ${j.step || 'starting'}`;
+  }
+  const queued = (queue || []).some((q) => same(q, m.repo_id)) || same(j.due, m.repo_id);
+  if (queued) {
+    const held = { in_flight: 'a request is in flight', waiting: 'a caller is waiting for a model',
+      downloading: 'a download is running', recent: 'a request was served recently' }[j.held_by];
+    return held ? `Measurement waiting: ${held}` : 'Measurement queued for the next idle minute';
+  }
+  const mm = m.measured;
+  if (mm) {
+    const tokens = `${mm.window.toLocaleString()} tokens`;
+    if (mm.stale) return `Measured ${tokens}, now stale: ${staleText(mm.stale)}; measure again`;
+    return `Measured ${tokens} — ${boundText(mm.bound)}`;
+  }
+  if (m.probe_incomplete) return 'Measurement incomplete: the last probe was interrupted; press Measure now to run it again';
+  return '';
 }
 
 function btn(label, cls, onClick) {
@@ -674,6 +789,18 @@ function postureLines(state) {
     reads: ['config.statistics', 'config.stats_months', 'config.stats_max_bytes',
       'stats_store.refused', 'stats_store.oldest', 'stats_store.bytes', 'stats_store.files', 'stats_store.stalled'] });
 
+  // The self-test loads models on its own while the Mac is idle, which is a
+  // thing that can be on; the page says so from the setting, which applies
+  // the moment it is saved.
+  const selfTest = c.self_test
+    ? 'The self-test is on: while nothing has asked this Mac for a model for five minutes and ' +
+      'nothing is downloading, Gropius loads one of its models at a time where it fits beside ' +
+      'what is loaded, measures it with a fixed set of prompts, and unloads what it loaded. A request ' +
+      'from anyone ends the run. The figures go to a file in this account\'s Gropius data folder and ' +
+      'hold no prompt and no answer.'
+    : 'The self-test is off: Gropius loads no model on its own.';
+  lines.push({ id: 'selftest', heading: 'Self-test', text: selfTest, reads: ['config.self_test'] });
+
   return lines;
 }
 
@@ -892,6 +1019,9 @@ function renderSettings() {
   const rule = c.chat_rule || {};
   $('setChatPipelines').value = (rule.pipeline_tags || []).join(', ');
   $('setChatTags').value = (rule.required_tags || []).join(', ');
+  $('setContextProbe').checked = !!c.context_probe;
+  $('setIdleThreshold').value = c.idle_threshold_sec || '';
+  $('setSelfTest').checked = !!c.self_test;
   $('setStats').checked = !!c.statistics;
   $('setStatsMonths').value = c.stats_months;
   // Typed in megabytes and stored in bytes, which is how every other size in
@@ -1374,6 +1504,9 @@ $('ovApply').addEventListener('click', () => {
   renderOverrides();
 });
 
+$('setContextProbe').addEventListener('change', () => { settingsTouched = true; });
+$('setIdleThreshold').addEventListener('input', () => { settingsTouched = true; });
+$('setSelfTest').addEventListener('change', () => { settingsTouched = true; });
 $('setStats').addEventListener('change', () => { settingsTouched = true; });
 $('setGrace').addEventListener('change', () => { settingsTouched = true; });
 $('setAdvertise').addEventListener('change', () => { settingsTouched = true; });
@@ -1497,6 +1630,10 @@ $('settingsForm').addEventListener('submit', async (e) => {
     eviction_grace_sec:    parseInt($('setGraceSec').value, 10) || 0,
     eviction_max_wait_sec: parseInt($('setGraceWait').value, 10) || 0,
     chat_rule:          chatRule($('setChatPipelines').value, $('setChatTags').value),
+    context_probe:      $('setContextProbe').checked,
+    // Blank posts zero, which the server reads as the default.
+    idle_threshold_sec: parseInt($('setIdleThreshold').value, 10) || 0,
+    self_test:          $('setSelfTest').checked,
     statistics:         $('setStats').checked,
     stats_months:       parseInt($('setStatsMonths').value, 10) || 6,
     stats_max_bytes:    (parseInt($('setStatsMB').value, 10) || 200) * 1024 * 1024,
@@ -1561,6 +1698,61 @@ async function refreshStats() {
   } catch {
     // A panel that cannot reach its own server already says "disconnected" at
     // the top; a second alert about it would be noise.
+  }
+  // On the same tick, never a timer of its own: the self-test's file changes
+  // at most once a run, and one cadence for the tab is one cadence to reason
+  // about.
+  try {
+    renderSelfTest(await api('/api/selftest'));
+  } catch {
+    // As above.
+  }
+}
+
+// selfTestRow flattens one run into the figures the table shows, each a
+// string ready to print, so the row is a pure function a test can hold.
+function selfTestRow(run) {
+  const tests = {};
+  for (const t of run.tests || []) tests[t.name] = t;
+  const pp = tests.pp512;
+  const tg = tests.tg128;
+  const batch = Object.values(tests).find((t) => t.parallel > 1);
+  const outcome = run.outcome === 'ok' ? 'ok'
+    : run.outcome === 'yielded' ? 'yielded to a request'
+      : run.outcome === 'stopped' ? 'stopped'
+        : `failed (${run.reason || 'unknown'})`;
+  return {
+    model: run.model,
+    measured: new Date(run.at * 1000).toLocaleString(),
+    outcome,
+    load: run.cold_load ? `${(run.load_ms / 1000).toFixed(1)} s` : 'already loaded',
+    promptRead: pp ? `${pp.prompt_tokens_per_sec} tok/s` : '',
+    firstToken: tg ? `${tg.first_token_ms} ms` : '',
+    generation: tg ? `${tg.tokens_per_sec} tok/s` : '',
+    underLoad: batch ? `${batch.tokens_per_sec} tok/s ×${batch.parallel}` : '',
+  };
+}
+
+function renderSelfTest(view) {
+  const on = !!(view && view.enabled);
+  const latest = (view && view.latest) || [];
+  $('selftestHint').textContent = on
+    ? (latest.length ? 'On. Gropius measures a model whenever this Mac has been idle for five minutes.'
+      : 'On. Nothing measured yet: the first run starts once this Mac has been idle for five minutes.')
+    : (latest.length ? 'Off. These are the runs from when it was on; turn it on in Settings to measure again.'
+      : 'Off. Turn on Test the models when this Mac is idle in Settings to measure your models.');
+  $('selftestBody').hidden = latest.length === 0;
+  const rows = $('selftestRows');
+  rows.replaceChildren();
+  for (const run of latest) {
+    const r = selfTestRow(run);
+    const tr = document.createElement('tr');
+    for (const cell of [r.model, r.measured, r.outcome, r.load, r.promptRead, r.firstToken, r.generation, r.underLoad]) {
+      const td = document.createElement('td');
+      td.textContent = cell;
+      tr.appendChild(td);
+    }
+    rows.appendChild(tr);
   }
 }
 
@@ -1814,7 +2006,8 @@ function renderHistory(h) {
   // it, and saying "nothing was recorded" over the top of it would deny the
   // records it is drawn from.
   const anything = days.length > 0 || (h.latency || []).length > 0
-    || (h.hours || []).some((x) => x.evictions || x.loads);
+    || (h.hours || []).some((x) => x.evictions || x.loads)
+    || (h.prompt_sizes || []).length > 0 || (h.footprints || []).length > 0;
   $('statsHistoryBusy').hidden = true;
   $('statsHistoryBody').hidden = !anything;
   $('statsHistoryEmpty').hidden = anything;
@@ -1834,6 +2027,106 @@ function renderHistory(h) {
   $('statsSpreadRows').innerHTML = latency.map(spreadRowHtml).join('');
 
   $('statsHoursRows').innerHTML = (h.hours || []).map(hourRowHtml).join('');
+
+  $('statsSizesRows').innerHTML = (h.prompt_sizes || []).map(sizesRowHtml).join('');
+  $('statsOverridesRows').innerHTML = (h.overrides || []).map(overridesRowHtml).join('');
+  $('statsFootprintRows').innerHTML = (h.footprints || []).map(footprintRowHtml).join('');
+}
+
+// sizesRow is one model's prompts against its served window: the two
+// windows, the count, the four bands and the refused, the largest seen. A
+// pure function a test holds.
+function sizesRow(p) {
+  const b = p.buckets || [0, 0, 0, 0, 0];
+  return {
+    model: p.model || '—',
+    declared: p.declared_context ? tokensLabel(p.declared_context) : '—',
+    served: p.served_context ? tokensLabel(p.served_context) : '—',
+    requests: p.requests || 0,
+    bands: [b[0] || 0, b[1] || 0, b[2] || 0, b[3] || 0],
+    refused: p.refused_for_size || 0,
+    largest: p.largest_estimate ? tokensLabel(p.largest_estimate) : '—',
+  };
+}
+
+function sizesRowHtml(p) {
+  const r = sizesRow(p);
+  return `<tr>
+      <td>${escapeHtml(r.model)}</td>
+      <td class="figure">${escapeHtml(r.declared)}</td>
+      <td class="figure">${escapeHtml(r.served)}</td>
+      <td class="figure">${figure(r.requests)}</td>
+      ${r.bands.map((n) => `<td class="figure">${figure(n)}</td>`).join('')}
+      <td class="figure">${figure(r.refused)}</td>
+      <td class="figure">${escapeHtml(r.largest)}</td>
+    </tr>`;
+}
+
+// overridesRow is how often one model's clients set each parameter, as a
+// share of its requests.
+function overridesRow(o) {
+  const by = o.by_parameter || {};
+  const n = o.requests || 0;
+  const pct = (k) => (n > 0 ? `${Math.round(((by[k] || 0) * 100) / n)}%` : '—');
+  return {
+    model: o.model || '—', requests: n,
+    temperature: pct('temperature'), top_p: pct('top_p'), top_k: pct('top_k'), min_p: pct('min_p'), max_tokens: pct('max_tokens'),
+  };
+}
+
+function overridesRowHtml(o) {
+  const r = overridesRow(o);
+  return `<tr>
+      <td>${escapeHtml(r.model)}</td>
+      <td class="figure">${figure(r.requests)}</td>
+      <td class="figure">${r.temperature}</td>
+      <td class="figure">${r.top_p}</td>
+      <td class="figure">${r.top_k}</td>
+      <td class="figure">${r.min_p}</td>
+      <td class="figure">${r.max_tokens}</td>
+    </tr>`;
+}
+
+// sparkline draws a series as one character per point, eight heights from
+// the lowest to the highest, so the line over the range is on the page and
+// not only in the figures.
+function sparkline(points) {
+  const bars = '▁▂▃▄▅▆▇█';
+  const pts = points || [];
+  if (pts.length === 0) return '';
+  let lo = Infinity; let hi = 0;
+  pts.forEach((p) => { if (p.bytes < lo) lo = p.bytes; if (p.bytes > hi) hi = p.bytes; });
+  const span = hi - lo;
+  return pts.map((p) => bars[span > 0 ? Math.min(7, Math.floor(((p.bytes - lo) * 8) / span)) : 4]).join('');
+}
+
+// footprintRow folds one model's series into the figures a table can carry:
+// how many points, the lowest, the highest, the latest, and the line itself.
+function footprintRow(f) {
+  const pts = f.points || [];
+  let lo = 0; let hi = 0;
+  pts.forEach((p) => {
+    if (!lo || p.bytes < lo) lo = p.bytes;
+    if (p.bytes > hi) hi = p.bytes;
+  });
+  return {
+    model: f.model || '—', samples: pts.length,
+    lowest: pts.length ? bytes(lo) : '—', highest: pts.length ? bytes(hi) : '—',
+    latest: pts.length ? bytes(pts[pts.length - 1].bytes) : '—',
+    line: sparkline(pts),
+  };
+}
+
+function footprintRowHtml(f) {
+  const r = footprintRow(f);
+  return `<tr>
+      <td>${escapeHtml(r.model)}</td>
+      <td class="figure">${figure(r.samples)}</td>
+      <td class="figure">${escapeHtml(r.lowest)}</td>
+      <td class="figure">${escapeHtml(r.highest)}</td>
+      <td class="figure">${escapeHtml(r.latest)}</td>
+      <td class="spark">${escapeHtml(r.line)}</td>
+    </tr>`;
 }
 
 // historyBoundsLine says what the figures cover and what they were held to,

@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unicode/utf8"
 )
 
@@ -47,6 +48,10 @@ type Paths struct {
 	// Stats is where the request statistics store keeps its files: under
 	// Account, in a "stats" directory. See StatsDir.
 	Stats string
+	// SelfTest is where the model self-test keeps its results file: beside
+	// Stats, under the same rule, for the same reason — one account's own
+	// record, at 0600, never in the group-writable shared root.
+	SelfTest string
 }
 
 // SharedRoot is the machine-wide location, used when it exists.
@@ -220,17 +225,18 @@ func accountDir(root string) string {
 func NewPaths(root string) Paths {
 	acct := accountDir(root)
 	return Paths{
-		Root:    root,
-		Bin:     filepath.Join(acct, "bin"),
-		Venv:    filepath.Join(acct, "venv"),
-		Python:  filepath.Join(acct, "python"),
-		Models:  filepath.Join(root, "models"),
-		HFCache: filepath.Join(root, "hf", "hub"),
-		Account: acct,
-		Logs:    filepath.Join(acct, "logs"),
-		Config:  filepath.Join(acct, "config.json"),
-		State:   filepath.Join(acct, "registry.json"),
-		Stats:   StatsDir(root),
+		Root:     root,
+		Bin:      filepath.Join(acct, "bin"),
+		Venv:     filepath.Join(acct, "venv"),
+		Python:   filepath.Join(acct, "python"),
+		Models:   filepath.Join(root, "models"),
+		HFCache:  filepath.Join(root, "hf", "hub"),
+		Account:  acct,
+		Logs:     filepath.Join(acct, "logs"),
+		Config:   filepath.Join(acct, "config.json"),
+		State:    filepath.Join(acct, "registry.json"),
+		Stats:    StatsDir(root),
+		SelfTest: filepath.Join(acct, "selftest"),
 	}
 }
 
@@ -618,6 +624,32 @@ type Config struct {
 	// is shown in Settings rather than promised (adr-2609061610107154).
 	StatsMonths   int   `json:"stats_months,omitempty"`
 	StatsMaxBytes int64 `json:"stats_max_bytes,omitempty"`
+
+	// SelfTest lets Gropius measure its own models while nobody is using it:
+	// when the Mac has been idle for a while it loads each downloaded model in
+	// turn, runs the same short set of tests against it, records the figures
+	// in a file under this account's data directory, and unloads what it
+	// loaded (itd-2609100457007827). Off until the operator turns it on, and
+	// while it is off nothing is loaded and nothing is written. The figures
+	// hold no prompt and no answer, and nothing recorded leaves the Mac
+	// (adr-2609061503319212).
+	SelfTest bool `json:"self_test,omitempty"`
+
+	// ContextProbe lets Gropius measure each model's servable context window
+	// while nobody is using the Mac: prompts of growing size through its own
+	// OpenAI endpoint, bisected to the largest the server accepts, recorded
+	// on the model's registry entry and published beside the declared and
+	// the served window (itd-2609091301112705). Off by default; a per-model
+	// "Measure now" runs one probe whatever this says. A measurement changes
+	// no charge and refuses no request until the operator adopts it as the
+	// served window.
+	ContextProbe bool `json:"context_probe,omitempty"`
+
+	// IdleThresholdSec is how long the last request must be in the past
+	// before the Mac counts as idle for the self-test and the context probe
+	// — one idea of idle for both. Zero means the default; read it through
+	// EffectiveIdleThresholdSec.
+	IdleThresholdSec int `json:"idle_threshold_sec,omitempty"`
 
 	// LogLevel decides how much Gropius writes about itself, in its own log and
 	// on standard error. "sparse" — the default, and what every configuration
@@ -1076,7 +1108,7 @@ func (c Config) Clone() Config {
 //
 // The defaults are the ADR's starting values, with its arithmetic corrected by
 // measurement: internal/stats' BenchmarkLatestAtTheCap fills the cap and
-// reports about 230 bytes a record — a JSON Lines record carries its field
+// reports about 380 bytes a record — a JSON Lines record carries its field
 // names on every line — so 200 MB is roughly three months of ten thousand
 // requests a day, not the four the ADR reasoned to from 150 bytes. The size
 // cap therefore bites at about half the six-month horizon on a Mac that busy,
@@ -1284,6 +1316,44 @@ func (c *Config) sanitizeLogLevel() []string {
 	return repaired
 }
 
+// The idle threshold's bounds: a minute is the shortest quiet a loop that
+// ticks once a minute can tell from noise, and an hour is past the point where
+// an idle job would never run on a Mac that is used at all.
+const (
+	DefaultIdleThresholdSec = 300
+	MinIdleThresholdSec     = 60
+	MaxIdleThresholdSec     = 3600
+)
+
+// EffectiveIdleThresholdSec is the idle threshold in force: the setting, or
+// the default when none is set.
+func (c Config) EffectiveIdleThresholdSec() int {
+	if c.IdleThresholdSec == 0 {
+		return DefaultIdleThresholdSec
+	}
+	return c.IdleThresholdSec
+}
+
+// EffectiveIdleThreshold is EffectiveIdleThresholdSec as a duration.
+func (c Config) EffectiveIdleThreshold() time.Duration {
+	return time.Duration(c.EffectiveIdleThresholdSec()) * time.Second
+}
+
+func usableIdleThreshold(sec int) bool {
+	return sec == 0 || (sec >= MinIdleThresholdSec && sec <= MaxIdleThresholdSec)
+}
+
+// sanitizeIdleThreshold repairs a threshold this build cannot use and returns
+// what it repaired, for the reason sanitizeStats gives.
+func (c *Config) sanitizeIdleThreshold() []string {
+	if usableIdleThreshold(c.IdleThresholdSec) {
+		return nil
+	}
+	repaired := []string{"idle_threshold_sec=" + strconv.Itoa(c.IdleThresholdSec)}
+	c.IdleThresholdSec = 0
+	return repaired
+}
+
 // sanitizeStats repairs a retention figure this build cannot use and returns
 // what it repaired, so a hand-edited file, a backup or another build's
 // settings still load.
@@ -1336,6 +1406,10 @@ func (c Config) Validate() error {
 	}
 	if c.DecodeConcurrency < 1 {
 		return fmt.Errorf("decode_concurrency must be >= 1, got %d", c.DecodeConcurrency)
+	}
+	if !usableIdleThreshold(c.IdleThresholdSec) {
+		return fmt.Errorf("idle_threshold_sec must be between %d and %d, or 0 for the default, got %d",
+			MinIdleThresholdSec, MaxIdleThresholdSec, c.IdleThresholdSec)
 	}
 	// Named fields, both of them: this is the settings path, where a person is
 	// waiting to be told which of a form's worth of settings was refused.
@@ -1716,6 +1790,7 @@ func Load(path string) (Config, Notices, error) {
 	// working — and for the API key it would be worse than that, because the
 	// trimmed key is the one their clients must now send.
 	n.Repaired = append(n.Repaired, cfg.sanitizeStats()...)
+	n.Repaired = append(n.Repaired, cfg.sanitizeIdleThreshold()...)
 	n.Repaired = append(n.Repaired, cfg.sanitizeBudget()...)
 	n.Repaired = append(n.Repaired, cfg.sanitizeGrace()...)
 	n.Repaired = append(n.Repaired, cfg.sanitizeAPIKey()...)

@@ -57,6 +57,7 @@
 
 <!-- ── My Models ─────────────────────────────────────────── -->
 <section id="tab-models" class="panel active">
+  <p id="resources" class="figures"></p>
   <p id="graceQueue" class="hint" hidden></p>
   <div id="modelList"></div>
   <div id="modelsEmpty" class="empty" hidden>
@@ -77,6 +78,23 @@
 
 <!-- ── Statistics ────────────────────────────────────────── -->
 <section id="tab-stats" class="panel">
+  <h2>Self-test</h2>
+  <p class="hint" id="selftestHint"></p>
+  <div id="selftestBody" hidden>
+    <div class="scroll">
+      <table id="selftestTable">
+        <thead>
+          <tr><th>Model</th><th>Measured</th><th>Outcome</th><th>Load</th>
+            <th>Prompt read</th><th>First token</th><th>Generation</th><th>Under load</th></tr>
+        </thead>
+        <tbody id="selftestRows"></tbody>
+      </table>
+    </div>
+    <p class="hint">The latest run for each model. Prompt read is pp512's prompt tokens a second;
+      first token and generation are tg128's; under load is the concurrent test's tokens a second
+      for the whole batch. Times are this Mac's. The prompts are fixed and are not recorded, so
+      none can be shown.</p>
+  </div>
   <div id="statsOff" class="empty" hidden>
     <p><strong>Gropius is not recording anything.</strong></p>
     <p>Turn on <em>Record request statistics on this Mac</em> in
@@ -144,6 +162,39 @@
           <tbody id="statsSpreadRows"></tbody>
         </table>
       </div>
+      <h3>Prompts against the served window</h3>
+      <div class="scroll">
+        <table id="statsSizesTable">
+          <thead>
+            <tr><th>Model</th><th>Declared</th><th>Served</th><th>Requests</th>
+              <th>Up to ¼</th><th>Up to ½</th><th>Up to ¾</th><th>Up to the window</th>
+              <th>Refused as too large</th><th>Largest prompt</th></tr>
+          </thead>
+          <tbody id="statsSizesRows"></tbody>
+        </table>
+      </div>
+      <h3>Sampling overrides</h3>
+      <div class="scroll">
+        <table id="statsOverridesTable">
+          <thead>
+            <tr><th>Model</th><th>Requests</th><th>Temperature</th><th>Top-p</th>
+              <th>Top-k</th><th>Min-p</th><th>Max tokens</th></tr>
+          </thead>
+          <tbody id="statsOverridesRows"></tbody>
+        </table>
+      </div>
+      <h3>Memory over time</h3>
+      <div class="scroll">
+        <table id="statsFootprintTable">
+          <thead>
+            <tr><th>Model</th><th>Samples</th><th>Lowest</th><th>Highest</th><th>Latest</th><th>Over the range</th></tr>
+          </thead>
+          <tbody id="statsFootprintRows"></tbody>
+        </table>
+      </div>
+      <p class="hint">Memory is the model server's own footprint, sampled every thirty seconds and averaged
+        into at most two hundred points across the range: what the server was holding, not what any one
+        request cost.</p>
       <h3>Evictions and reloads by hour</h3>
       <div class="scroll">
         <table id="statsHoursTable">
@@ -382,6 +433,50 @@
         <input id="ovMaxTokens" type="number" step="1" min="0" max="1048576" placeholder="machine-wide default">
       </label>
       <button type="button" id="ovApply" class="ghost">Set override</button>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Context probe</legend>
+      <label class="switch">
+        <input id="setContextProbe" type="checkbox">
+        <span>Measure each model&rsquo;s context window when this Mac is idle</span>
+      </label>
+      <p class="hint">Off unless you turn it on. While it is on, whenever this Mac has been idle for the
+        threshold below, Gropius takes one model with no current measurement, sends it prompts of
+        growing length through its own endpoint, bisects to the largest the server accepts, and
+        records the window beside the one the model declares. A measurement changes nothing
+        until you press <strong>Use this window</strong> on the model&rsquo;s card. It costs about
+        forty minutes of GPU per model, never pushes another model out to make room, and stands
+        down the moment anyone sends a request. Each model&rsquo;s card also has
+        <strong>Measure now</strong>, which runs one probe whatever this box says. The
+        <a href="https://github.com/intentdriven/Gropius/blob/main/docs/context-probe.md">context
+        probe page</a> says what the figure means and what it costs.</p>
+      <label>
+        <span>Idle threshold (seconds)</span>
+        <input id="setIdleThreshold" type="number" step="1" min="60" max="3600" placeholder="300">
+      </label>
+      <p class="hint">How long the last request must be in the past before the Mac counts as idle,
+        for the context probe and the self-test alike. Blank is five minutes.</p>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Self-test</legend>
+      <label class="switch">
+        <input id="setSelfTest" type="checkbox">
+        <span>Test the models when this Mac is idle</span>
+      </label>
+      <p class="hint">Off unless you turn it on. While it is on, whenever nothing has asked this Mac
+        for a model for five minutes and nothing is downloading, Gropius loads one of your
+        models, runs the same short set of tests against it &mdash; how long the load takes,
+        how fast it reads a long prompt, how fast it generates, and what that becomes when
+        several requests arrive at once &mdash; writes one line of figures to a file in your
+        Gropius data folder, and unloads the model again if it was not already loaded. Each
+        model is measured once a day, and never at the cost of another: a model that would need
+        one pushed out to make room waits for a time when there is room. A request from anyone
+        ends the run at once. The file holds counts and timings only, never a prompt or an
+        answer, and nothing in it leaves this Mac. The
+        <a href="https://github.com/intentdriven/Gropius/blob/main/docs/self-test.md">self-test
+        page</a> says what it costs and where the file is.</p>
     </fieldset>
 
     <fieldset class="group">

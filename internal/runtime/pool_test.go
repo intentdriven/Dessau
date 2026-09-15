@@ -60,7 +60,12 @@ type fakeProc struct {
 	// exit() ends it.
 	holdExit bool
 	err      error
+	// footprint is what Footprint reports; zero means the process cannot
+	// report one, as a process without the optional interface would.
+	footprint int64
 }
+
+func (p *fakeProc) Footprint() int64 { return p.footprint }
 
 func (p *fakeProc) Done() <-chan struct{} { return p.done }
 func (p *fakeProc) Err() error            { return p.err }
@@ -94,6 +99,10 @@ type fakeLauncher struct {
 	// until the test says so, which is what a real server does for the length
 	// of its SIGTERM grace: out of the pool, still holding its memory.
 	holdExitFor string
+	// footprint is what every launched process reports as its resident
+	// memory; zero means none can, as a process without the optional
+	// interface would.
+	footprint int64
 	// loadDelayFor overrides loadDelay for one model, so a test can have one
 	// model never become ready while the others load at once.
 	loadDelayFor map[string]time.Duration
@@ -155,6 +164,8 @@ func (l *fakeLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 	// cheat by rewriting the pool's expected port to the httptest port via a
 	// custom HTTP client in the tests below.
 	p := &fakeProc{
+		footprint: l.footprint,
+
 		srv:      srv,
 		done:     make(chan struct{}),
 		stopped:  make(chan struct{}),

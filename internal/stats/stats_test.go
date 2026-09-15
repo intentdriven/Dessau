@@ -79,7 +79,7 @@ func TestOffRecordsNothing(t *testing.T) {
 	}
 	r.Add(okRecord("org/a"))
 	r.LoadStarted("org/a")
-	r.LoadFinished("org/a", time.Second, nil)
+	r.LoadFinished("org/a", time.Second, nil, nil)
 	r.Removed("org/a", ReasonEvicted)
 
 	if got := r.Summary(); len(got) != 0 {
@@ -230,7 +230,7 @@ func TestOnlyAnEvictionCountsAsOne(t *testing.T) {
 	r.SetEnabled(true)
 
 	r.LoadStarted("org/a")
-	r.LoadFinished("org/a", 3*time.Second, nil)
+	r.LoadFinished("org/a", 3*time.Second, nil, nil)
 	r.Removed("org/a", ReasonEvicted)
 	r.Removed("org/a", ReasonIdle)
 	r.Removed("org/a", ReasonUnloaded)
@@ -250,7 +250,7 @@ func TestOnlyAnEvictionCountsAsOne(t *testing.T) {
 	r2, _ := newTestRecorder(t)
 	r2.SetEnabled(true)
 	r2.LoadStarted("org/b")
-	r2.LoadFinished("org/b", time.Second, errors.New("did not become ready"))
+	r2.LoadFinished("org/b", time.Second, errors.New("did not become ready"), nil)
 	if got := r2.Summary()[0]; got.Loads != 0 || got.FailedLoads != 1 {
 		t.Errorf("a load that failed counted %+v, want no load and one failed load", got)
 	}
@@ -284,7 +284,7 @@ func TestEveryRecordIsOfferedToTheStore(t *testing.T) {
 
 	r.Add(okRecord("org/a"))
 	r.LoadStarted("org/a")
-	r.LoadFinished("org/a", time.Second, nil)
+	r.LoadFinished("org/a", time.Second, nil, nil)
 	r.Removed("org/a", ReasonEvicted)
 
 	mu.Lock()
@@ -312,8 +312,10 @@ func (s funcStore) AppendRequest(r Record) error  { return s.request(r) }
 func (s funcStore) AppendEvent(e Event) error     { return s.event(e) }
 func (s funcStore) AppendSettings(Settings) error { return nil }
 
-// A record is a fixed set of counted and timed fields. The panel, the
-// documentation and the durable store all read this list, and the field table
+// A record is a fixed set of counted and timed fields, plus the facts a
+// request was judged against and the names — never the values — of what its
+// client overrode. The panel, the documentation and the durable store all
+// read this list, and the field table
 // on the how-to page is held to it (internal/archtest), so a field added here
 // without a word in the documentation fails the build rather than shipping
 // undocumented.
@@ -322,6 +324,8 @@ func TestARecordHoldsOnlyCountsTimingsAndTheModel(t *testing.T) {
 		"model", "at", "class", "streamed",
 		"prompt_tokens", "completion_tokens",
 		"first_token_ms", "duration_ms", "queue_wait_ms", "load_wait_ms",
+		"declared_context", "served_context", "estimated_prompt_tokens", "requested_tokens", "in_flight",
+		"overrides", "footprint_bytes",
 	}
 	if got := RecordFields(); !reflect.DeepEqual(got, want) {
 		t.Errorf("a request record holds %v, want %v", got, want)

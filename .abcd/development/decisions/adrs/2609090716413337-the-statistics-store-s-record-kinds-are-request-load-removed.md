@@ -1,10 +1,10 @@
 ---
 id: adr-2609090716413337
 slug: the-statistics-store-s-record-kinds-are-request-load-removed
-status: accepted
+status: superseded
 date: 2026-09-09
 supersedes: adr-2609061610107154
-superseded_by: null
+superseded_by: adr-2609121450000000
 related_intents: [itd-2609061521102742, itd-2609061602043757]
 related_rfcs: []
 related_adrs: [adr-2609061610107154, adr-2609061503319212]

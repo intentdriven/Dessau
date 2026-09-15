@@ -71,6 +71,10 @@ type Upstream struct {
 // model that was already loaded. A request that found its model warm and free
 // pays neither.
 type AcquireStats struct {
+	// InFlight is how many requests the model already had when this one
+	// took its slot — the count at admission, for the request record
+	// (itd-2609091712141073).
+	InFlight  int
 	LoadWait  time.Duration
 	QueueWait time.Duration
 }
@@ -202,6 +206,10 @@ type PoolOptions struct {
 	// leaves the pool. Nil (the default) means nobody is watching and every
 	// report is a no-op; see PoolObserver for what the pool promises it.
 	Observer PoolObserver
+	// FootprintInterval is how often each running server's memory is read
+	// and reported to an Observer that is also a FootprintObserver; zero
+	// means DefaultFootprintInterval, negative means never.
+	FootprintInterval time.Duration
 
 	// DrainWait is how long the pool waits for a stopped model server to exit
 	// before it stops counting on that memory coming back: past it a load is
@@ -276,6 +284,12 @@ type Pool struct {
 	waiters []*loadWaiter
 
 	stopIdle chan struct{}
+	// stopSample and sampleDone are the footprint sampler's, as stopIdle and
+	// idleDone are the reaper's.
+	stopSample chan struct{}
+	sampleDone chan struct{}
+	// refusals counts the curable no-room refusals; see Residency.Refusals.
+	refusals uint64
 	idleDone chan struct{}
 }
 
@@ -301,6 +315,11 @@ type entry struct {
 	loadedAt time.Time
 	lastUsed time.Time
 	inFlight int
+	// footprint is the newest sampled resident memory of this server, or 0.
+	footprint int64
+	// sampling is what the server was launched with, carried on the load
+	// report so the recorder need not stitch two reports together.
+	sampling config.Sampling
 
 	// sem bounds how many requests run against this one model server at once. Its
 	// capacity is a small multiple of the server's --decode-concurrency: mlx-lm
@@ -448,8 +467,11 @@ func NewPool(opts PoolOptions) *Pool {
 		stuck:       map[uint64]stuckServer{},
 		stopIdle:    make(chan struct{}),
 		idleDone:    make(chan struct{}),
+		stopSample:  make(chan struct{}),
+		sampleDone:  make(chan struct{}),
 	}
 	go p.reapIdle()
+	go p.sampleFootprints()
 	return p
 }
 
@@ -769,6 +791,13 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 		if verdict != waitYes {
 			queued := len(p.waiters)
 			p.leaveQueueLocked(w)
+			// Counted for Residency.Refusals: a refusal for want of room that
+			// an eviction could have cured. A model that can never fit is
+			// not counted, since nothing anyone gives up would seat it.
+			if noRoom := (*NoRoomError)(nil); errors.As(err, &noRoom) &&
+				verdict != waitNeverFits && p.canEverFitLocked(noRoom.need) {
+				p.refusals++
+			}
 			p.mu.Unlock()
 			// Logged out here, not where the refusal is built: p.mu is the
 			// pool's one lock — every Acquire, Resident, Pinned and Unload
@@ -873,7 +902,9 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 			repoID, e.inFlight, ErrBusy)
 	}
 	// Pin it *before* releasing the lock, so a concurrent Acquire for another
-	// model cannot evict this one while we are waiting for it to load.
+	// model cannot evict this one while we are waiting for it to load. What
+	// the model already had is the count at admission, for the record.
+	already := e.inFlight
 	e.inFlight++
 	e.lastUsed = p.opts.now()
 	ready := e.ready
@@ -949,6 +980,7 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 		BaseURL:  fmt.Sprintf("http://127.0.0.1:%d", e.port),
 		ModelArg: e.modelArg,
 		Waits: AcquireStats{
+			InFlight: already,
 			LoadWait: loaded.Sub(entered),
 			// The wait for room is a queue wait, not a load wait: nothing was
 			// loading, the machine was full. Reporting it as a load wait would
@@ -1146,6 +1178,7 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 		return nil, fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
 	}
 	e.proc = proc
+	e.sampling = sampling
 	p.entries[config.FoldRepoID(repoID)] = e
 	p.notify(func(o PoolObserver) { o.LoadStarted(repoID) })
 
@@ -1162,7 +1195,7 @@ func (p *Pool) waitReady(e *entry) {
 	started := p.opts.now()
 	err := p.probeReady(ctx, e)
 	took := p.opts.now().Sub(started)
-	p.notify(func(o PoolObserver) { o.LoadFinished(e.repoID, took, err) })
+	p.notify(func(o PoolObserver) { o.LoadFinished(e.repoID, took, err, e.sampling) })
 
 	p.mu.Lock()
 	e.readyErr = err
@@ -1844,6 +1877,15 @@ type Residency struct {
 	// StuckServers is how many of those did not exit even after SIGKILL. Their
 	// memory is held until this process restarts.
 	StuckServers int
+	// Refusals is how many loads the pool has refused for want of room since
+	// it started that an eviction could have cured: the queue-full and the
+	// nothing-could-be-freed refusals, never the never-fits fast path, since
+	// nothing anyone gives up would seat a model larger than the budget. It
+	// only ever grows, and it is what a holder of a model that wants to give
+	// way to a client watches: with eviction grace off a refused client waits
+	// in no queue and appears in no residency, so the count moving is the
+	// only sign it was there (internal/selftest).
+	Refusals uint64
 }
 
 // Residency reports the models in memory and the memory not yet handed back.
@@ -1858,6 +1900,7 @@ func (p *Pool) Residency() Residency {
 		Models:       p.residentLocked(),
 		ExitingBytes: p.drainBytes + p.stuckChargeLocked(),
 		StuckServers: len(p.stuck),
+		Refusals:     p.refusals,
 	}
 }
 
@@ -1935,6 +1978,75 @@ func (p *Pool) residentLocked() []Resident {
 	return out
 }
 
+// DefaultFootprintInterval is how often the pool reads each running model
+// server's memory: often enough to draw a line over an afternoon, rare enough
+// that a ps per server is nothing.
+const DefaultFootprintInterval = 30 * time.Second
+
+// sampleFootprints reads every running server's resident memory at the
+// interval and reports each reading, keeping the newest on the entry for
+// Footprint. A process that cannot report one is skipped.
+func (p *Pool) sampleFootprints() {
+	defer close(p.sampleDone)
+	interval := p.opts.FootprintInterval
+	if interval == 0 {
+		interval = DefaultFootprintInterval
+	}
+	if interval < 0 {
+		<-p.stopSample
+		return
+	}
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-p.stopSample:
+			return
+		case <-tick.C:
+			type target struct {
+				repoID string
+				proc   Footprinter
+			}
+			var targets []target
+			p.mu.Lock()
+			for _, e := range p.entries {
+				if f, ok := e.proc.(Footprinter); ok && isReady(e) {
+					targets = append(targets, target{e.repoID, f})
+				}
+			}
+			p.mu.Unlock()
+			// Read off the lock: a reading runs a process listing.
+			for _, t := range targets {
+				bytes := t.proc.Footprint()
+				if bytes <= 0 {
+					continue
+				}
+				p.mu.Lock()
+				if e, ok := p.entries[config.FoldRepoID(t.repoID)]; ok {
+					e.footprint = bytes
+				}
+				p.mu.Unlock()
+				p.notify(func(o PoolObserver) {
+					if fo, ok := o.(FootprintObserver); ok {
+						fo.FootprintSampled(t.repoID, bytes)
+					}
+				})
+			}
+		}
+	}
+}
+
+// Footprint is the newest sampled resident memory of the model's server, or
+// 0 when it is not resident or nothing has been sampled yet.
+func (p *Pool) Footprint(repoID string) int64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e, ok := p.entries[config.FoldRepoID(repoID)]; ok {
+		return e.footprint
+	}
+	return 0
+}
+
 // reapIdle unloads models that have gone untouched for IdleTimeout.
 func (p *Pool) reapIdle() {
 	defer close(p.idleDone)
@@ -2001,6 +2113,7 @@ func (p *Pool) Close() error {
 	}
 
 	close(p.stopIdle)
+	close(p.stopSample)
 	<-p.idleDone
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -2018,6 +2131,11 @@ func (p *Pool) Close() error {
 		}(proc)
 	}
 	wg.Wait()
+	// The sampler last: a reading is a process listing with a deadline of its
+	// own, and the servers must not wait on it to be told to go. Its write
+	// after the listing is guarded by an entries lookup, and entries is empty
+	// by now.
+	<-p.sampleDone
 	return nil
 }
 
