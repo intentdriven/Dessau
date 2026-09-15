@@ -69,21 +69,32 @@ exported methods is not changing them.
 
 ### The package, and the seam it holds
 
-`internal/contextprobe` owns the method, the scheduler and the result. It talks
-to the rest of Gropius through one small interface it declares itself, which
-`*runtime.Pool` already satisfies:
+`internal/contextprobe` owns the method, the result and the "Measure now"
+queue. It does not own a scheduler: the self-test's idle loop
+(`internal/selftest`, itd-2609100457007827) landed first, and the probe is a
+job of it — `selftest.Job` (Name, Due, Run) and `selftest.Session` (the run's
+context, the hold count, whether a cancellation was a yield, the progress
+words, the never-evict check) are the seam. So idleness, yielding, the
+never-evict rule, the "what held it back" reason and the idle threshold are
+decided once, for both jobs. The probe talks to the app through one small
+interface it declares itself:
 
 ```
-type poolView interface {
-    Waiting() int                 // queue depth, as any caller is counted
-    Residency() runtime.Residency // per model: State, InFlight, LastUsed
-    Unload(repoID string) error   // ErrBusy while a request is in flight
+type Sources interface {
+    Candidates() []Candidate                       // ready models: declared, served, bytes, KV charge, measurement
+    Provenance(repoID string) registry.Provenance  // runtime, budget, concurrency, served window in force
+    Available() int64                              // what the budget has free
+    Unload(repoID string) error                    // runtime.ErrBusy while a request is in flight
+    Save(repoID string, m *registry.Measurement) error
+    MarkIncomplete(repoID string, on bool) error
+    Endpoint() (baseURL, apiKey string)            // this Mac's own loopback endpoint
 }
 ```
 
-Three existing exported methods, nothing added to the pool. A fake satisfying
-this interface is what the tests drive, which is why the package is testable
-without a real Mac.
+Nothing added to the pool. Fakes satisfying `Sources` and the loop's
+`selftest.Server` are what the tests drive, with a fake gateway that answers
+the way the real one does, which is why the package is testable without a
+real Mac.
 
 ### The method, from the campaign
 
@@ -122,9 +133,11 @@ break the probe.
 
 ### Idle, and yielding
 
-**Idle** is all three of: `Waiting()` is zero, no resident model has a request
-in flight, and every resident model's `LastUsed` is older than the probe's idle
-threshold. A probe that cannot start says which of the three held it back.
+**Idle** is the loop's: `Waiting()` is zero, nothing is downloading, no
+resident model has a request in flight, and every resident model's `LastUsed`
+is older than the idle threshold (`idle_threshold_sec`, shared with the
+self-test, five minutes by default). A probe that cannot start says which held
+it back, on the state snapshot and the model's card.
 
 **Yielding** is a poll of the same two readings on a short interval while a step
 runs. The probe holds exactly one request, on one model, so a second in-flight
@@ -193,9 +206,10 @@ needs nothing from the package either way.
 
 - **Go** carries the whole of it: the scheduler, the switch, the per-model run,
   the progress snapshot and the result.
-- **`config.json`** carries the switch and the idle threshold as ordinary
-  settings; a save that names neither leaves both alone, which is the wedge this
-  repository has built three times.
+- **`config.json`** carries the switch (`context_probe`) and the idle
+  threshold (`idle_threshold_sec`) as ordinary settings; a save that names
+  neither leaves both alone, which is the wedge this repository has built three
+  times.
 - **The control panel** carries the switch, a "Measure now" per downloaded
   model, the progress of a run in words (which model, which step, the bounds so
   far, what stopped the last step), the result with its bound, and the "Use this

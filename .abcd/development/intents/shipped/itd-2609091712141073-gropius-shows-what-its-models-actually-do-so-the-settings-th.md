@@ -67,7 +67,8 @@ per-request memory attribution the sample cannot give.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-916dd6b8bf3f -->
+Fidelity review OWED (receipt rcp-916dd6b8bf3f).
 
 ## Grounds
 

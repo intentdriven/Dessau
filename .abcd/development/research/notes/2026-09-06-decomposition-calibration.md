@@ -348,3 +348,26 @@ asset fetched from a CDN; the human did not confirm a reversal, so none is
 recorded and the question is held at the decision.
 
 Verdict adopted: SPLIT. Grade: routing survived as proposed.
+
+## 2026-09-10 — idle-time model self-test (itd-2609100457007827)
+
+Proposal: an autonomous state-of-the-art self-test and (later)
+self-optimisation environment: when activated it loads and unloads the
+available models, runs standard tests, captures all telemetry, and feeds the
+results into a self-optimisation setting.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| Opt-in self-test: load each model when idle, run a standard set, unload, record | capability | this intent |
+| Self-optimisation from the results | capability, held | `duplicates` itd-2609091712142715, not filed twice |
+| What the self-test may record, and which opt-in gates it | ADR consequence | adr-2609061503319212 already scopes it; a scope condition on the draft |
+| Which tests are standard, which use cases | open questions | the draft, settled at planning |
+| Where the switch lives, how runs are recorded | mechanism | the spec |
+
+Typed links: `refines` itd-2609091301112705 (the probe is one test of this
+harness; the human chose refines over supersedes); `builds_on` the 2026-09-06
+model-bench campaign; `duplicates` itd-2609091712142715 for the second half.
+Flagged, not classified: "captures all telemetry" against the ADR's no-prompt
+rule — taken as a scope condition, not a reversal.
+Verdict adopted: SPLIT. Grade: routing survived the human's confirmation
+unchanged; the interview itself was delegated to the agent by the maintainer.
