@@ -147,7 +147,7 @@ func refuses(t *testing.T, lines map[string]map[string]any, id string, fragments
 func TestThePostureLinesStateWhatIsOn(t *testing.T) {
 	lines := posture(t, baseSnapshot)
 	for _, want := range []string{
-		"reach", "transport", "panel", "key-network", "key-local", "announce", "log", "stats",
+		"reach", "transport", "panel", "key-network", "key-local", "announce", "log", "stats", "selftest",
 	} {
 		if _, ok := lines[want]; !ok {
 			t.Errorf("the page has no %q line; it has %v", want, keysOf(lines))
@@ -167,6 +167,7 @@ func TestThePostureLinesStateWhatIsOn(t *testing.T) {
 		"at the sparse level", "logs folder")
 	wants(t, posture(t, edited(t, `{"config":{"log_level":"detailed"}}`)), "log", "at the detailed level")
 	wants(t, lines, "stats", "Request statistics are off: no request is recorded.")
+	wants(t, lines, "selftest", "The self-test is off: Gropius loads no model on its own.")
 	wants(t, lines, "transport", "plain HTTP")
 	wants(t, lines, "panel", "answer on this Mac alone")
 }
@@ -596,4 +597,16 @@ func TestTheReferencePageDocumentsEveryLine(t *testing.T) {
 	if rows := strings.Count(page, "\n| **"); rows != documented {
 		t.Errorf("docs/posture-reference.md has %d rows and the panel renders %d lines", rows, documented)
 	}
+}
+
+// The self-test line reads the setting, which applies the moment it is
+// saved, and says what being on means: models loaded on their own, never by
+// eviction, ended by any request, figures without prompts.
+func TestTheSelfTestLineSaysWhatItLoadsAndWhatItKeeps(t *testing.T) {
+	on := posture(t, edited(t, `{"config": {"self_test": true}}`))
+	wants(t, on, "selftest",
+		"The self-test is on",
+		"loads one of its models at a time where it fits beside what is loaded",
+		"A request from anyone ends the run",
+		"hold no prompt and no answer")
 }

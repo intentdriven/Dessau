@@ -1,6 +1,10 @@
 package runtime
 
-import "time"
+import (
+	"time"
+
+	"github.com/intentdriven/Gropius/internal/config"
+)
 
 // PoolObserver is told what the pool does with a model server: when one is
 // loaded, how long that took, and when one leaves and why.
@@ -18,12 +22,29 @@ type PoolObserver interface {
 	// LoadStarted is called when a model server process has been started and
 	// the pool begins waiting for it to answer.
 	LoadStarted(repoID string)
-	// LoadFinished is called when that wait ends, with how long it took and
-	// the error if the model never became ready.
-	LoadFinished(repoID string, took time.Duration, err error)
+	// LoadFinished is called when that wait ends, with how long it took, the
+	// error if the model never became ready, and the sampling values the
+	// server was launched with (itd-2609091712141073) — carried here rather
+	// than on LoadStarted because reports are delivered on their own
+	// goroutines and may arrive out of order.
+	LoadFinished(repoID string, took time.Duration, err error, sampling config.Sampling)
 	// EntryStopped is called when a model server leaves the pool, with the
 	// reason it left.
 	EntryStopped(repoID string, reason StopReason)
+}
+
+// FootprintObserver is told each reading of a running model server's memory
+// footprint, when the pool samples them (PoolOptions.FootprintInterval). It
+// is a second, optional interface rather than a fourth method on
+// PoolObserver so that an observer that does not care is not made to say so.
+type FootprintObserver interface {
+	FootprintSampled(repoID string, bytes int64)
+}
+
+// Footprinter is a Process that can report its own resident memory. It is
+// optional: a process that cannot is simply never sampled.
+type Footprinter interface {
+	Footprint() int64
 }
 
 // StopReason says why a model server left the pool. The pool removes an entry

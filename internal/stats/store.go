@@ -37,13 +37,17 @@ import (
 // own records, which cannot carry any of those.
 
 // ApproxRecordBytes is what one line of the store measures, near enough for
-// arithmetic about how long a size cap lasts: BenchmarkLatestAtTheCap fills
-// the default cap and reports 206,342,511 bytes for 901,059 records, which is
-// 229. It is a measured figure rather than a guess because the settings a
-// person chooses rest on it — and the guess it replaces, 150 bytes, is not
-// reachable: the field names are on every line, so the smallest request line
-// this format can emit is already over 190 bytes.
-const ApproxRecordBytes = 230
+// arithmetic about how long a size cap lasts. It was 229 when the record
+// carried its ten original fields (BenchmarkLatestAtTheCap: 206,342,511
+// bytes for 901,059 records); the measurement fields itd-2609091712141073
+// added — the two windows, the estimate, the in-flight count, the override
+// names and the footprint — take a typical line to about 380, which
+// TestARecordLineIsTheSizeTheDocumentationSays measures. It is a measured
+// figure rather than a guess because the settings a person chooses rest on
+// it — and the guess it replaced, 150 bytes, is not reachable: the field
+// names are on every line, so the smallest request line this format can
+// emit is already over 190 bytes.
+const ApproxRecordBytes = 380
 
 // SchemaVersion is stamped on every line as "v". It is bumped only for a
 // change a reader of an older file could not survive; a new field is not one,
@@ -58,6 +62,10 @@ const (
 	KindLoad     = "load"
 	KindRemoved  = "removed"
 	KindSettings = "settings"
+	// KindFootprint is a periodic reading of a running model server's memory
+	// (itd-2609091712141073); the fifth record kind, ratified by the decision
+	// record that supersedes adr-2609090716413337.
+	KindFootprint = "footprint"
 )
 
 // Settings is what Gropius was actually serving under when it was written: the
@@ -526,8 +534,11 @@ func (s *FileStore) AppendEvent(e Event) error {
 		return nil
 	}
 	kind := KindRemoved
-	if e.Kind == EventLoad {
+	switch e.Kind {
+	case EventLoad:
 		kind = KindLoad
+	case EventFootprint:
+		kind = KindFootprint
 	}
 	b, err := json.Marshal(eventLine{V: SchemaVersion, Kind: kind, Event: e})
 	if err != nil {
@@ -1874,13 +1885,17 @@ func parseLine(b []byte) (Line, bool) {
 		if err := json.Unmarshal(b, &l.Request); err != nil {
 			return Line{}, false
 		}
-	case KindLoad, KindRemoved:
+	case KindLoad, KindRemoved, KindFootprint:
 		if err := json.Unmarshal(b, &l.Event); err != nil {
 			return Line{}, false
 		}
-		l.Event.Kind = EventRemoved
-		if head.Kind == KindLoad {
+		switch head.Kind {
+		case KindLoad:
 			l.Event.Kind = EventLoad
+		case KindFootprint:
+			l.Event.Kind = EventFootprint
+		default:
+			l.Event.Kind = EventRemoved
 		}
 	case KindSettings:
 		if err := json.Unmarshal(b, &l.Settings); err != nil {

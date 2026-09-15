@@ -232,6 +232,17 @@ type History struct {
 	// them.
 	FirstTokenBucketEdgesMS []int64 `json:"first_token_bucket_edges_ms"`
 
+	// PromptSizes is one row per model that carried an estimate: how the
+	// prompts sat against the window the model serves, and how often the
+	// served-window refusal bit (itd-2609091712141073).
+	PromptSizes []ModelPromptSizes `json:"prompt_sizes"`
+	// Overrides is one row per model: how often clients set each sampling
+	// parameter themselves.
+	Overrides []ModelOverrides `json:"overrides"`
+	// Footprints is one series per model from the footprint samples,
+	// downsampled to at most FootprintPoints points over the range.
+	Footprints []ModelFootprint `json:"footprints"`
+
 	// Records is how many records the pass read, in the range or out of it.
 	Records int `json:"records"`
 	// Skipped is how many lines could not be used — one is the ordinary cost of
@@ -287,6 +298,59 @@ const MaxHistoryBytes = 512 << 20
 // It is an interface so that the aggregation depends on the reading rather
 // than on the FileStore, and so a caller with no store at all — a Mac where
 // recording has never been on — passes nil and gets an empty view.
+// ModelPromptSizes is how one model's prompts sat against its windows over
+// the range. The buckets are shares of the served window: up to a quarter,
+// a half, three quarters, the whole, and over it — the last being the
+// requests the served-window check refused.
+type ModelPromptSizes struct {
+	Model string `json:"model"`
+	// Requests is how many carried an estimate at all.
+	Requests int `json:"requests"`
+	// Buckets counts requests by the judged figure's share of the served
+	// window — the prompt's estimate plus the answer asked for, which is what
+	// the refusal is judged on: [0, 1/4], (1/4, 1/2], (1/2, 3/4], (3/4, 1],
+	// over.
+	Buckets [5]int `json:"buckets"`
+	// Refused is the over-window count again, named: the requests the served
+	// window turned away.
+	Refused int `json:"refused_for_size"`
+	// DeclaredContext and ServedContext are the windows as the newest record
+	// in the range carried them.
+	DeclaredContext int64 `json:"declared_context"`
+	ServedContext   int64 `json:"served_context"`
+	// LargestEstimate is the biggest judged figure seen, so a reader can see
+	// how close anyone came.
+	LargestEstimate int `json:"largest_estimate"`
+}
+
+// ModelOverrides is how often one model's clients set each sampling
+// parameter themselves, over the range.
+type ModelOverrides struct {
+	Model    string `json:"model"`
+	Requests int    `json:"requests"`
+	// ByParameter counts, per parameter in SamplingParameters, the requests
+	// that overrode it.
+	ByParameter map[string]int `json:"by_parameter"`
+}
+
+// ModelFootprint is one model's sampled footprint over the range.
+type ModelFootprint struct {
+	Model  string           `json:"model"`
+	Points []FootprintPoint `json:"points"`
+}
+
+// FootprintPoint is one downsampled point: the mean of the samples that fell
+// in its slice of the range, stamped at the slice's start.
+type FootprintPoint struct {
+	At    int64 `json:"at"`
+	Bytes int64 `json:"bytes"`
+}
+
+// FootprintPoints is the most points a footprint series carries: a slice of
+// the range each, averaged, so a month of half-minute samples is a line a
+// panel can draw rather than ninety thousand rows.
+const FootprintPoints = 200
+
 type RecordSource interface {
 	Read(ctx context.Context, opts ReadOptions, fn func(Line) bool) (ReadStats, error)
 }
@@ -419,6 +483,18 @@ type historyAgg struct {
 	hours    []HourCounts
 	total    int64
 	dayOrder []dayKey
+
+	// The measurement views (itd-2609091712141073), per model. The newest
+	// record is met first, so a window is taken the first time it is seen.
+	sizes      map[string]*ModelPromptSizes
+	overrides  map[string]*ModelOverrides
+	footprints map[string][]footprintSlice
+}
+
+// footprintSlice accumulates the samples that fell in one slice of the range.
+type footprintSlice struct {
+	sum   int64
+	count int64
 }
 
 func newHistoryAgg(ctx context.Context, from, to int64, loc *time.Location) *historyAgg {
@@ -428,6 +504,10 @@ func newHistoryAgg(ctx context.Context, from, to int64, loc *time.Location) *his
 		models:  map[string]*ModelShare{},
 		latency: map[string]*latencySamples{},
 		hours:   make([]HourCounts, 24),
+
+		sizes:      map[string]*ModelPromptSizes{},
+		overrides:  map[string]*ModelOverrides{},
+		footprints: map[string][]footprintSlice{},
 	}
 	return a
 }
@@ -476,8 +556,83 @@ func (a *historyAgg) take(l Line) bool {
 		}
 	case KindLoad:
 		a.hours[when.Hour()].Loads++
+	case KindFootprint:
+		a.footprint(l.Event)
 	}
 	return true
+}
+
+// footprint folds one sample into its model's series: the range is cut into
+// FootprintPoints slices and the sample lands in the one its time falls in.
+func (a *historyAgg) footprint(e Event) {
+	if e.Model == "" || e.Bytes <= 0 || e.Bytes > maxFootprintBytes || a.to <= a.from {
+		return
+	}
+	slices := a.footprints[e.Model]
+	if slices == nil {
+		slices = make([]footprintSlice, FootprintPoints)
+		a.footprints[e.Model] = slices
+	}
+	i := int((e.At - a.from) * FootprintPoints / (a.to - a.from))
+	if i < 0 {
+		i = 0
+	}
+	if i >= FootprintPoints {
+		i = FootprintPoints - 1
+	}
+	slices[i].sum = addTokens64(slices[i].sum, e.Bytes)
+	slices[i].count++
+}
+
+// sizesAndOverrides folds what a request said about its windows and its
+// client's overrides.
+func (a *historyAgg) sizesAndOverrides(r Record) {
+	if r.Model == "" {
+		return
+	}
+	judged := int64(r.RequestedTokens)
+	if judged <= 0 {
+		judged = int64(r.EstimatedPromptTokens)
+	}
+	if judged > 0 && judged <= 1<<40 && r.ServedContext > 0 && r.ServedContext <= MaxContext {
+		row, ok := a.sizes[r.Model]
+		if !ok {
+			row = &ModelPromptSizes{Model: r.Model, DeclaredContext: r.DeclaredContext, ServedContext: r.ServedContext}
+			a.sizes[r.Model] = row
+		}
+		row.Requests++
+		est := judged
+		switch {
+		case est > r.ServedContext:
+			row.Buckets[4]++
+			row.Refused++
+		case est*4 <= r.ServedContext:
+			row.Buckets[0]++
+		case est*2 <= r.ServedContext:
+			row.Buckets[1]++
+		case est*4 <= r.ServedContext*3:
+			row.Buckets[2]++
+		default:
+			row.Buckets[3]++
+		}
+		if int(judged) > row.LargestEstimate {
+			row.LargestEstimate = int(judged)
+		}
+	}
+	ov, ok := a.overrides[r.Model]
+	if !ok {
+		ov = &ModelOverrides{Model: r.Model, ByParameter: map[string]int{}}
+		for _, name := range SamplingParameters {
+			ov.ByParameter[name] = 0
+		}
+		a.overrides[r.Model] = ov
+	}
+	ov.Requests++
+	for _, name := range r.Overrides {
+		if _, known := ov.ByParameter[name]; known {
+			ov.ByParameter[name]++
+		}
+	}
 }
 
 // addTokens is the one place a day's figures are added up.
@@ -557,6 +712,7 @@ func addTokens64(a, b int64) int64 {
 func (a *historyAgg) request(r Record, when time.Time) {
 	a.addTokens(when.Format("2006-01-02"), r.Model, 1,
 		int64(r.PromptTokens), int64(r.CompletionTokens), false)
+	a.sizesAndOverrides(r)
 
 	if r.Class != ClassOK || r.FirstTokenMS < 0 {
 		return
@@ -633,6 +789,32 @@ func (a *historyAgg) fill(h *History) {
 		}
 		return h.Latency[i].Model < h.Latency[j].Model
 	})
+
+	h.PromptSizes = make([]ModelPromptSizes, 0, len(a.sizes))
+	for _, row := range a.sizes {
+		h.PromptSizes = append(h.PromptSizes, *row)
+	}
+	sort.Slice(h.PromptSizes, func(i, j int) bool { return h.PromptSizes[i].Model < h.PromptSizes[j].Model })
+	h.Overrides = make([]ModelOverrides, 0, len(a.overrides))
+	for _, row := range a.overrides {
+		h.Overrides = append(h.Overrides, *row)
+	}
+	sort.Slice(h.Overrides, func(i, j int) bool { return h.Overrides[i].Model < h.Overrides[j].Model })
+	h.Footprints = make([]ModelFootprint, 0, len(a.footprints))
+	for model, slices := range a.footprints {
+		series := ModelFootprint{Model: model}
+		for i, sl := range slices {
+			if sl.count == 0 {
+				continue
+			}
+			// The slice's start, by the same arithmetic that placed the
+			// sample in it.
+			at := a.from + int64(i)*(a.to-a.from)/FootprintPoints
+			series.Points = append(series.Points, FootprintPoint{At: at, Bytes: sl.sum / sl.count})
+		}
+		h.Footprints = append(h.Footprints, series)
+	}
+	sort.Slice(h.Footprints, func(i, j int) bool { return h.Footprints[i].Model < h.Footprints[j].Model })
 }
 
 // clippedDay names the local day a range starts part-way through, or is empty

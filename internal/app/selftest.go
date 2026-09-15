@@ -1,0 +1,88 @@
+package app
+
+import (
+	"context"
+
+	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Gropius/internal/selftest"
+)
+
+// selfTestSource is the identity the self-test's loads carry in the pool's
+// load-waiter queue (runtime.WithSource), so its place there is its own and
+// never a client's.
+const selfTestSource = "gropius-self-test"
+
+// selfTestServer is what the self-test sees of the app: the registry's ready
+// models, the pool's ordinary Acquire — never a second launcher, so the
+// budget, the pins, the served window and the eviction rules are the pool's
+// own — and the pool's view of what is going on.
+//
+// It holds none of the app's locks across any call (adr-2609091239058072):
+// each method takes the pool's or the registry's own lock for the length of
+// one read and hands back a copy.
+type selfTestServer struct{ a *App }
+
+func (s selfTestServer) Ready() []string {
+	models := s.a.Registry.Ready()
+	ids := make([]string, 0, len(models))
+	for _, m := range models {
+		ids = append(ids, m.RepoID)
+	}
+	return ids
+}
+
+func (s selfTestServer) Acquire(ctx context.Context, repoID string) (selftest.Upstream, func(), error) {
+	up, release, err := s.a.Pool.Acquire(runtime.WithSource(ctx, selfTestSource), repoID)
+	if err != nil {
+		return selftest.Upstream{}, nil, err
+	}
+	return selftest.Upstream{BaseURL: up.BaseURL, ModelArg: up.ModelArg}, release, nil
+}
+
+func (s selfTestServer) Activity() selftest.Activity {
+	res := s.a.Pool.Residency()
+	act := selftest.Activity{
+		Waiting:     s.a.Pool.Waiting(),
+		Downloading: len(s.a.Downloading()),
+		Refusals:    res.Refusals,
+	}
+	for _, m := range res.Models {
+		act.Models = append(act.Models, selftest.ModelActivity{
+			RepoID: m.RepoID, InFlight: m.InFlight, LastUsed: m.LastUsed,
+		})
+	}
+	return act
+}
+
+func (s selfTestServer) Unload(repoID string) error { return s.a.Pool.Unload(repoID) }
+
+func (s selfTestServer) Concurrency() int { return s.a.Pool.DecodeConcurrency() }
+
+// Fits says whether the model can be loaded beside what the pool holds
+// without evicting anything: its charge, worked out where every charge is
+// (chargeOf), against the budget less what is resident and what is still
+// exiting. A model already resident fits. The figures are a snapshot, and the
+// pool decides for itself at the load; this only keeps the self-test from
+// asking for a load it knows would take something out.
+func (s selfTestServer) Fits(repoID string) bool {
+	res := s.a.Pool.Residency()
+	key := config.FoldRepoID(repoID)
+	var used int64
+	for _, m := range res.Models {
+		if config.FoldRepoID(m.RepoID) == key {
+			return true
+		}
+		used += m.Charge
+	}
+	used += res.ExitingBytes
+	m, err := s.a.Registry.Get(repoID)
+	if err != nil {
+		return false
+	}
+	size := chargedSize(m)
+	if size <= 0 {
+		return false
+	}
+	return used+s.a.chargeOf(m, size) <= s.a.Pool.MemoryBudget()
+}

@@ -39,7 +39,7 @@ func TestTheHistoryEndpointServesTheStoresOwnSums(t *testing.T) {
 		a.Stats.Add(r)
 	}
 	a.Stats.LoadStarted("org/alpha")
-	a.Stats.LoadFinished("org/alpha", 4*time.Second, nil)
+	a.Stats.LoadFinished("org/alpha", 4*time.Second, nil, nil)
 	if err := a.StatsStore.Flush(); err != nil {
 		t.Fatal(err)
 	}

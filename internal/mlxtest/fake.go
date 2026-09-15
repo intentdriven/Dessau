@@ -45,6 +45,12 @@ type Server struct {
 	ChunkDelay time.Duration
 	// RolePreamble emits a role-only first chunk; see Options.
 	RolePreamble bool
+	// PromptTokensFromBody, RefuseAbove, HangAbove and ResponseDelay: see
+	// Options.
+	PromptTokensFromBody bool
+	RefuseAbove          int
+	HangAbove            int
+	ResponseDelay        time.Duration
 
 	httpSrv   *httptest.Server
 	readyAt   time.Time
@@ -82,18 +88,38 @@ type Options struct {
 	// established here, so a test that cares which chunk a measurement lands
 	// on turns this on and says which behavior it is describing.
 	RolePreamble bool
+	// PromptTokensFromBody makes usage.prompt_tokens a count derived from the
+	// request's messages — about a token per four characters, plus the
+	// template's few — instead of the constant 3, so a probe that bisects on
+	// prompt size has something to converge on.
+	PromptTokensFromBody bool
+	// RefuseAbove, when set, refuses a prompt counted above that many tokens
+	// with a 500, the way a server that ran out of room answers.
+	RefuseAbove int
+	// HangAbove, when set, never answers a prompt counted above that many
+	// tokens until the request goes away — what a prefill that outlasts the
+	// gateway's deadline looks like from outside.
+	HangAbove int
+	// ResponseDelay holds a non-streaming answer back, standing in for a
+	// prefill on that path the way FirstTokenDelay does for the streaming
+	// one.
+	ResponseDelay time.Duration
 }
 
 // Start launches a fake server. It is closed automatically via t.Cleanup by the
 // caller, or explicitly with Close.
 func Start(opts Options) *Server {
 	s := &Server{
-		ModelArg:        opts.ModelArg,
-		Reply:           opts.Reply,
-		FirstTokenDelay: opts.FirstTokenDelay,
-		ChunkDelay:      opts.ChunkDelay,
-		RolePreamble:    opts.RolePreamble,
-		readyAt:         time.Now().Add(opts.LoadDelay),
+		ModelArg:             opts.ModelArg,
+		Reply:                opts.Reply,
+		FirstTokenDelay:      opts.FirstTokenDelay,
+		ChunkDelay:           opts.ChunkDelay,
+		RolePreamble:         opts.RolePreamble,
+		PromptTokensFromBody: opts.PromptTokensFromBody,
+		RefuseAbove:          opts.RefuseAbove,
+		HangAbove:            opts.HangAbove,
+		ResponseDelay:        opts.ResponseDelay,
+		readyAt:              time.Now().Add(opts.LoadDelay),
 	}
 	if s.Reply == "" {
 		s.Reply = "GROPIUS OK"
@@ -202,6 +228,19 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	promptTokens := 3
+	if s.PromptTokensFromBody {
+		promptTokens = countPromptTokens(body)
+		if s.HangAbove > 0 && promptTokens > s.HangAbove {
+			<-r.Context().Done()
+			return
+		}
+		if s.RefuseAbove > 0 && promptTokens > s.RefuseAbove {
+			http.Error(w, `{"error":"prompt too long for this server"}`, http.StatusInternalServerError)
+			return
+		}
+	}
+
 	s.completed.Add(1)
 
 	if stream, _ := body["stream"].(bool); stream {
@@ -216,6 +255,13 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.ResponseDelay > 0 {
+		select {
+		case <-time.After(s.ResponseDelay):
+		case <-r.Context().Done():
+			return
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"id":     "chatcmpl-fake",
@@ -226,8 +272,26 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			"finish_reason": "stop",
 			"message":       map[string]any{"role": "assistant", "content": s.Reply},
 		}},
-		"usage": map[string]any{"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+		"usage": map[string]any{"prompt_tokens": promptTokens, "completion_tokens": 4, "total_tokens": promptTokens + 4},
 	})
+}
+
+// countPromptTokens is the fake's tokenizer: about four characters a token
+// over every message's content, plus the handful a chat template adds. It is
+// a count, not a tokenization, and it is monotonic in the prompt's length,
+// which is all a bisection needs of it.
+func countPromptTokens(body map[string]any) int {
+	chars := 0
+	if msgs, ok := body["messages"].([]any); ok {
+		for _, m := range msgs {
+			if mm, ok := m.(map[string]any); ok {
+				if c, ok := mm["content"].(string); ok {
+					chars += len(c)
+				}
+			}
+		}
+	}
+	return chars/4 + 3
 }
 
 // streamIncludeUsage reads the request's stream_options the way the real

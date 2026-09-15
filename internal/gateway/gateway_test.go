@@ -51,7 +51,8 @@ func (s *stubModels) Get(repoID string) (registry.Model, error) {
 
 // stubPool hands out a fixed upstream backed by a fake mlx server.
 type stubPool struct {
-	srv *mlxtest.Server
+	footprint int64
+	srv       *mlxtest.Server
 	// acquireErr, if set, is returned by Acquire.
 	acquireErr error
 	// baseURL, if set, replaces the fake server's own address, so a test can
@@ -1047,6 +1048,23 @@ func firstModelEntry(t *testing.T, srv *httptest.Server) map[string]any {
 	return out.Data[0]
 }
 
+// allModelEntries lists every entry the models list serves to a plain client.
+func allModelEntries(t *testing.T, srv *httptest.Server) []map[string]any {
+	t.Helper()
+	resp, err := http.Get(srv.URL + "/v1/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	return out.Data
+}
+
 // The models list is a documented interface, and the reference page is where
 // a reader looks it up. This pins the page to the handler: every field served
 // is described there, and nothing is described that is not served.
@@ -1057,8 +1075,11 @@ func TestModelsListReferenceDocumentsEveryFieldServed(t *testing.T) {
 	models := &stubModels{models: []registry.Model{
 		// Carrying a category, so the two fields a model with one is served
 		// are in the set the page is held to.
+		// Carrying a category and a current measurement, so the fields a
+		// model with each is served are in the set the page is held to.
 		{RepoID: "org/m", State: registry.StateReady, ContextLength: 131072,
-			PipelineTag: "text-generation", Tags: []string{"mlx", "conversational"}},
+			PipelineTag: "text-generation", Tags: []string{"mlx", "conversational"},
+			Measured: &registry.Measurement{Window: 91000, Bound: registry.BoundModel, Runtime: "0.31.3"}},
 	}}
 	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})
 	srv := httptest.NewServer(g.Handler())
@@ -2027,3 +2048,5 @@ func TestStreamedLineIsCapped(t *testing.T) {
 		t.Error("the relay did not report the oversized line, so nothing could be logged about it")
 	}
 }
+
+func (s *stubPool) Footprint(string) int64 { return s.footprint }

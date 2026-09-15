@@ -25,12 +25,16 @@ import (
 	"github.com/intentdriven/Gropius/internal/netshape"
 	"github.com/intentdriven/Gropius/internal/registry"
 	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Gropius/internal/selftest"
 	"github.com/intentdriven/Gropius/internal/stats"
 )
 
 // Control serves the app's own API and the web control panel.
 type Control struct {
-	App *app.App
+	// selfTest is the last reading of the self-test results file; see
+	// selfTestCache. A leaf lock outside adr-2609091239058072's order.
+	selfTest selfTestCache
+	App      *app.App
 	// UI is the embedded web control panel.
 	UI http.Handler
 	// Root is this server's data root. The control plane answers challenges
@@ -121,6 +125,9 @@ func (c *Control) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stats", c.handleStats)
 	mux.HandleFunc("GET /api/stats/history", c.handleStatsHistory)
 	mux.HandleFunc("POST /api/stats/clear", c.handleClearStats)
+	mux.HandleFunc("GET /api/selftest", c.handleSelfTest)
+	mux.HandleFunc("POST /api/models/measure", c.handleMeasure)
+	mux.HandleFunc("POST /api/models/adopt", c.handleAdopt)
 	mux.HandleFunc("GET /api/events", c.handleEvents)
 	mux.HandleFunc("GET /api/instance", c.handleInstance)
 	if c.UI != nil {
@@ -304,6 +311,11 @@ type State struct {
 	// and to say when the mode is on and not running.
 	Bind     BindState `json:"bind"`
 	Hostname string    `json:"hostname"`
+	// IdleJobs is what the idle loop — the self-test and the context probe
+	// — is doing: the run in progress in its own words, or what held a due
+	// run back. ProbeQueue is the models waiting for "Measure now".
+	IdleJobs   selftest.Status `json:"idle_jobs"`
+	ProbeQueue []string        `json:"probe_queue"`
 	// Warnings surface things the user should know, e.g. an open LAN endpoint.
 	Warnings []string `json:"warnings"`
 	// Stats is the per-model summary, present only while the operator has
@@ -365,6 +377,11 @@ type Machine struct {
 	// Lowering the budget unloads nothing, so this stands until they unload by
 	// the usual rules.
 	OverBudget bool `json:"over_budget"`
+	// FreeDisk is the space free on the models volume, from the capability
+	// package's one reader, so the Models tab's roll-up can say how much
+	// room the downloads have left (itd-2609091903463596). Zero when it
+	// cannot be read.
+	FreeDisk int64 `json:"free_disk"`
 }
 
 // snapshot builds the state the UI renders.
@@ -377,15 +394,17 @@ func (c *Control) snapshot() State {
 	cfg := c.App.Config()
 	residency := c.App.Pool.Residency()
 	st := State{
-		Models:    c.App.Registry.List(),
-		Resident:  residency.Models,
-		Setup:     c.App.Provisioner.Status(),
-		Config:    redactConfig(cfg),
-		Pinned:    c.App.Pool.Pinned(),
-		Waiting:   c.App.Pool.Waiting(),
-		Endpoints: Endpoints(cfg, c.App.Bind()),
-		Bind:      bindState(cfg, c.App.Bind()),
-		Hostname:  hostname(),
+		Models:     c.App.Registry.List(),
+		Resident:   residency.Models,
+		Setup:      c.App.Provisioner.Status(),
+		Config:     redactConfig(cfg),
+		Pinned:     c.App.Pool.Pinned(),
+		Waiting:    c.App.Pool.Waiting(),
+		Endpoints:  Endpoints(cfg, c.App.Bind()),
+		Bind:       bindState(cfg, c.App.Bind()),
+		Hostname:   hostname(),
+		IdleJobs:   c.App.SelfTest.Status(),
+		ProbeQueue: c.App.Probe.Queued(),
 	}
 	st.Bind.Port = c.App.BindPort()
 	st.Bind.Advertising = c.App.Advertising()
@@ -437,6 +456,9 @@ func (c *Control) snapshot() State {
 		status := c.App.StatsStore.Status()
 		st.StatsStore = &status
 	}
+	// Read at the snapshot's cadence through the one reader the search tab
+	// already uses, so there is one answer to how much disk is free.
+	st.Machine.FreeDisk = capability.Assess(c.App.Paths.Models, c.App.MachineRAM(), budget).FreeDisk
 	return st
 }
 
@@ -1695,4 +1717,36 @@ func (c *Control) handleEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// handleMeasure queues one probe of a model, whatever the switch says. The
+// run itself waits for the Mac to be idle; the panel watches the state
+// snapshot for its progress.
+func (c *Control) handleMeasure(w http.ResponseWriter, r *http.Request) {
+	model, ok := decodeModelRequest(w, r)
+	if !ok {
+		return
+	}
+	if err := c.App.MeasureNow(model); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "model": model})
+}
+
+// handleAdopt makes a model's current measurement its served window. It is a
+// settings save, taken under the settings lock like every other.
+func (c *Control) handleAdopt(w http.ResponseWriter, r *http.Request) {
+	model, ok := decodeModelRequest(w, r)
+	if !ok {
+		return
+	}
+	c.settingsMu.Lock()
+	err := c.App.AdoptMeasurement(model)
+	c.settingsMu.Unlock()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "adopted", "model": model})
 }

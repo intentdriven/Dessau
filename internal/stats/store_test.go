@@ -1408,6 +1408,8 @@ func TestARecordLineIsTheSizeTheDocumentationSays(t *testing.T) {
 		Model: "mlx-community/Qwen3-8B-4bit", At: 1788696030, Class: ClassOK, Streamed: true,
 		PromptTokens: 1234, CompletionTokens: 567, FirstTokenMS: 210,
 		DurationMS: 4200, QueueWaitMS: 12, LoadWaitMS: 0,
+		DeclaredContext: 131072, ServedContext: 65536, EstimatedPromptTokens: 1300, RequestedTokens: 1812, InFlight: 2,
+		Overrides: []string{"temperature"}, FootprintBytes: 48 << 30,
 	}})
 	if err != nil {
 		t.Fatal(err)

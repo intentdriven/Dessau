@@ -80,6 +80,15 @@ type Model struct {
 	// empty word a client would read as an answer.
 	PipelineTag string   `json:"pipeline_tag,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
+	// Measured is what the context probe found for this model on this Mac,
+	// or nil while nothing has been measured. It is a fact about these files
+	// on this machine: a re-download's Put carries none, so the figure goes
+	// with the files it described (itd-2609091301112705).
+	Measured *Measurement `json:"measured,omitempty"`
+	// ProbeIncomplete says a probe of this model was interrupted — the
+	// switch went off, Gropius quit, the Mac slept — and wrote no figure, so
+	// the next start reports it rather than silently retrying.
+	ProbeIncomplete bool `json:"probe_incomplete,omitempty"`
 }
 
 // MaxTags and MaxTagBytes bound the category. A repo's tags are typed by its
@@ -285,6 +294,12 @@ func Open(path string) (*Registry, error) {
 		// carry an unbounded tag list straight to the LAN with no download in
 		// between. Bound words read back exactly as words from the Hub are.
 		m = sanitizeCategory(m)
+		// And the measurement, which is published on the models list and
+		// offered for adoption as the served window: cleared, not repaired,
+		// when any part of it is outside what the probe could have written.
+		if m.Measured != nil && !plausibleMeasurement(m.Measured) {
+			m.Measured = nil
+		}
 		r.models[key(m.RepoID)] = m
 	}
 	return r, nil

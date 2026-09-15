@@ -48,6 +48,8 @@ type Pool interface {
 	Resident() []runtime.Resident
 	Pinned() []string
 	Unload(repoID string) error
+	// Footprint is the model server's newest sampled memory, or 0.
+	Footprint(repoID string) int64
 }
 
 // Models is the subset of the registry the gateway needs.
@@ -416,6 +418,17 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 		if served := cfg.ServedContext(m.RepoID, m.ContextLength); served > 0 {
 			entry["served_context"] = served
 		}
+		// And what the context probe measured on this Mac, beside the two:
+		// the largest prompt the server verifiably accepted, and what stopped
+		// the step above it — the model itself, or one of Gropius's own
+		// bounds, in which case the figure is a floor. Absent while nothing
+		// current has been measured; a stale figure is not published
+		// (itd-2609091301112705). It changes no charge and refuses nothing:
+		// only an adopted figure, as served_context, does.
+		if mm := m.Measured; mm != nil && mm.Stale == "" && mm.Window > 0 && mm.Window <= registry.MaxContextLength {
+			entry["measured_context"] = mm.Window
+			entry["measured_bound"] = mm.Bound
+		}
 		// What HuggingFace says this model is, in HuggingFace's own words, and
 		// what this server makes of them. The two tag fields are absent when
 		// the Hub said nothing — an empty string or an empty list would read as
@@ -597,7 +610,16 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	// and acquiring first would load a model — evicting another to do it — for
 	// a request that is about to be turned away. Streaming and non-streaming
 	// take this line together, because the stream is not opened until below.
-	if msg := g.overServedContext(cfg, model, len(raw), payload); msg != "" {
+	msg, verdict := g.judgeServedContext(cfg, model, len(raw), payload)
+	// What the request was judged against and measured as, recorded before
+	// the refusal so a refused request carries them too, and only while
+	// recording is on, so the path with the switch off is the path it was
+	// (itd-2609091712141073).
+	if obs.recording() {
+		obs.judged(verdict.declared, verdict.served, verdict.estimate, verdict.judged)
+		obs.overrides(overriddenSampling(payload))
+	}
+	if msg != "" {
 		obs.failed(stats.ClassClientError)
 		writeError(w, http.StatusBadRequest, msg)
 		return
@@ -808,6 +830,9 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 			"model", model, "limit", maxStreamLine)
 	}
 	obs.relayed(out)
+	if obs.recording() {
+		obs.footprint(g.pool.Footprint(model))
+	}
 }
 
 // gropiusHeaders are the response headers Gropius writes itself, which an
@@ -1393,25 +1418,38 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // written into the same cache. A model that declares no window and has been
 // given no setting has nothing to enforce, and nothing is refused for it.
 func (g *Gateway) overServedContext(cfg config.Config, model string, bodyBytes int, payload map[string]json.RawMessage) string {
-	var declared int64
+	msg, _ := g.judgeServedContext(cfg, model, bodyBytes, payload)
+	return msg
+}
+
+// servedVerdict is what the served-window check judged: the model's two
+// windows and the figure the request was measured as — the prompt's
+// estimated size plus the answer it asked for — so that the record, the
+// refusal and the dashboard's bands rest on one number.
+type servedVerdict struct {
+	declared, served, estimate, judged int64
+}
+
+// judgeServedContext is overServedContext with its figures: the refusal
+// message, empty when the request is under the window, and the verdict.
+func (g *Gateway) judgeServedContext(cfg config.Config, model string, bodyBytes int, payload map[string]json.RawMessage) (string, servedVerdict) {
+	var v servedVerdict
 	if m, err := g.models.Get(model); err == nil {
-		declared = m.ContextLength
+		v.declared = m.ContextLength
 	}
-	window := cfg.ServedContext(model, declared)
-	if window <= 0 {
-		return ""
-	}
+	v.served = cfg.ServedContext(model, v.declared)
+	v.estimate = int64(estimatedTokens(bodyBytes))
 	// Saturating, because both terms are the client's to choose: a max_tokens
 	// of the largest integer there is made this sum negative, and a negative
 	// estimate is under every window.
-	estimate := capability.AddSaturating(int64(estimatedTokens(bodyBytes)), requestedMaxTokens(payload))
-	if estimate <= window {
-		return ""
+	v.judged = capability.AddSaturating(v.estimate, requestedMaxTokens(payload))
+	if v.served <= 0 || v.judged <= v.served {
+		return "", v
 	}
 	return fmt.Sprintf(
 		"this request is about %s tokens, more than the %s this model is served at. "+
 			"Send a shorter prompt or a smaller max_tokens, or raise this model's served context in Settings.",
-		humanCount(estimate), humanCount(window))
+		humanCount(v.judged), humanCount(v.served)), v
 }
 
 // requestedMaxTokens is the answer length the request asked for, or 0 when it
@@ -1486,6 +1524,32 @@ func humanCount(n int64) string {
 // be, at four bytes per token — the usual ballpark for English text, and
 // deliberately crude. One estimator, because the deadline a request is given
 // and the window it is measured against must not disagree about how big it is.
+// overriddenSampling names the sampling parameters the request's body sets,
+// in the recorder's closed set and order. Only the presence of each key is
+// read; no value is kept.
+func overriddenSampling(payload map[string]json.RawMessage) []string {
+	var names []string
+	for _, name := range stats.SamplingParameters {
+		if _, ok := payload[name]; ok {
+			names = append(names, name)
+		}
+	}
+	// max_completion_tokens is the newer spelling of max_tokens, and an
+	// override under either name is an override of the same launch value.
+	if _, ok := payload["max_completion_tokens"]; ok {
+		found := false
+		for _, n := range names {
+			if n == "max_tokens" {
+				found = true
+			}
+		}
+		if !found {
+			names = append(names, "max_tokens")
+		}
+	}
+	return names
+}
+
 func estimatedTokens(bodyBytes int) int {
 	const bytesPerToken = 4
 	return bodyBytes / bytesPerToken

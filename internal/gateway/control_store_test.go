@@ -208,7 +208,7 @@ func TestNothingFromTheRequestReachesTheStore(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body.String())
 	}
-	rec.LoadFinished(testModelID, 0, nil)
+	rec.LoadFinished(testModelID, 0, nil, nil)
 	rec.Removed(testModelID, stats.ReasonEvicted)
 	rec.RecordSettings(stats.Settings{At: 1, BudgetBytes: 1, DecodeConcurrency: 1})
 	if err := store.Close(); err != nil {
@@ -348,7 +348,7 @@ func TestNothingFromTheRequestReachesTheSummary(t *testing.T) {
 			t.Fatalf("status = %d, want 200: %s", w.Code, w.Body.String())
 		}
 	}
-	rec.LoadFinished(testModelID, 0, nil)
+	rec.LoadFinished(testModelID, 0, nil, nil)
 	rec.Removed(testModelID, stats.ReasonEvicted)
 	if err := store.Flush(); err != nil {
 		t.Fatal(err)

@@ -57,6 +57,17 @@ says the machine is over its budget until they go by the usual rules — a reque
 for something else, the idle timeout, or your own **Unload**. A model is never
 taken away at the moment you press Save.
 
+## What the Models tab adds up
+
+The line at the head of the **Models** tab is the roll-up: how many models
+are downloaded and how many are loaded, how much disk the downloaded ones
+take and how much the models volume has left, and the memory budget against
+what is resident — naming the part still exiting, which is memory a stopped
+server has not handed back yet and which a load is still measured against.
+Every figure is one Gropius already has; nothing is walked or measured to
+draw it. Each model's card says the window it declares and, when you have
+set one below it, the window it is served at.
+
 ## Where the rules are
 
 The [models list reference](models-list.md) states what a loaded model is

@@ -492,3 +492,8 @@ func tail(s string, n int) string {
 // ProbeTimeout is how long the readiness probe waits for a freshly spawned
 // model server before giving up on the whole load.
 const ProbeTimeout = 10 * time.Minute
+
+// MLXLMVersion is the pinned mlx-lm version this build provisions and runs.
+// A measurement taken under it is a measurement of it as much as of the
+// model, which is why the context probe records it (internal/registry).
+func MLXLMVersion() string { return mlxLMVersion }

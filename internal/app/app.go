@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -17,9 +18,11 @@ import (
 	"github.com/intentdriven/Gropius/internal/bind"
 	"github.com/intentdriven/Gropius/internal/capability"
 	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Gropius/internal/contextprobe"
 	"github.com/intentdriven/Gropius/internal/hub"
 	"github.com/intentdriven/Gropius/internal/registry"
 	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Gropius/internal/selftest"
 	"github.com/intentdriven/Gropius/internal/stats"
 )
 
@@ -37,7 +40,18 @@ type App struct {
 	// same switch as the live view and no other, and it creates nothing —
 	// not a file, not its own directory — until that switch is on.
 	StatsStore *stats.FileStore
-	Log        *slog.Logger
+	// SelfTest measures the models while nobody is using them, under its own
+	// switch (config.Config.SelfTest); off, it holds no goroutine and writes
+	// nothing. It reaches the pool only through selfTestServer, which holds
+	// none of the app's locks across a call (adr-2609091239058072).
+	SelfTest *selftest.Runner
+	// Probe measures each model's servable context window as a job of that
+	// same loop (itd-2609091301112705); see internal/contextprobe.
+	Probe *contextprobe.Probe
+	Log   *slog.Logger
+	// idleQuiet is Options.Idle.Quiet: a cadence a test fixed, which a save
+	// must not replace with the configured threshold.
+	idleQuiet time.Duration
 
 	// logLevel is Options.LogLevel: the variable Log's handler reads. Held so
 	// that applyLogLevel can move it at a save. Nil is the switched-off case
@@ -164,6 +178,24 @@ type Options struct {
 	// through, and handing the app a second way to reach the handler would be a
 	// second answer to "what level is in force".
 	LogLevel *slog.LevelVar
+	// Idle sets the idle loop's and the probe's cadence. The zero value —
+	// the shipping case — means the production cadence: a tick a minute, a
+	// quarter-second poll, the configured idle threshold, the gateway's own
+	// prefill budget as the probe's step timeout. It is a seam because a test
+	// that drives the whole path — the probe's request through the gateway to
+	// a real pool — cannot wait a minute a tick.
+	Idle IdleOptions
+}
+
+// IdleOptions is the cadence the idle loop and the context probe run at; see
+// Options.Idle. Zero means the default for each.
+type IdleOptions struct {
+	Tick, Poll, Quiet time.Duration
+	// StepTimeout bounds one of the probe's requests, given the body's size.
+	StepTimeout func(bodyBytes int) time.Duration
+	// UnloadWait bounds the probe's wait for the gateway to release a
+	// cancelled request, and for an unloaded server to hand memory back.
+	UnloadWait time.Duration
 }
 
 // New wires the application together.
@@ -223,6 +255,7 @@ func New(opts Options) (*App, error) {
 		downloads:   map[string]*download{},
 		deleting:    map[string]bool{},
 		measureDir:  dirSize,
+		idleQuiet:   opts.Idle.Quiet,
 	}
 
 	launcher := opts.Launcher
@@ -282,6 +315,31 @@ func New(opts Options) (*App, error) {
 		MaxLoadWaitersPerSource: 2,
 	})
 	a.applyStatistics(opts.Config)
+	a.Probe = contextprobe.New(contextprobe.Options{
+		Sources: probeSources{a},
+		Enabled: func() bool { return a.Config().ContextProbe },
+		Log:     opts.Log,
+		// The campaign's margin, 24 GB on a 128 GB Mac, as a share of this
+		// one: a step projected within it of what the budget has free is
+		// skipped.
+		MemoryMargin: a.machineRAM * 3 / 16,
+		StepTimeout:  opts.Idle.StepTimeout,
+		UnloadWait:   opts.Idle.UnloadWait,
+	})
+	a.SelfTest = selftest.New(selftest.Options{
+		Server:   selfTestServer{a},
+		Path:     filepath.Join(opts.Paths.SelfTest, selftest.FileName),
+		Log:      opts.Log,
+		Jobs:     []selftest.Job{a.Probe},
+		SelfTest: func() bool { return a.Config().SelfTest },
+		Tick:     opts.Idle.Tick,
+		Poll:     opts.Idle.Poll,
+		Quiet:    opts.Idle.Quiet,
+	})
+	// Staleness is a stored fact: judged now, against what this start put in
+	// force, before anything reads a measurement.
+	a.refreshStaleness()
+	a.applyIdleJobs(opts.Config)
 	a.applyLogLevel(opts.Config)
 
 	// The fit check cannot refuse a file — a hand-edited one can pin anything —
@@ -431,6 +489,13 @@ func (a *App) SetConfig(c config.Config) error {
 	// records already on disk stay where they are, because switching recording
 	// off is asking for it to stop, not for a history to be destroyed.
 	a.applyStatistics(c)
+	// The idle jobs' switches apply live too: on starts the loop, and off
+	// cancels a run in progress and releases its model, so a person who
+	// switched it off because the Mac is needed gets the Mac back now. And a
+	// save may have moved a measurement's provenance — the budget, the
+	// concurrency, a served window — so every measurement is judged again.
+	a.applyIdleJobs(c)
+	a.refreshStaleness()
 
 	// Behind the hub's own lock: download goroutines read the token to build
 	// every request they issue, and a download already running keeps the token
@@ -815,6 +880,37 @@ type poolObserver struct {
 
 func (o poolObserver) LoadStarted(repoID string) { o.rec.LoadStarted(repoID) }
 
+// FootprintSampled forwards a footprint reading; the recorder ignores it
+// while recording is off.
+func (o poolObserver) FootprintSampled(repoID string, bytes int64) {
+	o.rec.FootprintSampled(repoID, bytes)
+}
+
+// samplingValues is the launch flags by name, only the ones set: the wire
+// shape the statistics package keeps, which imports nothing of ours.
+func samplingValues(s config.Sampling) map[string]float64 {
+	out := map[string]float64{}
+	if s.Temperature != nil {
+		out["temperature"] = *s.Temperature
+	}
+	if s.TopP != nil {
+		out["top_p"] = *s.TopP
+	}
+	if s.TopK != nil {
+		out["top_k"] = float64(*s.TopK)
+	}
+	if s.MinP != nil {
+		out["min_p"] = *s.MinP
+	}
+	if s.MaxTokens != nil {
+		out["max_tokens"] = float64(*s.MaxTokens)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // LoadFinished records the load and says, in one sparse line, whether the
 // model is now serving.
 //
@@ -825,8 +921,8 @@ func (o poolObserver) LoadStarted(repoID string) { o.rec.LoadStarted(repoID) }
 // child process said, which on this path can be an os.PathError carrying
 // absolute paths out of this account's own home directory. Both go to the
 // detailed level, where the operator has asked for them.
-func (o poolObserver) LoadFinished(repoID string, took time.Duration, err error) {
-	o.rec.LoadFinished(repoID, took, err)
+func (o poolObserver) LoadFinished(repoID string, took time.Duration, err error, sampling config.Sampling) {
+	o.rec.LoadFinished(repoID, took, err, samplingValues(sampling))
 	if err != nil {
 		o.log.Info("model failed to load", "model", repoID)
 		o.log.Debug("model failed to load", "model", repoID, "took", took, "err", err)
@@ -1626,6 +1722,9 @@ func (a *App) Close() error {
 	// model still resident, and closing the store before that would throw
 	// those away. Closing the store then flushes whatever the last few seconds
 	// of requests recorded.
+	// The self-test before the pool: a run in progress holds a model, and the
+	// pool's close would otherwise wait on a release that is on its way.
+	a.SelfTest.Close()
 	err := a.Pool.Close()
 	if cerr := a.StatsStore.Close(); err == nil {
 		err = cerr

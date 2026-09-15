@@ -10,12 +10,14 @@
     "chat_rule.required_tags": [
       "conversational"
     ],
+    "context_probe": false,
     "decode_concurrency": 4,
     "eviction_grace": false,
     "eviction_grace_sec": 120,
     "eviction_max_wait_sec": 300,
     "hf_token": "********",
     "host": "0.0.0.0",
+    "idle_threshold_sec": 0,
     "idle_timeout_sec": 0,
     "log_level": "sparse",
     "max_resident_bytes": 0,
@@ -36,6 +38,7 @@
     "sampling.temperature": null,
     "sampling.top_k": null,
     "sampling.top_p": null,
+    "self_test": false,
     "statistics": false,
     "stats_max_bytes": 209715200,
     "stats_months": 6,

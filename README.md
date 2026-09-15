@@ -74,6 +74,19 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
   model's share, how long requests took, the spread of those times, and when
   models were evicted and reloaded
   ([what the views mean](docs/statistics-explained.md)).
+- **Self-test, opt-in** — off until you turn it on: while the Mac is idle,
+  Gropius loads each of your models in turn, runs the same short set of tests
+  against it — load time, prompt reading, generation, and generation under
+  concurrent requests — writes one line of figures to a file in your data
+  folder, and unloads what it loaded. A request from anyone ends the run at
+  once ([how to switch it on](docs/self-test.md), and
+  [what is recorded](docs/self-test-reference.md)).
+- **Context-window probe, opt-in** — off until you turn it on: while the
+  Mac is idle, Gropius measures the largest prompt each model will actually
+  take, through its own endpoint, and records it beside the window the model
+  declares and the one it serves. A figure one of Gropius's own limits stopped
+  is published as a floor, and nothing changes until you adopt it
+  ([how to switch it on, and what it costs](docs/context-probe.md)).
 - **A log that says why** — Gropius keeps its own log in your account's data
   folder, so the reason behind a refusal a client saw is somewhere you can read
   it even when the app was launched from the Finder and has no terminal to

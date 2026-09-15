@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"errors"
+	"github.com/intentdriven/Gropius/internal/config"
 	"log/slog"
 	"testing"
 	"time"
@@ -50,7 +51,7 @@ func TestOnlyThePoolsEvictionIncrementsTheEvictionCount(t *testing.T) {
 	obs := poolObserver{rec: rec, log: slog.New(slog.DiscardHandler)}
 
 	obs.LoadStarted("org/a")
-	obs.LoadFinished("org/a", 2*time.Second, nil)
+	obs.LoadFinished("org/a", 2*time.Second, nil, config.Sampling{})
 	for reason := range stopReasons {
 		obs.EntryStopped("org/a", reason)
 	}
@@ -62,7 +63,7 @@ func TestOnlyThePoolsEvictionIncrementsTheEvictionCount(t *testing.T) {
 	if got.Loads != 1 || got.LastLoadMS != 2000 {
 		t.Errorf("the load was recorded as %+v, want one load of 2000 ms", got)
 	}
-	obs.LoadFinished("org/b", time.Second, errors.New("did not become ready"))
+	obs.LoadFinished("org/b", time.Second, errors.New("did not become ready"), config.Sampling{})
 	for _, m := range rec.Summary() {
 		if m.Model == "org/b" && m.FailedLoads != 1 {
 			t.Errorf("a load that failed was recorded as %+v, want one failed load", m)

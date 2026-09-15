@@ -76,8 +76,9 @@ Two limits, both under the switch in **Settings → Request statistics**:
    wins.
 
 Set either and **Save settings**; a limit you lower takes effect when you save
-it. A record measures about 230 bytes, so 200 MB is roughly three months of
-ten thousand requests a day — but how far back your own store reaches depends
+it. A request record measures about 380 bytes, so 200 MB is roughly seven weeks
+of ten thousand requests a day, less the footprint line each model in memory
+adds every thirty seconds — but how far back your own store reaches depends
 on how much you use it, which is why Settings shows the date beside the two
 limits rather than promising a span.
 
