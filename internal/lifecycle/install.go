@@ -171,7 +171,7 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 	if ie.Bundle == "" {
 		if err := installedAt(ie.Dest); err != nil {
 			writeLine(env.Err, "gropius install: there is nothing to repair at "+redact(ie.Dest, ie.Home)+
-				" — "+err.Error()+".")
+				" — "+redact(err.Error(), ie.Home)+".")
 			writeLine(env.Err, "Install Gropius first: "+bootstrapCommand)
 			return ExitFailed
 		}
@@ -188,7 +188,8 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 		// swap below replaces the bundle regardless.
 		if _, err := os.Lstat(ie.Dest); err == nil {
 			if err := ie.Quit(); err != nil {
-				writeLine(env.Err, "warning: a running copy could not be asked to quit ("+err.Error()+")")
+				writeLine(env.Err, "warning: a running copy could not be asked to quit ("+
+					redact(err.Error(), ie.Home)+")")
 			}
 		}
 		writeLine(env.Err, stagePlace+": "+redact(ie.Dest, ie.Home))
@@ -209,7 +210,7 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 	// an installation that serves loopback, so it is reported with the commands
 	// that make the grant by hand rather than failing the install.
 	if err := ie.Firewall(binary); err != nil {
-		writeLine(env.Err, "warning: "+stageFirewall+" was not made ("+err.Error()+").")
+		writeLine(env.Err, "warning: "+stageFirewall+" was not made ("+redact(err.Error(), ie.Home)+").")
 		writeLine(env.Err, "Other machines may see an empty response until an administrator runs:")
 		for _, c := range firewallGrantCommands(binary, ie.Home) {
 			writeLine(env.Err, "  "+c)
@@ -240,7 +241,8 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 	}
 
 	if err := ie.Launch(ie.Dest); err != nil {
-		writeLine(env.Err, "warning: "+redact(ie.Dest, ie.Home)+" could not be opened ("+err.Error()+")")
+		writeLine(env.Err, "warning: "+redact(ie.Dest, ie.Home)+" could not be opened ("+
+			redact(err.Error(), ie.Home)+")")
 		return ExitOK
 	}
 	if waitUntil(ie.Serving, ie.Poll, 30*time.Second) {
@@ -302,6 +304,14 @@ func fail(env Env, ie InstallEnv, stage string, err error) int {
 	return ExitFailed
 }
 
+// destinationWritable answers whether this account can write the machine-wide
+// applications directory, by creating and removing a file there. It is a
+// variable for one reason: the door a test opens into the live environment
+// (allowLiveEnvInTest) swaps it for an answer that touches nothing, so no test
+// binary creates a file in the Mac's /Applications — which one did, and raced
+// the installer tripwire in internal/archtest (iss-2609120444017291).
+var destinationWritable = func() bool { return writableDir(systemApplications) == nil }
+
 // installDest is where the bundle belongs on this Mac.
 //
 // The machine-wide directory when this account can write it, and this account's
@@ -310,7 +320,7 @@ func fail(env Env, ie InstallEnv, stage string, err error) int {
 // equivalent, and installing for every account when one asked is not what was
 // asked.
 func installDest(home string) string {
-	if writableDir(systemApplications) == nil {
+	if destinationWritable() {
 		return filepath.Join(systemApplications, bundleName)
 	}
 	return filepath.Join(home, "Applications", bundleName)

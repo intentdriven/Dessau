@@ -557,3 +557,48 @@ func waitFor(t *testing.T, cond func() bool, msg string) {
 type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+// Every warning the install verb writes is redacted against this account's
+// home, the way its failure line is. The seams here answer with errors that
+// carry the home path INSIDE a sentence somebody else wrote — which is how a
+// path from os.Lstat, a launcher or a firewall tool arrives — and the report is
+// held to printing none of them as they came (iss-2609120438396694).
+func TestInstallWarningsAreRedacted(t *testing.T) {
+	leak := func(home string) error {
+		return errors.New("open " + filepath.Join(home, "Applications", "Gropius.app") + ": operation not permitted")
+	}
+	for _, tc := range []struct {
+		name  string
+		setup func(ie *InstallEnv)
+		want  string
+	}{
+		{"a running copy that will not quit", func(ie *InstallEnv) {
+			bundleAt(t, ie.Dest, "installed")
+			ie.Quit = func() error { return leak(ie.Home) }
+		}, "could not be asked to quit"},
+		{"a firewall grant that was not made", func(ie *InstallEnv) {
+			ie.Firewall = func(string) error { return leak(ie.Home) }
+		}, "was not made"},
+		{"a bundle that could not be opened", func(ie *InstallEnv) {
+			ie.Launch = func(string) error { return leak(ie.Home) }
+		}, "could not be opened"},
+		// The nothing-to-repair line is redacted the same way, but no row
+		// holds it: installedAt's sentences carry no path, so a row could only
+		// pass on the destination beside it and would prove nothing.
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env, ie, _, errOut := installFixture(t)
+			tc.setup(&ie)
+			runInstall(env, nil, ie)
+			if !strings.Contains(errOut.String(), tc.want) {
+				t.Fatalf("the warning was not written (want %q):\n%s", tc.want, errOut)
+			}
+			if strings.Contains(errOut.String(), ie.Home) {
+				t.Errorf("the home path reached the terminal unredacted:\n%s", errOut)
+			}
+			if !strings.Contains(errOut.String(), "~/") {
+				t.Errorf("the path was dropped rather than redacted:\n%s", errOut)
+			}
+		})
+	}
+}

@@ -8,6 +8,14 @@ source: "user-observation"
 found_during: "manual-capture"
 origin: researcher-authored
 production_mode: hand-written
+resolution: "The /Applications writability probe behind installDest is a package variable, and allowLiveEnvInTest swaps it for a constant no while a test holds the guard open, restored on cleanup, so no test binary creates a file in the Mac's applications directory; held by TestTheGuardCanBeOpenedForOneTest, watched red on this Mac where /Applications is writable. The installer tripwire's exemption for the probe's file is removed with the source closed. Test c59cc20, fix ab6648c, tripwire cd43c24."
+impact: internal
+resolved_by:
+  commit: "ab6648c"
 ---
 
 Two test packages race on the real /Applications: TestTheGuardCanBeOpenedForOneTest (internal/lifecycle/liveguard_test.go) builds the live install environment, whose installDest asks writableDir of /Applications by creating and removing a .doctor-*.tmp file there, while the installer-gate tripwire (internal/archtest/installer_gate_test.go) snapshots /Applications before and after each install.sh run. go test runs the packages concurrently, and on a Mac where /Applications is writable (every CI runner) the probe's file can be in one snapshot and not the other. Seen once on PR 50 in the merge queue. The tripwire now leaves that one name out of its listing; the underlying fact stands that a unit test creates a file in the machine's /Applications, which is the class iss-2609111240578491 exists to stop, and the destination probe has no seam a test can point elsewhere.
+
+## Grounds
+
+- pursued: we expect the one door into the live environment inside a test to be the right place to close the one probe that touches the Mac, because every test that could reach the probe passes through it; a test that reaches installDest without opening the guard would show it wrong.
