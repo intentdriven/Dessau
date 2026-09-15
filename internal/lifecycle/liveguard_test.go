@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -31,13 +32,27 @@ func TestTheLiveEnvironmentsRefuseToBeBuiltInATest(t *testing.T) {
 }
 
 // And the one way past it is deliberate, named, and lasts for one test.
+//
+// Opening it also closes the one probe that touches the Mac: the live install
+// and update environments choose the destination by asking whether this
+// account can write /Applications, which creates and removes a file there —
+// and a test binary doing that raced the installer tripwire in
+// internal/archtest (iss-2609120444017291). With the guard open, the answer is
+// "no" without asking, so the destination is this account's own, on every Mac.
 func TestTheGuardCanBeOpenedForOneTest(t *testing.T) {
 	env, _, _ := testEnv()
 
 	t.Run("opened", func(t *testing.T) {
 		allowLiveEnvInTest(t)
-		if _, err := liveInstallEnv(env); err != nil {
-			t.Errorf("the guard was opened and still refused: %v", err)
+		ie, err := liveInstallEnv(env)
+		if err != nil {
+			t.Fatalf("the guard was opened and still refused: %v", err)
+		}
+		if ie.Dest != filepath.Join(ie.Home, "Applications", bundleName) {
+			t.Errorf("Dest = %q; an opened guard probed the Mac for its destination", ie.Dest)
+		}
+		if destinationWritable() {
+			t.Error("the destination probe still answers for the Mac while the guard is open")
 		}
 	})
 
