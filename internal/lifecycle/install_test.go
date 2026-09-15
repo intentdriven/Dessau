@@ -582,9 +582,9 @@ func TestInstallWarningsAreRedacted(t *testing.T) {
 		{"a bundle that could not be opened", func(ie *InstallEnv) {
 			ie.Launch = func(string) error { return leak(ie.Home) }
 		}, "could not be opened"},
-		{"a repair with nothing to repair", func(ie *InstallEnv) {
-			ie.Bundle = ""
-		}, "nothing to repair"},
+		// The nothing-to-repair line is redacted the same way, but no row
+		// holds it: installedAt's sentences carry no path, so a row could only
+		// pass on the destination beside it and would prove nothing.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			env, ie, _, errOut := installFixture(t)
