@@ -66,6 +66,14 @@ GitHub release notes.
   bounded at 4 MiB ([how to](docs/self-test.md),
   [reference](docs/self-test-reference.md)).
 
+### Fixed
+
+- **`gropius install` no longer prints your home directory in its warnings.**
+  A running copy that would not quit, a firewall grant that was not made, a
+  bundle that could not be opened and a repair with nothing to repair each
+  printed the error text as it came, with the path inside it; every line the
+  verb writes is now redacted to `~/`, the way its failure line always was.
+
 ## [0.6.0] - 2026-09-12
 
 ### Changed
