@@ -139,6 +139,13 @@ func TestTheProbeMeasuresThroughTheRealGatewayAndPool(t *testing.T) {
 	if m.Runtime != runtime.MLXLMVersion() || m.ServedContext != 131072 {
 		t.Errorf("provenance = %+v", m)
 	}
+	// The figure is written inside the job's Run; the runner clears the job
+	// and the probe hands the model back only as Run winds down. Wait for
+	// that tail under the same deadline rather than asserting on the instant
+	// the figure landed.
+	for (a.SelfTest.Status().Job != "" || len(a.Pool.Residency().Models) != 0) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
 	if res := a.Pool.Residency(); len(res.Models) != 0 {
 		t.Errorf("the model was left resident after the probe: %+v", res.Models)
 	}
