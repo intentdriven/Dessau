@@ -398,3 +398,20 @@ chats" (the maintainer, mid-session) — one capability, one intent
 (itd-2609170836331240, `builds_on` the trunk); FILE-AS-IS, routing adopted
 without change. Interaction flagged for the effects intent (both draw the
 reply's `Text`), recorded in the specs rather than as a link.
+
+## 2026-09-18 — the iPad client
+
+Proposal (the maintainer): a native iPad app for the chat client, using an
+Apple on-device model if the iPad has one, else a Gropius server on the local
+network.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| A native iPadOS 27 chat client sharing the Mac client's code | capability | itd-2609180943290800, `builds_on` the trunk |
+| The iPad's own model when it exists | promised | `refines` itd-2609170718438919 (same framework, same availability check) |
+| A Gropius server from the local network when it does not | promised | `refines` itd-2609170718430553 (same picker and browse) |
+| Distribution: provisioning, TestFlight or the App Store | open question, flagged | the draft's Open Questions; gates the interview |
+
+Verdict proposed: FILE-AS-IS as one intent with the distribution question
+open. Verdict adopted: the same. Grade: the routing survived the human's
+confirmation unchanged.
