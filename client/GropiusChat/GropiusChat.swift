@@ -1178,6 +1178,7 @@ struct MessageRow: View {
     let message: Message
     var loadingLabel: String? = nil
     @State private var showReasoning = false
+    private let colors = BubbleColors()
     /// The rendered blocks, parsed once per change of the text — and for the
     /// reply that is streaming, at most a few times a second.
     @State private var blocks: [MarkdownBlock] = []
@@ -1203,17 +1204,16 @@ struct MessageRow: View {
         if isUser {
             HStack {
                 Spacer(minLength: 56)
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text(speaker).font(.caption).foregroundStyle(.secondary)
-                    Text(displayText)
-                        .textSelection(.enabled)
-                        .multilineTextAlignment(.trailing)
-                }
+                Text(displayText)
+                    .textSelection(.enabled)
+                    .multilineTextAlignment(.leading)
+                    .bubble(colors.userColor, isUser: true)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(speaker) said: \(displayText)")
         } else {
             HStack {
-                GroupBox {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(speaker).font(.caption).foregroundStyle(.secondary).padding(.leading, 12)
                     VStack(alignment: .leading, spacing: 8) {
                         if !displayReasoning.isEmpty { reasoningDisclosure }
                         if displayText.isEmpty && displayReasoning.isEmpty {
@@ -1222,14 +1222,12 @@ struct MessageRow: View {
                             reply
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } label: {
-                    Text(speaker).font(.caption).foregroundStyle(.secondary)
-                }
-                .contextMenu {
-                    Button("Copy") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(message.text, forType: .string)
+                    .bubble(colors.modelColor, isUser: false)
+                    .contextMenu {
+                        Button("Copy") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(message.text, forType: .string)
+                        }
                     }
                 }
                 Spacer(minLength: 56)
@@ -1320,12 +1318,18 @@ struct MessageRow: View {
         }
     }
 
+    /// A click anywhere in the row, and anywhere in the expanded thinking,
+    /// toggles it — not only the disclosure triangle — so the thinking can be
+    /// hidden while it is being read. Dragging still selects the text.
     @ViewBuilder private var reasoningDisclosure: some View {
         DisclosureGroup(isExpanded: $showReasoning) {
             Text(displayReasoning)
                 .font(.callout).italic()
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation { showReasoning = false } }
         } label: {
             Label {
                 Text(displayText.isEmpty ? "Thinking…" : "Thoughts").font(.caption)
@@ -1333,6 +1337,9 @@ struct MessageRow: View {
                 if displayText.isEmpty { ProgressView().controlSize(.mini) }
             }
             .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation { showReasoning.toggle() } }
         }
     }
 }
@@ -1342,6 +1349,8 @@ struct MessageRow: View {
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var key = ""
+    @AppStorage("bubbleColorUser") private var bubbleUser: String = ""
+    @AppStorage("bubbleColorModel") private var bubbleModel: String = ""
 
     private var typedAddress: Binding<String> {
         Binding(get: { model.serverURL }, set: { model.useTypedAddress($0) })
@@ -1370,6 +1379,12 @@ struct SettingsView: View {
                 TextField("Pipeline tags", text: $model.chatPipelineTags, prompt: Text("text-generation, image-text-to-text"))
                 TextField("Required tags", text: $model.chatRequiredTags, prompt: Text("conversational"))
                 Text("The picker offers a server's models carrying these HuggingFace words — a pipeline tag from the first list, and every tag in the second. Every model stays reachable over the API by name. Clear a field to stop testing it. The Mac's own model is always offered.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Bubbles") {
+                BubbleColorRow(title: "Your messages", stored: $bubbleUser, fallback: BubbleColors.defaultUser)
+                BubbleColorRow(title: "The model's replies", stored: $bubbleModel, fallback: BubbleColors.defaultModel)
+                Text("The defaults are the system's accent colour and grey.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Replies") {
