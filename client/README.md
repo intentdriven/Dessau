@@ -59,6 +59,9 @@ Apple Silicon `dist/GropiusChat.app`.
    each model; the rule is yours to change under **Models to offer** in
    Settings. The Mac's own model is not a served model and is always offered.
 
+Settings also offers the text size — five steps, the system's own, and the
+whole window follows — and the colour of each speaker's bubble.
+
 Replies render their markdown — emphasis, code, lists, headings, block quotes,
 code blocks, links — and a reply's context menu offers **Copy**, which copies
 what the model wrote, marks and all. A few words (congratulations, well done,

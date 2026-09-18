@@ -98,3 +98,23 @@ func TestChatClientAsksForTheKeyWhereTheServerIsPicked(t *testing.T) {
 		t.Error("AppModel.connect does not record that the server asked for a key")
 	}
 }
+
+// TestChatClientTextSizeScalesTheWholeWindow holds the text-size setting
+// (itd-2609181100459593): five steps that are the system's own Dynamic Type
+// sizes, applied at the window's root and at Settings' root.
+func TestChatClientTextSizeScalesTheWholeWindow(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+	if !regexp.MustCompile(`enum TextSize: String, CaseIterable \{\s*case smaller, standard, larger, extraLarge, huge\s*\}?`).MatchString(src) {
+		t.Error("client/GropiusChat/GropiusChat.swift declares no TextSize with the five steps")
+	}
+	if n := strings.Count(src, ".dynamicTypeSize("); n < 2 {
+		t.Errorf("the Dynamic Type size is applied at %d root(s); the window and Settings each need it", n)
+	}
+	if !strings.Contains(src, `@AppStorage("textSize")`) {
+		t.Error("the text size is not stored")
+	}
+	if !strings.Contains(src, `Picker("Text size"`) {
+		t.Error("Settings offers no text-size picker")
+	}
+}

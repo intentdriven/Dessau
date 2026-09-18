@@ -869,14 +869,48 @@ final class AppModel: ObservableObject {
 
 // MARK: - App
 
+/// The five text sizes Settings offers: the system's own Dynamic Type sizes,
+/// so every font stays the system's at a different scale, and the whole
+/// window follows one setting read at each scene's root.
+enum TextSize: String, CaseIterable {
+    case smaller, standard, larger, extraLarge, huge
+
+    var label: String {
+        switch self {
+        case .smaller: return "Smaller"
+        case .standard: return "Default"
+        case .larger: return "Larger"
+        case .extraLarge: return "Extra Large"
+        case .huge: return "Huge"
+        }
+    }
+
+    var dynamicType: DynamicTypeSize {
+        switch self {
+        case .smaller: return .small
+        case .standard: return .large
+        case .larger: return .xLarge
+        case .extraLarge: return .xxLarge
+        case .huge: return .xxxLarge
+        }
+    }
+}
+
 @main
 struct GropiusChatApp: App {
     @StateObject private var model = AppModel.shared
     @FocusedValue(\.chatActions) private var actions
+    @AppStorage("textSize") private var textSize: String = TextSize.standard.rawValue
+
+    private var dynamicType: DynamicTypeSize {
+        TextSize(rawValue: textSize)?.dynamicType ?? .large
+    }
 
     var body: some Scene {
         WindowGroup("Gropius Chat") {
-            RootView(model: model).frame(minWidth: 720, minHeight: 480)
+            RootView(model: model)
+                .frame(minWidth: 720, minHeight: 480)
+                .dynamicTypeSize(dynamicType)
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -905,6 +939,7 @@ struct GropiusChatApp: App {
         }
         Settings {
             SettingsView(model: model)
+                .dynamicTypeSize(dynamicType)
         }
     }
 }
@@ -1356,6 +1391,7 @@ struct SettingsView: View {
     @State private var key = ""
     @AppStorage("bubbleColorUser") private var bubbleUser: String = ""
     @AppStorage("bubbleColorModel") private var bubbleModel: String = ""
+    @AppStorage("textSize") private var textSize: String = TextSize.standard.rawValue
 
     private var typedAddress: Binding<String> {
         Binding(get: { model.serverURL }, set: { model.useTypedAddress($0) })
@@ -1384,6 +1420,15 @@ struct SettingsView: View {
                 TextField("Pipeline tags", text: $model.chatPipelineTags, prompt: Text("text-generation, image-text-to-text"))
                 TextField("Required tags", text: $model.chatRequiredTags, prompt: Text("conversational"))
                 Text("The picker offers a server's models carrying these HuggingFace words — a pipeline tag from the first list, and every tag in the second. Every model stays reachable over the API by name. Clear a field to stop testing it. The Mac's own model is always offered.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Text") {
+                Picker("Text size", selection: $textSize) {
+                    ForEach(TextSize.allCases, id: \.rawValue) { size in
+                        Text(size.label).tag(size.rawValue)
+                    }
+                }
+                Text("The whole window follows, at the system's own text sizes.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Bubbles") {
