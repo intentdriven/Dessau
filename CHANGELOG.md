@@ -78,9 +78,10 @@ GitHub release notes.
   model picker offers the Gropius servers it finds on the network, but only
   while the picker is open, and never switches by itself; the stored API key
   goes only to the server it was entered for. Replies render their markdown,
-  Writing Tools work in the composer and on replies, a few words animate
-  once (switchable in Settings), and Shortcuts and Spotlight list the
-  client's actions. The client is built with the installed Xcode's
+  the composer and the replies are standard text views, so the system's
+  Writing Tools are in their context menu, a few words animate once
+  (switchable in Settings), and the client's actions are declared as App
+  Intents, written into the bundle at build, for Shortcuts and Spotlight. The client is built with the installed Xcode's
   toolchain and ships one Apple Silicon slice, since macOS 27 runs on no
   Intel Mac.
 

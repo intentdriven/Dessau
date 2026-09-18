@@ -42,7 +42,9 @@ Apple Silicon `dist/GropiusChat.app`.
    and **On this Mac** is always one click away.
 
    macOS asks for permission to search the local network the first time the
-   picker opens — not when the app launches. Without it the list stays empty;
+   picker opens — the client browses for servers only while the picker is
+   open. When a server answered last, the client does reconnect to its stored
+   address at launch, so a `.local` address can bring that question then. Without it the list stays empty;
    a server elsewhere can be typed into **Settings** (Cmd-,): the Mac's `.local`
    name or its LAN address with port `11535` and no path, for example
    `http://your-mac.local:11535`. A server that needs an API key asks for it
@@ -65,7 +67,9 @@ colour of each speaker's bubble.
 
 Replies render their markdown — emphasis, code, lists, headings, block quotes,
 code blocks, links — and a reply's context menu offers **Copy**, which copies
-what the model wrote, marks and all. A few words (congratulations, well done,
+what the model wrote, marks and all. Two constructs are not drawn: a table is
+shown as the model wrote it, marks and all, and a nested list is drawn as one
+level of items. A few words (congratulations, well done,
 warning, careful, wow, amazing) animate once when a reply arrives; switch that
 off under **Replies** in Settings.
 
