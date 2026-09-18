@@ -1,10 +1,10 @@
 # Gropius Chat
 
-A native macOS chat app. It chats with the Mac's own model out of the box —
-the language model Apple ships with the system, on the Mac, with nothing sent
-anywhere — and when a [Gropius](../README.md) server is on your network it
-offers that server's MLX models in the same picker: streaming replies, no
-browser, no configuration.
+A native chat app for the Mac and the iPad. It chats with the device's own
+model out of the box — the language model Apple ships with the system, on the
+device, with nothing sent anywhere — and when a [Gropius](../README.md) server
+is on your network it offers that server's MLX models in the same picker:
+streaming replies, no browser, no configuration.
 
 **Requires macOS 27** and Apple Silicon, which is every Mac that runs macOS 27.
 The server it can talk to keeps its own floor, macOS 26. A Mac on macOS 26
@@ -87,6 +87,63 @@ Gropius** (a prompt in, the reply out as text, kept as a new chat), **New Chat**
 and **Open Chat** (by title) under the app, and Spotlight offers them. Chats are
 looked up when you pick one; nothing is added to the system's index.
 
+## On the iPad
+
+The same Swift files build an iPad app: one source, two systems. It is the
+client you know — the sidebar of chats, the composer, the model picker in the
+toolbar, the menu bar when a keyboard is attached — with Settings behind the
+gear in the toolbar rather than a Settings window, since iPadOS has no such
+window. **Requires iPadOS 27**, and it is an iPad app: there is no iPhone
+version.
+
+On an iPad that can run Apple Intelligence — an M1 or later, or the iPad mini
+with the A17 Pro — the picker reads **On this iPad** and the iPad answers on
+the device, with nothing sent anywhere. On any other iPad the empty chat says the iPad cannot answer and
+offers a server instead: pick one of the Gropius servers on your network and
+the conversation carries on there, exactly as it does on a Mac.
+
+The app is built for **your own iPad**, signed with your own Apple ID's free
+personal team, and installed over USB from the Mac you build on. Nothing is
+published: there is no release asset, and `install.sh` knows nothing of it.
+A personal team's profile expires after seven days, so a build is good for a
+week and re-running the script is what renews it.
+
+### The one sign-in
+
+Open Xcode > Settings > Accounts, add your Apple ID and let the personal team
+issue an **Apple Development** certificate. That sign-in also writes the
+matching provisioning profile for `dev.gropius.chat` into
+`~/Library/Developer/Xcode/UserData/Provisioning Profiles`. Nothing else in
+this build needs Xcode's project files.
+
+### Building it
+
+```sh
+SIM=1 ./build-ipad.sh       # the simulator: build, install, launch
+```
+
+The simulator run is the check you can make without an iPad: it builds,
+installs the bundle on an available iPad simulator, launches it and reports
+whether it stayed running. The simulator borrows the Mac's own language model,
+so the on-device answer can be tried there even when no iPad to hand is
+eligible for one.
+
+For your iPad, name the certificate and the profile, and the device to install
+on:
+
+```sh
+IPAD_SIGNING_IDENTITY="Apple Development: <your name> (XXXXXXXXXX)" \
+IPAD_PROFILE="/path/to/profile.mobileprovision" \
+IPAD_DEVICE="<the iPad's identifier>" \
+./build-ipad.sh
+```
+
+`IPAD_DEVICE` is optional — without it the bundle is built and signed and the
+script prints the `devicectl` command that installs it. `IPAD_SIM` picks a
+particular simulator; `VERSION` sets the version string. Without an identity
+and a profile the script refuses before it builds anything, because an iPad
+installs neither an unsigned bundle nor an ad-hoc signed one.
+
 ## Distributing it to another Mac
 
 The app is **ad-hoc signed**, not signed with an Apple Developer ID. That's fine
@@ -113,6 +170,9 @@ you to approve the first time the picker looks for a server.
 - `GropiusChat/Backends.swift` — the two answerers: the Mac's own model through
   the Foundation Models framework, and a server over `GET /v1/models` and
   `POST /v1/chat/completions` with `stream: true`, parsed as SSE.
+- `GropiusChat/Discovery.swift` — what both clients know about the local
+  network: the service type, the browse, and resolving the server a person
+  picked to an address, all on the Network framework.
 - `GropiusChat/Picker.swift` — the model picker and the Bonjour browse that runs
   only while it is open.
 - `GropiusChat/Markdown.swift`, `Effects.swift`, `Intents.swift` — the reply
@@ -120,8 +180,10 @@ you to approve the first time the picker looks for a server.
 - `Info.plist` — bundle metadata, local-network entitlements, and the Bonjour
   service type the app may browse for (`_gropius._tcp`, the one the server
   advertises).
-- `build.sh` — compiles with `xcrun swiftc`, writes the App Intents metadata and
-  assembles the `.app`.
+- `Info-iPad.plist` — the same metadata for the iPad bundle, plus the launch
+  screen and the one device family it is built for.
+- `build.sh`, `build-ipad.sh` — compile with `xcrun swiftc`, write the App
+  Intents metadata and assemble the `.app` for each system.
 
 Settings persist across launches: the server address and chosen model in
 `UserDefaults`, the API key in the macOS Keychain.
