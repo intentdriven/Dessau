@@ -1,7 +1,7 @@
-// The model picker: the Mac's own model first, then the Gropius servers on
+// The model picker: the device's own model first, then the Gropius servers on
 // the network. It is a standard popover holding a List, and the Bonjour browse
-// runs exactly as long as the popover is shown — which is why the Mac asks for
-// local-network permission the first time the picker opens, not at launch.
+// runs exactly as long as the popover is shown — which is why the system asks
+// for local-network permission the first time the picker opens, not at launch.
 // Finding a server is an offer: nothing here switches by itself.
 
 import SwiftUI
@@ -20,7 +20,7 @@ struct ModelPickerView: View {
 
     var body: some View {
         List {
-            Section("On this Mac") {
+            Section(BuiltInBackend.displayName) {
                 Button {
                     model.chooseBuiltIn()
                 } label: {
