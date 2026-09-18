@@ -1324,7 +1324,7 @@ struct MessageRow: View {
 
     /// The thoughts' twin of scheduleParse.
     private func scheduleReasoningParse() {
-        let wait = 0.2 - Date().timeIntervalSince(lastReasoningParse)
+        let wait = 0.25 - Date().timeIntervalSince(lastReasoningParse)
         reasoningTask?.cancel()
         if wait <= 0 {
             reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
@@ -1339,10 +1339,11 @@ struct MessageRow: View {
         }
     }
 
-    /// Parse now if the last parse is older than a fifth of a second, else
-    /// once at that deadline; a finished reply's text never changes again.
+    /// Parse now if the last parse is older than a quarter of a second, else
+    /// once at that deadline — four parses a second at most; a finished
+    /// reply's text never changes again.
     private func scheduleParse() {
-        let wait = 0.2 - Date().timeIntervalSince(lastParse)
+        let wait = 0.25 - Date().timeIntervalSince(lastParse)
         parseTask?.cancel()
         if wait <= 0 {
             blocks = MarkdownBlocks.parse(displayText)

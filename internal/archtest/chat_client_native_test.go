@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -320,5 +321,27 @@ func TestChatClientEffectKeepsTheReplySelectable(t *testing.T) {
 	if !strings.Contains(effects[renderer:], ".textSelection(.enabled)") {
 		t.Error("the block being animated carries no .textSelection(.enabled); " +
 			"the reply is unselectable for the effect's duration")
+	}
+}
+
+// TestChatClientReplyReparseStaysWithinItsBudget holds the streaming reply's
+// re-parse budget (iss-2609181116218893): the spec allows at most four parses
+// a second, so the debounce waits at least a quarter of a second — for the
+// reply and for the thoughts, which are parsed the same way.
+func TestChatClientReplyReparseStaysWithinItsBudget(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+	found := regexp.MustCompile(`([0-9.]+) - Date\(\)\.timeIntervalSince\(last[A-Za-z]*Parse\)`).FindAllStringSubmatch(src, -1)
+	if len(found) < 2 {
+		t.Fatalf("found %d re-parse debounce(s); the reply and the thoughts each have one", len(found))
+	}
+	for _, m := range found {
+		wait, err := strconv.ParseFloat(m[1], 64)
+		if err != nil {
+			t.Fatalf("re-parse debounce %q is not a number", m[1])
+		}
+		if wait < 0.25 {
+			t.Errorf("the re-parse debounce is %.2fs, which admits %.0f parses a second; the budget is four", wait, 1/wait)
+		}
 	}
 }
