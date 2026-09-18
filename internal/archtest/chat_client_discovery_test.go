@@ -27,7 +27,8 @@ var serverURLDefault = regexp.MustCompile(
 	`@AppStorage\("serverURL"\)\s+var\s+serverURL\s*:\s*String\s*=\s*"([^"]*)"`)
 
 // clientServiceType matches the client's own declaration of the service type it
-// browses for, so that a comment mentioning the type cannot stand in for it.
+// browses for, so that a comment mentioning the type cannot stand in for it. It
+// is read out of the shared discovery file, which both clients compile.
 var clientServiceType = regexp.MustCompile(
 	`(?m)^\s*let\s+gropiusServiceType\s*=\s*"([^"]*)"`)
 
@@ -67,12 +68,12 @@ func TestChatClientBrowsesForTheAdvertisedServiceType(t *testing.T) {
 	root := repoRootDir(t)
 
 	t.Run("client source", func(t *testing.T) {
-		source := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "GropiusChat.swift"))
+		source := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "Discovery.swift"))
 		// The declaration, not a mention: a comment naming the type would
 		// otherwise satisfy this while the browse asked for something else.
 		m := clientServiceType.FindStringSubmatch(source)
 		if m == nil {
-			t.Fatal("client/GropiusChat/GropiusChat.swift declares no gropiusServiceType; " +
+			t.Fatal("client/GropiusChat/Discovery.swift declares no gropiusServiceType; " +
 				"the type the client browses for is unchecked")
 		}
 		if m[1] != discovery.ServiceType {
@@ -81,15 +82,24 @@ func TestChatClientBrowsesForTheAdvertisedServiceType(t *testing.T) {
 		}
 	})
 
-	t.Run("bundle declaration", func(t *testing.T) {
-		declared := plistStringArray(t, filepath.Join(root, "client", "Info.plist"), "NSBonjourServices")
-		// macOS accepts the type with or without the trailing dot the DNS-SD
-		// wire format uses; both are the same declaration.
-		if !slices.Contains(declared, discovery.ServiceType) &&
-			!slices.Contains(declared, discovery.ServiceType+".") {
-			t.Errorf("client/Info.plist declares NSBonjourServices %v, which does not include %q; "+
-				"macOS returns an empty browse rather than an error for an undeclared type",
-				declared, discovery.ServiceType)
+	t.Run("bundle declarations", func(t *testing.T) {
+		// Every client bundle, not the Mac's alone: the iPad's plist browses
+		// the same network with the same code, and a plist that omits the type
+		// browses to a silent empty list on its own system.
+		plists, err := filepath.Glob(filepath.Join(root, "client", "Info*.plist"))
+		if err != nil || len(plists) == 0 {
+			t.Fatal("client/ holds no Info plist; no client bundle declares what it may browse for")
+		}
+		for _, path := range plists {
+			declared := plistStringArray(t, path, "NSBonjourServices")
+			// The systems accept the type with or without the trailing dot the
+			// DNS-SD wire format uses; both are the same declaration.
+			if !slices.Contains(declared, discovery.ServiceType) &&
+				!slices.Contains(declared, discovery.ServiceType+".") {
+				t.Errorf("client/%s declares NSBonjourServices %v, which does not include %q; "+
+					"the system returns an empty browse rather than an error for an undeclared type",
+					filepath.Base(path), declared, discovery.ServiceType)
+			}
 		}
 	})
 }

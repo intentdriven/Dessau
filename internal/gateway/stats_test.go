@@ -1233,22 +1233,32 @@ func TestNegativeTokenCountsAreRefused(t *testing.T) {
 // test says which of the two it is, rather than leaving it to be inferred from
 // a server whose behavior is not established here.
 func TestTimeToFirstTokenIsTheFirstChunkAboutTheAnswer(t *testing.T) {
+	// The two answers this test tells apart are set an order of magnitude
+	// apart, not a scheduling hiccup apart: the preamble leaves early and the
+	// first word is held back a long way behind it, so a figure below the word
+	// delay can only have been taken at the preamble. It used to be forty
+	// milliseconds against forty, which on a loaded runner is a coin toss and
+	// on any runner is satisfied by both answers alike (iss-2609112100298761).
+	const (
+		preambleDelay = 40 * time.Millisecond
+		wordDelay     = 300 * time.Millisecond
+	)
 	srv, rec, _, _ := statsGateway(t, true, mlxtest.Options{
 		RolePreamble:    true,
-		FirstTokenDelay: 40 * time.Millisecond,
-		ChunkDelay:      40 * time.Millisecond,
-		Reply:           "one two three",
+		FirstTokenDelay: preambleDelay,
+		ChunkDelay:      wordDelay,
+		Reply:           "one two",
 	})
 
 	completion(t, srv, `{"model":"`+testModelID+`","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 
 	got := onlyRecord(t, rec)
-	if got.FirstTokenMS < 30 {
-		t.Errorf("time to first token is %d ms; the server held its first chunk back 40 ms", got.FirstTokenMS)
+	if got.FirstTokenMS < (preambleDelay - 10*time.Millisecond).Milliseconds() {
+		t.Errorf("time to first token is %d ms; the server held its first chunk back %v", got.FirstTokenMS, preambleDelay)
 	}
-	// Three words at 40 ms apart follow the preamble, so a figure that had
-	// waited for the first word would be at least a chunk later.
-	if got.FirstTokenMS >= 70 {
+	// The first word cannot leave before preambleDelay+wordDelay, so anything
+	// below wordDelay is the role-only chunk and nothing else.
+	if got.FirstTokenMS >= wordDelay.Milliseconds() {
 		t.Errorf("time to first token is %d ms, which is past the role-only chunk — the figure is meant to be the first chunk about the answer, not the first word",
 			got.FirstTokenMS)
 	}

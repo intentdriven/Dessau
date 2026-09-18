@@ -11,6 +11,27 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A measurement queued with "Measure now" no longer goes quiet when the model
+  will not fit.** The idle loop used to pass over a queued model that could not
+  be loaded beside what was already in memory, leaving it queued for ever with
+  nothing on the card and nothing in the log. It now says the measurement is
+  held because the model does not fit the memory budget — on the model's card,
+  whatever else the Mac is measuring, and once per model in the log — and runs
+  it when the memory falls free.
+- **`gropius update` reports which version this Mac is serving.** The running
+  server publishes its version on the state snapshot the control panel already
+  reads, so the update's second fact is read rather than guessed at; it still
+  says plainly when it cannot be known, and never shows the version just
+  installed in its place.
+- **A network advertisement that died during an outage can be put back.** An
+  advertisement whose responder had given up on its own was marked as
+  withdrawn although nothing had been withdrawn, which left the registration
+  unusable: every later attempt built another one and opened another socket.
+  It is now stood down only when there is something there to withdraw, so a
+  later attempt serves the registration that already exists.
+
 ### Added
 
 - **The chat client's sidebar shows each conversation as a card, with a
@@ -25,6 +46,20 @@ GitHub release notes.
   (the system's accent colour and grey by default); the composer takes the
   form of Messages' composer; the Thoughts row toggles on a click anywhere;
   and a server that needs an API key asks for it where it is picked, once.
+
+- **GropiusChat runs on the iPad.** The client's Swift files build a second
+  way, against the iOS SDK, into an iPad app: the same sidebar of chats, the
+  same composer and model picker, the same menu bar when a keyboard is
+  attached, with Settings behind a gear in the toolbar where iPadOS has no
+  Settings window. On an iPad eligible for Apple Intelligence the picker reads
+  **On this iPad** and it answers on the device; on any other iPad the empty
+  chat says so and offers a Gropius server on the network instead. Discovery
+  moves to a file both clients share and resolves on the Network framework, so
+  the Mac client loses its deprecated resolver too. `client/build-ipad.sh`
+  builds it — `SIM=1` for a simulator run, otherwise a device build signed with
+  your own free personal team for your own iPad, which refuses to produce a
+  bundle no iPad would install. Nothing is published: the iPad bundle is not a
+  release asset and the installer is untouched (`impact: additive`).
 
 ## [0.7.0] - 2026-09-18
 

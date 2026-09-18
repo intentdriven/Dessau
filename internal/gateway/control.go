@@ -41,6 +41,10 @@ type Control struct {
 	// against it so a future launch can tell this user's server apart from a
 	// process squatting on the port (see cmd/gropius singleton coordination).
 	Root string
+	// Version is the build this server is, published on the state snapshot so
+	// the lifecycle verbs can say which version is serving. Set once before
+	// serving and never written again.
+	Version string
 
 	// Notices is what config.Load had to change about config.json to make it
 	// usable: settings put into force in a changed form (a trimmed API key, a
@@ -311,6 +315,13 @@ type State struct {
 	// and to say when the mode is on and not running.
 	Bind     BindState `json:"bind"`
 	Hostname string    `json:"hostname"`
+	// Version is the build this server is, as the binary reports it about
+	// itself. It is what makes `gropius update`'s report truthful: the version
+	// just installed and the version still being served are two facts, and
+	// without this one the second could only be guessed at
+	// (iss-2609111942567418). Read-only, like everything else on this
+	// snapshot, and empty in a build that was never stamped with one.
+	Version string `json:"version"`
 	// IdleJobs is what the idle loop — the self-test and the context probe
 	// — is doing: the run in progress in its own words, or what held a due
 	// run back. ProbeQueue is the models waiting for "Measure now".
@@ -403,6 +414,7 @@ func (c *Control) snapshot() State {
 		Endpoints:  Endpoints(cfg, c.App.Bind()),
 		Bind:       bindState(cfg, c.App.Bind()),
 		Hostname:   hostname(),
+		Version:    c.Version,
 		IdleJobs:   c.App.SelfTest.Status(),
 		ProbeQueue: c.App.Probe.Queued(),
 	}
