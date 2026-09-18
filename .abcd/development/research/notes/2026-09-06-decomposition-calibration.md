@@ -442,3 +442,16 @@ Verdict proposed: FILE-AS-IS. Verdict adopted: the same; the maintainer chose
 the whole window over the conversation alone. Grade: routing survived
 unchanged. Reviews scaled to the blast radius: one architecture test, no
 adversarial pass.
+
+## 2026-09-18 — appearance in Settings
+
+Proposal (the maintainer): change Light/Dark/System mode in Settings.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| An appearance choice in the client's Settings | capability | one intent, `builds_on` the trunk |
+| How it is applied | mechanism | the preferred colour scheme at each scene's root; System is no preference |
+
+Verdict proposed: FILE-AS-IS. Verdict adopted: the same; fully specified by
+the ask. Grade: routing survived unchanged; reviews scaled to the blast
+radius (one architecture test).
