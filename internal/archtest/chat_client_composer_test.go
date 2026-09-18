@@ -136,3 +136,54 @@ func TestChatClientAppearanceFollowsOneSetting(t *testing.T) {
 		t.Error("the appearance is not stored, or Settings offers no picker for it")
 	}
 }
+
+// TestChatClientThoughtsRenderMarkdown holds itd-2609181104497297: the
+// Thoughts row draws its text through the same markdown blocks the reply
+// uses, kept in the row's state.
+func TestChatClientThoughtsRenderMarkdown(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+	start := regexp.MustCompile(`private var reasoningDisclosure: some View \{`).FindStringIndex(src)
+	if start == nil {
+		t.Fatal("no reasoningDisclosure view")
+	}
+	block := src[start[0]:]
+	if end := regexp.MustCompile(`\n    (private )?(var|func) `).FindStringIndex(block[1:]); end != nil {
+		block = block[:end[0]+1]
+	}
+	if !strings.Contains(block, "reasoningBlocks") {
+		t.Error("the Thoughts row does not draw its text through markdown blocks")
+	}
+	if !strings.Contains(src, "MarkdownBlocks.parse(displayReasoning)") {
+		t.Error("the reasoning is never parsed as markdown")
+	}
+}
+
+// TestChatClientSidebarShowsCards holds itd-2609181104490133: each row is a
+// card with an icon, the title, the date and a summary of exchanges and
+// words, and the list takes the sidebar style so the selection is the
+// system's highlight.
+func TestChatClientSidebarShowsCards(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+	for _, want := range []string{`struct ConversationCard: View`, `.listStyle(.sidebar)`, `ConversationCard(conversation:`, `createdAt`, `exchange`, `word`} {
+		if !strings.Contains(src, want) {
+			t.Errorf("the sidebar lacks %q", want)
+		}
+	}
+}
+
+// TestChatClientSidebarIsSearchable holds itd-2609181104498312: a
+// searchable field on the sidebar filters conversations by title and
+// message text.
+func TestChatClientSidebarIsSearchable(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+	if !strings.Contains(src, `.searchable(text: $query`) {
+		t.Error("the sidebar carries no searchable field")
+	}
+	if !regexp.MustCompile(`title\.localizedCaseInsensitiveContains\(q\)`).MatchString(src) ||
+		!regexp.MustCompile(`messages\.contains \{ \$0\.text\.localizedCaseInsensitiveContains\(q\) \}`).MatchString(src) {
+		t.Error("the search does not filter on both the title and the messages")
+	}
+}
