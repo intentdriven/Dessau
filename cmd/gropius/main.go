@@ -385,7 +385,7 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 	// Control plane + web UI — administrative, so loopback-only (Control.Handler
 	// enforces it). Mounted at "/" as the catch-all for everything that is not a
 	// /v1 or /health request.
-	ctrl := &gateway.Control{App: a, UI: ui.Handler(), Root: paths.Root, Notices: notices}
+	ctrl := &gateway.Control{App: a, UI: ui.Handler(), Root: paths.Root, Notices: notices, Version: version}
 	mux.Handle("/", ctrl.Handler())
 
 	srv := &http.Server{
