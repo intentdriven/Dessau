@@ -12,3 +12,7 @@ found_at: "client/GropiusChat/Markdown.swift"
 ---
 
 A nested list is flattened into one-level list items instead of falling back to the model's own text; only tables fall back, against the promise that an undrawable construct is shown as the model wrote it.
+
+## Triage 2026-09-18
+
+Left open for the maintainer: a flattened nested list may well read better than the raw marks, so this is a choice between the mechanism's promise and the delivered rendering. client/README.md now says plainly what is drawn (iss-2609181116224898), so nothing is claimed that is not true while it waits.

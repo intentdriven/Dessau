@@ -12,3 +12,7 @@ found_at: "client/GropiusChat/Effects.swift"
 ---
 
 The gate deciding whether a reply animates matches effect words over the whole reply's raw markdown text while the renderer matches per rendered block over the block's plain text, so the two matches can disagree.
+
+## Triage 2026-09-18
+
+Left open for the maintainer: making the gate agree with the renderer means matching over the parsed blocks, which puts a markdown parse in AppModel's stream path — a placement decision. Today the disagreement is one-sided and harmless: the gate is broader, so it can queue an id no block animates.

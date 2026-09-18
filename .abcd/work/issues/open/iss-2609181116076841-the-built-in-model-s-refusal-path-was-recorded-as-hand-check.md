@@ -12,3 +12,7 @@ found_at: "client/GropiusChat/Backends.swift"
 ---
 
 The built-in model's refusal path was recorded as hand-checked, but what the record names is the guardrailViolation mapping, a different branch of the error switch from the .refusal explanation the acceptance criterion asks for.
+
+## Triage 2026-09-18
+
+Left open for the maintainer: only a person can redo the hand check, this time on the .refusal explanation the criterion names rather than the guardrailViolation branch; nothing in the source is wrong to fix.

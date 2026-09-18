@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -231,5 +232,137 @@ func TestChatClientMenuActionsCarryShortcuts(t *testing.T) {
 	shortcuts := strings.Count(menu, ".keyboardShortcut(")
 	if buttons == 0 || buttons != shortcuts {
 		t.Errorf("the Chat menu has %d actions and %d shortcuts; every action carries one", buttons, shortcuts)
+	}
+}
+
+// TestChatClientEffectPlaysOnceWhenTheReplyFinishes holds the text-effects
+// intent's once-only trigger (iss-2609181116217704). The model queues a
+// message id in the stream's defer — when the reply FINISHES — so a row that
+// latches at the reply block's first appearance latches at the first streamed
+// token, before any id is there: the finishing reply never animates, and the
+// id it left behind fires instead on whatever row scroll recreates next. The
+// row therefore watches the model's set for the change that queues the id, and
+// a row that finds the id already there consumes it without playing.
+func TestChatClientEffectPlaysOnceWhenTheReplyFinishes(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+
+	if !strings.Contains(src, "onChange(of: model.effectsToPlay.contains(message.id))") {
+		t.Error("MessageRow does not watch model.effectsToPlay for this message's id; " +
+			"an effect latched at the block's first appearance is latched at the first streamed token, " +
+			"before the stream's defer has queued the id — so a finishing reply never animates")
+	}
+	if strings.Contains(src, "@State private var playing: Bool?") {
+		t.Error("MessageRow still latches an optional `playing` on first appearance; " +
+			"the once-only flag belongs to the change that queues the id, not to the row appearing")
+	}
+	// The consuming call has to sit in both places: on the change that plays
+	// the effect, and on the appearance of a row that found the id already
+	// queued — the reply finished off screen and its moment has passed.
+	if n := strings.Count(src, "model.effectStarted(message.id)"); n < 2 {
+		t.Errorf("model.effectStarted(message.id) is called %d time(s); the id is consumed both when the effect plays "+
+			"and when a recreated row finds it stale, so no later row can fire on it", n)
+	}
+	if !strings.Contains(src, "@State private var played = false") {
+		t.Error("MessageRow keeps no record that it has already played; the effect plays exactly once per row")
+	}
+	if !strings.Contains(src, "effectsToPlay.insert(messageID)") {
+		t.Error("AppModel queues no message id for the effect; the trigger has nothing to watch")
+	}
+}
+
+// TestChatClientOpensASecondWindow holds the trunk intent's multi-window
+// criterion (iss-2609181116079882): replacing the .newItem group removes the
+// standard New Window item, so the client has to put one back and open a
+// second window of its own WindowGroup itself. New Chat keeps Cmd-N.
+func TestChatClientOpensASecondWindow(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+
+	if !strings.Contains(src, `@Environment(\.openWindow)`) {
+		t.Error("the app reads no openWindow action; nothing in the client can open a second window")
+	}
+	if !strings.Contains(src, `Button("New Window")`) {
+		t.Error(`the File commands carry no "New Window" item; replacing .newItem removed the system's own`)
+	}
+	if !strings.Contains(src, `.keyboardShortcut("n", modifiers: [.command, .shift])`) {
+		t.Error("New Window has no Cmd-Shift-N shortcut")
+	}
+	if !strings.Contains(src, `.keyboardShortcut("n", modifiers: .command)`) {
+		t.Error("New Chat has lost its Cmd-N shortcut")
+	}
+	// The id openWindow is given has to be the id the WindowGroup declares, or
+	// the action opens nothing and says so only at runtime.
+	group := regexp.MustCompile(`WindowGroup\("[^"]*", id: ([A-Za-z0-9_]+)\)`).FindStringSubmatch(src)
+	if group == nil {
+		t.Fatal("the WindowGroup declares no id; openWindow has nothing to name")
+	}
+	open := regexp.MustCompile(`openWindow\(id: ([A-Za-z0-9_]+)\)`).FindStringSubmatch(src)
+	if open == nil {
+		t.Fatal("nothing calls openWindow(id:)")
+	}
+	if group[1] != open[1] {
+		t.Errorf("openWindow is given %q while the WindowGroup declares %q; the action would open nothing", open[1], group[1])
+	}
+}
+
+// TestChatClientEffectKeepsTheReplySelectable holds the falsifier the
+// text-effects intent's Grounds names (iss-2609181116218290): while the
+// renderer plays, the block is rebuilt as concatenated Texts, and a Text that
+// carries no textSelection cannot be selected — so for the effect's duration
+// the reply would be unselectable.
+func TestChatClientEffectKeepsTheReplySelectable(t *testing.T) {
+	root := repoRootDir(t)
+	effects := clientSources(t, root)["Effects.swift"]
+	renderer := strings.Index(effects, ".textRenderer(")
+	if renderer < 0 {
+		t.Fatal("client/GropiusChat/Effects.swift installs no text renderer")
+	}
+	if !strings.Contains(effects[renderer:], ".textSelection(.enabled)") {
+		t.Error("the block being animated carries no .textSelection(.enabled); " +
+			"the reply is unselectable for the effect's duration")
+	}
+}
+
+// TestChatClientReplyReparseStaysWithinItsBudget holds the streaming reply's
+// re-parse budget (iss-2609181116218893): the spec allows at most four parses
+// a second, so the debounce waits at least a quarter of a second — for the
+// reply and for the thoughts, which are parsed the same way.
+func TestChatClientReplyReparseStaysWithinItsBudget(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+	found := regexp.MustCompile(`([0-9.]+) - Date\(\)\.timeIntervalSince\(last[A-Za-z]*Parse\)`).FindAllStringSubmatch(src, -1)
+	if len(found) < 2 {
+		t.Fatalf("found %d re-parse debounce(s); the reply and the thoughts each have one", len(found))
+	}
+	for _, m := range found {
+		wait, err := strconv.ParseFloat(m[1], 64)
+		if err != nil {
+			t.Fatalf("re-parse debounce %q is not a number", m[1])
+		}
+		if wait < 0.25 {
+			t.Errorf("the re-parse debounce is %.2fs, which admits %.0f parses a second; the budget is four", wait, 1/wait)
+		}
+	}
+}
+
+// TestChatClientBubbleTextReadsOnItsBubble holds the bubble colours to being
+// readable (iss-2609181200258524): the text colour follows the colour of the
+// bubble it sits on, rather than being a fixed white that disappears on a
+// light bubble the person chose.
+func TestChatClientBubbleTextReadsOnItsBubble(t *testing.T) {
+	root := repoRootDir(t)
+	bubbles := clientSources(t, root)["Bubbles.swift"]
+	if strings.Contains(bubbles, "isUser ? Color.white : Color.primary") {
+		t.Error("the person's bubble draws its text in a fixed white whatever colour the bubble is; " +
+			"white on a light bubble cannot be read")
+	}
+	if !strings.Contains(bubbles, "isDark") {
+		t.Error("nothing in client/GropiusChat/Bubbles.swift asks how dark a bubble is; " +
+			"the text colour cannot follow the bubble it sits on")
+	}
+	// A chosen colour survives; the way back is the Default button.
+	if !strings.Contains(bubbles, `Button("Default")`) {
+		t.Error("a chosen bubble colour has no way back to the default")
 	}
 }

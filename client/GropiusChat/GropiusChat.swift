@@ -696,10 +696,18 @@ enum Appearance: String, CaseIterable {
     }
 }
 
+/// The chat scene's id, so a command can open another window of it.
+let chatWindowID = "chat"
+
 @main
 struct GropiusChatApp: App {
     @StateObject private var model = AppModel.shared
     @FocusedValue(\.chatActions) private var actions
+    #if os(macOS)
+    // Replacing the .newItem group takes the system's own New Window item
+    // with it; the client opens the second window itself.
+    @Environment(\.openWindow) private var openWindow
+    #endif
     @AppStorage("textSize") private var textSize: String = TextSize.standard.rawValue
     @AppStorage("appearance") private var appearance: String = Appearance.system.rawValue
     #if !os(macOS)
@@ -718,7 +726,7 @@ struct GropiusChatApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Gropius Chat") {
+        WindowGroup("Gropius Chat", id: chatWindowID) {
             // A minimum window size is a Mac's business; on the iPad the app
             // is given the screen (or a Split View share of it) and fits it.
             // The chosen text size and appearance are the person's on both.
@@ -738,6 +746,13 @@ struct GropiusChatApp: App {
                 Button("New Chat") { actions?.newChat() }
                     .keyboardShortcut("n", modifiers: .command)
                     .disabled(actions == nil)
+                #if os(macOS)
+                // The Mac's second window onto the same chats, on the shortcut
+                // the system gives New Window everywhere else. The iPad has
+                // the one window and no such item to restore.
+                Button("New Window") { openWindow(id: chatWindowID) }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                #endif
             }
             CommandMenu("Chat") {
                 Button("Send") { actions?.send() }
@@ -1179,10 +1194,14 @@ struct MessageRow: View {
     @State private var reasoningBlocks: [MarkdownBlock] = []
     @State private var lastReasoningParse = Date.distantPast
     @State private var reasoningTask: Task<Void, Never>?
-    /// Latched on first appearance: whether this row plays the effect. The
-    /// model's set is consumed at that moment, so a row recreated on scroll
-    /// draws plain text and a re-evaluation cannot switch the branch mid-play.
-    @State private var playing: Bool?
+    /// Whether this row is playing the effect, and whether it already has.
+    /// The reply animates at the moment it FINISHES: the model queues the id
+    /// in its stream's defer, and the row watches for that change. A row
+    /// recreated on scroll sees no change — the id was already there when it
+    /// appeared — so it draws plain text, and a re-evaluation cannot switch
+    /// the branch mid-play.
+    @State private var playing = false
+    @State private var played = false
 
     private var isUser: Bool { message.role == .user }
     private var displayText: String { message.text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -1247,15 +1266,21 @@ struct MessageRow: View {
     /// The reply, rendered: one selectable Text per block, the matched words
     /// animated once if the reply earned it.
     @ViewBuilder private var reply: some View {
-        let animate = playing ?? false
-        blockViews(blocks, animate: animate)
+        blockViews(blocks, animate: playing)
         .onAppear {
-            if playing == nil {
-                let due = model.effectsToPlay.contains(message.id)
-                playing = due
-                if due { model.effectStarted(message.id) }
-            }
+            // A reply whose id is queued before this row exists finished while
+            // the row was off screen: the effect's moment has passed, so the
+            // id goes without playing and no later row can fire on it.
+            if model.effectsToPlay.contains(message.id) { model.effectStarted(message.id) }
             if blocks.isEmpty { blocks = MarkdownBlocks.parse(displayText); lastParse = Date() }
+        }
+        // The reply finishing is the queueing of its id; that change, and only
+        // that change, plays the effect, once.
+        .onChange(of: model.effectsToPlay.contains(message.id)) { _, due in
+            guard due, !played else { return }
+            played = true
+            playing = true
+            model.effectStarted(message.id)
         }
         .onChange(of: displayText) { _, _ in scheduleParse() }
     }
@@ -1299,7 +1324,7 @@ struct MessageRow: View {
 
     /// The thoughts' twin of scheduleParse.
     private func scheduleReasoningParse() {
-        let wait = 0.2 - Date().timeIntervalSince(lastReasoningParse)
+        let wait = 0.25 - Date().timeIntervalSince(lastReasoningParse)
         reasoningTask?.cancel()
         if wait <= 0 {
             reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
@@ -1314,10 +1339,11 @@ struct MessageRow: View {
         }
     }
 
-    /// Parse now if the last parse is older than a fifth of a second, else
-    /// once at that deadline; a finished reply's text never changes again.
+    /// Parse now if the last parse is older than a quarter of a second, else
+    /// once at that deadline — four parses a second at most; a finished
+    /// reply's text never changes again.
     private func scheduleParse() {
-        let wait = 0.2 - Date().timeIntervalSince(lastParse)
+        let wait = 0.25 - Date().timeIntervalSince(lastParse)
         parseTask?.cancel()
         if wait <= 0 {
             blocks = MarkdownBlocks.parse(displayText)

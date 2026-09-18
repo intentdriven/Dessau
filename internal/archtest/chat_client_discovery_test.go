@@ -37,9 +37,12 @@ var clientServiceType = regexp.MustCompile(
 //
 // The documented order installs the server and then the client on the same
 // Mac, so loopback on the server's default port is the one address that is
-// right before the user has told the client anything. It also has to be an
-// address that resolves: the composer is disabled until a server answers, so a
-// default that reaches nothing leaves a first-run user with a dead text field.
+// right before the user has told the client anything. The client no longer
+// waits on a server to let the person type — the Mac's own model answers out
+// of the box — but the stored address is what a launch reconnects to when a
+// server answered last, and what the model picker asks for its models: a
+// default that reaches nothing turns the first pick of a server into a failure
+// the user cannot place.
 func TestChatClientOpensOnTheServersOwnDefaultAddress(t *testing.T) {
 	root := repoRootDir(t)
 	source := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "GropiusChat.swift"))

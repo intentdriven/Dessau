@@ -108,8 +108,12 @@ func TestChatClientTextSizeScalesTheWholeWindow(t *testing.T) {
 	if !regexp.MustCompile(`enum TextSize: String, CaseIterable \{\s*case smaller, standard, larger, extraLarge, huge\s*\}?`).MatchString(src) {
 		t.Error("client/GropiusChat/GropiusChat.swift declares no TextSize with the five steps")
 	}
-	if n := strings.Count(src, ".dynamicTypeSize("); n < 2 {
-		t.Errorf("the Dynamic Type size is applied at %d root(s); the window and Settings each need it", n)
+	window, settings := sceneRoots(t, src)
+	if !strings.Contains(window, ".dynamicTypeSize(") {
+		t.Error("the window's root does not apply the Dynamic Type size; the whole window follows one setting")
+	}
+	if !strings.Contains(settings, ".dynamicTypeSize(") {
+		t.Error("the Settings scene's root does not apply the Dynamic Type size; Settings is its own scene and inherits nothing")
 	}
 	if !strings.Contains(src, `@AppStorage("textSize")`) {
 		t.Error("the text size is not stored")
@@ -129,8 +133,12 @@ func TestChatClientAppearanceFollowsOneSetting(t *testing.T) {
 	if !regexp.MustCompile(`enum Appearance: String, CaseIterable \{\s*case system, light, dark`).MatchString(src) {
 		t.Error("client/GropiusChat/GropiusChat.swift declares no Appearance with the three choices")
 	}
-	if n := strings.Count(src, ".preferredColorScheme("); n < 2 {
-		t.Errorf("the preferred colour scheme is applied at %d root(s); the window and Settings each need it", n)
+	window, settings := sceneRoots(t, src)
+	if !strings.Contains(window, ".preferredColorScheme(") {
+		t.Error("the window's root does not apply the preferred colour scheme; the whole window follows one setting")
+	}
+	if !strings.Contains(settings, ".preferredColorScheme(") {
+		t.Error("the Settings scene's root does not apply the preferred colour scheme; Settings is its own scene and inherits nothing")
 	}
 	if !strings.Contains(src, `@AppStorage("appearance")`) || !strings.Contains(src, `Picker("Appearance"`) {
 		t.Error("the appearance is not stored, or Settings offers no picker for it")
@@ -186,4 +194,20 @@ func TestChatClientSidebarIsSearchable(t *testing.T) {
 		!regexp.MustCompile(`messages\.contains \{ \$0\.text\.localizedCaseInsensitiveContains\(q\) \}`).MatchString(src) {
 		t.Error("the search does not filter on both the title and the messages")
 	}
+}
+
+// sceneRoots cuts the client's App body into its two scene bodies: the
+// WindowGroup's, up to the commands that follow it, and the Settings scene's.
+// A setting read "at each scene's root" is a promise about those two places
+// (iss-2609181200251755); counting a modifier anywhere in the file would let
+// two of them on one inner view stand in for both roots having lost theirs.
+func sceneRoots(t *testing.T, src string) (window, settings string) {
+	t.Helper()
+	open := strings.Index(src, "WindowGroup(")
+	commands := strings.Index(src, ".commands {")
+	sceneStart := strings.Index(src, "Settings {")
+	if open < 0 || commands < 0 || sceneStart < 0 || open > commands || commands > sceneStart {
+		t.Fatal("client/GropiusChat/GropiusChat.swift does not declare a WindowGroup, its commands and a Settings scene in that order")
+	}
+	return src[open:commands], src[sceneStart:]
 }

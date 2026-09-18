@@ -12,3 +12,7 @@ found_at: "client/GropiusChat/Markdown.swift"
 ---
 
 No committed test or recorded check asserts the rendered appearance of the five markdown constructs: the record evidences only the harness's block split, and nothing holds italic, bold, monospaced, a clickable link or a kept line break as drawn.
+
+## Triage 2026-09-18
+
+Left open for the maintainer: asserting a rendered appearance needs a UI test target the client does not have; standing one up is a decision about how this client is tested, and every other rendering finding here waits on it.
