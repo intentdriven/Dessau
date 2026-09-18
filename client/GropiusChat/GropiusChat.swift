@@ -896,14 +896,42 @@ enum TextSize: String, CaseIterable {
     }
 }
 
+/// Light, Dark or System: the preferred colour scheme at each scene's root,
+/// where System is no preference at all — the Mac's own appearance, as
+/// before.
+enum Appearance: String, CaseIterable {
+    case system, light, dark
+
+    var label: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 @main
 struct GropiusChatApp: App {
     @StateObject private var model = AppModel.shared
     @FocusedValue(\.chatActions) private var actions
     @AppStorage("textSize") private var textSize: String = TextSize.standard.rawValue
+    @AppStorage("appearance") private var appearance: String = Appearance.system.rawValue
 
     private var dynamicType: DynamicTypeSize {
         TextSize(rawValue: textSize)?.dynamicType ?? .large
+    }
+
+    private var colorScheme: ColorScheme? {
+        Appearance(rawValue: appearance)?.colorScheme
     }
 
     var body: some Scene {
@@ -911,6 +939,7 @@ struct GropiusChatApp: App {
             RootView(model: model)
                 .frame(minWidth: 720, minHeight: 480)
                 .dynamicTypeSize(dynamicType)
+                .preferredColorScheme(colorScheme)
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -940,6 +969,7 @@ struct GropiusChatApp: App {
         Settings {
             SettingsView(model: model)
                 .dynamicTypeSize(dynamicType)
+                .preferredColorScheme(colorScheme)
         }
     }
 }
@@ -1392,6 +1422,7 @@ struct SettingsView: View {
     @AppStorage("bubbleColorUser") private var bubbleUser: String = ""
     @AppStorage("bubbleColorModel") private var bubbleModel: String = ""
     @AppStorage("textSize") private var textSize: String = TextSize.standard.rawValue
+    @AppStorage("appearance") private var appearance: String = Appearance.system.rawValue
 
     private var typedAddress: Binding<String> {
         Binding(get: { model.serverURL }, set: { model.useTypedAddress($0) })
@@ -1422,7 +1453,13 @@ struct SettingsView: View {
                 Text("The picker offers a server's models carrying these HuggingFace words — a pipeline tag from the first list, and every tag in the second. Every model stays reachable over the API by name. Clear a field to stop testing it. The Mac's own model is always offered.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Text") {
+            Section("Appearance") {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(Appearance.allCases, id: \.rawValue) { a in
+                        Text(a.label).tag(a.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
                 Picker("Text size", selection: $textSize) {
                     ForEach(TextSize.allCases, id: \.rawValue) { size in
                         Text(size.label).tag(size.rawValue)
