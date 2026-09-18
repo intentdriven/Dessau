@@ -384,7 +384,8 @@ function measurementText(m, jobs, queue) {
   const queued = (queue || []).some((q) => same(q, m.repo_id)) || same(j.due, m.repo_id);
   if (queued) {
     const held = { in_flight: 'a request is in flight', waiting: 'a caller is waiting for a model',
-      downloading: 'a download is running', recent: 'a request was served recently' }[j.held_by];
+      downloading: 'a download is running', recent: 'a request was served recently',
+      no_room: 'the model does not fit the memory budget' }[j.held_by];
     return held ? `Measurement waiting: ${held}` : 'Measurement queued for the next idle minute';
   }
   const mm = m.measured;

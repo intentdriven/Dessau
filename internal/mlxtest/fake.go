@@ -78,9 +78,12 @@ type Options struct {
 	// whole answer arrives inside a millisecond and a time-to-first-token
 	// measurement has nothing to measure.
 	FirstTokenDelay time.Duration
-	// ChunkDelay paces the chunks after the first, standing in for generation.
-	// Without it a whole answer is written before a client could act on any of
-	// it, so a test about what happens mid-stream has no mid-stream.
+	// ChunkDelay paces every chunk after the first, standing in for
+	// generation. Without it a whole answer is written before a client could
+	// act on any of it, so a test about what happens mid-stream has no
+	// mid-stream. Under RolePreamble the preamble is the first chunk, so this
+	// is what separates it from the first word — which is the gap a
+	// measurement of the first chunk is told apart by (iss-2609181119348004).
 	ChunkDelay time.Duration
 	// RolePreamble emits a first chunk carrying only the assistant's role and
 	// no text, which is what OpenAI's own streaming API does and what several
@@ -346,7 +349,12 @@ func (s *Server) streamReply(w http.ResponseWriter, includeUsage bool) {
 		flusher.Flush()
 	}
 	for i, word := range splitWords(s.Reply) {
-		if i > 0 && s.ChunkDelay > 0 {
+		// The role-only chunk is a chunk: a word that follows one is paced
+		// like any other, not sent alongside it. Without this the preamble and
+		// the first word leave together, and a reader of the stream cannot
+		// tell a figure taken at the preamble from one taken at the first word
+		// by anything but how fast the machine is (iss-2609112100298761).
+		if (i > 0 || s.RolePreamble) && s.ChunkDelay > 0 {
 			time.Sleep(s.ChunkDelay)
 		}
 		chunk := map[string]any{

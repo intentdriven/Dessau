@@ -9,6 +9,12 @@ found_during: "building the lifecycle verbs, 2026-09-11"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/stats"
+resolution: "The aggregate pass is now bounded by a multiple (4x) of what decoding the same fixture's records costs on the machine running the test, measured at that moment over a sample of the fixture's own files with the store's own parser, instead of by ten seconds of wall clock. A loaded Mac slows both halves together."
+impact: internal
 ---
 
 TestAStoreAtTheSizeCapAggregatesWithinTheBound in internal/stats fails under plain 'go test ./...' on a loaded Mac (12.3 s against a 10 s wall-clock bound; 11.4 s on an untouched main checkout) and passes under -race, so its bound measures the machine rather than the property. It is the duration-not-ordering shape iss-2609091705185072 and iss-2609091950213211 were given; it needs the same treatment.
+
+## Grounds
+
+- pursued: the ratio is 1.1x idle and stayed under 1.25x under a 32-way CPU load, where the absolute figure moved from 1.4 s to 4 s; a five-fold redundant decode raises it to 5.5x and fails, which the old ten-second bound passed at 8.1 s. What would show it wrong: a regression that slows decode and aggregation equally.

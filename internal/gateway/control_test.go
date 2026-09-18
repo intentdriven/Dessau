@@ -596,6 +596,26 @@ func TestSavingAShorterPinnedListRemovesTheRest(t *testing.T) {
 	}
 }
 
+// The snapshot says which build is serving.
+//
+// `gropius update` reports the version it installed and the version this Mac
+// is serving as two separate facts, and the second is knowable only if the
+// running server publishes it; until it did, every Mac was told the serving
+// version could not be determined (iss-2609111942567418). It is a read on a
+// loopback-only surface: the field is set once before serving and this route
+// writes nothing.
+func TestTheSnapshotPublishesTheVersionBeingServed(t *testing.T) {
+	a := controlApp(t)
+	mux := http.NewServeMux()
+	(&Control{App: a, Version: "0.7.0"}).Routes(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	if got := stateOf(t, srv).Version; got != "0.7.0" {
+		t.Errorf("version = %q, want the version the binary reports about itself", got)
+	}
+}
+
 // A pinned set can stop fitting without a settings save: a pinned model that
 // was deleted is charged nothing until it is downloaded back. Nothing refuses
 // that, so the panel is where the operator finds out — beside the warning about

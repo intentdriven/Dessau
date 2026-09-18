@@ -1,7 +1,6 @@
 package lifecycle
 
 import (
-	"encoding/json"
 	"errors"
 	"net"
 	"os"
@@ -336,28 +335,18 @@ func updateStopped(env Env, ue UpdateEnv, stage string, err error) int {
 // fetchServingVersion asks the running server what build it is, over the
 // loopback control plane.
 //
-// WHY IT IS DECODED HERE RATHER THAN ON ServerState. The field is a COORDINATED
-// change in the lane that owns internal/gateway, and it has not landed: the
-// contract test beside ServerState holds every field that struct declares to a
-// field gateway.State publishes, and would rightly fail on one the control
-// plane does not carry. So the decode sits here, reads the same read-only route
-// status already reads, and answers "" for every build that does not publish a
-// version — which is every build today. That is the fallback the intent names:
-// the serving version is reported as unknown wherever it cannot be read, and
-// the output is poorer rather than untrue. When the field lands it moves onto
-// ServerState and into the list that test checks.
+// It is the same read status makes, decoded onto the same struct, so the one
+// contract test beside ServerState holds this field to a field the gateway
+// publishes under that name — which is why the decode is no longer written out
+// a second time here (iss-2609111942567418). A server older than the field
+// answers nothing under it, and "" is reported as a serving version that
+// cannot be known rather than as a version.
 func fetchServingVersion(port int) (string, error) {
-	body, err := controlPlaneGet(port, "/api/state")
+	state, err := fetchState(port)
 	if err != nil {
 		return "", err
 	}
-	var snapshot struct {
-		Version string `json:"version"`
-	}
-	if err := json.Unmarshal(body, &snapshot); err != nil {
-		return "", err
-	}
-	return snapshot.Version, nil
+	return state.Version, nil
 }
 
 // liveUpdateEnv is the world a real update acts on.

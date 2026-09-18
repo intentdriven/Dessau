@@ -69,6 +69,13 @@ type ServerState struct {
 		Selected string `json:"selected"`
 	} `json:"bind"`
 	Resident []ResidentModel `json:"resident"`
+	// Version is the build the running server is, which is not necessarily
+	// this binary: on a Mac where another account holds the port, the server
+	// is that account's copy, and `gropius update` reports the two as separate
+	// facts. A server older than the field answers nothing under it, and the
+	// verbs that read it say the serving version cannot be known rather than
+	// guessing at one.
+	Version string `json:"version"`
 }
 
 // StatusEnv is what status is allowed to ask, and it is deliberately two
