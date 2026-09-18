@@ -11,6 +11,27 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **The chat client is a native macOS 27 app, and it chats with the Mac's own
+  model out of the box.** GropiusChat's floor moves from macOS 26 to 27
+  (`impact: breaking` for the client: a Mac on macOS 26 keeps the last client
+  built for it, from release v0.6.0, which stays published and is not
+  updated; `install.sh` picks it by the Mac's version). The client drops
+  every style of its own for the system's controls, gains a real menu bar
+  with a shortcut on every action, a Settings window behind Cmd-,, windows
+  that come back after a relaunch, and a text file dropped on the composer.
+  By default it answers with the language model Apple ships with the system,
+  on the Mac, with nothing sent anywhere; when it cannot, it says why. The
+  model picker offers the Gropius servers it finds on the network, but only
+  while the picker is open, and never switches by itself; the stored API key
+  goes only to the server it was entered for. Replies render their markdown,
+  Writing Tools work in the composer and on replies, a few words animate
+  once (switchable in Settings), and Shortcuts and Spotlight list the
+  client's actions. The client is built with the installed Xcode's
+  toolchain and ships one Apple Silicon slice, since macOS 27 runs on no
+  Intel Mac.
+
 ### Added
 
 - **The usage dashboard shows what the models actually do, so the settings

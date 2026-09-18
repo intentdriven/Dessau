@@ -164,11 +164,15 @@ latest, lists every file it carries with its size, and links the checksums to
 verify a download against; the release run renders it from the release itself,
 so no one edits the page to keep it current.
 
-**Requires macOS 26.** Both apps declare that minimum and the installer checks
-it, so an older Mac is turned away before anything is installed. The **server
-needs Apple Silicon** (MLX runs on Metal). For the native chat client
-(`GropiusChat.app`, universal — it runs on any Mac that runs macOS 26, Intel
-included, and talks to a server over the network):
+**Requires macOS 26** for the server, which declares that minimum and **needs
+Apple Silicon** (MLX runs on Metal); the installer checks both, so an
+unsupported Mac is turned away before anything is installed. The native chat
+client (`GropiusChat.app`) **Requires macOS 27** and runs on Apple Silicon,
+which is every Mac that runs macOS 27. It chats with the Mac's own model out
+of the box and offers a Gropius server's models when it finds one on the
+network. A Mac on macOS 26 gets the last client built for it, from release
+v0.6.0, which stays published beside the current release for that purpose and
+is not updated; the same command picks the right one:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash -s -- client

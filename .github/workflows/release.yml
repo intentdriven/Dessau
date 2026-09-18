@@ -125,7 +125,10 @@ jobs:
     # workflow_call (auto-release) entry points are unaffected.
     if: github.event_name != 'workflow_dispatch'
     timeout-minutes: 30
-    runs-on: macos-26
+    # The client's floor is macOS 27 and its SDK's SwiftUI needs Xcode 27's macro
+    # plugin, which the macos-26 image does not carry; this preview label is the
+    # one GitHub image with Xcode 27 (the maintainer's decision, 2026-09-17).
+    runs-on: xcode-27
     permissions:
       contents: write       # create the Release and upload its assets (no branch push)
       id-token: write       # mint the OIDC token attest-build-provenance signs with
@@ -168,13 +171,27 @@ jobs:
       - name: Build the server app (Gropius.app, arm64, ad-hoc signed)
         run: make app VERSION="$TAG"
 
-      - name: Build the client app (GropiusChat.app, universal)
+      # The client's floor is macOS 27 and its build needs that SDK's SwiftUI,
+      # whose compiler-macro plugin ships only inside Xcode 27 or later: the
+      # Command Line Tools cannot build it. The runner image carries several
+      # Xcodes; this step picks the newest one at or above 27 and fails loudly
+      # when there is none, rather than letting the client build fail three
+      # hundred lines into a compile with a message about a missing macro.
+      - name: Select Xcode 27 or later for the client
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_27*.app /Applications/Xcode_2[89]*.app 2>/dev/null | sort -V | tail -1 || true)"
+          [ -n "$xcode" ] || { echo "no Xcode 27 or later on this runner; the client cannot be built" >&2; ls -d /Applications/Xcode*.app >&2; exit 1; }
+          sudo xcode-select -s "$xcode"
+          echo "using $xcode: $(xcodebuild -version | tr '\n' ' ')"
+
+      - name: Build the client app (GropiusChat.app, arm64, ad-hoc signed)
         run: VERSION="$TAG" client/build.sh
 
-      # Sanity-check the architectures before shipping: the server must be arm64
-      # (MLX is Metal-only) and the client must be universal so it runs on Intel
-      # Macs too. A wrong-arch binary that still zips fine would otherwise ship
-      # silently.
+      # Sanity-check the architectures before shipping: both must be arm64 — the
+      # server because MLX is Metal-only, the client because macOS 27, its floor,
+      # runs on no Intel Mac. A wrong-arch binary that still zips fine would
+      # otherwise ship silently.
       - name: Verify binary architectures
         run: |
           set -euo pipefail
@@ -184,7 +201,6 @@ jobs:
           echo "client: $(lipo -archs "$client")"
           lipo -archs "$server" | grep -qw arm64 || { echo "server is not arm64" >&2; exit 1; }
           lipo -archs "$client" | grep -qw arm64 || { echo "client missing arm64" >&2; exit 1; }
-          lipo -archs "$client" | grep -qw x86_64 || { echo "client missing x86_64 (not universal)" >&2; exit 1; }
 
       # Package each .app so it extracts to `<App>.app` at the archive root —
       # exactly what install.sh's `ditto -x -k` step expects (--keepParent keeps

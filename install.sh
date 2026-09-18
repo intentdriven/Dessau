@@ -5,7 +5,7 @@
 #   Server (menu-bar, Apple Silicon only):
 #     curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash
 #
-#   Client (GropiusChat, universal):
+#   Client (GropiusChat, Apple Silicon, macOS 27; a macOS 26 Mac gets the kept 26 build):
 #     curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash -s -- client
 #
 # This is a BOOTSTRAP, and only a bootstrap: it does what has to happen before a
@@ -85,12 +85,20 @@ die() {
 
 [ "$(/usr/bin/uname -s)" = "Darwin" ] || die "Gropius is macOS only."
 
-# Both bundles declare macOS 26 as their minimum, so Launch Services refuses
-# them on anything older. Refuse here instead — before the download and before
+# The two bundles declare different minimums, so Launch Services refuses each
+# on anything older. Refuse here instead — before the download and before
 # anything is written — so an unsupported Mac is turned away rather than
-# half-installed. The major lives in this one variable; build/Info.plist is the
-# value it must match.
+# half-installed. Each major lives in this one place; build/Info.plist is the
+# value the server's must match and client/Info.plist the client's, and a test
+# in the server's suite holds all of them together.
 MIN_MACOS_MAJOR=26
+MIN_MACOS_MAJOR_CLIENT=27
+# A Mac on the server's floor but below the client's is not turned away from
+# the client: it gets the last client built for macOS 26, from the one release
+# that stays published beside the current one for exactly this purpose (the
+# written exception to the one-release rule, DECISIONS.md 2026-09-15). The tag
+# is named here and in README.md, and a test holds the two together.
+KEPT_CLIENT_TAG=v0.6.0
 # `|| macos_version=""` is load-bearing: under `set -e` a bare assignment takes
 # the command substitution's status, so a missing sw_vers would abort the script
 # with no message at all instead of reaching the refusal below. An unreadable or
@@ -100,13 +108,26 @@ macos_version="$(/usr/bin/sw_vers -productVersion 2>/dev/null)" || macos_version
 macos_major="${macos_version%%.*}"
 [ "${macos_major:-0}" -ge "$MIN_MACOS_MAJOR" ] ||
 	die "$APP requires macOS $MIN_MACOS_MAJOR (this Mac runs ${macos_version:-an unreadable version})."
+# Which release the assets come from: the latest, or the kept one.
+RELEASE_PATH="latest/download"
+if [ "$mode" = "client" ] && [ "${macos_major:-0}" -lt "$MIN_MACOS_MAJOR_CLIENT" ]; then
+	RELEASE_PATH="download/$KEPT_CLIENT_TAG"
+	# Said only when the assets really come from the forge; the release
+	# workflow's gate installs from a local directory and would be misled.
+	if [ -z "${GROPIUS_ASSET_DIR:-}" ]; then
+		echo "This Mac runs macOS ${macos_version}; the current $APP needs macOS $MIN_MACOS_MAJOR_CLIENT." >&2
+		echo "Installing the last $APP built for macOS $MIN_MACOS_MAJOR instead, from release $KEPT_CLIENT_TAG. It is not updated." >&2
+	fi
+fi
 
-# The server needs Apple Silicon (MLX runs on Metal). The client is universal.
+# The server needs Apple Silicon (MLX runs on Metal). So does the current client
+# — macOS 27 runs on no Intel Mac — while the kept 26 client is universal, so the
+# hardware check stays the server's alone.
 # `uname -m` reports x86_64 in a Rosetta-translated shell (common with x86_64
 # Homebrew), so also ask the kernel whether the hardware is Apple Silicon.
 if [ "$mode" = "server" ] && [ "$(/usr/bin/uname -m)" != "arm64" ] &&
 	[ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" != "1" ]; then
-	die "the Gropius server needs Apple Silicon (this Mac is $(/usr/bin/uname -m)). The GropiusChat client is universal: rerun with 'client'."
+	die "the Gropius server needs Apple Silicon (this Mac is $(/usr/bin/uname -m)). The GropiusChat client for macOS 26 is universal: rerun with 'client'."
 fi
 
 tmp="$(/usr/bin/mktemp -d)"
@@ -160,8 +181,8 @@ fetch() {
 	# URL still reads github.com; --proto pins HTTPS end to end, redirects
 	# included. The asset and the checksums that verify it come from this same
 	# origin, so the transport is the thing to pin.
-	/usr/bin/curl -q --proto =https --proto-redir =https -fsSL -o "$dest" "https://github.com/$REPO/releases/latest/download/$name" ||
-		die "could not download $name from the latest release. Check your network and retry, or build from source (see the README)."
+	/usr/bin/curl -q --proto =https --proto-redir =https -fsSL -o "$dest" "https://github.com/$REPO/releases/$RELEASE_PATH/$name" ||
+		die "could not download $name from releases/$RELEASE_PATH. Check your network and retry, or build from source (see the README)."
 }
 
 echo "Downloading ${APP}…"
