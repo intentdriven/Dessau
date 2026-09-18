@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -190,7 +191,7 @@ func fastRunner(t *testing.T, srv Server, dir string) *Runner {
 // waitFor polls until the condition holds or the test's patience runs out.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(waitBound(t))
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
@@ -198,6 +199,200 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 		time.Sleep(2 * time.Millisecond)
 	}
 	t.Fatalf("gave up waiting for %s", what)
+}
+
+// waitBound is how long a wait is given.
+//
+// It is the test binary's own deadline less a margin, rather than a fixed few
+// seconds. Every condition waited on here is one the loop reaches in
+// milliseconds on an idle Mac, so the bound is not a measurement of anything:
+// it exists to turn a wedged loop into a named failure instead of a hung
+// binary. A shared build runner under load can take an order of magnitude
+// longer than a desktop one to schedule the same goroutine, and a bound set
+// for the desktop reports that runner as a broken loop (iss-2609181019447825).
+// Tying it to the deadline the binary was given keeps the failure this test's
+// message rather than the timeout panic, and gives a loaded runner everything
+// the run itself has.
+//
+// The margin is what leaves room for the failure to be printed and for the
+// other tests in the binary to be reached; with no deadline set — go test
+// always sets one, but a binary run by hand need not — a generous fixed bound
+// stands in.
+func waitBound(t *testing.T) time.Duration {
+	t.Helper()
+	const (
+		noDeadline = 60 * time.Second
+		margin     = 30 * time.Second
+		floor      = 5 * time.Second
+	)
+	deadline, ok := t.Deadline()
+	if !ok {
+		return noDeadline
+	}
+	left := time.Until(deadline)
+	if bound := left - margin; bound > floor {
+		return bound
+	}
+	// A binary given a short timeout gets the floor, or half of what is left
+	// if that is less: a wait that runs to the deadline turns a named failure
+	// back into the timeout panic it exists to avoid, and half leaves the
+	// other half for the failure and for the tests after this one
+	// (iss-2609181119347301).
+	return min(floor, left/2)
+}
+
+// stubJob is a job that wants one named model and never gets to run.
+type stubJob struct {
+	due   string
+	runs  atomic.Int64
+	parks bool
+}
+
+func (j *stubJob) Name() string                       { return "stub" }
+func (j *stubJob) Due(_ []string, _ time.Time) string { return j.due }
+func (j *stubJob) Run(_ *Session, _ string)           { j.runs.Add(1) }
+func (j *stubJob) Parks() bool                        { return j.parks }
+
+// A queued job whose model does not fit says so, rather than going quiet.
+//
+// The loop asks each job what is due and then asks the pool whether that model
+// fits beside what is resident. A model that does not fit used to be passed
+// over with nothing written down — no held_by, no due, no line in the log —
+// while the panel went on showing it queued for a run that was never going to
+// start. The manual check that found this read "job null, held_by null" for
+// three hours and forty minutes against a model the queue still held
+// (iss-2609161712555136).
+func TestAQueuedJobWhoseModelDoesNotFitIsHeldRatherThanDropped(t *testing.T) {
+	srv := newFakeServer(t, "org/a")
+	srv.mu.Lock()
+	srv.noFit["org/a"] = true
+	srv.mu.Unlock()
+	job := &stubJob{due: "org/a"}
+	lines := &recordingHandler{}
+	r := New(Options{
+		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond,
+		Jobs: []Job{job}, SelfTest: func() bool { return false },
+		Log: slog.New(lines),
+	})
+	t.Cleanup(r.Close)
+	r.SetEnabled(true)
+
+	waitFor(t, "the queued model to be reported as held for want of room", func() bool {
+		st := r.Status()
+		return st.HeldBy == HeldByNoRoom && st.Due == "org/a"
+	})
+	if got := job.runs.Load(); got != 0 {
+		t.Errorf("the job ran %d times on a model that does not fit", got)
+	}
+	if acquired, _, _ := srv.snapshot(); len(acquired) != 0 {
+		t.Errorf("acquired %v; a model that does not fit is not loaded", acquired)
+	}
+	// Said once, however many ticks pass: the hold is a standing condition,
+	// and a line per tick would fill the log for as long as it lasts.
+	time.Sleep(50 * time.Millisecond)
+	if got := lines.count("does not fit"); got != 1 {
+		t.Errorf("the log says the measurement is held %d times, want once: %v", got, lines.lines())
+	}
+}
+
+// The hold belongs to the queued model, not to the tick.
+//
+// A Mac with work of its own has a model due on most ticks — after a restart,
+// every model is — and the hold used to be cleared by any run that went ahead.
+// The queued model was then invisible for as long as there was other work, and
+// the log line was never said either (iss-2609181119346098).
+func TestAQueuedJobWithNoRoomIsReportedWhileAnotherModelIsMeasured(t *testing.T) {
+	srv := newFakeServer(t, "org/a", "org/b")
+	srv.mu.Lock()
+	srv.noFit["org/a"] = true // the queued model has nowhere to go
+	srv.resident["org/b"] = true
+	srv.mu.Unlock()
+	job := &stubJob{due: "org/a"}
+	lines := &recordingHandler{}
+	r := New(Options{
+		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond,
+		// Measured again at once, so there is a run to go ahead on every tick.
+		Retest: time.Millisecond,
+		Jobs:   []Job{job},
+		Log:    slog.New(lines),
+	})
+	t.Cleanup(r.Close)
+	r.SetEnabled(true)
+
+	waitFor(t, "the other model to be measured", func() bool { return len(runsIn(t, r)) >= 2 })
+	waitFor(t, "the queued model to be held for want of room meanwhile", func() bool {
+		st := r.Status()
+		return st.HeldBy == HeldByNoRoom && st.Due == "org/a"
+	})
+	if got := lines.count("does not fit"); got != 1 {
+		t.Errorf("the log says the measurement is held %d times, want once", got)
+	}
+}
+
+// recordingHandler keeps what the loop said, so a test can hold the log to one
+// line per model rather than one per tick.
+type recordingHandler struct {
+	mu   sync.Mutex
+	said []string
+}
+
+func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler       { return h }
+func (h *recordingHandler) WithGroup(string) slog.Handler            { return h }
+
+func (h *recordingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.said = append(h.said, r.Message)
+	return nil
+}
+
+func (h *recordingHandler) lines() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.said...)
+}
+
+func (h *recordingHandler) count(substr string) int {
+	n := 0
+	for _, l := range h.lines() {
+		if strings.Contains(l, substr) {
+			n++
+		}
+	}
+	return n
+}
+
+// A wait is as patient as the run it is part of.
+//
+// The bound this asserts is not about the loop at all: it is about the machine
+// the loop is being watched on. A fixed few seconds says a build runner under
+// load, which schedules the same goroutine an order of magnitude later than a
+// desktop Mac does, is a broken loop (iss-2609181019447825). The binary's own
+// deadline is the honest bound, and it is what every wait here is given.
+func TestTheWaitBoundFollowsTheTestBinarysOwnDeadline(t *testing.T) {
+	deadline, ok := t.Deadline()
+	if !ok {
+		t.Skip("this binary was given no timeout, so there is no deadline to follow")
+	}
+	// The bound first, the time left second: both are read from a clock that
+	// is moving, and taking them the other way round would compare a bound
+	// against a deadline that had not yet run down to it.
+	got := waitBound(t)
+	left := time.Until(deadline)
+	if got >= left {
+		t.Errorf("a wait is given %v of the %v this binary has left, which spends the deadline the failure itself needs", got, left)
+	}
+	if want := min(5*time.Second, left/2); got < want {
+		t.Errorf("a wait is given %v, want at least %v — the fixed bound it replaced, or half of what is left of the deadline", got, want)
+	}
+	// Under the timeout `go test` gives a binary by default this is minutes,
+	// not the five seconds a loaded runner outran.
+	if left > 2*time.Minute && got <= 5*time.Second {
+		t.Errorf("with %v of the deadline left a wait is given %v; a loaded runner is allowed no more than a desktop one was", left, got)
+	}
 }
 
 func runsIn(t *testing.T, r *Runner) []Run {
