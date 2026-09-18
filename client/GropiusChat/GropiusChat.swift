@@ -1049,31 +1049,41 @@ struct RootView: View {
 struct Sidebar: View {
     @ObservedObject var model: AppModel
     @Binding var selection: UUID?
+    @State private var query = ""
+
+    /// The conversations the search leaves: all of them for an empty
+    /// query, else those whose title or messages contain the words.
+    private var shown: [Conversation] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return model.conversations }
+        return model.conversations.filter { c in
+            c.title.localizedCaseInsensitiveContains(q)
+                || c.messages.contains { $0.text.localizedCaseInsensitiveContains(q) }
+        }
+    }
 
     var body: some View {
         List(selection: $selection) {
-            ForEach(model.conversations) { c in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(c.title.isEmpty ? "New Chat" : c.title)
-                        .lineLimit(1)
-                    Text("\(c.messages.count) message\(c.messages.count == 1 ? "" : "s")")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-                .tag(c.id)
-                .contextMenu {
-                    Button("Delete", role: .destructive) {
-                        model.deleteChat(c.id)
-                        if selection == c.id { selection = model.conversations.first?.id }
+            ForEach(shown) { c in
+                ConversationCard(conversation: c)
+                    .tag(c.id)
+                    .contextMenu {
+                        Button("Delete", role: .destructive) {
+                            model.deleteChat(c.id)
+                            if selection == c.id { selection = model.conversations.first?.id }
+                        }
                     }
-                }
             }
             .onDelete { offsets in
-                offsets.map { model.conversations[$0].id }.forEach(model.deleteChat)
+                let shownNow = shown
+                offsets.map { shownNow[$0].id }.forEach(model.deleteChat)
                 if let s = selection, !model.conversations.contains(where: { $0.id == s }) {
                     selection = model.conversations.first?.id
                 }
             }
         }
+        .listStyle(.sidebar)
+        .searchable(text: $query, placement: .sidebar, prompt: "Search")
         .navigationTitle("Chats")
         .toolbar {
             ToolbarItem {
@@ -1081,6 +1091,50 @@ struct Sidebar: View {
                     .help("New chat")
             }
         }
+    }
+}
+
+/// One conversation in the sidebar, the way Messages shows one: an icon for
+/// who answered last, the title, the date it started, and a summary of
+/// exchanges and words. The row's selection colour is the sidebar's own;
+/// nothing is drawn behind it.
+struct ConversationCard: View {
+    let conversation: Conversation
+
+    private var title: String {
+        conversation.title.isEmpty ? "New Chat" : conversation.title
+    }
+
+    /// The symbol for who answered last: the Mac's own model, a server, or
+    /// nobody yet.
+    private var icon: String {
+        guard let last = conversation.messages.last(where: { $0.role == .assistant })?.model, !last.isEmpty else {
+            return "bubble.left"
+        }
+        return last == BuiltInBackend.recordedName ? "apple.intelligence" : "network"
+    }
+
+    private var summary: String {
+        let exchanges = conversation.messages.filter { $0.role == .assistant }.count
+        let words = conversation.messages.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
+        return "\(exchanges) exchange\(exchanges == 1 ? "" : "s") · \(words) word\(words == 1 ? "" : "s")"
+    }
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(title).font(.headline).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text(conversation.createdAt, format: .dateTime.day().month().year())
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+        } icon: {
+            Image(systemName: icon).font(.title2)
+        }
+        .padding(.vertical, 6)
     }
 }
 
@@ -1137,7 +1191,9 @@ struct ChatDetail: View {
                             .id(m.id)
                     }
                 }
-                .padding()
+                // Room on both sides: a bubble never touches the window's edge.
+                .padding(.horizontal, 28)
+                .padding(.vertical, 12)
             }
             .defaultScrollAnchor(.bottom)
             // A link a model wrote opens only as a web address: a served reply
@@ -1254,6 +1310,10 @@ struct MessageRow: View {
     @State private var blocks: [MarkdownBlock] = []
     @State private var lastParse = Date.distantPast
     @State private var parseTask: Task<Void, Never>?
+    /// The thoughts, rendered the same way and on the same throttle.
+    @State private var reasoningBlocks: [MarkdownBlock] = []
+    @State private var lastReasoningParse = Date.distantPast
+    @State private var reasoningTask: Task<Void, Never>?
     /// Latched on first appearance: whether this row plays the effect. The
     /// model's set is consumed at that moment, so a row recreated on scroll
     /// draws plain text and a re-evaluation cannot switch the branch mid-play.
@@ -1310,6 +1370,20 @@ struct MessageRow: View {
     /// animated once if the reply earned it.
     @ViewBuilder private var reply: some View {
         let animate = playing ?? false
+        blockViews(blocks, animate: animate)
+        .onAppear {
+            if playing == nil {
+                let due = model.effectsToPlay.contains(message.id)
+                playing = due
+                if due { model.effectStarted(message.id) }
+            }
+            if blocks.isEmpty { blocks = MarkdownBlocks.parse(displayText); lastParse = Date() }
+        }
+        .onChange(of: displayText) { _, _ in scheduleParse() }
+    }
+
+    /// The blocks a reply or a thought is made of, one selectable Text each.
+    @ViewBuilder private func blockViews(_ blocks: [MarkdownBlock], animate: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
@@ -1343,15 +1417,23 @@ struct MessageRow: View {
                 }
             }
         }
-        .onAppear {
-            if playing == nil {
-                let due = model.effectsToPlay.contains(message.id)
-                playing = due
-                if due { model.effectStarted(message.id) }
-            }
-            if blocks.isEmpty { blocks = MarkdownBlocks.parse(displayText); lastParse = Date() }
+    }
+
+    /// The thoughts' twin of scheduleParse.
+    private func scheduleReasoningParse() {
+        let wait = 0.2 - Date().timeIntervalSince(lastReasoningParse)
+        reasoningTask?.cancel()
+        if wait <= 0 {
+            reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
+            lastReasoningParse = Date()
+            return
         }
-        .onChange(of: displayText) { _, _ in scheduleParse() }
+        reasoningTask = Task {
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled else { return }
+            reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
+            lastReasoningParse = Date()
+        }
     }
 
     /// Parse now if the last parse is older than a fifth of a second, else
@@ -1393,13 +1475,19 @@ struct MessageRow: View {
     /// hidden while it is being read. Dragging still selects the text.
     @ViewBuilder private var reasoningDisclosure: some View {
         DisclosureGroup(isExpanded: $showReasoning) {
-            Text(displayReasoning)
+            blockViews(reasoningBlocks, animate: false)
                 .font(.callout).italic()
                 .foregroundStyle(.secondary)
-                .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture { withAnimation { showReasoning = false } }
+                .onAppear {
+                    if reasoningBlocks.isEmpty {
+                        reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
+                        lastReasoningParse = Date()
+                    }
+                }
+                .onChange(of: displayReasoning) { _, _ in scheduleReasoningParse() }
         } label: {
             Label {
                 Text(displayText.isEmpty ? "Thinking…" : "Thoughts").font(.caption)
