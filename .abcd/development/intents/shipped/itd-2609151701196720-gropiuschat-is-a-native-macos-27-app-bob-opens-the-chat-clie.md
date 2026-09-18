@@ -51,11 +51,13 @@ right on 27, or a view that has to be rebuilt in AppKit to match the system.
 
 ## Scope Conditions
 
-- Built with the command-line SDK, not Xcode 27: `client/build.sh` keeps <!-- cond: cond-2609161738009947 -->
-  building with `swiftc` against the macOS 27 SDK that ships with the
-  Command Line Tools, and Xcode 27 is not a requirement to build or ship the
-  client. Wrong if a 27 API the client adopts needs Xcode's own toolchain
-  (an asset catalog, App Intents metadata extraction) to work.
+- Built with the installed Xcode 27 toolchain, through `xcrun`, against its
+  macOS 27 SDK; no Xcode project, an asset catalog or any other Xcode-only
+  build step. The Command Line Tools alone cannot build SwiftUI against the
+  27 SDK: the SwiftUI macro plugin the SDK's interface requires ships only in
+  Xcode's platform directory (established on the build Mac, 2026-09-17, which
+  narrowed this condition from "no Xcode 27"). Wrong if a 27 API the client
+  adopts needs an Xcode project after all. <!-- cond: cond-2609161738009947 -->
 - The server side is untouched: the server keeps its macOS 26 floor and its <!-- cond: cond-2609161738009497 -->
   OpenAI-compatible API, and nothing this intent ships changes anything under
   `internal/` or `cmd/`. Wrong if the client needs a new endpoint or a new
@@ -94,7 +96,8 @@ right on 27, or a view that has to be rebuilt in AppKit to match the system.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-8c79f3cab18a -->
+Fidelity review OWED (receipt rcp-8c79f3cab18a).
 
 ## Grounds
 
