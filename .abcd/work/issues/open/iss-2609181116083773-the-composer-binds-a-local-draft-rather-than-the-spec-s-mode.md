@@ -12,3 +12,7 @@ found_at: "client/GropiusChat/GropiusChat.swift"
 ---
 
 The composer binds a local draft rather than the spec's model input binding, and the architecture test pins the delivered spelling.
+
+## Triage 2026-09-18
+
+Left open for the maintainer: the local draft and the spec's model binding differ in where a half-typed prompt survives a view's recreation; which the client wants is a design call, and the test pins what ships either way.

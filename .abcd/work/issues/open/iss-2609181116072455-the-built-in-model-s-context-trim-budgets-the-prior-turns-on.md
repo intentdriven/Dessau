@@ -12,3 +12,7 @@ found_at: "client/GropiusChat/Backends.swift"
 ---
 
 The built-in model's context trim budgets the prior turns only and not the new prompt's own tokens, so a prompt that overflows the window on its own is left to the single retry to absorb.
+
+## Triage 2026-09-18
+
+Left open for the maintainer: budgeting the new prompt's own tokens changes what the window holds and when a turn is refused outright rather than retried — a policy call on the built-in model, not a mechanical correction.

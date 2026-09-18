@@ -12,3 +12,7 @@ found_at: ".abcd/work/DECISIONS.md"
 ---
 
 Nothing sent anywhere for the built-in model rests on the source-reading architecture test alone: the hand check of absent traffic is in neither the verified nor the owed list of the shipping decision line.
+
+## Triage 2026-09-18
+
+Left open for the maintainer: the shipping decision line records a hand check only a person can have made, and DECISIONS.md is append-only — the correcting line is theirs to write.

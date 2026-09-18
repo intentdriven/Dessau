@@ -12,3 +12,7 @@ found_at: "client/GropiusChat/Backends.swift"
 ---
 
 The client reads SystemLanguageModel.availability and shows its own Apple-Intelligence-off message for the built-in backend, against the text-intelligence intent's promise that it neither checks the state nor shows an error of its own.
+
+## Triage 2026-09-18
+
+Left open for the maintainer: either the client stops reading availability or the text-intelligence intent stops promising it does not — a choice between two shipped promises, and the delivered message is the more useful of the two.

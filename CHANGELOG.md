@@ -13,6 +13,21 @@ GitHub release notes.
 
 ### Fixed
 
+- **A reply's words animate when the reply finishes, and only on the reply
+  that earned it.** The chat client decided whether to animate at the reply's
+  first streamed token, before it could know what the reply would say, so a
+  finishing reply never animated — and the animation it had been promised
+  fired instead on whatever older reply came back into view next. It is now
+  played by the reply finishing, once, on the reply that earned it; and the
+  reply can be selected while it plays, which it could not before.
+- **A second chat window is one shortcut away again.** The client's own New
+  Chat item had replaced the whole of the File menu's new group, taking the
+  system's New Window with it and leaving no route to a second window onto the
+  same chats. **New Window** is back on Cmd-Shift-N, and New Chat keeps Cmd-N.
+- **A light bubble colour no longer hides the text on it.** The person's
+  message was drawn in white whatever colour the bubble was, so a light colour
+  chosen in Settings left white text on a light fill. The text now follows the
+  bubble it sits on, and a colour already chosen is untouched.
 - **A measurement queued with "Measure now" no longer goes quiet when the model
   will not fit.** The idle loop used to pass over a queued model that could not
   be loaded beside what was already in memory, leaving it queued for ever with
