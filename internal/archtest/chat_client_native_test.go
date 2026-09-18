@@ -345,3 +345,24 @@ func TestChatClientReplyReparseStaysWithinItsBudget(t *testing.T) {
 		}
 	}
 }
+
+// TestChatClientBubbleTextReadsOnItsBubble holds the bubble colours to being
+// readable (iss-2609181200258524): the text colour follows the colour of the
+// bubble it sits on, rather than being a fixed white that disappears on a
+// light bubble the person chose.
+func TestChatClientBubbleTextReadsOnItsBubble(t *testing.T) {
+	root := repoRootDir(t)
+	bubbles := clientSources(t, root)["Bubbles.swift"]
+	if strings.Contains(bubbles, "isUser ? Color.white : Color.primary") {
+		t.Error("the person's bubble draws its text in a fixed white whatever colour the bubble is; " +
+			"white on a light bubble cannot be read")
+	}
+	if !strings.Contains(bubbles, "isDark") {
+		t.Error("nothing in client/GropiusChat/Bubbles.swift asks how dark a bubble is; " +
+			"the text colour cannot follow the bubble it sits on")
+	}
+	// A chosen colour survives; the way back is the Default button.
+	if !strings.Contains(bubbles, `Button("Default")`) {
+		t.Error("a chosen bubble colour has no way back to the default")
+	}
+}
