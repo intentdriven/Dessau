@@ -455,3 +455,16 @@ Proposal (the maintainer): change Light/Dark/System mode in Settings.
 Verdict proposed: FILE-AS-IS. Verdict adopted: the same; fully specified by
 the ask. Grade: routing survived unchanged; reviews scaled to the blast
 radius (one architecture test).
+
+## 2026-09-18 — four items from the maintainer's manual test
+
+| Part | Type | Home |
+| --- | --- | --- |
+| Thoughts render markdown | capability | itd-2609181104497297, `refines` itd-2609170836331240 (replies already render) |
+| Bubbles too close to the edges | nitpick | a capture, fixed in the same change |
+| Sidebar cards with icon, date, summary, highlight | capability | itd-2609181104490133 |
+| A search bar over conversations | capability | itd-2609181104498312 |
+
+Verdict proposed: FILE-AS-IS, three intents and one capture. Verdict adopted:
+the same. Grade: routing survived; reviews scaled to the blast radius (one
+architecture test each).
