@@ -150,6 +150,11 @@ CI (`.github/workflows/ci.yml`) gates on: `gofmt -l .` (must be empty),
   (`feat`/`fix`/`chore`/`refactor`/`docs`/`test`), body explains why. Never
   force-push, never `--no-verify`. New dependencies need explicit sign-off
   before they are added.
+- **A queued PR is never pushed to again.** `main` sits behind a merge queue;
+  once auto-merge is armed, the queue merges the head it enqueued and a later
+  push can be dropped without a word (PR 61, 2026-09-18). Further work goes
+  in a new PR, and before a merged branch is deleted its head is checked to
+  be an ancestor of `main`.
 - **The commit gates live in `.githooks/`** (`git config core.hooksPath
   .githooks`): `pre-commit` refuses a commit whose `user.name`/`user.email`
   diverge from the identity pinned in `.abcd/config/identity.json` — a pin that
