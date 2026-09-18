@@ -42,9 +42,10 @@ than the server refusing to start.
 ## In the chat client
 
 GropiusChat applies its own rule to the same words, so the models it offers are
-its user's decision rather than the server's. Open **Settings** — the gear in
-the toolbar — and edit the two fields under **Models to offer**. They ship with
-the server's own default.
+its user's decision rather than the server's. Open **Settings** (Cmd-,) and
+edit the two fields under **Models to offer**. They ship with the server's own
+default. The Mac's own model — the client's "On this Mac" — is not a served
+model and is exempt from the rule: it is offered whenever the Mac can run it.
 
 ## What the rule does and does not do
 
