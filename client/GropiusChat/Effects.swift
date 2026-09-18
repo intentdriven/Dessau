@@ -123,6 +123,10 @@ struct EffectText: View {
         } else {
             tagged
                 .textRenderer(EffectRenderer(progress: progress))
+                // The animated block is a rebuilt Text and would otherwise be
+                // unselectable for the effect's second: selection is the
+                // reply's, whatever is being drawn over it.
+                .textSelection(.enabled)
                 .onAppear {
                     withAnimation(.linear(duration: 1.2)) { progress = 1 }
                     Task {

@@ -304,3 +304,21 @@ func TestChatClientOpensASecondWindow(t *testing.T) {
 		t.Errorf("openWindow is given %q while the WindowGroup declares %q; the action would open nothing", open[1], group[1])
 	}
 }
+
+// TestChatClientEffectKeepsTheReplySelectable holds the falsifier the
+// text-effects intent's Grounds names (iss-2609181116218290): while the
+// renderer plays, the block is rebuilt as concatenated Texts, and a Text that
+// carries no textSelection cannot be selected — so for the effect's duration
+// the reply would be unselectable.
+func TestChatClientEffectKeepsTheReplySelectable(t *testing.T) {
+	root := repoRootDir(t)
+	effects := clientSources(t, root)["Effects.swift"]
+	renderer := strings.Index(effects, ".textRenderer(")
+	if renderer < 0 {
+		t.Fatal("client/GropiusChat/Effects.swift installs no text renderer")
+	}
+	if !strings.Contains(effects[renderer:], ".textSelection(.enabled)") {
+		t.Error("the block being animated carries no .textSelection(.enabled); " +
+			"the reply is unselectable for the effect's duration")
+	}
+}
