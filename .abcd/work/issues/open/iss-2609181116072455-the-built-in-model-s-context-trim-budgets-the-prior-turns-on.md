@@ -9,6 +9,8 @@ found_during: "fidelity audits 2026-09-18"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "client/GropiusChat/Backends.swift"
+deferred_after: "v0.7.1"
+deferral_reason: "Left open at the 0.7.1 cut: an observation from the 2026-09-18 fidelity audits that needs the maintainer's decision; recorded here rather than stepped over."
 ---
 
 The built-in model's context trim budgets the prior turns only and not the new prompt's own tokens, so a prompt that overflows the window on its own is left to the single retry to absorb.

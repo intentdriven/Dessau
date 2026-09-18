@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-18
+
 ### Fixed
 
 - **A reply's words animate when the reply finishes, and only on the reply
