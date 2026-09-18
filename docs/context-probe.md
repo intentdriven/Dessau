@@ -66,7 +66,10 @@ declared and the served ones, with what stopped the step above it:
 
 While a run is in progress the card says which step it is on and the bounds
 so far; if a run is due but held back, it says what held it: a request in
-flight, a caller waiting for a model, a download, or a recent request.
+flight, a caller waiting for a model, a download, or a recent request. It also
+says so when the model does not fit the memory budget beside what is already
+loaded: the measurement stays queued and waits for the memory to fall free,
+because a measurement never evicts a model to make room for itself.
 
 A measurement is marked **stale** when the runtime, the memory budget, the
 decode concurrency or the model's served window has changed since it was

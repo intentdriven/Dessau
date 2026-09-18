@@ -315,6 +315,82 @@ func count(events []string, prefix string) int {
 	return n
 }
 
+// A responder that gave up by itself is stood down without being spent.
+//
+// The refresh loop reads the tick and the responder's death in one select, and
+// select picks at random between two ready cases: a responder can be dead — its
+// death sitting unread — and the tick be taken anyway. The tick used to
+// withdraw the advertisement, which marks the registration SPENT although
+// nothing was ever withdrawn: the responder was not there to say goodbye. A
+// spent registration is one the loop may never serve again, so it builds
+// another, and the dead one's socket pair stays open, because dnssd's Respond
+// closes its conn only on the cancellation path. An outage during which the
+// TXT record also changes runs that path every tick (iss-2609111048259516).
+//
+// Standing an advertisement down is therefore two different acts, and which
+// one it is depends on whether there is a responder there to withdraw.
+func TestAResponderThatGaveUpIsStoodDownWithoutSpendingItsRegistration(t *testing.T) {
+	f := newFakeAnnouncer()
+	f.serveFailAt[0] = true // it dies on its own the moment it is served
+	var h hints
+	a, _ := testAdvertiser(f, &h)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ad, err := a.publish(ctx, dnssd.Config{Name: "test", Type: ServiceType, Port: a.Port}, a.txtRecord())
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	waitFor(t, f, "the responder to give up on its own", func(ev []string) bool {
+		return count(ev, "serve-failed#0") == 1
+	})
+	waitUntil(t, "its death to be readable", ad.stopped)
+
+	ad.standDown()
+	if ad.spent {
+		t.Error("a registration whose responder died on its own was marked spent — " +
+			"nothing was withdrawn, and the loop can never serve it again")
+	}
+
+	// And the point of not spending it: the same registration is served again,
+	// rather than a second one being built beside the stranded socket pair.
+	f.serveFailAt[1] = false
+	a.serve(ctx, ad)
+	waitFor(t, f, "the same registration to be served again", func(ev []string) bool {
+		return count(ev, "respond#0") == 1
+	})
+	if got := count(f.log(), "register:"); got != 1 {
+		t.Errorf("%d registrations, want 1 — a responder that died by itself must be re-served on the "+
+			"registration that already exists: %v", got, f.log())
+	}
+}
+
+// The other half of the same rule: a responder that is still up is withdrawn,
+// which is what puts its goodbye on the wire before the name is used again —
+// and that registration is spent, because dnssd has closed its sockets on the
+// way out.
+func TestAResponderThatIsStillUpIsWithdrawnAndSpent(t *testing.T) {
+	f := newFakeAnnouncer()
+	var h hints
+	a, _ := testAdvertiser(f, &h)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ad, err := a.publish(ctx, dnssd.Config{Name: "test", Type: ServiceType, Port: a.Port}, a.txtRecord())
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	waitFor(t, f, "the responder to be up", func(ev []string) bool { return count(ev, "respond#0") == 1 })
+
+	ad.standDown()
+	if !ad.spent {
+		t.Error("a responder that was withdrawn left its registration unspent; dnssd has closed its sockets and it cannot be served again")
+	}
+	if got := count(f.log(), "exit#0"); got != 1 {
+		t.Errorf("the responder did not exit before standDown returned: %v", f.log())
+	}
+}
+
 // A change to the advertised TXT record must be published by withdrawing the
 // whole advertisement and registering it afresh — never by mutating the service
 // a running responder is reading.

@@ -11,6 +11,27 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A measurement queued with "Measure now" no longer goes quiet when the model
+  will not fit.** The idle loop used to pass over a queued model that could not
+  be loaded beside what was already in memory, leaving it queued for ever with
+  nothing on the card and nothing in the log. It now says the measurement is
+  held because the model does not fit the memory budget — on the model's card,
+  whatever else the Mac is measuring, and once per model in the log — and runs
+  it when the memory falls free.
+- **`gropius update` reports which version this Mac is serving.** The running
+  server publishes its version on the state snapshot the control panel already
+  reads, so the update's second fact is read rather than guessed at; it still
+  says plainly when it cannot be known, and never shows the version just
+  installed in its place.
+- **A network advertisement that died during an outage can be put back.** An
+  advertisement whose responder had given up on its own was marked as
+  withdrawn although nothing had been withdrawn, which left the registration
+  unusable: every later attempt built another one and opened another socket.
+  It is now stood down only when there is something there to withdraw, so a
+  later attempt serves the registration that already exists.
+
 ### Added
 
 - **The chat client's appearance, text size, bubble colours and composer are

@@ -266,6 +266,33 @@ func (ad *advertisement) withdraw() {
 	<-ad.done
 }
 
+// standDown takes the advertisement off the network, if it is still on it.
+//
+// A responder that has already given up by itself is cancelled and nothing
+// more. It is NOT withdrawn: nothing was withdrawn — it was not there to say
+// goodbye — and spending the registration on a goodbye that was never said
+// costs the loop the one arm that reuses a socket pair. dnssd closes its
+// sockets only on the way out of a Respond that ran to cancellation, so a
+// registration whose Respond returned early still holds its pair, and serving
+// THAT registration again is the only way back to it.
+//
+// WHAT THIS DOES NOT FIX. The caller reaches here only when the TXT record has
+// changed, and a changed record needs a registration of its own — Register
+// bakes the text in — so the reuse arm cannot follow this call, and that
+// tick's fresh responder strands the dead one's pair whatever is done here.
+// What the unspent registration buys is the tick AFTER a publish that failed:
+// ad is then still this one, and a tick that finds the text unchanged serves
+// it again instead of building another. Reusing a pair across a text change
+// would take a dnssd that can re-text a registration without re-registering,
+// which it has not got (iss-2609111048259516, iss-2609181119343938).
+func (ad *advertisement) standDown() {
+	if ad.stopped() {
+		ad.cancel()
+		return
+	}
+	ad.withdraw()
+}
+
 // refresh periodically re-publishes the TXT record when the advertised auth
 // state or model count changes, so a runtime config change (e.g. setting an API
 // key in the control panel) is reflected to clients rather than left stale.
@@ -362,7 +389,7 @@ func (a *Advertiser) refresh(ctx context.Context, cfg dnssd.Config, ad *advertis
 				continue
 			}
 			if serving {
-				ad.withdraw()
+				ad.standDown()
 				serving = false
 			}
 			// Stop may have fired while the goodbye was going out. Do not put

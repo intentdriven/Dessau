@@ -9,6 +9,8 @@ found_during: "implementing spc-2609111812370705, the update verb"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/gateway/control.go"
+resolution: "gateway.State carries a read-only version field, filled from the same string the binary prints, and cmd/gropius passes it to the control plane. The decode moved out of fetchServingVersion onto ServerState, and 'version' is in statusReads, so the contract test now holds the field to one the gateway publishes under that name. The lifecycle docs no longer say no build publishes it."
+impact: fix
 ---
 
 The control plane publishes no version field, so gropius update reports the serving version as "cannot be determined" on every Mac
@@ -61,3 +63,7 @@ record, and that is what this issue is for.
 Until then `TestTheServingVersionIsDecodedFromTheSnapshot` proves the decode
 works against a snapshot that carries the field, so the day the field lands the
 report starts telling the truth with no further change on this side.
+
+## Grounds
+
+- pursued: a gateway test reads the field back off /api/state and fails without the wiring; removing the field from gateway.State now breaks the lifecycle contract test's build, which is the arming the issue asked for. What would show it wrong: an unstamped build, which publishes the placeholder version it prints and is reported as serving that.

@@ -32,6 +32,7 @@ var statusReads = []string{
 	"bind.selected",
 	"resident.repo_id",
 	"resident.state",
+	"version",
 }
 
 // Every field status decodes is a field the control plane publishes, under the
