@@ -45,33 +45,36 @@ Out of scope, each for its reason:
   Scope condition cond-2609161738009497: the server side is untouched. The
   archtest package is the repository's guard over every surface, not server
   code, and the floor guard already reads the client's files.
-- **Xcode 27.** Scope condition cond-2609161738009947: `swiftc` against the
-  Command Line Tools' macOS 27 SDK builds it. An asset catalog, App Intents
-  metadata or any other Xcode-only step stays out of this intent; if a 27 API
-  the client adopts turns out to need one, that is the condition failing and
-  is recorded, not worked around.
+- **An Xcode project.** Scope condition cond-2609161738009947, as narrowed on
+  2026-09-17: the installed Xcode 27's toolchain builds it through `xcrun`,
+  with no project, asset catalog or other Xcode-only build step. The App
+  Intents metadata step is the Shortcuts intent's (itd-2609151836194280),
+  which adds it to the build script as one more toolchain invocation.
 - **System text intelligence, App Intents and Shortcuts, text effects.** Each
   is its own intent building on this one (itd-2609151836193724,
   itd-2609151836194280, itd-2609151836194134).
-- **A universal-binary change.** The client stays universal (arm64 + x86_64);
-  the release workflow's `lipo` check is untouched.
-- **The composer's `NSTextView`.** `ComposerTextView` wraps an `NSTextView`
-  for key handling that SwiftUI's `TextEditor` does not offer. It is a text
-  view, not styling, and it already draws the system's text; it stays. The
-  mechanism claim's falsifier is a *control* that has to be rebuilt in AppKit
-  to look right, and this one predates the claim.
+- **Intel Macs.** macOS 27 runs on none, so the 27 client is arm64 only; the
+  kept 26-floor client remains the universal one. The release workflow's
+  universal check for the client goes with the slice.
+- **A hand-built composer.** `ComposerTextView`, the `NSTextView` wrapper that
+  existed for Return-to-send, goes: a standard `TextField(axis: .vertical)`
+  with `.onSubmit` sends on Return, breaks the line on Option-Return, and
+  carries Writing Tools inline — the system's own composer, which is the
+  claim. `ComposerNSTextView` and its height measurement go with it.
 
 ## Approach
 
 ### The floor
 
-`client/build.sh` compiles with `-target arm64-apple-macos27.0` and
-`-target x86_64-apple-macos27.0`, and names the SDK explicitly
-(`-sdk "$(xcrun --sdk macosx --show-sdk-path)"` with `SDKROOT` honoured when
-set), so the build does not depend on the Command Line Tools' SDK symlink,
-which is broken on the maintainer's Mac while the macOS 27 SDK itself is
-present. `client/Info.plist` declares `LSMinimumSystemVersion` 27.0.
-`build/Info.plist` stays at 26.0.
+`client/build.sh` compiles one slice, `-target arm64-apple-macos27.0`,
+through `xcrun swiftc` against the SDK `xcrun --sdk macosx --show-sdk-path`
+names — the installed Xcode 27's — because macOS 27 runs on no Intel Mac and
+because the 27 SDK's SwiftUI needs the macro plugin only Xcode carries. The
+x86_64 build, the `lipo` step and the release workflow's "client missing
+x86_64" check go; the workflow keeps its arm64 check. The build passes
+`-swift-version 6 -default-isolation MainActor`, which is what Xcode 27
+gives a new app and what the 27 `@State` macro expects. `client/Info.plist`
+declares `LSMinimumSystemVersion` 27.0. `build/Info.plist` stays at 26.0.
 
 ### Two floors, one guard
 
@@ -98,6 +101,16 @@ Below the server floor the refusal is unchanged. An architecture test holds
 the tag assignment to a tag that exists in the checkout and to the value the
 README names, so the pointer cannot drift once the release is kept.
 
+### The model layer
+
+`AppModel` and `ServerBrowser` stay `ObservableObject`s. The `@Observable`
+migration was considered and set aside: the architecture tests that hold the
+client's promises to the server (the stored rule's defaults, the picker
+filter, the Settings bindings) pin `@AppStorage` properties on the model by
+their spelling, and `@AppStorage` is a view wrapper an `@Observable` class
+cannot carry. `ObservableObject` is not deprecated on 27; the model gains a
+`shared` instance the App Intents reach.
+
 ### The system's look
 
 Every custom style comes out of the source: the `glassButton` extension and
@@ -105,8 +118,8 @@ its `.glass`/`.glassProminent` styles (macOS 26's explicit Liquid Glass call,
 which on 27 the standard button draws by itself), the message bubbles'
 `.background(bubble)` and the composer's `.background(surface)` with their
 `strokeBorder` overlays, the status dot's `.shadow`, and the settings form's
-`.roundedBorder` text fields. What replaces them is the standard control with
-no modifier: `Button`, `TextField`, `List` in the sidebar, `Form` in Settings,
+`.roundedBorder` text fields (soft-deprecated in 27). What replaces them is
+the standard control with no modifier: `Button`, `TextField`, `List` in the sidebar, `Form` in Settings,
 messages laid out with the system's spacing and `.secondary` foreground for
 the metadata line. Layout modifiers (`frame`, `padding`, `font`,
 `foregroundStyle` with a semantic style) are not styling and stay.

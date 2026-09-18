@@ -385,3 +385,46 @@ apps, e.g. Discord, WhatsApp.
 
 Verdict proposed: SPLIT. Verdict adopted: SPLIT, as proposed. Grade: the
 routing survived the human's confirmation unchanged.
+## 2026-09-17 — the built-in model and the Gropius offer
+
+Proposal (the maintainer, one sentence): make macOS 27 the client's default,
+use the model Apple ships with macOS 27 as the default chat interface, and
+offer Gropius-provided models when the client discovers a server.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| macOS 27 as the client's default floor | capability, exists | `duplicates` itd-2609151701196720 (planned 2026-09-16), not filed twice |
+| The Mac's own model is the default chat backend, no server needed | capability | itd-2609170718438919, `builds_on` the trunk |
+| A discovered Gropius server is offered, never adopted by itself | capability | itd-2609170718430553, `builds_on` the trunk |
+| The client no longer connects at launch | reversal, flagged | the discovery promise held by `internal/archtest`'s chat-client tests; for the human at the offer intent's interview |
+
+Typed links: `builds_on` itd-2609151701196720 for both; distinct from
+itd-2609151836193724 (Writing Tools on text in place, not a conversation
+partner). Flagged, not classified: the connect-at-launch reversal.
+Verdict proposed: FILE-AS-IS as one intent. Verdict adopted: SPLIT into two.
+Grade: the routing did not survive unchanged — the human split the one user
+moment into two shippable intents so the built-in default can land before the
+discovery behaviour is touched.
+
+Addendum, 2026-09-17: "markdown returned from the model is formatted in
+chats" (the maintainer, mid-session) — one capability, one intent
+(itd-2609170836331240, `builds_on` the trunk); FILE-AS-IS, routing adopted
+without change. Interaction flagged for the effects intent (both draw the
+reply's `Text`), recorded in the specs rather than as a link.
+
+## 2026-09-18 — the iPad client
+
+Proposal (the maintainer): a native iPad app for the chat client, using an
+Apple on-device model if the iPad has one, else a Gropius server on the local
+network.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| A native iPadOS 27 chat client sharing the Mac client's code | capability | itd-2609180943290800, `builds_on` the trunk |
+| The iPad's own model when it exists | promised | `refines` itd-2609170718438919 (same framework, same availability check) |
+| A Gropius server from the local network when it does not | promised | `refines` itd-2609170718430553 (same picker and browse) |
+| Distribution: provisioning, TestFlight or the App Store | open question, flagged | the draft's Open Questions; gates the interview |
+
+Verdict proposed: FILE-AS-IS as one intent with the distribution question
+open. Verdict adopted: the same. Grade: the routing survived the human's
+confirmation unchanged.

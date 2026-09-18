@@ -1,18 +1,21 @@
-// GropiusChat — a small native macOS client for a Gropius MLX server.
+// GropiusChat — a native macOS chat app.
 //
-// It talks to the OpenAI-compatible endpoint a Mac exposes with Gropius — this
-// one or another on the network: GET /v1/models to list what is available, POST
-// /v1/chat/completions (streaming) to chat. Servers on the local network are
-// found over Bonjour rather than typed in. Conversations are kept in a
-// toggleable sidebar and persisted to disk.
+// It chats with the Mac's own model out of the box and, when a Gropius server
+// is on the network, offers that server's models in the picker: GET /v1/models
+// to list them, POST /v1/chat/completions (streaming) to chat. Servers are
+// found over Bonjour while the picker is open. Conversations are kept in a
+// sidebar and persisted to disk.
 //
-// Built as a single-file SwiftUI app so it compiles with swiftc and packages
-// into a .app without an Xcode project. See build.sh.
+// Built without an Xcode project: several Swift files, one script (build.sh),
+// the installed Xcode's toolchain. This file holds the app, the model and the
+// views; the answerers, the picker, the markdown, the effects and the App
+// Intents each have a file of their own.
 
 import AppKit
 import Network
 import SwiftUI
 import Security
+import UniformTypeIdentifiers
 
 // MARK: - Keychain
 
@@ -74,17 +77,13 @@ struct Message: Identifiable, Codable, Equatable {
     /// Thinking models (e.g. Qwen3) stream their reasoning separately; we keep it
     /// so a reply that spends its whole budget reasoning is not shown as blank.
     var reasoning: String = ""
-    /// Which model answered, for the assistant's turns. VoiceOver reads it out
-    /// — the side of the window a bubble sits on and the color it is tinted
-    /// with are not available to a screen reader, so the speaker has to be in
-    /// the label, and naming the model that actually answered means a
-    /// conversation that switched models still reads correctly.
+    /// Who answered, for the assistant's turns: a server model's id, or the
+    /// Mac's own model. VoiceOver reads it out — the side a message sits on is
+    /// not available to a screen reader, so the speaker has to be in the label.
     ///
     /// Optional on purpose: Codable's synthesized decoder falls back for a
     /// missing key only on an optional property, and a saved conversation
-    /// written before this field existed must still load. A non-optional with a
-    /// default would throw, and the loader swallows that — the whole history
-    /// would quietly disappear.
+    /// written before this field existed must still load.
     var model: String? = nil
 }
 
@@ -104,13 +103,8 @@ let residencyLoaded = "loaded"
 
 /// The SSE comment the server sends, about once a second, while it is loading a
 /// model to serve a streaming request; the data frames follow once the model is
-/// up.
-///
-/// A colon starts a comment in the SSE format, so this rides the existing
-/// stream without changing its content type or its status code, and a client
-/// that knows nothing about it ignores the line as the format says to. The wire
-/// form's one home is `gateway.LoadingComment` on the server; a test in the
-/// server's suite holds this declaration to it.
+/// up. The wire form's one home is `gateway.LoadingComment` on the server; a
+/// test in the server's suite holds this declaration to it.
 let modelLoadingComment = ": loading"
 
 /// GET /v1/models
@@ -127,31 +121,23 @@ private struct ModelsResponse: Decodable {
         /// capability.
         let chat: Bool?
         /// What HuggingFace says this model is: the repo's pipeline tag and its
-        /// tags, recorded by the server when the model was downloaded. Absent
-        /// when the Hub said nothing about that model, and on a server that
-        /// publishes no category at all.
+        /// tags, recorded by the server when the model was downloaded.
         let pipeline_tag: String?
         let tags: [String]?
 
         /// Absent means yes. A server that publishes no capability is an older
-        /// one, and every model it serves must still be offered — defaulting
-        /// the other way would empty the picker against every server already
-        /// installed.
+        /// one, and every model it serves must still be offered.
         var chattable: Bool { chat ?? true }
     }
     let data: [Model]
 }
 
-/// The client's own rule for which models it offers, read from the words the
-/// models list publishes.
+/// The client's own rule for which served models it offers, read from the
+/// words the models list publishes. The Mac's own model is not a served model
+/// and is not judged by it.
 ///
 /// It ships with the server's default — a test in the server's suite holds the
-/// two together — and a person changes it in Settings, because which models are
-/// worth putting in a picker is a judgement about this person's work and not
-/// something the server they are borrowing decides for them.
-///
-/// Each half is a comma-separated list of HuggingFace's own words, and a
-/// cleared half tests nothing.
+/// two together — and a person changes it in Settings.
 struct ChatRule {
     let pipelineTags: [String]
     let requiredTags: [String]
@@ -167,14 +153,9 @@ struct ChatRule {
             .filter { !$0.isEmpty }
     }
 
-    /// Whether this model belongs in the picker.
-    ///
-    /// A model the server publishes no words for is not one this rule can
-    /// judge, so the server's own verdict decides it — and a server that
-    /// publishes neither the words nor a verdict is one that predates the whole
-    /// idea, whose every model is offered. A model the server DOES publish
-    /// words for is judged here, and one the Hub never tagged is judged by the
-    /// server, which marks it as unable under the same default rule.
+    /// Whether this model belongs in the picker. A model the server publishes
+    /// no words for is judged by the server's own verdict; a server that
+    /// publishes neither offers everything it serves.
     fileprivate func offers(_ m: ModelsResponse.Model) -> Bool {
         guard m.pipeline_tag != nil || m.tags != nil else { return m.chattable }
         if !pipelineTags.isEmpty {
@@ -186,19 +167,6 @@ struct ChatRule {
     }
 }
 
-/// One streamed chunk from /v1/chat/completions with stream=true.
-private struct StreamChunk: Decodable {
-    struct Choice: Decodable {
-        struct Delta: Decodable {
-            let content: String?
-            let reasoning: String?
-            let reasoning_content: String?
-        }
-        let delta: Delta
-    }
-    let choices: [Choice]
-}
-
 // MARK: - Local network discovery
 
 /// The mDNS service type a Gropius server advertises itself on.
@@ -206,21 +174,14 @@ private struct StreamChunk: Decodable {
 /// It has to match the server's own (internal/discovery), and it is declared a
 /// second time in Info.plist's NSBonjourServices — macOS Local Network Privacy
 /// answers a browse for an undeclared type with an empty result set rather than
-/// an error, so an omission there looks exactly like "no servers on this
-/// network". A test in the server's suite holds all three to one value.
+/// an error. A test in the server's suite holds all three to one value.
 let gropiusServiceType = "_gropius._tcp"
 
-/// One Gropius server seen on the local network.
-///
-/// Everything here comes out of the browse itself: the service instance name
-/// and the TXT record the server publishes. Nothing has been resolved — a
-/// service name is not an address — because resolving costs an mDNS round trip
-/// per server and only the one the user picks is worth spending it on.
+/// One Gropius server seen on the local network. Everything here comes out of
+/// the browse itself; nothing has been resolved, because resolving costs an
+/// mDNS round trip per server and only the one the person picks is worth it.
 struct DiscoveredServer: Identifiable, Equatable {
-    /// The service instance name, e.g. "Gropius (alices-mac)".
     let name: String
-    /// The service type and domain exactly as browsed, kept so the resolver can
-    /// ask for this service back rather than rebuild the triple from constants.
     let type: String
     let domain: String
     /// TXT "api": the dialect the endpoint speaks. This client speaks "openai".
@@ -236,13 +197,10 @@ struct DiscoveredServer: Identifiable, Equatable {
     var id: String { "\(name)|\(type)|\(domain)" }
     var authRequired: Bool { auth == "bearer" }
     var authStated: Bool { auth == "bearer" || auth == "none" }
-    /// An empty api is treated as this client's dialect: an older server that
-    /// publishes no hint is still an OpenAI-compatible endpoint.
     var speaksThisClientsAPI: Bool { api.isEmpty || api == "openai" }
 
-    /// The one-line description under the server's name in Settings. Every part
-    /// of it is a hint from the network, so it says what was advertised and
-    /// never asserts more than that.
+    /// The one-line description under the server's name. Every part of it is a
+    /// hint from the network, so it says what was advertised and never more.
     var summary: String {
         var parts: [String] = []
         if authStated {
@@ -277,18 +235,14 @@ struct DiscoveredServer: Identifiable, Equatable {
     }
 }
 
-/// Browses the local network for Gropius servers.
-///
-/// It only ever lists what it finds. Connecting is the user's decision: a
-/// client that auto-connected to the first server it saw would send the stored
-/// bearer token to whichever machine on the network answered first.
-@MainActor
+/// Browses the local network for Gropius servers. It only ever lists what it
+/// finds; connecting is the person's decision.
 final class ServerBrowser: ObservableObject {
     enum Status: Equatable {
         case stopped
         case searching
         /// The browse cannot run yet — most often local network access has not
-        /// been granted. The reason is shown, because the user is the only one
+        /// been granted. The reason is shown, because the person is the only one
         /// who can clear it.
         case waiting(String)
         case failed(String)
@@ -314,8 +268,7 @@ final class ServerBrowser: ObservableObject {
         // delta, so replacing the list is also how a server that has left the
         // network stops being offered.
         browser.browseResultsChangedHandler = { [weak self] results, _ in
-            let found = results.compactMap(DiscoveredServer.init)
-            Task { @MainActor in self?.apply(found) }
+            Task { @MainActor in self?.apply(results.compactMap(DiscoveredServer.init)) }
         }
         self.browser = browser
         browser.start(queue: .main)
@@ -328,11 +281,6 @@ final class ServerBrowser: ObservableObject {
         status = .stopped
     }
 
-    func restart() {
-        stop()
-        start()
-    }
-
     private func apply(_ state: NWBrowser.State) {
         switch state {
         case .ready, .setup:
@@ -340,8 +288,6 @@ final class ServerBrowser: ObservableObject {
         case .waiting(let error):
             status = .waiting(error.localizedDescription)
         case .failed(let error):
-            // A failed browser never recovers on its own; drop it so "Search
-            // again" can build a new one.
             browser?.cancel()
             browser = nil
             status = .failed(error.localizedDescription)
@@ -362,16 +308,10 @@ final class ServerBrowser: ObservableObject {
     }
 }
 
-/// Turns a browsed service into an address that can be stored.
-///
-/// NWBrowser reports a service *name*; a URL needs a host and a port. Network
-/// framework exposes no resolver of its own — the documented route is to open
-/// an NWConnection and read the peer's IP back off the established path, which
-/// yields an address that stops working the next time the server's DHCP lease
-/// moves. NetService resolves to the host name the server publishes its address
-/// records under instead ("gropius-<host>.local", which internal/discovery
-/// picks precisely so it can own that name), and that keeps resolving after the
-/// address changes. So: browse with NWBrowser, resolve with NetService.
+/// Turns a browsed service into an address that can be stored: browse with
+/// NWBrowser, resolve with NetService, which yields the host name the server
+/// publishes its address records under and keeps resolving after the address
+/// changes.
 final class ServiceResolver: NSObject, NetServiceDelegate {
     enum Outcome {
         case address(String)
@@ -380,8 +320,7 @@ final class ServiceResolver: NSObject, NetServiceDelegate {
 
     private let service: NetService
     private var completion: ((Outcome) -> Void)?
-    /// Held until an outcome is delivered: nothing else refers to a resolver
-    /// once the button action that made it returns.
+    /// Held until an outcome is delivered.
     private var keepAlive: ServiceResolver?
 
     init(server: DiscoveredServer) {
@@ -392,14 +331,11 @@ final class ServiceResolver: NSObject, NetServiceDelegate {
         service.delegate = self
     }
 
-    /// NetService wants the wire form, with the trailing root dot.
     private static func qualified(_ s: String) -> String {
         s.hasSuffix(".") ? s : s + "."
     }
 
-    /// Resolves, then calls completion exactly once on the main queue. The
-    /// timeout is part of the contract: NetService reports a service that has
-    /// left the network by failing to resolve it, not by any other signal.
+    /// Resolves, then calls completion exactly once on the main queue.
     func resolve(timeout: TimeInterval = 5, completion: @escaping (Outcome) -> Void) {
         self.completion = completion
         keepAlive = self
@@ -410,38 +346,32 @@ final class ServiceResolver: NSObject, NetServiceDelegate {
         service.stop()
         let done = completion
         completion = nil
-        // keepAlive is this object's only strong reference by the time a
-        // delegate callback runs, so it is released in the dispatched block,
-        // after the last use of self -- not here, mid-method.
         DispatchQueue.main.async {
             done?(outcome)
             self.keepAlive = nil
         }
     }
 
-    func netServiceDidResolveAddress(_ sender: NetService) {
-        var host = sender.hostName ?? ""
-        while host.hasSuffix(".") { host.removeLast() } // fully qualified on the wire
+    nonisolated func netServiceDidResolveAddress(_ sender: NetService) {
+        // Only the two values are carried onto the main actor, not the service.
+        let host = sender.hostName ?? ""
+        let port = sender.port
+        MainActor.assumeIsolated { resolved(host: host, port: port) }
+    }
 
-        // An SRV target is not a trusted string. mDNSResponder escapes only
-        // "\", "." and non-printables, so a name published as
-        // "host.local@evil.example" or "evil.example#" survives to here intact
-        // -- and interpolating either into a URL moves the host: the first
-        // makes "host.local" userinfo and evil.example the host, the second
-        // truncates at the fragment. Either sends the stored bearer token to a
-        // machine the user did not pick. So: a host name is accepted only as
-        // the letters, digits, dots and hyphens a host name is made of, and the
-        // URL is built field by field rather than by interpolation, so nothing
-        // in the host can reach across into another component.
-        //
-        // An IPv6 literal is refused rather than bracketed: internal/discovery
-        // publishes a name, so a literal here is not a shape this server
-        // produces, and typing the address by hand still works.
+    private func resolved(host reported: String, port: Int) {
+        var host = reported
+        while host.hasSuffix(".") { host.removeLast() }
+
+        // An SRV target is not a trusted string: a host name is accepted only
+        // as the letters, digits, dots and hyphens a host name is made of, and
+        // the URL is built field by field, so nothing in the host can reach
+        // across into another component and send the bearer token elsewhere.
         let hostCharacters = CharacterSet(charactersIn:
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.")
         guard !host.isEmpty, host.count <= 253,
               host.unicodeScalars.allSatisfy(hostCharacters.contains),
-              (1...65535).contains(sender.port)
+              (1...65535).contains(port)
         else {
             deliver(.failure("That server reported an address this client will not use."))
             return
@@ -450,7 +380,7 @@ final class ServiceResolver: NSObject, NetServiceDelegate {
         var url = URLComponents()
         url.scheme = "http"
         url.host = host
-        url.port = sender.port
+        url.port = port
         guard let address = url.string else {
             deliver(.failure("That server did not report an address."))
             return
@@ -458,107 +388,93 @@ final class ServiceResolver: NSObject, NetServiceDelegate {
         deliver(.address(address))
     }
 
-    func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
-        deliver(.failure("Could not work out that server's address — it may have left the network."))
+    nonisolated func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
+        MainActor.assumeIsolated {
+            deliver(.failure("Could not work out that server's address — it may have left the network."))
+        }
     }
 
-    /// Abandons the resolve: the completion is never called. Used when the user
-    /// picks a different server, so a slow resolve for the one they moved off
-    /// cannot land afterwards and overwrite the newer pick.
+    /// Abandons the resolve: the completion is never called.
     func cancel() {
         service.stop()
         completion = nil
-        // Released asynchronously: keepAlive is the only strong reference, and
-        // the caller may be holding self no more firmly than this property does.
         DispatchQueue.main.async { self.keepAlive = nil }
     }
 }
 
 // MARK: - App model
 
-@MainActor
 final class AppModel: ObservableObject {
-    /// The base path the OpenAI-compatible API is mounted under. Hand-typed
-    /// addresses get this; a discovered server can name its own in TXT "path".
+    /// The one instance: the windows hold it, and the App Intents reach the
+    /// same object, so the conversations file has one writer.
+    static let shared = AppModel()
+
+    /// The base path the OpenAI-compatible API is mounted under.
     static let defaultAPIPath = "/v1"
 
-    // Persisted connection settings.
-    //
-    // The default address is this Mac's own server. The documented order
-    // installs the server first and the client second on the same machine, so
-    // loopback is the one address that is right before the user has told the
-    // client anything — and it has to be an address that resolves, because the
-    // composer stays disabled until a server answers.
+    // The stored server. The default address is this Mac's own server, the
+    // one address that is right before the person has picked or typed
+    // anything; nothing connects to it until a server model is chosen.
     @AppStorage("serverURL") var serverURL: String = "http://localhost:11535"
     @AppStorage("serverPath") var serverPath: String = AppModel.defaultAPIPath
     @AppStorage("selectedModel") var selectedModel: String = ""
+    /// Which answerer: "builtin" (the default) or "server".
+    @AppStorage("answerer") var answererKind: String = "builtin"
+    /// The origin (scheme, host and port) the API key was entered for; the
+    /// key is sent to no other.
+    @AppStorage("apiKeyHost") var apiKeyHost: String = ""
+    /// Whether certain words in a reply animate once.
+    @AppStorage("effectsEnabled") var effectsEnabled: Bool = true
 
-    // Which models the picker offers, as two comma-separated lists of
+    // Which served models the picker offers, as two comma-separated lists of
     // HuggingFace's own words. The defaults are the server's shipped rule; a
-    // test in the server's suite holds them to it. Clear a field to stop
-    // testing that half.
+    // test in the server's suite holds them to it.
     @AppStorage("chatPipelineTags") var chatPipelineTags: String = "text-generation, image-text-to-text"
     @AppStorage("chatRequiredTags") var chatRequiredTags: String = "conversational"
 
-    /// The rule in force, built from the two stored fields.
     var chatRule: ChatRule {
         ChatRule(pipelineTags: chatPipelineTags, requiredTags: chatRequiredTags)
     }
 
-    /// The bearer token. Held in memory as @Published (so SettingsView's
-    /// SecureField binds to it) but persisted to the Keychain, never
-    /// UserDefaults. Loaded in init(); saved by SettingsView on change.
+    /// The bearer token, persisted to the Keychain, never UserDefaults.
     @Published var apiKey: String = ""
 
     @Published var conversations: [Conversation] = []
+    /// The chat the App Intents and single-window flows act on; each window
+    /// keeps its own selection in scene storage.
     @Published var selectedID: UUID?
+    /// A chat an App Intent asked to show: the key window follows this, and
+    /// only this, so two windows can otherwise show two chats.
+    struct IntentSelection: Equatable {
+        let id: UUID
+        let at = Date()
+    }
+    @Published var intentSelection: IntentSelection?
 
-    /// Every model the server serves, and the subset the picker offers. They
-    /// differ by the chat capability: a model that cannot serve a chat request
-    /// stays callable over the API by name and simply is not offered here.
+    /// Every model the server serves, and the subset the picker offers.
     @Published var models: [String] = []
     @Published var chatModels: [String] = []
-    @Published var input: String = ""
-    @Published var status: String = "Not connected"
+    @Published var status: String = "No server chosen"
     @Published var connected: Bool = false
     @Published var connecting: Bool = false
     @Published var sending: Bool = false
+    /// The chat a reply is streaming into, while one is.
+    @Published var sendingIn: UUID?
+    /// Why the Mac's own model cannot answer right now, or nil when it can.
+    @Published var builtInUnavailable: BuiltInBackend.Unavailable?
+    /// Replies whose words are due to animate: added when a reply finishes
+    /// with a match, removed the moment a row starts drawing it.
+    @Published var effectsToPlay: Set<UUID> = []
 
-    /// What the client is waiting for, once a message has been sent.
-    ///
-    /// Loading a model into memory takes seconds to a minute; generating an
-    /// answer from a model already in memory starts at once. The two look
-    /// identical from the outside — nothing arrives — so they are told apart
-    /// here and shown differently, and `loading` is only ever entered on
-    /// evidence: an SSE comment from the server, or a residency reading that
-    /// says the chosen model is not in memory.
+    /// What the client is waiting for once a message has been sent: nothing
+    /// known, a server loading a model, or a reply being generated.
     enum Activity: Equatable { case idle, loading, generating }
     @Published var activity: Activity = .idle
 
-    /// The line shown in place of the bare spinner while a model is loading,
-    /// or nil when there is nothing to say beyond "working".
-    var loadingLabel: String? {
-        guard sending, activity == .loading else { return nil }
-        let name = selectedModel.split(separator: "/").last.map(String.init) ?? selectedModel
-        return name.isEmpty ? "Loading the model…" : "Loading \(name)…"
-    }
-
-    /// Coarse connection health, for the status dot.
-    enum Connection { case online, warning, offline }
-    var connection: Connection {
-        if !connected { return connecting ? .warning : .offline }
-        return models.isEmpty ? .warning : .online
-    }
-
-    private var streamTask: Task<Void, Never>?
-    /// The residency poll that runs while a request is in flight. It is a
-    /// fallback for a server that sends no loading comments, and it is stopped
-    /// the moment the stream says anything at all.
+    private var replyTask: Task<Void, Never>?
     private var residencyTask: Task<Void, Never>?
 
     init() {
-        // Migrate a key saved by an earlier build (plaintext UserDefaults) into
-        // the Keychain, then forget the plaintext copy.
         if let legacy = UserDefaults.standard.string(forKey: "apiKey"), !legacy.isEmpty {
             Keychain.write(legacy)
             UserDefaults.standard.removeObject(forKey: "apiKey")
@@ -572,23 +488,82 @@ final class AppModel: ObservableObject {
         } else {
             selectedID = conversations.first?.id
         }
+        builtInUnavailable = BuiltInBackend.unavailability()
+        if answererKind == "server" { Task { await connect() } }
+    }
+
+    // MARK: Who answers
+
+    var answerer: Answerer {
+        if answererKind == "server", !selectedModel.isEmpty { return .server(model: selectedModel) }
+        return .builtIn
+    }
+
+    func chooseBuiltIn() {
+        answererKind = "builtin"
+        objectWillChange.send()
+    }
+
+    func chooseServerModel(_ id: String) {
+        selectedModel = id
+        answererKind = "server"
+        objectWillChange.send()
+    }
+
+    func refreshBuiltInAvailability() {
+        builtInUnavailable = BuiltInBackend.unavailability()
+    }
+
+    /// Whether a message can be sent right now, and if not, why.
+    var cannotSend: String? {
+        if sending { return nil }
+        switch answerer {
+        case .builtIn:
+            if let why = builtInUnavailable { return why.reason + " " + why.fix }
+            return nil
+        case .server:
+            if !connected { return "Not connected to \(serverHost): \(status)" }
+            if selectedModel.isEmpty { return "No model chosen on \(serverHost)." }
+            return nil
+        }
+    }
+
+    var canSend: Bool { !sending && cannotSend == nil }
+
+    /// The line shown while a server loads a model, or nil.
+    var loadingLabel: String? {
+        guard sending, activity == .loading else { return nil }
+        return "Loading \(answerer.displayName)…"
     }
 
     // MARK: Conversation management
 
-    var currentIndex: Int? { conversations.firstIndex { $0.id == selectedID } }
-    var currentMessages: [Message] { currentIndex.map { conversations[$0].messages } ?? [] }
+    func index(of id: UUID?) -> Int? {
+        guard let id else { return nil }
+        return conversations.firstIndex { $0.id == id }
+    }
 
-    func newChat() {
-        stop()
+    func messages(in id: UUID?) -> [Message] {
+        index(of: id).map { conversations[$0].messages } ?? []
+    }
+
+    @discardableResult
+    func newChat() -> UUID {
         let c = Conversation()
         conversations.insert(c, at: 0)
         selectedID = c.id
         save()
+        return c.id
+    }
+
+    func select(_ id: UUID) {
+        guard conversations.contains(where: { $0.id == id }) else { return }
+        selectedID = id
+        intentSelection = IntentSelection(id: id)
     }
 
     func deleteChat(_ id: UUID) {
-        stop()
+        if sendingIn == id { stop() }
         conversations.removeAll { $0.id == id }
         if selectedID == id { selectedID = conversations.first?.id }
         if conversations.isEmpty {
@@ -623,7 +598,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: Networking
+    // MARK: The server
 
     private var base: String {
         var s = serverURL.trimmingCharacters(in: .whitespaces)
@@ -631,12 +606,23 @@ final class AppModel: ObservableObject {
         return s
     }
 
+    /// The host of the stored address, for the picker and the hints.
+    var serverHost: String {
+        URL(string: base)?.host ?? base
+    }
+
+    /// The stored address's origin — scheme, host and port — which is what the
+    /// API key is bound to, so a key entered for https is not sent over http.
+    var serverOrigin: String {
+        guard let url = URL(string: base), let scheme = url.scheme?.lowercased(), let host = url.host else { return base }
+        return "\(scheme)://\(host.lowercased()):\(url.port ?? (scheme == "https" ? 443 : 80))"
+    }
+
     /// The base path, sanitized. serverPath can come from a TXT record, which
     /// is unauthenticated network input: a value like "@example.net" appended
     /// raw would turn "host:11535" into userinfo and hand the bearer token to
-    /// whatever host followed. So a path must be a plain, single-rooted path --
-    /// no "." or ".." segment, which would climb back out of it -- or it is not
-    /// used at all.
+    /// whatever host followed. So a path must be a plain, single-rooted path
+    /// or it is not used at all.
     private var apiPath: String {
         var p = serverPath.trimmingCharacters(in: .whitespaces)
         while p.hasSuffix("/") { p.removeLast() }
@@ -653,26 +639,31 @@ final class AppModel: ObservableObject {
         return p
     }
 
-    /// Point the client at a hand-typed address. The path resets with it: a
-    /// typed address carries no TXT record, so a path left over from a
-    /// previously picked server would silently misroute every request.
+    /// Point the client at a hand-typed address. The path resets with it.
     func useTypedAddress(_ address: String) {
         serverURL = address
         serverPath = AppModel.defaultAPIPath
     }
 
-    /// Point the client at a server found on the network, at the address its
-    /// service resolved to and under the base path it advertises.
+    /// Point the client at a server found on the network.
     func use(_ server: DiscoveredServer, resolvedAddress: String) {
         serverURL = resolvedAddress
         serverPath = server.path.isEmpty ? AppModel.defaultAPIPath : server.path
     }
 
-    private func request(_ path: String) -> URLRequest? {
-        // Require an http(s) URL with a host before attaching the bearer token.
-        // The server URL is free-text; without this guard a stray scheme
-        // (file://, ftp://) or a hostless string would still get the token
-        // attached to whatever URL resulted.
+    /// Save the key for the server the client is pointed at now; it is sent
+    /// to that host and no other.
+    func saveAPIKey(_ value: String) {
+        apiKey = value
+        apiKeyHost = value.isEmpty ? "" : serverOrigin
+        Keychain.write(value)
+    }
+
+    /// An authenticated request for a path under the API base, or nil when
+    /// the stored address is not one a request may be sent to. The bearer
+    /// token is attached only to the host it was entered for: a server picked
+    /// from the network is asked without it, and says so if it needs one.
+    func request(_ path: String) -> URLRequest? {
         guard let url = URL(string: base + apiPath + path),
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
@@ -680,7 +671,8 @@ final class AppModel: ObservableObject {
         else { return nil }
         var r = URLRequest(url: url)
         r.timeoutInterval = 60
-        if !apiKey.isEmpty {
+        let origin = "\(scheme)://\(host.lowercased()):\(url.port ?? (scheme == "https" ? 443 : 80))"
+        if !apiKey.isEmpty, origin == apiKeyHost {
             r.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
         return r
@@ -689,7 +681,8 @@ final class AppModel: ObservableObject {
     /// Fetch the model list; doubles as the connection test.
     func connect() async {
         guard var req = request("/models") else {
-            status = "That server URL is not valid."
+            status = "That server address is not valid."
+            connected = false
             return
         }
         req.httpMethod = "GET"
@@ -702,7 +695,7 @@ final class AppModel: ObservableObject {
                 status = "No response from the server."; connected = false; return
             }
             if http.statusCode == 401 {
-                status = "The server requires an API key. Add one in Settings."
+                status = "This server needs an API key; add it in Settings."
                 connected = false; return
             }
             guard http.statusCode == 200 else {
@@ -711,14 +704,11 @@ final class AppModel: ObservableObject {
             let list = try JSONDecoder().decode(ModelsResponse.self, from: data)
             models = list.data.map(\.id).sorted()
             // The picker offers what this client's own rule counts as able to
-            // hold a conversation. The rest stay served — an API client that
-            // asks for an OCR model by name still gets it — they are just not
-            // put in front of someone about to type a sentence.
+            // hold a conversation; the rest stay served over the API by name.
             let rule = chatRule
             chatModels = list.data.filter { rule.offers($0) }.map(\.id).sorted()
-            if selectedModel.isEmpty || !chatModels.contains(selectedModel) {
-                selectedModel = chatModels.first ?? ""
-            }
+            // The chosen model is never moved here: a server that does not
+            // serve it is shown as not offering it, and the person picks.
             connected = true
             if models.isEmpty {
                 status = "Connected, but no models are downloaded yet."
@@ -729,53 +719,54 @@ final class AppModel: ObservableObject {
             }
         } catch {
             connected = false
-            status = "Could not reach \(base). Is Gropius running and on the same network?"
+            status = "Could not reach \(serverHost). Is Gropius running and on the same network?"
         }
     }
 
-    func send() {
-        let prompt = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty, !selectedModel.isEmpty, !sending,
-              let idx = currentIndex, let convoID = selectedID else { return }
-        input = ""
+    // MARK: Sending
+
+    func send(_ text: String, in convoID: UUID) {
+        let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty, canSend, let idx = index(of: convoID) else { return }
         conversations[idx].messages.append(Message(role: .user, text: prompt))
         if conversations[idx].title == "New Chat" {
             conversations[idx].title = String(prompt.prefix(48))
         }
-        conversations[idx].messages.append(Message(role: .assistant, model: selectedModel))
+        let reply = Message(role: .assistant, model: answerer.recordedName)
+        conversations[idx].messages.append(reply)
         save()
 
         sending = true
-        // Nothing is known about the wait yet, and `idle` is what says so: the
-        // reply shows the plain spinner, which is what this client did before
-        // either signal existed and what it keeps doing against a server that
-        // offers neither. `generating` is reserved for a stream that has
-        // actually produced a frame, so that it can be trusted as the one state
-        // a late load marker must not undo.
+        sendingIn = convoID
         activity = .idle
-        streamTask = Task { await stream(convoID: convoID) }
-        startResidencyPoll(for: selectedModel)
+        replyTask = Task { await stream(convoID: convoID, messageID: reply.id) }
+        if case .server(let model) = answerer { startResidencyPoll(for: model) }
     }
 
-    func stop() { streamTask?.cancel() }
+    func stop() { replyTask?.cancel() }
 
-    /// The server has said something about this request, so the residency poll
-    /// has nothing left to add: the stream itself is now the better witness.
+    /// Sends a prompt as a new chat and returns the finished reply: the App
+    /// Intents' way in. Throws, in the client's own words, when nothing can
+    /// answer, rather than returning an empty reply as success.
+    func ask(prompt: String) async throws -> String {
+        while sending { try await Task.sleep(for: .milliseconds(200)) }
+        if case .server = answerer, !connected { await connect() }
+        if let why = cannotSend { throw BackendMessage(text: why) }
+        let id = newChat()
+        intentSelection = IntentSelection(id: id)
+        send(prompt, in: id)
+        await replyTask?.value
+        return messages(in: id).last?.text ?? ""
+    }
+
     private func streamSpoke() {
         residencyTask?.cancel()
         residencyTask = nil
     }
 
-    /// Watch the models list while the request waits, for a server that sends
-    /// no loading comments.
-    ///
-    /// Residency is a snapshot and it is not always published — a server that
-    /// does not publish it to this client says nothing — so an absent or
-    /// unreadable answer changes nothing. Only a definite "not in memory" moves
-    /// the client into the loading state, and a definite "in memory" moves it
-    /// back to knowing nothing rather than to `generating`: a snapshot can be
-    /// stale by the time the request lands, and `generating` is the stream's
-    /// word to say, not the poll's.
+    /// Watch the models list while a server request waits, for a server that
+    /// sends no loading comments. Only a definite "not in memory" moves the
+    /// client into the loading state.
     private func startResidencyPoll(for model: String) {
         residencyTask?.cancel()
         guard !model.isEmpty else { residencyTask = nil; return }
@@ -790,7 +781,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// One reading of a model's residency, or nil when the server did not say.
     private func residency(of model: String) async -> String? {
         guard var req = request("/models") else { return nil }
         req.httpMethod = "GET"
@@ -799,189 +789,199 @@ final class AppModel: ObservableObject {
               (resp as? HTTPURLResponse)?.statusCode == 200,
               let list = try? JSONDecoder().decode(ModelsResponse.self, from: data)
         else { return nil }
-        // The server folds repository ids case-insensitively, and the id sent
-        // in the request came out of this same listing; comparing the same way
-        // keeps a spelling difference from reading as a different model.
         return list.data.first { $0.id.caseInsensitiveCompare(model) == .orderedSame }?.state
     }
 
-    private func stream(convoID: UUID) async {
+    private func stream(convoID: UUID, messageID: UUID) async {
         defer {
             sending = false
+            sendingIn = nil
             activity = .idle
             streamSpoke()
+            queueEffects(for: messageID, in: convoID)
             save()
         }
-
-        guard let ci0 = conversations.firstIndex(where: { $0.id == convoID }) else { return }
-        let assistantIndex = conversations[ci0].messages.count - 1
-        guard assistantIndex >= 0 else { return }
-
-        guard var req = request("/chat/completions") else { return }
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let history: [[String: String]] = conversations[ci0].messages[..<assistantIndex].map {
-            ["role": $0.role == .user ? "user" : "assistant", "content": $0.text]
+        func edit(_ f: (inout Message) -> Void) {
+            guard let ci = index(of: convoID),
+                  let mi = conversations[ci].messages.firstIndex(where: { $0.id == messageID }) else { return }
+            f(&conversations[ci].messages[mi])
         }
-        let body: [String: Any] = [
-            "model": selectedModel,
-            "messages": history,
-            "stream": true,
-            "max_tokens": 2048,
-        ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
-        func write(content: String = "", reasoning: String = "") {
-            guard let ci = conversations.firstIndex(where: { $0.id == convoID }),
-                  assistantIndex < conversations[ci].messages.count else { return }
-            conversations[ci].messages[assistantIndex].text += content
-            conversations[ci].messages[assistantIndex].reasoning += reasoning
+        func current() -> Message? {
+            guard let ci = index(of: convoID) else { return nil }
+            return conversations[ci].messages.first { $0.id == messageID }
         }
-        func assistant() -> Message? {
-            guard let ci = conversations.firstIndex(where: { $0.id == convoID }),
-                  assistantIndex < conversations[ci].messages.count else { return nil }
-            return conversations[ci].messages[assistantIndex]
+
+        let history = messages(in: convoID).filter { $0.id != messageID }
+        let backend: ChatBackend
+        switch answerer {
+        case .builtIn: backend = BuiltInBackend()
+        case .server(let model): backend = ServerBackend(model: model, request: { [weak self] in self?.request($0) })
         }
 
         do {
-            let (bytes, resp) = try await URLSession.shared.bytes(for: req)
-            if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
-                write(content: "⚠️ Server returned HTTP \(http.statusCode).")
-                return
-            }
-            // Assemble SSE lines from the raw byte stream ourselves, under hard
-            // caps, rather than using bytes.lines: a hostile or broken server can
-            // stream an unbounded body with no newline, and bytes.lines would
-            // buffer it without limit. maxLineBytes bounds a single line;
-            // maxTotalBytes bounds the whole response.
-            let maxLineBytes = 1 << 20   // 1 MiB per SSE line
-            let maxTotalBytes = 64 << 20 // 64 MiB per response
-            var lineBuf = [UInt8]()
-            var total = 0
-
-            // An SSE comment, stripped of its colon and the optional space
-            // after it. Both spellings are the same comment on the wire.
-            func comment(_ line: String) -> String {
-                String(line.dropFirst()).trimmingCharacters(in: .whitespaces)
-            }
-            let loadingMarker = comment(modelLoadingComment)
-
-            func handle(_ line: String) -> Bool {
-                // A line beginning with a colon is a comment, which the SSE
-                // format says to ignore. Exactly one of them is not ignored
-                // here: the load marker. Every OTHER comment is passed over
-                // without touching this request's state at all -- a bare ":"
-                // keep-alive is the commonest thing an SSE server sends through
-                // a long silence, and treating it as the server having spoken
-                // would cancel the residency poll and put the user back in
-                // front of the bare spinner this state exists to replace.
-                if line.hasPrefix(":") {
-                    guard comment(line).hasPrefix(loadingMarker) else { return false }
-                    streamSpoke()
-                    // A load marker that arrives after the answer has started
-                    // is stale -- a comment the server buffered, or one flushed
-                    // late behind the first frames. The reply is generating and
-                    // does not go back.
-                    if activity != .generating { activity = .loading }
-                    return false
+            try await backend.reply(to: history) { [weak self] event in
+                guard let self else { return }
+                switch event {
+                case .loading:
+                    self.streamSpoke()
+                    if self.activity != .generating { self.activity = .loading }
+                case .text(let s, let replaces):
+                    self.streamSpoke()
+                    self.activity = .generating
+                    edit { if replaces { $0.text = s } else { $0.text += s } }
+                case .reasoning(let r):
+                    self.streamSpoke()
+                    self.activity = .generating
+                    edit { $0.reasoning += r }
                 }
-                guard line.hasPrefix("data:") else { return false }
-                // The first data frame ends the load, whatever the comments
-                // said: the model is answering.
-                streamSpoke()
-                activity = .generating
-                var payload = String(line.dropFirst(5))
-                if payload.hasPrefix(" ") { payload.removeFirst() }
-                if payload == "[DONE]" { return true }
-                guard let d = payload.data(using: .utf8),
-                      let chunk = try? JSONDecoder().decode(StreamChunk.self, from: d),
-                      let delta = chunk.choices.first?.delta else { return false }
-                if let c = delta.content, !c.isEmpty { write(content: c) }
-                if let r = delta.reasoning ?? delta.reasoning_content, !r.isEmpty {
-                    write(reasoning: r)
-                }
-                return false
             }
-
-            for try await b in bytes {
-                if Task.isCancelled { break }
-                total += 1
-                if total > maxTotalBytes {
-                    write(content: "\n⚠️ Response exceeded \(maxTotalBytes >> 20) MB — stopped.")
-                    break
-                }
-                if b == 0x0A { // LF: end of an SSE line
-                    if let line = String(bytes: lineBuf, encoding: .utf8), handle(line) { break }
-                    lineBuf.removeAll(keepingCapacity: true)
-                    continue
-                }
-                if b == 0x0D { continue } // ignore CR so CRLF is handled
-                // Past the per-line cap, drop bytes until the next newline rather
-                // than buffer an unbounded line.
-                if lineBuf.count < maxLineBytes { lineBuf.append(b) }
-            }
-            // A thinking model can exhaust its token budget before emitting a final
-            // answer. Rather than show nothing, fall back to the reasoning.
-            if let m = assistant(), m.text.isEmpty, !m.reasoning.isEmpty,
-               let ci = conversations.firstIndex(where: { $0.id == convoID }) {
-                conversations[ci].messages[assistantIndex].text = m.reasoning
-                conversations[ci].messages[assistantIndex].reasoning = ""
+            // A thinking model can exhaust its budget before answering; show
+            // the reasoning rather than nothing.
+            if let m = current(), m.text.isEmpty, !m.reasoning.isEmpty {
+                edit { $0.text = $0.reasoning; $0.reasoning = "" }
             }
         } catch is CancellationError {
-            if assistant()?.text.isEmpty == true { write(content: "⏹ Stopped.") }
+            if current()?.text.isEmpty == true { edit { $0.text = "⏹ Stopped." } }
         } catch {
-            write(content: "⚠️ \(error.localizedDescription)")
+            edit { $0.text += (($0.text.isEmpty ? "" : "\n") + "⚠️ " + error.localizedDescription) }
+        }
+    }
+
+    // MARK: Effects
+
+    private func queueEffects(for messageID: UUID, in convoID: UUID) {
+        guard effectsEnabled,
+              let text = messages(in: convoID).first(where: { $0.id == messageID })?.text,
+              !EffectWords.matches(in: text).isEmpty else { return }
+        effectsToPlay.insert(messageID)
+    }
+
+    /// A row is about to draw the effect; it plays once, so the id goes.
+    func effectStarted(_ messageID: UUID) {
+        effectsToPlay.remove(messageID)
+    }
+}
+
+// MARK: - App
+
+@main
+struct GropiusChatApp: App {
+    @StateObject private var model = AppModel.shared
+    @FocusedValue(\.chatActions) private var actions
+
+    var body: some Scene {
+        WindowGroup("Gropius Chat") {
+            RootView(model: model).frame(minWidth: 720, minHeight: 480)
+        }
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Chat") { actions?.newChat() }
+                    .keyboardShortcut("n", modifiers: .command)
+                    .disabled(actions == nil)
+            }
+            CommandMenu("Chat") {
+                Button("Send") { actions?.send() }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(actions?.canSend != true)
+                Button("Stop") { model.stop() }
+                    .keyboardShortcut(".", modifiers: .command)
+                    .disabled(!model.sending)
+                Divider()
+                Button("Choose Model…") { actions?.chooseModel() }
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
+                    .disabled(actions == nil)
+                Button("Reconnect to Server") { Task { await model.connect() } }
+                    .keyboardShortcut("r", modifiers: .command)
+                Divider()
+                Button("Delete Chat") { actions?.deleteChat() }
+                    .keyboardShortcut(.delete, modifiers: .command)
+                    .disabled(actions == nil)
+            }
+        }
+        Settings {
+            SettingsView(model: model)
         }
     }
 }
 
-// MARK: - Styling
+/// What the menu bar can do to the front window's chat.
+struct ChatActions {
+    var canSend: Bool
+    var newChat: () -> Void
+    var send: () -> Void
+    var chooseModel: () -> Void
+    var deleteChat: () -> Void
+}
 
-extension View {
-    /// Apply the macOS 26 Liquid Glass button style. Toolbar buttons adopt
-    /// Liquid Glass automatically; this is for the custom buttons (the
-    /// composer, the settings sheet) so they match. The app's deployment
-    /// target is macOS 26, so no availability fallback is needed.
-    @ViewBuilder
-    func glassButton(prominent: Bool = false) -> some View {
-        if prominent { buttonStyle(.glassProminent) } else { buttonStyle(.glass) }
+struct ChatActionsKey: FocusedValueKey {
+    typealias Value = ChatActions
+}
+
+extension FocusedValues {
+    var chatActions: ChatActions? {
+        get { self[ChatActionsKey.self] }
+        set { self[ChatActionsKey.self] = newValue }
     }
 }
 
 // MARK: - Views
 
-@main
-struct GropiusChatApp: App {
-    var body: some Scene {
-        WindowGroup("Gropius Chat") {
-            RootView().frame(minWidth: 720, minHeight: 480)
-        }
-    }
-}
-
 struct RootView: View {
-    @StateObject private var model = AppModel()
-    @State private var showSettings = false
+    @ObservedObject var model: AppModel
+    /// The window's own chat, kept with the window so it comes back after a
+    /// relaunch.
+    @SceneStorage("selectedConversation") private var stored: String = ""
+    @State private var selection: UUID?
+    @State private var draft = ""
+    @State private var pickerShown = false
+    @Environment(\.controlActiveState) private var activeState
 
     var body: some View {
         NavigationSplitView {
-            Sidebar(model: model)
+            Sidebar(model: model, selection: $selection)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 340)
         } detail: {
-            ChatDetail(model: model, showSettings: $showSettings)
+            ChatDetail(model: model, conversationID: selection, draft: $draft, pickerShown: $pickerShown)
         }
-        .sheet(isPresented: $showSettings) { SettingsView(model: model) }
-        .task { await model.connect() }
+        .focusedSceneValue(\.chatActions, ChatActions(
+            canSend: model.canSend && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            newChat: { selection = model.newChat() },
+            send: { if let id = selection { model.send(draft, in: id); draft = "" } },
+            chooseModel: { pickerShown = true },
+            deleteChat: { if let id = selection { model.deleteChat(id); selection = model.conversations.first?.id } }))
+        .onAppear {
+            // An intent that launched the app has already said which chat to
+            // show; otherwise the window's own last chat comes back.
+            if let asked = model.intentSelection, Date().timeIntervalSince(asked.at) < 10 {
+                selection = asked.id
+                model.intentSelection = nil
+            } else {
+                selection = UUID(uuidString: stored).flatMap { id in
+                    model.conversations.contains { $0.id == id } ? id : nil
+                } ?? model.selectedID ?? model.conversations.first?.id
+            }
+            model.refreshBuiltInAvailability()
+        }
+        .onChange(of: selection) { _, new in
+            stored = new?.uuidString ?? ""
+            if let new { model.selectedID = new }
+        }
+        .onChange(of: model.intentSelection) { _, asked in
+            // An App Intent chose a chat; the key window follows, the others
+            // keep what they show.
+            guard let asked, activeState == .key else { return }
+            selection = asked.id
+            model.intentSelection = nil
+        }
     }
 }
 
 struct Sidebar: View {
     @ObservedObject var model: AppModel
+    @Binding var selection: UUID?
 
     var body: some View {
-        List(selection: Binding(get: { model.selectedID },
-                                set: { model.selectedID = $0 })) {
+        List(selection: $selection) {
             ForEach(model.conversations) { c in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(c.title.isEmpty ? "New Chat" : c.title)
@@ -991,17 +991,23 @@ struct Sidebar: View {
                 }
                 .tag(c.id)
                 .contextMenu {
-                    Button("Delete", role: .destructive) { model.deleteChat(c.id) }
+                    Button("Delete", role: .destructive) {
+                        model.deleteChat(c.id)
+                        if selection == c.id { selection = model.conversations.first?.id }
+                    }
                 }
             }
             .onDelete { offsets in
                 offsets.map { model.conversations[$0].id }.forEach(model.deleteChat)
+                if let s = selection, !model.conversations.contains(where: { $0.id == s }) {
+                    selection = model.conversations.first?.id
+                }
             }
         }
         .navigationTitle("Chats")
         .toolbar {
             ToolbarItem {
-                Button { model.newChat() } label: { Image(systemName: "square.and.pencil") }
+                Button { selection = model.newChat() } label: { Image(systemName: "square.and.pencil") }
                     .help("New chat")
             }
         }
@@ -1010,7 +1016,11 @@ struct Sidebar: View {
 
 struct ChatDetail: View {
     @ObservedObject var model: AppModel
-    @Binding var showSettings: Bool
+    let conversationID: UUID?
+    @Binding var draft: String
+    @Binding var pickerShown: Bool
+
+    private var messages: [Message] { model.messages(in: conversationID) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1021,27 +1031,24 @@ struct ChatDetail: View {
         .navigationTitle("Gropius Chat")
         .toolbar {
             ToolbarItem {
-                StatusDot(color: statusColor,
-                          pulsing: model.connection == .online,
-                          tooltip: model.status)
-            }
-            if model.connected && !model.chatModels.isEmpty {
-                ToolbarItem {
-                    Picker("", selection: $model.selectedModel) {
-                        ForEach(model.chatModels, id: \.self) { Text(short($0)).tag($0) }
+                Button {
+                    pickerShown = true
+                } label: {
+                    Label {
+                        Text(model.answerer.displayName)
+                    } icon: {
+                        if model.connecting {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: model.answerer == .builtIn ? "apple.intelligence" : "network")
+                        }
                     }
-                    .labelsHidden().frame(minWidth: 140)
-                    .help("Model")
+                    .labelStyle(.titleAndIcon)
                 }
-            }
-            ToolbarItem {
-                Button { Task { await model.connect() } } label: {
-                    Image(systemName: "arrow.clockwise")
-                }.help("Reconnect and refresh models")
-            }
-            ToolbarItem {
-                Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                    .help("Server settings")
+                .help("Choose who answers: this Mac, or a Gropius server on your network")
+                .popover(isPresented: $pickerShown) {
+                    ModelPickerView(model: model)
+                }
             }
         }
     }
@@ -1049,492 +1056,132 @@ struct ChatDetail: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    if model.currentMessages.isEmpty {
-                        EmptyState(model: model, openSettings: { showSettings = true })
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    if messages.isEmpty {
+                        EmptyState(model: model, choose: { pickerShown = true })
                     }
-                    ForEach(model.currentMessages) { m in
-                        // Only the message being streamed can be waiting on a
-                        // load, so only it is told about one.
-                        MessageRow(message: m,
-                                   loadingLabel: m.id == model.currentMessages.last?.id
+                    ForEach(messages) { m in
+                        MessageRow(model: model, message: m,
+                                   loadingLabel: m.id == messages.last?.id && model.sendingIn == conversationID
                                        ? model.loadingLabel : nil)
                             .id(m.id)
                     }
                 }
-                .padding(12)
+                .padding()
             }
-            .onChange(of: model.currentMessages.last?.text) { _, _ in
-                if let last = model.currentMessages.last {
-                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                }
+            .defaultScrollAnchor(.bottom)
+            // A link a model wrote opens only as a web address: a served reply
+            // is not trusted to hand the Mac a file, shortcut or settings URL.
+            .environment(\.openURL, OpenURLAction { url in
+                let scheme = url.scheme?.lowercased()
+                return scheme == "http" || scheme == "https" ? .systemAction : .discarded
+            })
+            .onChange(of: messages.last?.text) { _, _ in
+                if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
             }
-            .onChange(of: model.selectedID) { _, _ in
-                if let last = model.currentMessages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+            .onChange(of: conversationID) { _, _ in
+                if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
             }
         }
     }
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            composerRow
-            // A disabled control explains nothing by itself. Say why it is
-            // disabled and where the fix is, rather than leaving the user to
-            // guess at a box that will not take a keystroke, or at a send
-            // button that does nothing when clicked.
-            if !model.connected {
-                hint("Not connected, so messages can't be sent yet.", offerSettings: true)
-            } else if model.selectedModel.isEmpty {
-                hint(model.models.isEmpty
-                     ? "This server has no models downloaded yet, so there is nothing to send to."
-                     : "None of this server's models can hold a conversation, so there is nothing "
-                       + "to send to. They stay callable over the API by name.",
-                     offerSettings: false)
-            }
-        }
-        .padding(12)
-    }
-
-    private func hint(_ text: String, offerSettings: Bool) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: "exclamationmark.circle")
-            Text(text)
-            if offerSettings {
-                Button("Open Settings…") { showSettings = true }
-                    .buttonStyle(.link)
-            }
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-
-    private var composerRow: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            ComposerField(
-                text: $model.input,
-                isEnabled: model.connected,
-                // The disabled placeholder is half the explanation of why the
-                // field will not take a keystroke; the line under the composer
-                // is the other half.
-                placeholder: model.connected ? "Message…" : "Connect to a server to start typing",
-                onSubmit: { model.send() })
-            if model.sending {
-                Button { model.stop() } label: {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(width: 26, height: 26)
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("Message…", text: $draft, axis: .vertical)
+                    .lineLimit(1...8)
+                    .onSubmit(send)
+                    .disabled(!model.canSend)
+                    .accessibilityLabel("Message")
+                if model.sending {
+                    Button { model.stop() } label: { Image(systemName: "stop.fill") }
+                        .help("Stop")
+                } else {
+                    Button(action: send) { Image(systemName: "arrow.up") }
+                        .keyboardShortcut(.return, modifiers: .command)
+                        .disabled(!model.canSend || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .help("Send")
                 }
-                .glassButton()
-                .help("Stop")
-            } else {
-                Button { model.send() } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 16, weight: .bold))
-                        .frame(width: 26, height: 26)
-                }
-                .glassButton(prominent: true)
-                // No chosen model means send() would return without doing
-                // anything. A button that silently no-ops is worse than one
-                // that is visibly unavailable with the reason written under it.
-                .disabled(!model.connected
-                          || model.selectedModel.isEmpty
-                          || model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .help("Send")
+            }
+            // A disabled control explains nothing by itself; say why.
+            if let why = model.cannotSend {
+                Label(why, systemImage: "exclamationmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        // A text file dropped on the composer becomes part of the prompt.
+        .dropDestination(for: URL.self) { urls, _ in
+            // A regular text file of ordinary size; a prompt is not a place
+            // for a gigabyte, and a symlink to one is followed by the read.
+            let cap = 1 << 20
+            for url in urls {
+                guard let values = try? url.resourceValues(forKeys: [.contentTypeKey, .isRegularFileKey, .fileSizeKey]),
+                      values.isRegularFile == true,
+                      let type = values.contentType, type.conforms(to: .text),
+                      let size = values.fileSize, size <= cap,
+                      let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                draft += (draft.isEmpty ? "" : "\n\n") + text
             }
         }
     }
 
-    private var statusColor: Color {
-        switch model.connection {
-        case .online:  return .green
-        case .warning: return .orange
-        case .offline: return .red
-        }
-    }
-
-    private func short(_ id: String) -> String {
-        id.contains("/") ? String(id.split(separator: "/").last!) : id
+    private func send() {
+        guard let id = conversationID else { return }
+        model.send(draft, in: id)
+        draft = ""
     }
 }
 
-/// The message composer: a bordered, multi-line text input that grows with what
-/// is typed into it.
-///
-/// It is an NSTextView rather than a SwiftUI TextField because three of the
-/// things a composer has to do are AppKit's to give: Return sends while
-/// Shift-Return inserts a newline (a key command a text field cannot intercept
-/// without giving up its own editing), the control grows line by line to a
-/// ceiling and then scrolls, and it reports its own first-responder state so the
-/// focus ring can be drawn where macOS draws one. The surface is drawn from the
-/// platform's own colors, so it follows light and dark, the chosen accent, and
-/// Increase Contrast.
-struct ComposerField: View {
-    @Binding var text: String
-    var isEnabled: Bool
-    var placeholder: String
-    var onSubmit: () -> Void
-
-    @State private var height: CGFloat = ComposerField.minHeight
-    @State private var focused = false
-    @Environment(\.colorSchemeContrast) private var contrast
-
-    /// One line, and roughly seven before it starts scrolling instead.
-    static let minHeight: CGFloat = 21
-    static let maxHeight: CGFloat = 150
-    private static let corner: CGFloat = 7
-    private static let inset = NSSize(width: 6, height: 5)
-    /// NSTextContainer's own default padding, which the text sits behind. The
-    /// placeholder has to clear the same distance or it lands off the caret.
-    private static let lineFragmentPadding: CGFloat = 5
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            ComposerTextView(text: $text,
-                             height: $height,
-                             focused: $focused,
-                             isEnabled: isEnabled,
-                             minHeight: Self.minHeight,
-                             maxHeight: Self.maxHeight,
-                             inset: Self.inset,
-                             onSubmit: onSubmit)
-                .frame(height: height)
-            if text.isEmpty {
-                Text(placeholder)
-                    .foregroundStyle(isEnabled ? .secondary : .tertiary)
-                    .padding(.leading, Self.inset.width + Self.lineFragmentPadding)
-                    .padding(.top, Self.inset.height)
-                    .allowsHitTesting(false)
-            }
-        }
-        .padding(4)
-        .background(surface)
-        .animation(.easeOut(duration: 0.12), value: height)
-        .accessibilityLabel("Message")
-    }
-
-    /// The field's own surface: a text background inside a hairline, and the
-    /// accent color for the focus ring. Disabled it drops to the window's
-    /// background, so a field that will not take a keystroke does not look like
-    /// one that will.
-    @ViewBuilder private var surface: some View {
-        let shape = RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
-        let showFocus = focused && isEnabled
-        let increased = contrast == .increased
-        shape
-            .fill(Color(nsColor: isEnabled ? .textBackgroundColor : .windowBackgroundColor))
-            .overlay(
-                shape.strokeBorder(
-                    showFocus ? Color.accentColor : Color(nsColor: .separatorColor),
-                    lineWidth: showFocus ? 2 : (increased ? 1.5 : 1)))
-    }
-}
-
-/// The AppKit half of ComposerField.
-struct ComposerTextView: NSViewRepresentable {
-    @Binding var text: String
-    @Binding var height: CGFloat
-    @Binding var focused: Bool
-    var isEnabled: Bool
-    var minHeight: CGFloat
-    var maxHeight: CGFloat
-    var inset: NSSize
-    var onSubmit: () -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        // The TextKit 1 stack, assembled by hand. The height the composer grows
-        // to is measured off the layout manager, and a text view left to choose
-        // its own stack would answer that question from whichever one it picked
-        // — on a newer system, one that has no layout manager to ask.
-        let storage = NSTextStorage()
-        let layout = NSLayoutManager()
-        storage.addLayoutManager(layout)
-        let container = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
-        container.widthTracksTextView = true
-        layout.addTextContainer(container)
-
-        let view = ComposerNSTextView(frame: .zero, textContainer: container)
-        view.delegate = context.coordinator
-        view.isRichText = false
-        view.allowsUndo = true
-        view.drawsBackground = false
-        view.font = NSFont.preferredFont(forTextStyle: .body)
-        view.textContainerInset = inset
-        view.isVerticallyResizable = true
-        view.isHorizontallyResizable = false
-        view.autoresizingMask = [NSView.AutoresizingMask.width]
-        view.minSize = NSSize(width: 0, height: 0)
-        view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
-                              height: CGFloat.greatestFiniteMagnitude)
-        view.string = text
-        let coordinator = context.coordinator
-        view.onFocusChange = { isFocused in
-            // Reported from becomeFirstResponder, which can run inside a
-            // SwiftUI update; handing it to the next turn keeps it out of one.
-            DispatchQueue.main.async { coordinator.parent.focused = isFocused }
-        }
-        // The height is a function of the width as well as of the text: the
-        // same sentence needs two lines in a narrow window and one in a wide
-        // one. Typing is not the only thing that changes it, so the frame is
-        // watched too -- without this, dragging the window narrower re-wraps
-        // the text inside a control still sized for the old width, and the
-        // last line is clipped.
-        view.postsFrameChangedNotifications = true
-        NotificationCenter.default.addObserver(
-            coordinator,
-            selector: #selector(Coordinator.textViewFrameChanged(_:)),
-            name: NSView.frameDidChangeNotification,
-            object: view)
-
-        let scroll = NSScrollView()
-        scroll.drawsBackground = false
-        scroll.borderType = .noBorder
-        scroll.hasVerticalScroller = true
-        scroll.hasHorizontalScroller = false
-        scroll.autohidesScrollers = true
-        scroll.documentView = view
-        return scroll
-    }
-
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
-        guard let view = scroll.documentView as? ComposerNSTextView else { return }
-        context.coordinator.parent = self
-        // Only when it actually differs: assigning the same string would reset
-        // the selection under the caret on every redraw.
-        if view.string != text {
-            // An input method mid-composition owns this buffer, and the marked
-            // text in it is not in `string` yet. Assigning underneath it leaves
-            // the composition and the model disagreeing about what is in the
-            // box. The only thing that replaces the string is the composer
-            // being emptied after a send — which the arrow button can do while
-            // a composition is open — so the composition is ended first rather
-            // than left to reappear over a message already sent.
-            if view.hasMarkedText() { view.inputContext?.discardMarkedText() }
-            view.string = text
-        }
-        view.isEditable = isEnabled
-        view.isSelectable = isEnabled
-        view.textColor = isEnabled ? .textColor : .disabledControlTextColor
-        // A disabled composer must not keep the keyboard: left first responder
-        // it would draw a focus ring around a field that ignores every key.
-        if !isEnabled, view.window?.firstResponder === view {
-            view.window?.makeFirstResponder(nil)
-        }
-        context.coordinator.updateHeight(view)
-    }
-
-    /// NotificationCenter holds its observer unowned, so the registration is
-    /// undone when the view goes rather than left pointing at a coordinator
-    /// that may not outlive it.
-    static func dismantleNSView(_ scroll: NSScrollView, coordinator: Coordinator) {
-        NotificationCenter.default.removeObserver(coordinator,
-                                                  name: NSView.frameDidChangeNotification,
-                                                  object: scroll.documentView)
-    }
-
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        var parent: ComposerTextView
-
-        init(_ parent: ComposerTextView) { self.parent = parent }
-
-        func textDidChange(_ notification: Notification) {
-            guard let view = notification.object as? NSTextView else { return }
-            parent.text = view.string
-            updateHeight(view)
-        }
-
-        /// The control got wider or narrower, so the same text wraps into a
-        /// different number of lines and needs a different height.
-        @objc func textViewFrameChanged(_ notification: Notification) {
-            guard let view = notification.object as? NSTextView else { return }
-            updateHeight(view)
-        }
-
-        /// Return sends, Shift-Return inserts a newline.
-        ///
-        /// Both are handled here rather than left to the key bindings: the
-        /// system maps Shift-Return to insertNewlineIgnoringFieldEditor:, but a
-        /// remapped keyboard or a text input method can deliver it as an
-        /// ordinary insertNewline: with the shift flag still on the event, and
-        /// a composer that sent the message on that would eat the newline the
-        /// user asked for.
-        func textView(_ view: NSTextView, doCommandBy selector: Selector) -> Bool {
-            switch selector {
-            case #selector(NSResponder.insertNewline(_:)):
-                // Return belongs to the input method while a composition is
-                // open: in Japanese, Chinese and Korean input it is how a
-                // candidate is committed, and sending on it would fire the
-                // message on the keystroke that was choosing the word.
-                if view.hasMarkedText() { return false }
-                if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
-                    view.insertNewlineIgnoringFieldEditor(nil)
-                    return true
-                }
-                parent.onSubmit()
-                return true
-            case #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
-                view.insertNewlineIgnoringFieldEditor(nil)
-                return true
-            default:
-                return false
-            }
-        }
-
-        /// Grow to the height the wrapped text needs, up to the ceiling; past
-        /// it the scroll view takes over.
-        func updateHeight(_ view: NSTextView) {
-            guard let layout = view.layoutManager, let container = view.textContainer else { return }
-            layout.ensureLayout(for: container)
-            let used = layout.usedRect(for: container).height + view.textContainerInset.height * 2
-            let wanted = min(max(used.rounded(.up), parent.minHeight), parent.maxHeight)
-            guard abs(wanted - parent.height) > 0.5 else { return }
-            // Never from inside a SwiftUI update, which is where updateNSView
-            // calls this from.
-            DispatchQueue.main.async { [parent] in parent.height = wanted }
-        }
-    }
-}
-
-/// An NSTextView that says when it has the keyboard, so the composer can draw a
-/// focus ring. NSTextView reports this to nobody otherwise.
-final class ComposerNSTextView: NSTextView {
-    var onFocusChange: ((Bool) -> Void)?
-
-    override func becomeFirstResponder() -> Bool {
-        let accepted = super.becomeFirstResponder()
-        if accepted { onFocusChange?(true) }
-        return accepted
-    }
-
-    override func resignFirstResponder() -> Bool {
-        let resigned = super.resignFirstResponder()
-        if resigned { onFocusChange?(false) }
-        return resigned
-    }
-}
-
-/// A small connection indicator: green (online), orange (degraded), red (offline).
-/// The online state pulses gently. The full status text is available on hover.
-struct StatusDot: View {
-    let color: Color
-    let pulsing: Bool
-    let tooltip: String
-    @State private var animate = false
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(color.opacity(0.45))
-                .frame(width: 9, height: 9)
-                .scaleEffect(animate ? 2.4 : 1)
-                .opacity(animate ? 0 : 0.7)
-            Circle()
-                .fill(color)
-                .frame(width: 9, height: 9)
-                .shadow(color: color.opacity(0.8), radius: pulsing ? 3 : 0)
-        }
-        .frame(width: 22, height: 18)
-        .help(tooltip)
-        .onAppear(perform: restart)
-        .onChange(of: pulsing) { _, _ in restart() }
-        .onChange(of: color) { _, _ in restart() }
-    }
-
-    private func restart() {
-        animate = false
-        guard pulsing else { return }
-        withAnimation(.easeOut(duration: 1.5).repeatForever(autoreverses: false)) {
-            animate = true
-        }
-    }
-}
-
+/// The empty chat: what will answer, or why nothing can yet.
 struct EmptyState: View {
     @ObservedObject var model: AppModel
-    /// Opens the settings sheet. Without it this view could only *tell* a
-    /// first-run user to go and connect somewhere, in a window that offered
-    /// them nothing to click and a message box they could not type in.
-    var openSettings: () -> Void
+    var choose: () -> Void
 
     var body: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 4) {
-                Rectangle().fill(.red).frame(width: 16, height: 26)
-                Rectangle().fill(.yellow).frame(width: 16, height: 26)
-                Rectangle().fill(.blue).frame(width: 16, height: 26)
-            }
-            if model.connected {
-                Text(model.selectedModel.isEmpty
-                     ? "Connected, but this server has no models to serve yet."
-                     : "Ask \(model.selectedModel.split(separator: "/").last.map(String.init) ?? "the model") anything.")
+        VStack(spacing: 12) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 64, height: 64)
+            if let why = model.cannotSend {
+                Text(why)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 440)
+                Button("Choose Who Answers…", action: choose)
             } else {
-                disconnected
+                Text("Ask \(model.answerer.displayName) anything.")
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 60)
     }
-
-    private var disconnected: some View {
-        VStack(spacing: 10) {
-            Text("Not connected to a Gropius server.")
-                .foregroundStyle(.secondary)
-            Text(model.status)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
-            Button("Open Settings…") { openSettings() }
-                .glassButton(prominent: true)
-            Text("Settings holds the server's address, and lists the Gropius servers it can find on your network.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
-        }
-    }
 }
 
+/// One message. The person's are plain and right-aligned; a reply is a
+/// grouped box under the speaker's name, its markdown rendered block by block.
 struct MessageRow: View {
+    @ObservedObject var model: AppModel
     let message: Message
-    /// Set only on the message currently being waited on, and only while the
-    /// wait is a model load rather than generation. nil the rest of the time,
-    /// which is the plain spinner this client has always shown.
     var loadingLabel: String? = nil
     @State private var showReasoning = false
-    /// System Settings → Accessibility → Display → Increase contrast. The
-    /// tinted bubble is the one thing here that could go thin under it, so it
-    /// is read and answered rather than left to chance.
-    @Environment(\.colorSchemeContrast) private var contrast
+    /// The rendered blocks, parsed once per change of the text — and for the
+    /// reply that is streaming, at most a few times a second.
+    @State private var blocks: [MarkdownBlock] = []
+    @State private var lastParse = Date.distantPast
+    @State private var parseTask: Task<Void, Never>?
+    /// Latched on first appearance: whether this row plays the effect. The
+    /// model's set is consumed at that moment, so a row recreated on scroll
+    /// draws plain text and a re-evaluation cannot switch the branch mid-play.
+    @State private var playing: Bool?
+
     private var isUser: Bool { message.role == .user }
-    // Thinking is in progress while the assistant has streamed reasoning but no
-    // answer text yet.
-    private var isThinking: Bool { !isUser && displayText.isEmpty }
+    private var displayText: String { message.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var displayReasoning: String { message.reasoning.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    /// A rounded rectangle rather than a tailed speech balloon, and a modest
-    /// radius rather than a capsule: the shape macOS uses for a grouped surface,
-    /// which is what this is. Alignment and tint are what say who spoke.
-    private static let corner: CGFloat = 12
-    private static let maxBubbleWidth: CGFloat = 560
-    /// How much of the row the other speaker's side keeps, so a bubble never
-    /// runs the full width and the alignment stays legible.
-    private static let gutter: CGFloat = 56
-
-    // Models often stream leading/trailing newlines (e.g. after the reasoning),
-    // which would show as an empty line inside the bubble. Trim for display.
-    private var displayText: String {
-        message.text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    private var displayReasoning: String {
-        message.reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// Who spoke, for VoiceOver. Alignment and tint carry this for everyone
-    /// else and carry it to a screen reader not at all, so it goes in the
-    /// label. A message saved before the model was recorded says "The model",
-    /// which is true and is better than naming the wrong one.
+    /// Who spoke, for the label and for VoiceOver.
     private var speaker: String {
         if isUser { return "You" }
         guard let id = message.model, !id.isEmpty else { return "The model" }
@@ -1542,295 +1189,186 @@ struct MessageRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            if isUser { Spacer(minLength: Self.gutter) }
-            VStack(alignment: isUser ? .trailing : .leading, spacing: 5) {
-                // Thinking-model reasoning collapses behind a "Thinking…" line with
-                // a disclosure toggle. Collapsed by default.
-                if !displayReasoning.isEmpty {
-                    reasoningDisclosure
-                }
-                // Only spin when nothing at all has arrived yet; once reasoning is
-                // streaming, the "Thinking…" line is the activity indicator.
-                if displayText.isEmpty && !isUser && displayReasoning.isEmpty {
-                    waiting
-                } else if !displayText.isEmpty {
+        if isUser {
+            HStack {
+                Spacer(minLength: 56)
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(speaker).font(.caption).foregroundStyle(.secondary)
                     Text(displayText)
                         .textSelection(.enabled)
-                        // The label color, not a color of this view's choosing:
-                        // it is the one foreground guaranteed to read against
-                        // every accent, in both appearances and under Increase
-                        // Contrast.
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
-                        // Long messages wrap rather than clip: the text keeps
-                        // whatever height its wrapped lines need.
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(bubble)
-                        .frame(maxWidth: Self.maxBubbleWidth,
-                               alignment: isUser ? .trailing : .leading)
-                        .accessibilityLabel("\(speaker) said: \(displayText)")
+                        .multilineTextAlignment(.trailing)
                 }
             }
-            if !isUser { Spacer(minLength: Self.gutter) }
+            .accessibilityElement(children: .combine)
+        } else {
+            HStack {
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !displayReasoning.isEmpty { reasoningDisclosure }
+                        if displayText.isEmpty && displayReasoning.isEmpty {
+                            waiting
+                        } else if !displayText.isEmpty {
+                            reply
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } label: {
+                    Text(speaker).font(.caption).foregroundStyle(.secondary)
+                }
+                .contextMenu {
+                    Button("Copy") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(message.text, forType: .string)
+                    }
+                }
+                Spacer(minLength: 56)
+            }
+            .accessibilityLabel("\(speaker) said: \(displayText)")
         }
     }
 
-    /// Nothing has arrived yet. A bare spinner says only "working"; with a
-    /// label it says what the work is, which is the whole difference between a
-    /// wait a user can account for and one that reads as a hang.
+    /// The reply, rendered: one selectable Text per block, the matched words
+    /// animated once if the reply earned it.
+    @ViewBuilder private var reply: some View {
+        let animate = playing ?? false
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .paragraph(let s):
+                    styled(s, animate: animate)
+                case .heading(let level, let s):
+                    styled(s, animate: animate)
+                        .font(level <= 1 ? .title2 : level == 2 ? .title3 : .headline)
+                case .listItem(let ordinal, let s):
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(ordinal.map { "\($0)." } ?? "•").foregroundStyle(.secondary)
+                        styled(s, animate: animate)
+                    }
+                    .padding(.leading, 8)
+                case .quote(let s):
+                    HStack(alignment: .top, spacing: 8) {
+                        Divider()
+                        styled(s, animate: animate).foregroundStyle(.secondary)
+                    }
+                case .code(let code):
+                    GroupBox {
+                        Text(code)
+                            .font(.body.monospaced())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                case .plain(let text):
+                    Text(text)
+                        .font(.body.monospaced())
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .onAppear {
+            if playing == nil {
+                let due = model.effectsToPlay.contains(message.id)
+                playing = due
+                if due { model.effectStarted(message.id) }
+            }
+            if blocks.isEmpty { blocks = MarkdownBlocks.parse(displayText); lastParse = Date() }
+        }
+        .onChange(of: displayText) { _, _ in scheduleParse() }
+    }
+
+    /// Parse now if the last parse is older than a fifth of a second, else
+    /// once at that deadline; a finished reply's text never changes again.
+    private func scheduleParse() {
+        let wait = 0.2 - Date().timeIntervalSince(lastParse)
+        parseTask?.cancel()
+        if wait <= 0 {
+            blocks = MarkdownBlocks.parse(displayText)
+            lastParse = Date()
+            return
+        }
+        parseTask = Task {
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled else { return }
+            blocks = MarkdownBlocks.parse(displayText)
+            lastParse = Date()
+        }
+    }
+
+    @ViewBuilder private func styled(_ s: AttributedString, animate: Bool) -> some View {
+        if animate {
+            EffectText(text: s, matches: EffectWords.matches(in: String(s.characters)))
+        } else {
+            Text(s).textSelection(.enabled)
+        }
+    }
+
     @ViewBuilder private var waiting: some View {
         if let loadingLabel {
-            HStack(spacing: 7) {
-                ProgressView().controlSize(.small)
-                Text(loadingLabel)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(bubble)
-            .accessibilityElement(children: .combine)
+            Label { Text(loadingLabel).foregroundStyle(.secondary) } icon: { ProgressView().controlSize(.small) }
         } else {
-            ProgressView().controlSize(.small).padding(.vertical, 6).padding(.horizontal, 4)
+            ProgressView().controlSize(.small)
         }
     }
 
     @ViewBuilder private var reasoningDisclosure: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { showReasoning.toggle() }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: showReasoning ? "chevron.down" : "chevron.right")
-                        .font(.caption2)
-                    if isThinking { ProgressView().controlSize(.mini) }
-                    Text(isThinking ? "Thinking…" : "Thoughts")
-                        .font(.caption)
-                }
+        DisclosureGroup(isExpanded: $showReasoning) {
+            Text(displayReasoning)
+                .font(.callout).italic()
                 .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
+                .textSelection(.enabled)
+        } label: {
+            Label {
+                Text(displayText.isEmpty ? "Thinking…" : "Thoughts").font(.caption)
+            } icon: {
+                if displayText.isEmpty { ProgressView().controlSize(.mini) }
             }
-            .buttonStyle(.plain)
-
-            if showReasoning {
-                Text(displayReasoning)
-                    .font(.callout).italic()
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: 560, alignment: .leading)
-                    .transition(.opacity)
-            }
-        }
-        .padding(.horizontal, 6)
-        .frame(maxWidth: 560, alignment: .leading)
-    }
-
-    /// The bubble's surface. Every color in it is one the platform supplies:
-    /// the person's side is a tint of the accent color chosen in System
-    /// Settings, the model's side a step of the same hierarchy the rest of the
-    /// window's fills come from. Nothing is a fixed value, so all of it follows
-    /// light and dark, a changed accent, and Increase Contrast — which is
-    /// answered explicitly, because a tint is the one thing here thin enough to
-    /// disappear under it.
-    ///
-    /// The model's side is deliberately NOT a named background color:
-    /// controlBackgroundColor and textBackgroundColor are both white in the
-    /// light appearance, which is the transcript's own background, and a bubble
-    /// the same color as what it sits on is not a bubble. A hierarchical fill
-    /// is a step away from whatever the surface underneath is, in either
-    /// appearance.
-    @ViewBuilder private var bubble: some View {
-        let shape = RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
-        let increased = contrast == .increased
-        if isUser {
-            shape
-                .fill(Color.accentColor.opacity(increased ? 0.34 : 0.18))
-                .overlay(shape.strokeBorder(Color.accentColor.opacity(increased ? 0.95 : 0.4),
-                                            lineWidth: increased ? 1.5 : 1))
-        } else {
-            shape
-                .fill(increased ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.quaternary))
-                .overlay(shape.strokeBorder(Color(nsColor: .separatorColor),
-                                            lineWidth: increased ? 1.5 : 1))
+            .foregroundStyle(.secondary)
         }
     }
 }
 
+/// Settings: the server the client is pointed at, its key, which served
+/// models the picker offers, and the reply effects.
 struct SettingsView: View {
     @ObservedObject var model: AppModel
-    @StateObject private var browser = ServerBrowser()
-    /// The server currently being resolved, and why the last attempt failed.
-    @State private var resolving: String?
-    @State private var resolveError: String?
-    /// The resolve in flight, and which one it is. Resolves take as long as the
-    /// network makes them take, so a second pick can be answered before the
-    /// first: the generation says whose answer is still wanted.
-    @State private var resolver: ServiceResolver?
-    @State private var resolveGeneration = 0
-    @Environment(\.dismiss) private var dismiss
+    @State private var key = ""
 
-    /// Typing in the address field is a hand-typed address, which resets the
-    /// base path — see AppModel.useTypedAddress.
     private var typedAddress: Binding<String> {
         Binding(get: { model.serverURL }, set: { model.useTypedAddress($0) })
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Server settings").font(.title3).bold()
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Server URL").font(.caption).foregroundStyle(.secondary)
-                TextField("http://alices-mac.local:11535", text: typedAddress)
-                    .textFieldStyle(.roundedBorder)
-                Text("The Gropius server's address — the Mac's .local name or LAN IP, port 11535. "
-                     + "On the Mac running the server, that is http://localhost:11535.")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
-            discovered
-            VStack(alignment: .leading, spacing: 4) {
-                Text("API key (optional)").font(.caption).foregroundStyle(.secondary)
-                SecureField("Only if the server requires one", text: $model.apiKey)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: model.apiKey) { _, newValue in
-                        Keychain.write(newValue)
+        Form {
+            Section("Server") {
+                TextField("Address", text: typedAddress, prompt: Text("http://alices-mac.local:11535"))
+                Text("A Gropius server's address: the Mac's .local name or LAN address, port 11535. Servers on your network are offered in the model picker without typing anything.")
+                    .font(.caption).foregroundStyle(.secondary)
+                SecureField("API key", text: $key, prompt: Text("Only if that server requires one"))
+                    // Saved only when the person changed it: the initial load
+                    // below must not re-bind the stored key to whatever server
+                    // the client happens to be pointed at now.
+                    .onChange(of: key) { _, new in
+                        guard new != model.apiKey else { return }
+                        model.saveAPIKey(new)
                     }
+                Text(model.apiKeyHost.isEmpty
+                     ? "The key is sent only to the server it is entered for."
+                     : "The key is sent only to \(model.apiKeyHost).")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Models to offer").font(.caption).foregroundStyle(.secondary)
-                TextField("text-generation, image-text-to-text", text: $model.chatPipelineTags)
-                    .textFieldStyle(.roundedBorder)
-                TextField("conversational", text: $model.chatRequiredTags)
-                    .textFieldStyle(.roundedBorder)
-                Text("The menu offers models carrying these HuggingFace words — a pipeline tag "
-                     + "from the first list, and every tag in the second. Every model stays "
-                     + "reachable over the API by name. Clear a field to stop testing it.")
-                    .font(.caption2).foregroundStyle(.secondary)
+            Section("Models to offer") {
+                TextField("Pipeline tags", text: $model.chatPipelineTags, prompt: Text("text-generation, image-text-to-text"))
+                TextField("Required tags", text: $model.chatRequiredTags, prompt: Text("conversational"))
+                Text("The picker offers a server's models carrying these HuggingFace words — a pipeline tag from the first list, and every tag in the second. Every model stays reachable over the API by name. Clear a field to stop testing it. The Mac's own model is always offered.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .glassButton()
-                Button("Connect") { dismiss(); Task { await model.connect() } }
-                    .glassButton(prominent: true)
-                    .keyboardShortcut(.defaultAction)
+            Section("Replies") {
+                Toggle("Animate certain words", isOn: $model.effectsEnabled)
+                Text(EffectWords.settingsSentence)
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
-        .padding(20)
-        .frame(width: 460)
-        .onAppear { browser.start() }
-        .onDisappear {
-            browser.stop()
-            resolver?.cancel()
-            resolver = nil
-            resolving = nil
-        }
-    }
-
-    // MARK: Servers on this network
-
-    /// The browse results. Picking one fills the address field in; it never
-    /// connects on its own, so the choice of which machine gets the API key
-    /// stays with the user.
-    private var discovered: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("On your network").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Search again") {
-                    resolveError = nil
-                    browser.restart()
-                }
-                .buttonStyle(.link).font(.caption)
-            }
-            switch browser.status {
-            case .failed(let why):
-                note("Could not search the local network: \(why)", systemImage: "exclamationmark.triangle")
-            case .waiting(let why):
-                note("Waiting to search the local network — \(why)", systemImage: "clock")
-            case .stopped, .searching:
-                if browser.servers.isEmpty {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("Looking for Gropius servers… if none appear, type the address above.")
-                            .font(.caption2).foregroundStyle(.secondary)
-                    }
-                } else {
-                    serverList
-                }
-            }
-            if let resolveError {
-                note(resolveError, systemImage: "exclamationmark.triangle")
-            }
-        }
-    }
-
-    private var serverList: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                ForEach(browser.servers) { server in
-                    Button { pick(server) } label: { row(server) }
-                        .buttonStyle(.plain)
-                    Divider()
-                }
-            }
-        }
-        // Bounded, so a network full of servers cannot push the buttons below
-        // off the sheet.
-        .frame(maxHeight: 130)
-        .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary))
-    }
-
-    private func row(_ server: DiscoveredServer) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: server.authRequired ? "lock.fill" : "network")
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(server.name).lineLimit(1)
-                Text(server.summary).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer()
-            if resolving == server.id { ProgressView().controlSize(.small) }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-    }
-
-    private func note(_ text: String, systemImage: String) -> some View {
-        Label(text, systemImage: systemImage)
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-    }
-
-    /// Resolve the picked service to an address and put it in the field. The
-    /// resolve is where a server that has left the network is found out: the
-    /// browse can still be listing a service whose machine has gone.
-    ///
-    /// Only the newest pick may write the field. Picking a slow server and then
-    /// a fast one would otherwise end with the slow one's address in the field,
-    /// several seconds after the user watched the fast one land there.
-    private func pick(_ server: DiscoveredServer) {
-        resolver?.cancel()
-        resolveError = nil
-        resolving = server.id
-        resolveGeneration += 1
-        let generation = resolveGeneration
-
-        let resolver = ServiceResolver(server: server)
-        self.resolver = resolver
-        resolver.resolve { outcome in
-            guard generation == resolveGeneration else { return }
-            resolving = nil
-            self.resolver = nil
-            switch outcome {
-            case .address(let address):
-                model.use(server, resolvedAddress: address)
-            case .failure(let why):
-                resolveError = "\(server.name): \(why)"
-            }
-        }
+        .formStyle(.grouped)
+        .frame(width: 520)
+        .onAppear { key = model.apiKey }
     }
 }
