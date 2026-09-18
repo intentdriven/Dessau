@@ -428,3 +428,17 @@ network.
 Verdict proposed: FILE-AS-IS as one intent with the distribution question
 open. Verdict adopted: the same. Grade: the routing survived the human's
 confirmation unchanged.
+
+## 2026-09-18 — text size in Settings
+
+Proposal (the maintainer): change font size in Settings.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| A text-size choice in the client's Settings | capability | one intent, `builds_on` the trunk |
+| How it is applied | mechanism | the system's Dynamic Type sizes, set at the window's root |
+
+Verdict proposed: FILE-AS-IS. Verdict adopted: the same; the maintainer chose
+the whole window over the conversation alone. Grade: routing survived
+unchanged. Reviews scaled to the blast radius: one architecture test, no
+adversarial pass.
