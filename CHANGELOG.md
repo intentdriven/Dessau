@@ -11,6 +11,15 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **The chat client's appearance, text size, bubble colours and composer are
+  yours to shape.** Settings offers Light, Dark or System, five text sizes that scale the whole window
+  through the system's own sizes; each speaker's bubble colour has a picker
+  (the system's accent colour and grey by default); the composer takes the
+  form of Messages' composer; the Thoughts row toggles on a click anywhere;
+  and a server that needs an API key asks for it where it is picked, once.
+
 ## [0.7.0] - 2026-09-18
 
 ### Changed
