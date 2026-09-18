@@ -96,9 +96,74 @@ right on 27, or a view that has to be rebuilt in AppKit to match the system.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-8c79f3cab18a -->
-Fidelity review OWED (receipt rcp-8c79f3cab18a).
+<!-- abcd-review: INGESTED receipt=rcp-8c79f3cab18a -->
+Fidelity review — receipt rcp-8c79f3cab18a (verifier intent-auditor claude-fable-5-1).
 
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:811d21fa5b96a657a94f07545f10e5fe97a2682aa2c7fe658063b99fabbb9944
+Input attestations: diff:acacd07..210ce66 (PR 58, merged; audited against origin/main at 400ccd7)@-;
+
+Acceptance rollup: MET 1 · MET_WITH_CONCERNS 2 · NOT_MET 1 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: the source-level half is demonstrably delivered — a styling denylist test exists and the whole archtest package passes — but it is an enumerated denylist with a by-name file exemption, and the visual 'reads as system-native on 27' half rests on a side-by-side comparison nobody has run in a citable record
+  evidence: internal/archtest/chat_client_native_test.go:42 — "func TestChatClientCarriesNoStylingOfItsOwn(t *testing.T) {"
+  evidence: internal/archtest/chat_client_native_test.go:48 — "exempt := map[string]string{"
+  evidence: client/GropiusChat/GropiusChat.swift:1046 — ".labelStyle(.titleAndIcon)"
+- ac-2 — MET: Cmd-N is a New Chat button in a replaced .newItem CommandGroup, Settings is a standard Settings scene (which is what gives Cmd-,), every Chat-menu action carries a .keyboardShortcut, and a test holds actions and shortcuts equal in number
+  evidence: client/GropiusChat/GropiusChat.swift:879 — ".keyboardShortcut("n", modifiers: .command)"
+  evidence: client/GropiusChat/GropiusChat.swift:901 — "Settings {"
+  evidence: internal/archtest/chat_client_native_test.go:220 — "func TestChatClientMenuActionsCarryShortcuts(t *testing.T) {"
+- ac-3 — NOT_MET: the promise assumes chats open in more than one window, but the delivery replaces the standard .newItem group (which carried New Window) with a single New Chat action and adds no openWindow anywhere, so no delivered path opens a second window; restoration and the file drop are both recorded as manual checks still owed, and the drop logic lives inline in the view with no test
+  evidence: client/GropiusChat/GropiusChat.swift:877 — "CommandGroup(replacing: .newItem) {"
+  evidence: client/GropiusChat/GropiusChat.swift:933 — "@SceneStorage("selectedConversation") private var stored: String = """
+  evidence: client/GropiusChat/GropiusChat.swift:1115 — ".dropDestination(for: URL.self) { urls, _ in"
+  evidence: .abcd/work/DECISIONS.md:277 — "NOT verified, the maintainer's manual checks, still owed: ... window restoration across a relaunch; the file drop"
+- ac-4 — MET_WITH_CONCERNS: the keychain, the one-host bearer rule and the discovery/model archtests are intact and install.sh fetches the kept v0.6.0 release below the client floor, but the guard deliberately does not check that the release is still published, the 26-Mac install run is unperformed, and discovery no longer behaves exactly as before — the browse now runs only while the picker is shown
+  evidence: install.sh:101 — "KEPT_CLIENT_TAG=v0.6.0"
+  evidence: install.sh:114 — "RELEASE_PATH="download/$KEPT_CLIENT_TAG""
+  evidence: internal/archtest/minimum_macos_test.go:100 — "Whether that release is still published is the forge's state, not"
+  evidence: client/GropiusChat/GropiusChat.swift:482 — "apiKey = Keychain.read()"
+  evidence: internal/archtest/chat_client_native_test.go:110 — "func TestChatClientBrowsesOnlyWhileThePickerIsShown(t *testing.T) {"
+
+Gap audit:
+- honoured:
+  - the window, sidebar, toolbar and controls are the system's own, with no styling of the client's left over
+    evidence: internal/archtest/chat_client_native_test.go:42 — "func TestChatClientCarriesNoStylingOfItsOwn(t *testing.T) {"
+  - a real menu bar: Cmd-N starts a chat, Cmd-, opens Settings, every action has a shortcut, through the standard Commands and Settings scenes
+    evidence: client/GropiusChat/GropiusChat.swift:882 — "CommandMenu("Chat") {"
+    evidence: client/GropiusChat/GropiusChat.swift:901 — "Settings {"
+  - keeping the API key in the keychain works exactly as before, and the key still goes to one host
+    evidence: client/GropiusChat/GropiusChat.swift:675 — "if !apiKey.isEmpty, origin == apiKeyHost {"
+  - Alice sees no difference: the server keeps its macOS 26 floor and its OpenAI-compatible API
+    evidence: build/Info.plist:22 — "< string>26.0< /string>"
+  - the client's floor moves to macOS 27 and one arm64 slice is built without an Xcode project
+    evidence: client/Info.plist:22 — "< string>27.0< /string>"
+    evidence: client/build.sh:17 — "SDK="$(xcrun --sdk macosx --show-sdk-path)""
+- diverged:
+  - a text file dropped on the composer becomes part of the prompt — delivered inline in the composer view with a 1 MiB cap and a silent skip, not as the spec's tested unit of AppModel, and with no automated test at all
+    evidence: client/GropiusChat/GropiusChat.swift:1115 — ".dropDestination(for: URL.self) { urls, _ in"
+  - finding a Gropius server works exactly as it did before — the browse now starts only when the model picker appears and stops when it disappears
+    evidence: client/GropiusChat/Picker.swift:54 — "browser.start()"
+    evidence: internal/archtest/chat_client_native_test.go:110 — "func TestChatClientBrowsesOnlyWhileThePickerIsShown(t *testing.T) {"
+  - the kept 26-floor release stays published beside the current one — nothing in the checkout enforces it; the guard checks only that install.sh and README.md name the same tag
+    evidence: internal/archtest/minimum_macos_test.go:100 — "Whether that release is still published is the forge's state, not"
+    evidence: .abcd/work/DECISIONS.md:277 — "Open: v0.6.0 must stay published as the kept client release, which nothing enforces yet"
+  - the release is built by the project's usual chain — the build job moved to GitHub's public-preview xcode-27 runner, and that run is itself an owed check
+    evidence: .github/workflows/release.yml:131 — "runs-on: xcode-27"
+- missing:
+  - it remembers its windows across a relaunch — no delivered path opens a second window (the standard New Window item was replaced away and nothing calls openWindow), and restoration itself has never been exercised
+    evidence: client/GropiusChat/GropiusChat.swift:877 — "CommandGroup(replacing: .newItem) {"
+    evidence: .abcd/work/DECISIONS.md:277 — "still owed: ... window restoration across a relaunch"
+
+Scope-condition dispositions:
+- cond-2609161738009947 — survived: the client is still built by a shell script through xcrun against the Xcode SDK, with no .xcodeproj or asset catalog anywhere in the checkout, and no 27 API forced a project
+  evidence: client/build.sh:17 — "SDK="$(xcrun --sdk macosx --show-sdk-path)""
+  evidence: client/build.sh:29 — "xcrun swiftc -O -wmo -c -parse-as-library \"
+- cond-2609161738009497 — narrowed: the server's floor and its OpenAI-compatible API are genuinely untouched, but the delivery did change production code under internal/ beyond the archtest package the spec carved out
+  narrowing: holds as 'the server keeps its macOS 26 floor and its API is unchanged', not as the condition's literal 'nothing this intent ships changes anything under internal/ or cmd/': internal/lifecycle/install.go and internal/lifecycle/live.go changed in the same delivery (the /Applications writability-probe race and error redaction)
+  evidence: build/Info.plist:22 — "< string>26.0< /string>"
+  evidence: internal/lifecycle/install.go:313 — "var destinationWritable = func() bool { return writableDir(systemApplications) == nil }"
+  evidence: internal/lifecycle/live.go:50 — "probe := destinationWritable"
 ## Grounds
 
 - pursued: we expect the chat client to read as an app made for macOS 27 once its own styling is removed and its menus, shortcuts and window restoration come from SwiftUI's standard scenes, because the system draws standard controls in its own design when nothing overrides them; what would show it wrong is a control that still needs a custom style on 27, a convention that needs AppKit, or a 27 API that needs Xcode 27 rather than the command-line SDK
