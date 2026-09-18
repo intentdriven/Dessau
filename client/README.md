@@ -1,89 +1,91 @@
 # Gropius Chat
 
-A small native macOS app for chatting with the MLX models a
-[Gropius](../README.md) server exposes on your network. Point it at the Mac
-running Gropius, pick a model, and talk to it — streaming replies, no browser.
+A native macOS chat app. It chats with the Mac's own model out of the box —
+the language model Apple ships with the system, on the Mac, with nothing sent
+anywhere — and when a [Gropius](../README.md) server is on your network it
+offers that server's MLX models in the same picker: streaming replies, no
+browser, no configuration.
 
-It's a plain OpenAI-compatible client, so it needs nothing installed on the other
-machine: just this one app. **Requires macOS 26**, the same floor as the server.
+**Requires macOS 27** and Apple Silicon, which is every Mac that runs macOS 27.
+The server it can talk to keeps its own floor, macOS 26. A Mac on macOS 26
+gets the last client built for it, from release v0.6.0, which stays published
+and is not updated; `install.sh` picks it by the Mac's version.
 
 ## Build
 
-Needs the Xcode command-line tools (`xcode-select --install`) on the Mac you
-build on, with the **macOS 26 SDK**: the app's Liquid Glass button styles exist
-only there, so the build fails against an older SDK. No Xcode project — one
-Swift file, one script:
+Needs the installed Xcode (27 or later) on the Mac you build on: the macOS 27
+SDK's SwiftUI is implemented with compiler macros whose plugin ships only
+inside Xcode, so the Command Line Tools alone cannot build this app. No Xcode
+project, though — a handful of Swift files, one script:
 
 ```sh
 ./build.sh
 open dist/GropiusChat.app
 ```
 
-`build.sh` produces a **universal** (Apple Silicon + Intel) `dist/GropiusChat.app`.
+`build.sh` compiles with `xcrun swiftc`, writes the App Intents metadata with
+the toolchain's own processor (and fails if it did not), and assembles an
+Apple Silicon `dist/GropiusChat.app`.
 
 ## Use
 
-1. Launch it. On first run it tries `http://localhost:11535` — the Gropius
-   server on this same Mac, which is where the documented install puts one.
-2. If the server is on another Mac, open **Settings** (the **gear** in the
-   toolbar, or the button on the empty chat). Settings lists every Gropius
-   server it can find on your network: each row names the server, says whether
-   it needs an API key, and how many models it can serve. Click one and its
-   address fills the field — nothing connects until you say so, so the choice
-   of which machine receives your API key stays yours.
+1. Launch it and type. The picker in the toolbar reads **On this Mac**: the
+   Mac's own model answers, on the device. It needs Apple Intelligence switched
+   on; if the Mac cannot answer — Apple Intelligence off, the model still
+   downloading, an unsupported language — the empty chat says which, and what
+   would fix it, and offers a server instead.
+2. To use a Gropius server, click the picker. Under **Servers on your network**
+   it lists every Gropius server it can find while the picker is open: each row
+   names the server, says whether it needs an API key, and how many models it
+   can serve. Click one and its chat models appear under its name; click a
+   model and the conversation carries on there. Nothing switches by itself,
+   and **On this Mac** is always one click away.
 
-   Nothing found, or the server is somewhere Bonjour does not reach? Type the
-   address instead: the Mac's `.local` name or its LAN IP with port `11535` and
-   no path — for example `http://your-mac.local:11535`. The Gropius **Connect**
-   tab and menu bar show that address with `/v1` on the end (the form OpenAI
-   clients want); GropiusChat adds `/v1` itself, so drop the suffix when
-   pasting. Add an API key only if that server requires one.
+   macOS asks for permission to search the local network the first time the
+   picker opens — not when the app launches. Without it the list stays empty;
+   a server elsewhere can be typed into **Settings** (Cmd-,): the Mac's `.local`
+   name or its LAN address with port `11535` and no path, for example
+   `http://your-mac.local:11535`. Add an API key only if that server requires
+   one; the key is sent only to the server it was entered for, never to a
+   server found on the network.
+3. **Return** sends; **Option-Return** starts a new line; the arrow button sends
+   too, and the stop button interrupts a reply. Drop a text file on the message
+   box and its content becomes part of the prompt. Select text in the box or in
+   a reply and the system's **Writing Tools** — proofread, rewrite, summarise —
+   are in the context menu when Apple Intelligence is on.
 
-   macOS asks for permission to search the local network the first time
-   Settings opens. Without it the list stays empty, and typing the address
-   still works.
-3. Pick a model from the top-right menu and start typing. The message box grows
-   with what you write and starts scrolling at about seven lines. **Return**
-   sends; **Shift-Return** starts a new line; the arrow button sends too. The
-   stop button interrupts a reply in progress. Until a server answers, the box
-   is greyed out and says so.
+   The picker offers a server's models that can hold a conversation. It works
+   that out from the HuggingFace pipeline tag and tags the server publishes for
+   each model; the rule is yours to change under **Models to offer** in
+   Settings. The Mac's own model is not a served model and is always offered.
 
-   The menu offers the models that can hold a conversation. It works that out
-   itself, from the HuggingFace pipeline tag and tags the server publishes for
-   each model: a model outside the rule is left out of the menu and stays
-   callable over the API by the name it is listed under — it is simply not put
-   in front of you here. The rule is yours to change, under **Models to offer**
-   in Settings: a comma-separated list of pipeline tags that count, and a second
-   of tags a model must carry. Clear a field to stop testing that half. Where a
-   server publishes no words for a model, its own verdict is used instead, and a
-   server that says nothing about the matter offers everything it serves.
+Replies render their markdown — emphasis, code, lists, headings, block quotes,
+code blocks, links — and a reply's context menu offers **Copy**, which copies
+what the model wrote, marks and all. A few words (congratulations, well done,
+warning, careful, wow, amazing) animate once when a reply arrives; switch that
+off under **Replies** in Settings.
 
-Your messages sit on the right in a bubble tinted with your accent colour, the
-model's on the left in a plain one. Both are drawn from the system's own
-colours, so they follow light and dark, whichever accent you have chosen, and
-Increase Contrast.
-
-Loading a model into memory takes seconds to a minute. While that is happening
+Loading a model on a server takes seconds to a minute. While that is happening
 the reply reads **Loading**, with the model's name, rather than showing the same
-spinner a slow answer shows — so a first message to a cold model reads as
-provisioning rather than as a hang. It comes from the residency the models list
-publishes: the client reads it once a second while it waits, and stops the
-moment the answer starts. A server that does not publish residency to this
-client — see [the models list reference](../docs/models-list.md) — shows the
-plain spinner instead.
+spinner a slow answer shows. Thinking models stream their reasoning; a
+**Thoughts** row above the answer expands to show it.
 
-Thinking models (Qwen3, etc.) stream their reasoning; a grey **Thoughts** row
-above the answer expands to show it, so a reply that spends its whole budget
-reasoning is never blank.
+### Chats and windows
 
-### Chats
+The sidebar holds your conversations. **New Chat** (Cmd-N) starts one; the
+**Chat** menu carries every action with its shortcut. Each window remembers
+which chat it shows and comes back after a relaunch, the way macOS restores
+windows. Delete a chat by swiping or right-clicking it. Everything is saved
+to `~/Library/Application Support/GropiusChat/conversations.json` and restored
+on next launch — history lives on the machine running the client, not on the
+server.
 
-The left **sidebar** holds your conversations. The **pencil** button in the
-toolbar starts a new chat; the toolbar's sidebar button hides or shows the
-list. Delete a chat by swiping or right-clicking it. Everything is
-saved to `~/Library/Application Support/GropiusChat/conversations.json` and
-restored on next launch — history lives on the machine running the client, not on
-the server.
+### Shortcuts and Spotlight
+
+The client declares its actions as App Intents, so Shortcuts lists **Ask
+Gropius** (a prompt in, the reply out as text, kept as a new chat), **New Chat**
+and **Open Chat** (by title) under the app, and Spotlight offers them. Chats are
+looked up when you pick one; nothing is added to the system's index.
 
 ## Distributing it to another Mac
 
@@ -102,17 +104,24 @@ For friction-free distribution to Macs you don't control, you'd sign and
 **notarize** the app with an Apple Developer ID — out of scope here.
 
 The app talks plain HTTP to a LAN address; its `Info.plist` allows that
-(`NSAllowsLocalNetworking`) and declares Local Network access, which macOS may
-prompt the user to approve on first connect.
+(`NSAllowsLocalNetworking`) and declares Local Network access, which macOS asks
+you to approve the first time the picker looks for a server.
 
 ## What it is under the hood
 
-- `GropiusChat/GropiusChat.swift` — the whole app (SwiftUI). `GET /v1/models` to
-  list, `POST /v1/chat/completions` with `stream: true` to chat, parsed as SSE.
+- `GropiusChat/GropiusChat.swift` — the app, the model and the views (SwiftUI).
+- `GropiusChat/Backends.swift` — the two answerers: the Mac's own model through
+  the Foundation Models framework, and a server over `GET /v1/models` and
+  `POST /v1/chat/completions` with `stream: true`, parsed as SSE.
+- `GropiusChat/Picker.swift` — the model picker and the Bonjour browse that runs
+  only while it is open.
+- `GropiusChat/Markdown.swift`, `Effects.swift`, `Intents.swift` — the reply
+  rendering, the word effects, the App Intents.
 - `Info.plist` — bundle metadata, local-network entitlements, and the Bonjour
   service type the app may browse for (`_gropius._tcp`, the one the server
   advertises).
-- `build.sh` — compiles with `swiftc` and assembles the `.app`.
+- `build.sh` — compiles with `xcrun swiftc`, writes the App Intents metadata and
+  assembles the `.app`.
 
-Settings persist across launches: the server URL and chosen model in
+Settings persist across launches: the server address and chosen model in
 `UserDefaults`, the API key in the macOS Keychain.
