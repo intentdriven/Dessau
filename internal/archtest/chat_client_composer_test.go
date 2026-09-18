@@ -118,3 +118,21 @@ func TestChatClientTextSizeScalesTheWholeWindow(t *testing.T) {
 		t.Error("Settings offers no text-size picker")
 	}
 }
+
+// TestChatClientAppearanceFollowsOneSetting holds the appearance setting
+// (itd-2609181102147562): Light, Dark or System, applied as the preferred
+// colour scheme at the window's root and at Settings' root; System is the
+// absence of a preference.
+func TestChatClientAppearanceFollowsOneSetting(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+	if !regexp.MustCompile(`enum Appearance: String, CaseIterable \{\s*case system, light, dark`).MatchString(src) {
+		t.Error("client/GropiusChat/GropiusChat.swift declares no Appearance with the three choices")
+	}
+	if n := strings.Count(src, ".preferredColorScheme("); n < 2 {
+		t.Errorf("the preferred colour scheme is applied at %d root(s); the window and Settings each need it", n)
+	}
+	if !strings.Contains(src, `@AppStorage("appearance")`) || !strings.Contains(src, `Picker("Appearance"`) {
+		t.Error("the appearance is not stored, or Settings offers no picker for it")
+	}
+}
