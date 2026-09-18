@@ -233,3 +233,39 @@ func TestChatClientMenuActionsCarryShortcuts(t *testing.T) {
 		t.Errorf("the Chat menu has %d actions and %d shortcuts; every action carries one", buttons, shortcuts)
 	}
 }
+
+// TestChatClientEffectPlaysOnceWhenTheReplyFinishes holds the text-effects
+// intent's once-only trigger (iss-2609181116217704). The model queues a
+// message id in the stream's defer — when the reply FINISHES — so a row that
+// latches at the reply block's first appearance latches at the first streamed
+// token, before any id is there: the finishing reply never animates, and the
+// id it left behind fires instead on whatever row scroll recreates next. The
+// row therefore watches the model's set for the change that queues the id, and
+// a row that finds the id already there consumes it without playing.
+func TestChatClientEffectPlaysOnceWhenTheReplyFinishes(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+
+	if !strings.Contains(src, "onChange(of: model.effectsToPlay.contains(message.id))") {
+		t.Error("MessageRow does not watch model.effectsToPlay for this message's id; " +
+			"an effect latched at the block's first appearance is latched at the first streamed token, " +
+			"before the stream's defer has queued the id — so a finishing reply never animates")
+	}
+	if strings.Contains(src, "@State private var playing: Bool?") {
+		t.Error("MessageRow still latches an optional `playing` on first appearance; " +
+			"the once-only flag belongs to the change that queues the id, not to the row appearing")
+	}
+	// The consuming call has to sit in both places: on the change that plays
+	// the effect, and on the appearance of a row that found the id already
+	// queued — the reply finished off screen and its moment has passed.
+	if n := strings.Count(src, "model.effectStarted(message.id)"); n < 2 {
+		t.Errorf("model.effectStarted(message.id) is called %d time(s); the id is consumed both when the effect plays "+
+			"and when a recreated row finds it stale, so no later row can fire on it", n)
+	}
+	if !strings.Contains(src, "@State private var played = false") {
+		t.Error("MessageRow keeps no record that it has already played; the effect plays exactly once per row")
+	}
+	if !strings.Contains(src, "effectsToPlay.insert(messageID)") {
+		t.Error("AppModel queues no message id for the effect; the trigger has nothing to watch")
+	}
+}
