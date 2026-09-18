@@ -139,8 +139,9 @@ type Status struct {
 	Model string `json:"model,omitempty"`
 	Step  string `json:"step,omitempty"`
 	// HeldBy names what kept a due run from starting at the last tick:
-	// "in_flight", "waiting", "downloading" or "recent"; empty when nothing
-	// did, or nothing was due. Due names the model that run would be on.
+	// "in_flight", "waiting", "downloading", "recent" or "no_room"; empty when
+	// nothing did, or nothing was due. Due names the model that run would be
+	// on.
 	HeldBy string `json:"held_by,omitempty"`
 	Due    string `json:"due,omitempty"`
 }
@@ -151,6 +152,12 @@ const (
 	HeldByWaiting     = "waiting"
 	HeldByDownloading = "downloading"
 	HeldByRecent      = "recent"
+	// HeldByNoRoom is a model that is due and does not fit in the memory
+	// budget beside what is already resident. The self-test never evicts, so
+	// the run waits for room — and says it is waiting, rather than being
+	// passed over in silence while the panel shows it queued
+	// (iss-2609161712555136).
+	HeldByNoRoom = "no_room"
 )
 
 // The cadence, and the bounds a run is held to.
@@ -221,7 +228,10 @@ type Runner struct {
 	// model's last use at release, so without this the self-test's own run
 	// would look like a client's for the whole quiet period afterwards.
 	touched map[string]time.Time
-	file    *file
+	// noRoomSaid is which models (folded id) the log has already said do not
+	// fit, so a hold that lasts hours costs one line rather than one a tick.
+	noRoomSaid map[string]bool
+	file       *file
 	// status is what the panel reads; see Status.
 	status Status
 }
@@ -383,29 +393,92 @@ func (r *Runner) tick(ctx context.Context) {
 	// held back can say what held it.
 	var job Job
 	model := ""
+	var noRoom []string
+	// Every due job is asked, not only the ones up to the first that can run:
+	// a model that does not fit is reported whether or not something else is
+	// measured this tick. It used to be passed over in silence, and a Mac
+	// with work of its own to do has a model due on most ticks, so the
+	// queued one could stay invisible for as long as that lasted
+	// (iss-2609161712555136, iss-2609181119346098).
 	for _, j := range r.opts.Jobs {
-		if m := j.Due(ready, now); m != "" && r.opts.Server.Fits(m) {
+		m := j.Due(ready, now)
+		if m == "" {
+			continue
+		}
+		if !r.opts.Server.Fits(m) {
+			// The self-test never evicts, so a run with no room waits for
+			// room rather than making it.
+			noRoom = append(noRoom, m)
+			continue
+		}
+		if job == nil {
 			job, model = j, m
-			break
 		}
 	}
 	if job == nil && (r.opts.SelfTest == nil || r.opts.SelfTest()) {
 		model = r.next(now)
 	}
+	for _, m := range noRoom {
+		r.sayNoRoom(m)
+	}
 	if model == "" {
+		if len(noRoom) > 0 {
+			r.setStatus(func(st *Status) { st.HeldBy, st.Due = HeldByNoRoom, noRoom[0] })
+			return
+		}
 		r.setStatus(func(st *Status) { st.HeldBy, st.Due = "", "" })
 		return
 	}
+	r.roomFound(model)
 	if held := r.heldBy(act, now); held != "" {
 		r.setStatus(func(st *Status) { st.HeldBy, st.Due = held, model })
 		return
 	}
-	r.setStatus(func(st *Status) { st.HeldBy, st.Due = "", "" })
+	// A run that can go ahead does, and a model waiting for room is still
+	// reported while it does: the hold belongs to the queued model, not to the
+	// tick, and clearing it here is what used to make it disappear whenever
+	// there was other work.
+	if len(noRoom) > 0 {
+		r.setStatus(func(st *Status) { st.HeldBy, st.Due = HeldByNoRoom, noRoom[0] })
+	} else {
+		r.setStatus(func(st *Status) { st.HeldBy, st.Due = "", "" })
+	}
 	if job != nil {
 		r.runJob(ctx, job, model)
 		return
 	}
 	r.run(ctx, model, resident(act, model))
+}
+
+// sayNoRoom writes the line about a model that is due and does not fit, once
+// per model rather than once per tick: the condition persists — it is resolved
+// by memory falling free, which can be hours away — and a line a tick would
+// bury the log for as long as it lasts. The model's repository id is the whole
+// of what is said; nothing about this Mac goes in it.
+func (r *Runner) sayNoRoom(model string) {
+	key := config.FoldRepoID(model)
+	r.mu.Lock()
+	said := r.noRoomSaid[key]
+	if !said {
+		if r.noRoomSaid == nil {
+			r.noRoomSaid = map[string]bool{}
+		}
+		r.noRoomSaid[key] = true
+	}
+	r.mu.Unlock()
+	if said {
+		return
+	}
+	r.opts.Log.Info("the measurement is held because the model does not fit the memory budget beside what is loaded; it stays queued", "model", model)
+}
+
+// roomFound forgets that a model was ever short of room, so an occasion months
+// later is reported as its own rather than swallowed by the first one.
+func (r *Runner) roomFound(model string) {
+	key := config.FoldRepoID(model)
+	r.mu.Lock()
+	delete(r.noRoomSaid, key)
+	r.mu.Unlock()
 }
 
 // heldBy names what keeps a due run from starting, or "" when the Mac is

@@ -47,6 +47,8 @@ func TestTheResultSaysWhatBoundedIt(t *testing.T) {
 			"Measuring: bisecting at 65536 tokens"},
 		{"held back", `measurementText({repo_id:"org/m"}, {held_by:"in_flight"}, ["org/m"])`,
 			"Measurement waiting: a request is in flight"},
+		{"held for want of room", `measurementText({repo_id:"org/m"}, {held_by:"no_room"}, ["org/m"])`,
+			"Measurement waiting: the model does not fit the memory budget"},
 		{"queued", `measurementText({repo_id:"org/m"}, {}, ["org/m"])`,
 			"Measurement queued for the next idle minute"},
 		{"incomplete", `measurementText({repo_id:"org/m", probe_incomplete:true}, {}, [])`,
