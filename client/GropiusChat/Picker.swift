@@ -17,6 +17,10 @@ struct ModelPickerView: View {
     @State private var resolver: ServiceResolver?
     @State private var generation = 0
     @State private var waitedLong = false
+    /// The server that asked for a key when it was picked; the sheet asks
+    /// for it here rather than sending the person to Settings.
+    @State private var askingKeyFor: DiscoveredServer?
+    @State private var enteredKey = ""
 
     var body: some View {
         List {
@@ -50,6 +54,9 @@ struct ModelPickerView: View {
             }
         }
         .frame(minWidth: 320, minHeight: 240)
+        .sheet(item: $askingKeyFor) { server in
+            keySheet(for: server)
+        }
         .onAppear {
             browser.start()
             Task {
@@ -166,11 +173,52 @@ struct ModelPickerView: View {
                     guard mine == generation else { return }
                     busy = nil
                     expanded = server.id
+                    if model.needsAPIKey {
+                        enteredKey = ""
+                        askingKeyFor = server
+                    }
                 }
             case .failure(let why):
                 busy = nil
                 failure = "\(server.name): \(why)"
             }
+        }
+    }
+
+    /// Asked once, where the server is picked. The key goes to the Keychain,
+    /// bound to this server's address, and is changeable in Settings later.
+    private func keySheet(for server: DiscoveredServer) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("\(server.name) needs an API key").font(.headline)
+            Text("The key is kept in your Keychain and sent only to this server. You are asked only once; you can change it later in Settings.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            SecureField("API key", text: $enteredKey)
+                .onSubmit { useKey(for: server) }
+            HStack {
+                Spacer()
+                Button("Later") { askingKeyFor = nil }
+                    .keyboardShortcut(.cancelAction)
+                Button("Use Key") { useKey(for: server) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(enteredKey.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+    }
+
+    private func useKey(for server: DiscoveredServer) {
+        let key = enteredKey.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else { return }
+        model.saveAPIKey(key)
+        askingKeyFor = nil
+        busy = server.id
+        Task {
+            await model.connect()
+            busy = nil
+            expanded = server.id
         }
     }
 }

@@ -35,3 +35,4 @@ hand edit.
 | [adr-2609091123526871](2609091123526871-gropius-binds-loopback-alongside-every-other-address-with-a-p.md) | Gropius binds loopback alongside every other address, with a private-network mode that fails closed to loopback | accepted | 2026-09-09 |
 | [adr-2609091239058072](2609091239058072-the-app-s-four-locks-have-one-order-the-settings-handler-s-a.md) | The app's four locks have one order: the settings handler's, the save lock, then the pool's mutex and the configuration's | accepted | 2026-09-09 |
 | [adr-2609111126115848](2609111126115848-a-deliberately-invoked-diagnostic-may-report-an-observed-sig.md) | A deliberately invoked diagnostic may report an observed signal it cannot verify, and never a verdict | accepted | 2026-09-11 |
+| [adr-2609181004167097](2609181004167097-an-opt-in-bridge-may-carry-a-conversation-off-the-mac-to-a-t.md) | An opt-in bridge may carry a conversation off the Mac to a third-party platform | accepted | 2026-09-18 |

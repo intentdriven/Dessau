@@ -239,6 +239,9 @@ final class AppModel: ObservableObject {
     @Published var sendingIn: UUID?
     /// Why the Mac's own model cannot answer right now, or nil when it can.
     @Published var builtInUnavailable: BuiltInBackend.Unavailable?
+    /// The server answered the last models request with 401: it wants a key
+    /// the client does not hold for it. The picker asks for one on the spot.
+    @Published var needsAPIKey = false
     /// Replies whose words are due to animate: added when a reply finishes
     /// with a match, removed the moment a row starts drawing it.
     @Published var effectsToPlay: Set<UUID> = []
@@ -466,13 +469,15 @@ final class AppModel: ObservableObject {
         connecting = true
         defer { connecting = false }
         status = "Connecting…"
+        needsAPIKey = false
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse else {
                 status = "No response from the server."; connected = false; return
             }
             if http.statusCode == 401 {
-                status = "This server needs an API key; add it in Settings."
+                status = "This server needs an API key."
+                needsAPIKey = true
                 connected = false; return
             }
             guard http.statusCode == 200 else {
@@ -641,10 +646,62 @@ final class AppModel: ObservableObject {
 
 // MARK: - App
 
+/// The five text sizes Settings offers: the system's own Dynamic Type sizes,
+/// so every font stays the system's at a different scale, and the whole
+/// window follows one setting read at each scene's root.
+enum TextSize: String, CaseIterable {
+    case smaller, standard, larger, extraLarge, huge
+
+    var label: String {
+        switch self {
+        case .smaller: return "Smaller"
+        case .standard: return "Default"
+        case .larger: return "Larger"
+        case .extraLarge: return "Extra Large"
+        case .huge: return "Huge"
+        }
+    }
+
+    var dynamicType: DynamicTypeSize {
+        switch self {
+        case .smaller: return .small
+        case .standard: return .large
+        case .larger: return .xLarge
+        case .extraLarge: return .xxLarge
+        case .huge: return .xxxLarge
+        }
+    }
+}
+
+/// Light, Dark or System: the preferred colour scheme at each scene's root,
+/// where System is no preference at all — the Mac's own appearance, as
+/// before.
+enum Appearance: String, CaseIterable {
+    case system, light, dark
+
+    var label: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 @main
 struct GropiusChatApp: App {
     @StateObject private var model = AppModel.shared
     @FocusedValue(\.chatActions) private var actions
+    @AppStorage("textSize") private var textSize: String = TextSize.standard.rawValue
+    @AppStorage("appearance") private var appearance: String = Appearance.system.rawValue
     #if !os(macOS)
     /// The iPad has the one window, and its Settings sheet is shown from two
     /// places — the toolbar's gear and the menu bar's command — so the state
@@ -652,14 +709,28 @@ struct GropiusChatApp: App {
     @State private var settingsShown = false
     #endif
 
+    private var dynamicType: DynamicTypeSize {
+        TextSize(rawValue: textSize)?.dynamicType ?? .large
+    }
+
+    private var colorScheme: ColorScheme? {
+        Appearance(rawValue: appearance)?.colorScheme
+    }
+
     var body: some Scene {
         WindowGroup("Gropius Chat") {
             // A minimum window size is a Mac's business; on the iPad the app
             // is given the screen (or a Split View share of it) and fits it.
+            // The chosen text size and appearance are the person's on both.
             #if os(macOS)
-            RootView(model: model).frame(minWidth: 720, minHeight: 480)
+            RootView(model: model)
+                .frame(minWidth: 720, minHeight: 480)
+                .dynamicTypeSize(dynamicType)
+                .preferredColorScheme(colorScheme)
             #else
             RootView(model: model, settingsShown: $settingsShown)
+                .dynamicTypeSize(dynamicType)
+                .preferredColorScheme(colorScheme)
             #endif
         }
         .commands {
@@ -700,6 +771,8 @@ struct GropiusChatApp: App {
         #if os(macOS)
         Settings {
             SettingsView(model: model)
+                .dynamicTypeSize(dynamicType)
+                .preferredColorScheme(colorScheme)
         }
         #endif
     }
@@ -929,17 +1002,28 @@ struct ChatDetail: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // The form of Messages' composer: a capsule field and a round,
+            // filled send button, both standard controls given standard
+            // shapes (the shapes are the system's, not a drawn background).
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("Message…", text: $draft, axis: .vertical)
                     .lineLimit(1...8)
+                    .textInputBorderShape(.capsule)
+                    .controlSize(.large)
                     .onSubmit(send)
                     .disabled(!model.canSend)
                     .accessibilityLabel("Message")
                 if model.sending {
                     Button { model.stop() } label: { Image(systemName: "stop.fill") }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.circle)
+                        .controlSize(.large)
                         .help("Stop")
                 } else {
                     Button(action: send) { Image(systemName: "arrow.up") }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.circle)
+                        .controlSize(.large)
                         .keyboardShortcut(.return, modifiers: .command)
                         .disabled(!model.canSend || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .help("Send")
@@ -1029,6 +1113,7 @@ struct MessageRow: View {
     let message: Message
     var loadingLabel: String? = nil
     @State private var showReasoning = false
+    private let colors = BubbleColors()
     /// The rendered blocks, parsed once per change of the text — and for the
     /// reply that is streaming, at most a few times a second.
     @State private var blocks: [MarkdownBlock] = []
@@ -1054,17 +1139,16 @@ struct MessageRow: View {
         if isUser {
             HStack {
                 Spacer(minLength: 56)
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text(speaker).font(.caption).foregroundStyle(.secondary)
-                    Text(displayText)
-                        .textSelection(.enabled)
-                        .multilineTextAlignment(.trailing)
-                }
+                Text(displayText)
+                    .textSelection(.enabled)
+                    .multilineTextAlignment(.leading)
+                    .bubble(colors.userColor, isUser: true)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(speaker) said: \(displayText)")
         } else {
             HStack {
-                GroupBox {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(speaker).font(.caption).foregroundStyle(.secondary).padding(.leading, 12)
                     VStack(alignment: .leading, spacing: 8) {
                         if !displayReasoning.isEmpty { reasoningDisclosure }
                         if displayText.isEmpty && displayReasoning.isEmpty {
@@ -1073,26 +1157,25 @@ struct MessageRow: View {
                             reply
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } label: {
-                    Text(speaker).font(.caption).foregroundStyle(.secondary)
-                }
-                .contextMenu {
-                    Button("Copy") {
-                        // The two systems' pasteboards, which differ in name
-                        // and in whether the old contents are cleared first.
-                        #if os(macOS)
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(message.text, forType: .string)
-                        #else
-                        // localOnly: a copied reply is for this iPad. Without
-                        // it the general pasteboard is a Universal Clipboard
-                        // one, and what a model wrote here appears on the
-                        // person's other devices.
-                        UIPasteboard.general.setItems(
-                            [[UTType.utf8PlainText.identifier: message.text]],
-                            options: [.localOnly: true])
-                        #endif
+                    .bubble(colors.modelColor, isUser: false)
+                    .contextMenu {
+                        Button("Copy") {
+                            // The two systems' pasteboards, which differ in
+                            // name and in whether the old contents are
+                            // cleared first.
+                            #if os(macOS)
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(message.text, forType: .string)
+                            #else
+                            // localOnly: a copied reply is for this iPad.
+                            // Without it the general pasteboard is a Universal
+                            // Clipboard one, and what a model wrote here
+                            // appears on the person's other devices.
+                            UIPasteboard.general.setItems(
+                                [[UTType.utf8PlainText.identifier: message.text]],
+                                options: [.localOnly: true])
+                            #endif
+                        }
                     }
                 }
                 Spacer(minLength: 56)
@@ -1183,12 +1266,18 @@ struct MessageRow: View {
         }
     }
 
+    /// A click anywhere in the row, and anywhere in the expanded thinking,
+    /// toggles it — not only the disclosure triangle — so the thinking can be
+    /// hidden while it is being read. Dragging still selects the text.
     @ViewBuilder private var reasoningDisclosure: some View {
         DisclosureGroup(isExpanded: $showReasoning) {
             Text(displayReasoning)
                 .font(.callout).italic()
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation { showReasoning = false } }
         } label: {
             Label {
                 Text(displayText.isEmpty ? "Thinking…" : "Thoughts").font(.caption)
@@ -1196,6 +1285,9 @@ struct MessageRow: View {
                 if displayText.isEmpty { ProgressView().controlSize(.mini) }
             }
             .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation { showReasoning.toggle() } }
         }
     }
 }
@@ -1205,6 +1297,10 @@ struct MessageRow: View {
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var key = ""
+    @AppStorage("bubbleColorUser") private var bubbleUser: String = ""
+    @AppStorage("bubbleColorModel") private var bubbleModel: String = ""
+    @AppStorage("textSize") private var textSize: String = TextSize.standard.rawValue
+    @AppStorage("appearance") private var appearance: String = Appearance.system.rawValue
 
     private var typedAddress: Binding<String> {
         Binding(get: { model.serverURL }, set: { model.useTypedAddress($0) })
@@ -1233,6 +1329,27 @@ struct SettingsView: View {
                 TextField("Pipeline tags", text: $model.chatPipelineTags, prompt: Text("text-generation, image-text-to-text"))
                 TextField("Required tags", text: $model.chatRequiredTags, prompt: Text("conversational"))
                 Text("The picker offers a server's models carrying these HuggingFace words — a pipeline tag from the first list, and every tag in the second. Every model stays reachable over the API by name. Clear a field to stop testing it. The Mac's own model is always offered.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Appearance") {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(Appearance.allCases, id: \.rawValue) { a in
+                        Text(a.label).tag(a.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Picker("Text size", selection: $textSize) {
+                    ForEach(TextSize.allCases, id: \.rawValue) { size in
+                        Text(size.label).tag(size.rawValue)
+                    }
+                }
+                Text("The whole window follows, at the system's own text sizes.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Bubbles") {
+                BubbleColorRow(title: "Your messages", stored: $bubbleUser, fallback: BubbleColors.defaultUser)
+                BubbleColorRow(title: "The model's replies", stored: $bubbleModel, fallback: BubbleColors.defaultModel)
+                Text("The defaults are the system's accent colour and grey.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Replies") {

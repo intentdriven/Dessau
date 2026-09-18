@@ -47,6 +47,7 @@ func TestChatClientCarriesNoStylingOfItsOwn(t *testing.T) {
 	}
 	exempt := map[string]string{
 		"Effects.swift": "the text-effects renderer draws glyphs itself; that is its purpose",
+		"Bubbles.swift": "the transcript's speech bubbles are a filled shape by definition (iss-2609181055156852), drawn in the system's colours",
 	}
 	for name, src := range clientSources(t, root) {
 		if _, ok := exempt[name]; ok {
