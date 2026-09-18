@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-18
+
 ### Changed
 
 - **The chat client is a native macOS 27 app, and it chats with the Mac's own
