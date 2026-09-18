@@ -462,6 +462,9 @@ final class AppModel: ObservableObject {
     @Published var sendingIn: UUID?
     /// Why the Mac's own model cannot answer right now, or nil when it can.
     @Published var builtInUnavailable: BuiltInBackend.Unavailable?
+    /// The server answered the last models request with 401: it wants a key
+    /// the client does not hold for it. The picker asks for one on the spot.
+    @Published var needsAPIKey = false
     /// Replies whose words are due to animate: added when a reply finishes
     /// with a match, removed the moment a row starts drawing it.
     @Published var effectsToPlay: Set<UUID> = []
@@ -689,13 +692,15 @@ final class AppModel: ObservableObject {
         connecting = true
         defer { connecting = false }
         status = "Connecting…"
+        needsAPIKey = false
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse else {
                 status = "No response from the server."; connected = false; return
             }
             if http.statusCode == 401 {
-                status = "This server needs an API key; add it in Settings."
+                status = "This server needs an API key."
+                needsAPIKey = true
                 connected = false; return
             }
             guard http.statusCode == 200 else {

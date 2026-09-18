@@ -45,9 +45,9 @@ Apple Silicon `dist/GropiusChat.app`.
    picker opens — not when the app launches. Without it the list stays empty;
    a server elsewhere can be typed into **Settings** (Cmd-,): the Mac's `.local`
    name or its LAN address with port `11535` and no path, for example
-   `http://your-mac.local:11535`. Add an API key only if that server requires
-   one; the key is sent only to the server it was entered for, never to a
-   server found on the network.
+   `http://your-mac.local:11535`. A server that needs an API key asks for it
+   when you pick it, once: the key is kept in your Keychain, sent only to the
+   server it was entered for, and changeable later in Settings.
 3. **Return** sends; **Option-Return** starts a new line; the arrow button sends
    too, and the stop button interrupts a reply. Drop a text file on the message
    box and its content becomes part of the prompt. Select text in the box or in

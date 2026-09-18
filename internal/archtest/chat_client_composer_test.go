@@ -81,3 +81,20 @@ func TestChatClientDrawsMessagesAsBubbles(t *testing.T) {
 		t.Error("MessageRow does not draw its messages with the bubble modifier")
 	}
 }
+
+// TestChatClientAsksForTheKeyWhereTheServerIsPicked holds the picker's key
+// prompt (iss-2609181058132356): a server that needs an API key is asked for
+// it in a sheet right there, which says the key is kept in the Keychain,
+// bound to that server, asked once, and changeable in Settings.
+func TestChatClientAsksForTheKeyWhereTheServerIsPicked(t *testing.T) {
+	root := repoRootDir(t)
+	picker := clientSources(t, root)["Picker.swift"]
+	for _, want := range []string{`.sheet(item: $askingKeyFor`, `model.saveAPIKey(`, `Keychain`, `only once`, `Settings`, `SecureField(`} {
+		if !strings.Contains(picker, want) {
+			t.Errorf("client/GropiusChat/Picker.swift does not carry %q; a server that needs a key is not asked for it where it is picked", want)
+		}
+	}
+	if !strings.Contains(clientSources(t, root)["GropiusChat.swift"], "needsAPIKey = true") {
+		t.Error("AppModel.connect does not record that the server asked for a key")
+	}
+}
