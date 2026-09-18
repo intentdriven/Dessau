@@ -12,7 +12,7 @@ import FoundationModels
 
 /// Which of the two answers. One choice for the whole client, as the model
 /// choice always was; typed, so a server model that happens to be called
-/// "On this Mac" can never be mistaken for the Mac.
+/// "On this Mac" can never be mistaken for the device's own.
 enum Answerer: Equatable {
     case builtIn
     case server(model: String)
@@ -62,17 +62,29 @@ struct BackendMessage: LocalizedError {
 // MARK: - The Mac's own model
 
 /// The Foundation Models framework: the language model Apple ships with the
-/// system, on the Mac, on the device only.
+/// system, on the Mac and on an eligible iPad, on the device only.
 struct BuiltInBackend: ChatBackend {
-    static let displayName = "On this Mac"
+    // The device the person is holding, in the words they would use for it.
+    // The same framework answers on both, but "On this Mac" on an iPad is a
+    // name for something that is not there.
+    #if os(macOS)
+    static let deviceNoun = "Mac"
+    /// What the system's own settings app is called on this system.
+    static let systemSettings = "System Settings"
+    #else
+    static let deviceNoun = "iPad"
+    static let systemSettings = "Settings"
+    #endif
+    static let displayName = "On this \(deviceNoun)"
     /// Recorded on each reply it writes; never a name a server could serve.
-    static let recordedName = "On this Mac (Apple Intelligence)"
+    static let recordedName = "On this \(deviceNoun) (Apple Intelligence)"
 
     /// The client's own words, trusted; the person's words go only in the
     /// prompt. Instructions win over a prompt, which is what keeps a prompt
     /// from rewriting the rules.
     static let instructions = """
-        You are a helpful assistant in a chat app on this Mac. Answer plainly, \
+        You are a helpful assistant in a chat app on this \(deviceNoun). Answer \
+        plainly, \
         in the language the person writes in. Use markdown for structure when \
         it helps: lists, headings, code blocks with a language.
         """
@@ -90,23 +102,23 @@ struct BuiltInBackend: ChatBackend {
         case .available:
             if !model.supportsLocale() {
                 return Unavailable(
-                    reason: "The Mac's own model does not support this language.",
-                    fix: "Change the language in System Settings, or pick a server from the model picker.")
+                    reason: "The \(deviceNoun)'s own model does not support this language.",
+                    fix: "Change the language in \(systemSettings), or pick a server from the model picker.")
             }
             return nil
         case .unavailable(let why):
             switch why {
             case .appleIntelligenceNotEnabled:
                 return Unavailable(
-                    reason: "Apple Intelligence is switched off, so the Mac cannot answer.",
-                    fix: "Turn it on in System Settings, or pick a server from the model picker.")
+                    reason: "Apple Intelligence is switched off, so the \(deviceNoun) cannot answer.",
+                    fix: "Turn it on in \(systemSettings), or pick a server from the model picker.")
             case .modelNotReady:
                 return Unavailable(
-                    reason: "The Mac's own model is not ready yet.",
+                    reason: "The \(deviceNoun)'s own model is not ready yet.",
                     fix: "It is still being downloaded; try again shortly, or pick a server from the model picker.")
             case .deviceNotEligible:
                 return Unavailable(
-                    reason: "This Mac cannot run the system's own model.",
+                    reason: "This \(deviceNoun) cannot run the system's own model.",
                     fix: "Pick a server from the model picker.")
             @unknown default:
                 return Unavailable(

@@ -41,6 +41,20 @@ GitHub release notes.
   form of Messages' composer; the Thoughts row toggles on a click anywhere;
   and a server that needs an API key asks for it where it is picked, once.
 
+- **GropiusChat runs on the iPad.** The client's Swift files build a second
+  way, against the iOS SDK, into an iPad app: the same sidebar of chats, the
+  same composer and model picker, the same menu bar when a keyboard is
+  attached, with Settings behind a gear in the toolbar where iPadOS has no
+  Settings window. On an iPad eligible for Apple Intelligence the picker reads
+  **On this iPad** and it answers on the device; on any other iPad the empty
+  chat says so and offers a Gropius server on the network instead. Discovery
+  moves to a file both clients share and resolves on the Network framework, so
+  the Mac client loses its deprecated resolver too. `client/build-ipad.sh`
+  builds it — `SIM=1` for a simulator run, otherwise a device build signed with
+  your own free personal team for your own iPad, which refuses to produce a
+  bundle no iPad would install. Nothing is published: the iPad bundle is not a
+  release asset and the installer is untouched (`impact: additive`).
+
 ## [0.7.0] - 2026-09-18
 
 ### Changed

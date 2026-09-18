@@ -1,4 +1,4 @@
-// GropiusChat — a native macOS chat app.
+// GropiusChat — a native chat app for the Mac and the iPad.
 //
 // It chats with the Mac's own model out of the box and, when a Gropius server
 // is on the network, offers that server's models in the picker: GET /v1/models
@@ -6,12 +6,20 @@
 // found over Bonjour while the picker is open. Conversations are kept in a
 // sidebar and persisted to disk.
 //
-// Built without an Xcode project: several Swift files, one script (build.sh),
-// the installed Xcode's toolchain. This file holds the app, the model and the
-// views; the answerers, the picker, the markdown, the effects and the App
-// Intents each have a file of their own.
+// Built without an Xcode project: several Swift files, one script for each
+// system (build.sh, build-ipad.sh), the installed Xcode's toolchain. This file
+// holds the app, the model and the views; the answerers, the discovery, the
+// picker, the markdown, the effects and the App Intents each have a file of
+// their own.
+//
+// One source, two systems: the four places where the systems differ are
+// guarded below, and each says what it is standing in for.
 
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import Network
 import SwiftUI
 import Security
@@ -23,7 +31,8 @@ import UniformTypeIdentifiers
 /// key. Storing it in UserDefaults (as an earlier build did) leaves it in
 /// cleartext in the preferences plist, readable by any process running as the
 /// user and by anything that syncs or backs up the home directory. The Keychain
-/// gates it behind the login-keychain ACL instead.
+/// gates it behind the login-keychain ACL instead, and the item never leaves
+/// the device it was entered on.
 enum Keychain {
     private static let service = "dev.gropius.chat"
     private static let account = "apiKey"
@@ -56,7 +65,10 @@ enum Keychain {
         }
         let attrs: [String: Any] = [
             kSecValueData as String: Data(value.utf8),
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
+            // ThisDeviceOnly: another person's server key is not the kind of
+            // thing to travel in an encrypted backup and come back on a
+            // different device. It is re-entered on a new device instead.
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
         if SecItemUpdate(baseQuery as CFDictionary, attrs as CFDictionary) == errSecItemNotFound {
             var add = baseQuery
@@ -164,241 +176,6 @@ struct ChatRule {
         }
         let have = Set((m.tags ?? []).map { $0.trimmingCharacters(in: .whitespaces).lowercased() })
         return requiredTags.allSatisfy { have.contains($0) }
-    }
-}
-
-// MARK: - Local network discovery
-
-/// The mDNS service type a Gropius server advertises itself on.
-///
-/// It has to match the server's own (internal/discovery), and it is declared a
-/// second time in Info.plist's NSBonjourServices — macOS Local Network Privacy
-/// answers a browse for an undeclared type with an empty result set rather than
-/// an error. A test in the server's suite holds all three to one value.
-let gropiusServiceType = "_gropius._tcp"
-
-/// One Gropius server seen on the local network. Everything here comes out of
-/// the browse itself; nothing has been resolved, because resolving costs an
-/// mDNS round trip per server and only the one the person picks is worth it.
-struct DiscoveredServer: Identifiable, Equatable {
-    let name: String
-    let type: String
-    let domain: String
-    /// TXT "api": the dialect the endpoint speaks. This client speaks "openai".
-    let api: String
-    /// TXT "path": the base path the API is mounted under, e.g. "/v1".
-    let path: String
-    /// TXT "auth": "bearer" when the server requires an API key, "none" when it
-    /// does not, "" when the record did not say.
-    let auth: String
-    /// TXT "models": how many models the server can serve, nil when unstated.
-    let models: Int?
-
-    var id: String { "\(name)|\(type)|\(domain)" }
-    var authRequired: Bool { auth == "bearer" }
-    var authStated: Bool { auth == "bearer" || auth == "none" }
-    var speaksThisClientsAPI: Bool { api.isEmpty || api == "openai" }
-
-    /// The one-line description under the server's name. Every part of it is a
-    /// hint from the network, so it says what was advertised and never more.
-    var summary: String {
-        var parts: [String] = []
-        if authStated {
-            parts.append(authRequired ? "API key required" : "No API key needed")
-        } else {
-            parts.append("Does not say whether it needs an API key")
-        }
-        if let models {
-            parts.append("\(models) model\(models == 1 ? "" : "s")")
-        }
-        if !speaksThisClientsAPI {
-            parts.append("speaks the \(api) API, not openai")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    init?(_ result: NWBrowser.Result) {
-        guard case let .service(name, type, domain, _) = result.endpoint else { return nil }
-        self.name = name
-        self.type = type
-        self.domain = domain
-        var txt: [String: String] = [:]
-        if case let .bonjour(record) = result.metadata {
-            for key in ["api", "path", "auth", "models"] {
-                txt[key] = record[key]
-            }
-        }
-        api = txt["api"] ?? ""
-        path = txt["path"] ?? ""
-        auth = txt["auth"] ?? ""
-        models = txt["models"].flatMap(Int.init)
-    }
-}
-
-/// Browses the local network for Gropius servers. It only ever lists what it
-/// finds; connecting is the person's decision.
-final class ServerBrowser: ObservableObject {
-    enum Status: Equatable {
-        case stopped
-        case searching
-        /// The browse cannot run yet — most often local network access has not
-        /// been granted. The reason is shown, because the person is the only one
-        /// who can clear it.
-        case waiting(String)
-        case failed(String)
-    }
-
-    @Published private(set) var servers: [DiscoveredServer] = []
-    @Published private(set) var status: Status = .stopped
-
-    private var browser: NWBrowser?
-
-    func start() {
-        guard browser == nil else { return }
-        status = .searching
-        servers = []
-
-        let browser = NWBrowser(
-            for: .bonjourWithTXTRecord(type: gropiusServiceType, domain: nil),
-            using: NWParameters())
-        browser.stateUpdateHandler = { [weak self] state in
-            Task { @MainActor in self?.apply(state) }
-        }
-        // The handler is called with the complete current result set, not a
-        // delta, so replacing the list is also how a server that has left the
-        // network stops being offered.
-        browser.browseResultsChangedHandler = { [weak self] results, _ in
-            Task { @MainActor in self?.apply(results.compactMap(DiscoveredServer.init)) }
-        }
-        self.browser = browser
-        browser.start(queue: .main)
-    }
-
-    func stop() {
-        browser?.cancel()
-        browser = nil
-        servers = []
-        status = .stopped
-    }
-
-    private func apply(_ state: NWBrowser.State) {
-        switch state {
-        case .ready, .setup:
-            status = .searching
-        case .waiting(let error):
-            status = .waiting(error.localizedDescription)
-        case .failed(let error):
-            browser?.cancel()
-            browser = nil
-            status = .failed(error.localizedDescription)
-        case .cancelled:
-            status = .stopped
-        @unknown default:
-            status = .searching
-        }
-    }
-
-    private func apply(_ found: [DiscoveredServer]) {
-        // One server seen on two interfaces arrives as two results; they carry
-        // the same instance name, so collapse them.
-        var seen = Set<String>()
-        servers = found
-            .filter { seen.insert($0.id).inserted }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-}
-
-/// Turns a browsed service into an address that can be stored: browse with
-/// NWBrowser, resolve with NetService, which yields the host name the server
-/// publishes its address records under and keeps resolving after the address
-/// changes.
-final class ServiceResolver: NSObject, NetServiceDelegate {
-    enum Outcome {
-        case address(String)
-        case failure(String)
-    }
-
-    private let service: NetService
-    private var completion: ((Outcome) -> Void)?
-    /// Held until an outcome is delivered.
-    private var keepAlive: ServiceResolver?
-
-    init(server: DiscoveredServer) {
-        service = NetService(domain: Self.qualified(server.domain),
-                             type: Self.qualified(server.type),
-                             name: server.name)
-        super.init()
-        service.delegate = self
-    }
-
-    private static func qualified(_ s: String) -> String {
-        s.hasSuffix(".") ? s : s + "."
-    }
-
-    /// Resolves, then calls completion exactly once on the main queue.
-    func resolve(timeout: TimeInterval = 5, completion: @escaping (Outcome) -> Void) {
-        self.completion = completion
-        keepAlive = self
-        service.resolve(withTimeout: timeout)
-    }
-
-    private func deliver(_ outcome: Outcome) {
-        service.stop()
-        let done = completion
-        completion = nil
-        DispatchQueue.main.async {
-            done?(outcome)
-            self.keepAlive = nil
-        }
-    }
-
-    nonisolated func netServiceDidResolveAddress(_ sender: NetService) {
-        // Only the two values are carried onto the main actor, not the service.
-        let host = sender.hostName ?? ""
-        let port = sender.port
-        MainActor.assumeIsolated { resolved(host: host, port: port) }
-    }
-
-    private func resolved(host reported: String, port: Int) {
-        var host = reported
-        while host.hasSuffix(".") { host.removeLast() }
-
-        // An SRV target is not a trusted string: a host name is accepted only
-        // as the letters, digits, dots and hyphens a host name is made of, and
-        // the URL is built field by field, so nothing in the host can reach
-        // across into another component and send the bearer token elsewhere.
-        let hostCharacters = CharacterSet(charactersIn:
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.")
-        guard !host.isEmpty, host.count <= 253,
-              host.unicodeScalars.allSatisfy(hostCharacters.contains),
-              (1...65535).contains(port)
-        else {
-            deliver(.failure("That server reported an address this client will not use."))
-            return
-        }
-
-        var url = URLComponents()
-        url.scheme = "http"
-        url.host = host
-        url.port = port
-        guard let address = url.string else {
-            deliver(.failure("That server did not report an address."))
-            return
-        }
-        deliver(.address(address))
-    }
-
-    nonisolated func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
-        MainActor.assumeIsolated {
-            deliver(.failure("Could not work out that server's address — it may have left the network."))
-        }
-    }
-
-    /// Abandons the resolve: the completion is never called.
-    func cancel() {
-        service.stop()
-        completion = nil
-        DispatchQueue.main.async { self.keepAlive = nil }
     }
 }
 
@@ -925,6 +702,12 @@ struct GropiusChatApp: App {
     @FocusedValue(\.chatActions) private var actions
     @AppStorage("textSize") private var textSize: String = TextSize.standard.rawValue
     @AppStorage("appearance") private var appearance: String = Appearance.system.rawValue
+    #if !os(macOS)
+    /// The iPad has the one window, and its Settings sheet is shown from two
+    /// places — the toolbar's gear and the menu bar's command — so the state
+    /// that says whether it is up lives here, above both.
+    @State private var settingsShown = false
+    #endif
 
     private var dynamicType: DynamicTypeSize {
         TextSize(rawValue: textSize)?.dynamicType ?? .large
@@ -936,10 +719,19 @@ struct GropiusChatApp: App {
 
     var body: some Scene {
         WindowGroup("Gropius Chat") {
+            // A minimum window size is a Mac's business; on the iPad the app
+            // is given the screen (or a Split View share of it) and fits it.
+            // The chosen text size and appearance are the person's on both.
+            #if os(macOS)
             RootView(model: model)
                 .frame(minWidth: 720, minHeight: 480)
                 .dynamicTypeSize(dynamicType)
                 .preferredColorScheme(colorScheme)
+            #else
+            RootView(model: model, settingsShown: $settingsShown)
+                .dynamicTypeSize(dynamicType)
+                .preferredColorScheme(colorScheme)
+            #endif
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -964,13 +756,25 @@ struct GropiusChatApp: App {
                 Button("Delete Chat") { actions?.deleteChat() }
                     .keyboardShortcut(.delete, modifiers: .command)
                     .disabled(actions == nil)
+                #if !os(macOS)
+                // On macOS this is the system's own Cmd-, onto the Settings
+                // scene; iPadOS has neither, so the command is ours and opens
+                // the same sheet the toolbar's gear does.
+                Divider()
+                Button("Settings…") { settingsShown = true }
+                    .keyboardShortcut(",", modifiers: .command)
+                #endif
             }
         }
+        // iPadOS has no Settings scene and no Cmd-, to open one: there the
+        // same view is a sheet from the toolbar's gear (see ChatDetail).
+        #if os(macOS)
         Settings {
             SettingsView(model: model)
                 .dynamicTypeSize(dynamicType)
                 .preferredColorScheme(colorScheme)
         }
+        #endif
     }
 }
 
@@ -998,20 +802,31 @@ extension FocusedValues {
 
 struct RootView: View {
     @ObservedObject var model: AppModel
+    #if !os(macOS)
+    /// Whether the Settings sheet is up; the app owns it (see above).
+    @Binding var settingsShown: Bool
+    #endif
     /// The window's own chat, kept with the window so it comes back after a
     /// relaunch.
     @SceneStorage("selectedConversation") private var stored: String = ""
     @State private var selection: UUID?
     @State private var draft = ""
     @State private var pickerShown = false
+    #if os(macOS)
     @Environment(\.controlActiveState) private var activeState
+    #endif
 
     var body: some View {
         NavigationSplitView {
             Sidebar(model: model, selection: $selection)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 340)
         } detail: {
+            #if os(macOS)
             ChatDetail(model: model, conversationID: selection, draft: $draft, pickerShown: $pickerShown)
+            #else
+            ChatDetail(model: model, conversationID: selection, draft: $draft,
+                       pickerShown: $pickerShown, settingsShown: $settingsShown)
+            #endif
         }
         .focusedSceneValue(\.chatActions, ChatActions(
             canSend: model.canSend && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -1038,8 +853,12 @@ struct RootView: View {
         }
         .onChange(of: model.intentSelection) { _, asked in
             // An App Intent chose a chat; the key window follows, the others
-            // keep what they show.
-            guard let asked, activeState == .key else { return }
+            // keep what they show. The iPad has the one window, which is
+            // always the one being looked at, so it follows unconditionally.
+            guard let asked else { return }
+            #if os(macOS)
+            guard activeState == .key else { return }
+            #endif
             selection = asked.id
             model.intentSelection = nil
         }
@@ -1089,6 +908,12 @@ struct ChatDetail: View {
     let conversationID: UUID?
     @Binding var draft: String
     @Binding var pickerShown: Bool
+    #if !os(macOS)
+    /// iPadOS has no Settings scene: the gear in the toolbar and the menu
+    /// bar's command show the same view as a sheet, which is where an iPad
+    /// app keeps its settings.
+    @Binding var settingsShown: Bool
+    #endif
 
     private var messages: [Message] { model.messages(in: conversationID) }
 
@@ -1115,12 +940,32 @@ struct ChatDetail: View {
                     }
                     .labelStyle(.titleAndIcon)
                 }
-                .help("Choose who answers: this Mac, or a Gropius server on your network")
+                .help("Choose who answers: this \(BuiltInBackend.deviceNoun), or a Gropius server on your network")
                 .popover(isPresented: $pickerShown) {
                     ModelPickerView(model: model)
                 }
             }
+            #if !os(macOS)
+            ToolbarItem(placement: .topBarLeading) {
+                Button { settingsShown = true } label: { Image(systemName: "gearshape") }
+                    .help("Settings")
+            }
+            #endif
         }
+        #if !os(macOS)
+        .sheet(isPresented: $settingsShown) {
+            NavigationStack {
+                SettingsView(model: model)
+                    .navigationTitle("Settings")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { settingsShown = false }
+                        }
+                    }
+            }
+        }
+        #endif
     }
 
     private var transcript: some View {
@@ -1220,9 +1065,29 @@ struct EmptyState: View {
     @ObservedObject var model: AppModel
     var choose: () -> Void
 
+    /// The app's own icon. macOS hands over the icon the Dock shows. iPadOS
+    /// has no such call and does not answer to the asset's name either: the
+    /// compiled icon is listed in the bundle's own CFBundleIcons, under the
+    /// file names actool wrote, and that is what is loaded here. The system's
+    /// chat symbol stands in for a bundle whose icon step did not run.
+    private var icon: Image {
+        #if os(macOS)
+        return Image(nsImage: NSApp.applicationIconImage)
+        #else
+        let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any]
+        let primary = icons?["CFBundlePrimaryIcon"] as? [String: Any]
+        let files = primary?["CFBundleIconFiles"] as? [String] ?? []
+        // The last is the largest actool wrote.
+        for name in files.reversed() {
+            if let app = UIImage(named: name) { return Image(uiImage: app) }
+        }
+        return Image(systemName: "bubble.left.and.bubble.right")
+        #endif
+    }
+
     var body: some View {
         VStack(spacing: 12) {
-            Image(nsImage: NSApp.applicationIconImage)
+            icon
                 .resizable()
                 .frame(width: 64, height: 64)
             if let why = model.cannotSend {
@@ -1295,8 +1160,21 @@ struct MessageRow: View {
                     .bubble(colors.modelColor, isUser: false)
                     .contextMenu {
                         Button("Copy") {
+                            // The two systems' pasteboards, which differ in
+                            // name and in whether the old contents are
+                            // cleared first.
+                            #if os(macOS)
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(message.text, forType: .string)
+                            #else
+                            // localOnly: a copied reply is for this iPad.
+                            // Without it the general pasteboard is a Universal
+                            // Clipboard one, and what a model wrote here
+                            // appears on the person's other devices.
+                            UIPasteboard.general.setItems(
+                                [[UTType.utf8PlainText.identifier: message.text]],
+                                options: [.localOnly: true])
+                            #endif
                         }
                     }
                 }
@@ -1481,7 +1359,11 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        // A Settings window is sized by the app on macOS; the iPad's sheet is
+        // sized by the system.
+        #if os(macOS)
         .frame(width: 520)
+        #endif
         .onAppear { key = model.apiKey }
     }
 }

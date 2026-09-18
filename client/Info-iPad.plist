@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>GropiusChat</string>
+    <key>CFBundleDisplayName</key>
+    <string>Gropius Chat</string>
+    <key>CFBundleIdentifier</key>
+    <string>dev.gropius.chat</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleExecutable</key>
+    <string>GropiusChat</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>iPhoneOS</string>
+    </array>
+    <!-- The client's floor on this system. client/build-ipad.sh compiles
+         against the same value. -->
+    <key>MinimumOSVersion</key>
+    <string>27.0</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <!-- Family 2 alone: this is an iPad app, and a resizable iPhone layout is
+         not what it is for. -->
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>2</integer>
+    </array>
+    <!-- An app with no launch screen is run in a compatibility window rather
+         than full screen. The empty dictionary is the plain system background,
+         which is what the app draws on anyway. -->
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+    <!-- The client talks to a plain-HTTP server on the LAN. NSAllowsLocalNetworking
+         permits exactly that (.local / RFC1918 / loopback cleartext) WITHOUT
+         disabling App Transport Security for public hosts. NSAllowsArbitraryLoads
+         is deliberately NOT set: it would let a mistyped public http:// address
+         send the bearer token in cleartext over the internet with no warning. -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <!-- Reaching a peer over the LAN triggers iPadOS Local Network Privacy. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Gropius Chat connects to a Gropius model server on your local network.</string>
+    <!-- The Bonjour service types the app may browse for. iPadOS answers a
+         browse for an undeclared type with an empty result set rather than an
+         error, so an omission here is indistinguishable from "no servers on
+         this network". This is the type the server advertises
+         (internal/discovery). -->
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_gropius._tcp</string>
+    </array>
+</dict>
+</plist>

@@ -100,11 +100,11 @@ var clientRequiredIsEditable = regexp.MustCompile(
 // just a loading state that never appears.
 func TestChatClientReadsTheResidencyTheGatewayPublishes(t *testing.T) {
 	root := repoRootDir(t)
-	source := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "GropiusChat.swift"))
+	source := clientSharedSource(t, root)
 
 	t.Run("field name", func(t *testing.T) {
 		if !clientResidencyField.MatchString(source) {
-			t.Fatal("client/GropiusChat/GropiusChat.swift declares no `let state: String?` on its " +
+			t.Fatal("client/GropiusChat/ declares no `let state: String?` on its " +
 				"models decoder; the field the residency arrives under is unchecked")
 		}
 		gatewaySource := readRepoFile(t, root, filepath.Join("internal", "gateway", "gateway.go"))
@@ -117,7 +117,7 @@ func TestChatClientReadsTheResidencyTheGatewayPublishes(t *testing.T) {
 	t.Run("loaded value", func(t *testing.T) {
 		m := clientResidencyLoaded.FindStringSubmatch(source)
 		if m == nil {
-			t.Fatal("client/GropiusChat/GropiusChat.swift declares no residencyLoaded; " +
+			t.Fatal("client/GropiusChat/ declares no residencyLoaded; " +
 				"the value the client reads as warm is unchecked")
 		}
 		if want := string(runtime.ResidencyLoaded); m[1] != want {
@@ -145,11 +145,11 @@ func TestChatClientReadsTheResidencyTheGatewayPublishes(t *testing.T) {
 // exists to explain.
 func TestChatClientRecognizesTheGatewaysLoadingComment(t *testing.T) {
 	root := repoRootDir(t)
-	source := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "GropiusChat.swift"))
+	source := clientSharedSource(t, root)
 
 	m := clientLoadingComment.FindStringSubmatch(source)
 	if m == nil {
-		t.Fatal("client/GropiusChat/GropiusChat.swift declares no modelLoadingComment; " +
+		t.Fatal("client/GropiusChat/ declares no modelLoadingComment; " +
 			"the comment the client watches the stream for is unchecked")
 	}
 	// gateway.LoadingComment, not a literal repeated here: a test that compares
@@ -173,18 +173,18 @@ func TestChatClientRecognizesTheGatewaysLoadingComment(t *testing.T) {
 // total failure to chat, from a feature that was added to hide an OCR model.
 func TestChatClientOffersEveryModelAServerDoesNotRuleOut(t *testing.T) {
 	root := repoRootDir(t)
-	source := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "GropiusChat.swift"))
+	source := clientSharedSource(t, root)
 
 	// Two halves of the one behavior: the verdict defaults to yes, and the
 	// picker's list is actually derived through it. Either alone passes while
 	// the feature is broken -- a correct default nothing consults hides
 	// nothing, and a filter over a wrong default hides everything.
 	if !clientChattableDefault.MatchString(source) {
-		t.Error("client/GropiusChat/GropiusChat.swift does not decide chattable as `chat ?? true` " +
+		t.Error("client/GropiusChat/ does not decide chattable as `chat ?? true` " +
 			"(or `chat != false`); a models list that publishes no chat capability must offer every model")
 	}
 	if !clientPickerFiltersOnChattable.MatchString(source) {
-		t.Error("client/GropiusChat/GropiusChat.swift does not build its picker list by filtering " +
+		t.Error("client/GropiusChat/ does not build its picker list by filtering " +
 			"the served list through its own chat rule; a model the rule excludes would be offered anyway")
 	}
 }
@@ -198,7 +198,7 @@ func TestChatClientOffersEveryModelAServerDoesNotRuleOut(t *testing.T) {
 // errors, and nobody can see why a model is or is not offered.
 func TestChatClientReadsTheCategoryTheGatewayPublishes(t *testing.T) {
 	root := repoRootDir(t)
-	source := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "GropiusChat.swift"))
+	source := clientSharedSource(t, root)
 	gatewaySource := readRepoFile(t, root, filepath.Join("internal", "gateway", "gateway.go"))
 
 	for _, c := range []struct {
@@ -210,7 +210,7 @@ func TestChatClientReadsTheCategoryTheGatewayPublishes(t *testing.T) {
 		{"tags", clientTagsField, gatewayTagsField},
 	} {
 		if !c.client.MatchString(source) {
-			t.Errorf("client/GropiusChat/GropiusChat.swift declares no %q on its models decoder; "+
+			t.Errorf("client/GropiusChat/ declares no %q on its models decoder; "+
 				"the words its own rule reads are unchecked", c.field)
 		}
 		if !c.gateway.MatchString(gatewaySource) {
@@ -231,7 +231,7 @@ func TestChatClientReadsTheCategoryTheGatewayPublishes(t *testing.T) {
 // explain the difference.
 func TestChatClientShipsTheServersOwnChatRule(t *testing.T) {
 	root := repoRootDir(t)
-	source := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "GropiusChat.swift"))
+	source := clientSharedSource(t, root)
 	rule := config.DefaultChatRule()
 
 	for _, c := range []struct {
@@ -244,7 +244,7 @@ func TestChatClientShipsTheServersOwnChatRule(t *testing.T) {
 	} {
 		m := c.re.FindStringSubmatch(source)
 		if m == nil {
-			t.Errorf("client/GropiusChat/GropiusChat.swift declares no stored default for the rule's %s", c.what)
+			t.Errorf("client/GropiusChat/ declares no stored default for the rule's %s", c.what)
 			continue
 		}
 		got := []string{}
@@ -261,7 +261,21 @@ func TestChatClientShipsTheServersOwnChatRule(t *testing.T) {
 	// And the rule has to be changeable where the intent says it is, or it is
 	// a default rather than a setting.
 	if !clientRuleIsEditable.MatchString(source) || !clientRequiredIsEditable.MatchString(source) {
-		t.Error("client/GropiusChat/GropiusChat.swift binds no Settings control to both halves of the rule; " +
+		t.Error("client/GropiusChat/ binds no Settings control to both halves of the rule; " +
 			"the rule is then a constant a user cannot change")
 	}
+}
+
+// clientSharedSource is every Swift file the client compiles, read as one
+// string: the promises above belong to the client, not to a file name, and the
+// client's sources are moved between files as they grow (Discovery.swift was
+// split out of GropiusChat.swift when the iPad build began sharing it).
+func clientSharedSource(t *testing.T, root string) string {
+	t.Helper()
+	var b strings.Builder
+	for _, src := range clientSources(t, root) {
+		b.WriteString(src)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
