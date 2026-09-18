@@ -34,6 +34,12 @@ GitHub release notes.
 
 ### Added
 
+- **The chat client's sidebar shows each conversation as a card, with a
+  search bar above it.** Every row carries an icon for who answered, the
+  title, the date and a summary of exchanges and words; typing in the search
+  bar filters the list by title and message text. The Thoughts row renders
+  a model's reasoning as markdown, like the reply.
+
 - **The chat client's appearance, text size, bubble colours and composer are
   yours to shape.** Settings offers Light, Dark or System, five text sizes that scale the whole window
   through the system's own sizes; each speaker's bubble colour has a picker
