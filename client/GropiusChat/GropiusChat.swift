@@ -696,10 +696,18 @@ enum Appearance: String, CaseIterable {
     }
 }
 
+/// The chat scene's id, so a command can open another window of it.
+let chatWindowID = "chat"
+
 @main
 struct GropiusChatApp: App {
     @StateObject private var model = AppModel.shared
     @FocusedValue(\.chatActions) private var actions
+    #if os(macOS)
+    // Replacing the .newItem group takes the system's own New Window item
+    // with it; the client opens the second window itself.
+    @Environment(\.openWindow) private var openWindow
+    #endif
     @AppStorage("textSize") private var textSize: String = TextSize.standard.rawValue
     @AppStorage("appearance") private var appearance: String = Appearance.system.rawValue
     #if !os(macOS)
@@ -718,7 +726,7 @@ struct GropiusChatApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Gropius Chat") {
+        WindowGroup("Gropius Chat", id: chatWindowID) {
             // A minimum window size is a Mac's business; on the iPad the app
             // is given the screen (or a Split View share of it) and fits it.
             // The chosen text size and appearance are the person's on both.
@@ -738,6 +746,13 @@ struct GropiusChatApp: App {
                 Button("New Chat") { actions?.newChat() }
                     .keyboardShortcut("n", modifiers: .command)
                     .disabled(actions == nil)
+                #if os(macOS)
+                // The Mac's second window onto the same chats, on the shortcut
+                // the system gives New Window everywhere else. The iPad has
+                // the one window and no such item to restore.
+                Button("New Window") { openWindow(id: chatWindowID) }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                #endif
             }
             CommandMenu("Chat") {
                 Button("Send") { actions?.send() }

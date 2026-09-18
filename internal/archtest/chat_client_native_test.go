@@ -269,3 +269,38 @@ func TestChatClientEffectPlaysOnceWhenTheReplyFinishes(t *testing.T) {
 		t.Error("AppModel queues no message id for the effect; the trigger has nothing to watch")
 	}
 }
+
+// TestChatClientOpensASecondWindow holds the trunk intent's multi-window
+// criterion (iss-2609181116079882): replacing the .newItem group removes the
+// standard New Window item, so the client has to put one back and open a
+// second window of its own WindowGroup itself. New Chat keeps Cmd-N.
+func TestChatClientOpensASecondWindow(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+
+	if !strings.Contains(src, `@Environment(\.openWindow)`) {
+		t.Error("the app reads no openWindow action; nothing in the client can open a second window")
+	}
+	if !strings.Contains(src, `Button("New Window")`) {
+		t.Error(`the File commands carry no "New Window" item; replacing .newItem removed the system's own`)
+	}
+	if !strings.Contains(src, `.keyboardShortcut("n", modifiers: [.command, .shift])`) {
+		t.Error("New Window has no Cmd-Shift-N shortcut")
+	}
+	if !strings.Contains(src, `.keyboardShortcut("n", modifiers: .command)`) {
+		t.Error("New Chat has lost its Cmd-N shortcut")
+	}
+	// The id openWindow is given has to be the id the WindowGroup declares, or
+	// the action opens nothing and says so only at runtime.
+	group := regexp.MustCompile(`WindowGroup\("[^"]*", id: ([A-Za-z0-9_]+)\)`).FindStringSubmatch(src)
+	if group == nil {
+		t.Fatal("the WindowGroup declares no id; openWindow has nothing to name")
+	}
+	open := regexp.MustCompile(`openWindow\(id: ([A-Za-z0-9_]+)\)`).FindStringSubmatch(src)
+	if open == nil {
+		t.Fatal("nothing calls openWindow(id:)")
+	}
+	if group[1] != open[1] {
+		t.Errorf("openWindow is given %q while the WindowGroup declares %q; the action would open nothing", open[1], group[1])
+	}
+}
