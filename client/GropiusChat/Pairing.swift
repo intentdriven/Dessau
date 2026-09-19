@@ -194,36 +194,51 @@ enum PairingStore {
             kSecAttrIsPermanent as String: true,
             kSecAttrApplicationTag as String: keyTag,
         ]
-        if let access = SecAccessControlCreateWithFlags(
-            nil, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly, [.privateKeyUsage], nil) {
-            // .privateKeyUsage alone, deliberately. A presence flag would put a
-            // biometric prompt inside a TLS handshake running on URLSession's
-            // own queue, with no reason string and nowhere to draw it.
-            privateAttrs[kSecAttrAccessControl as String] = access
-            let enclave: [String: Any] = [
-                kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-                kSecAttrKeySizeInBits as String: 256,
-                kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
-                kSecPrivateKeyAttrs as String: privateAttrs,
-            ]
-            var error: Unmanaged<CFError>?
-            if let key = SecKeyCreateRandomKey(enclave as CFDictionary, &error) {
-                keyIsInSecureEnclave = true
-                logger.notice("pairing key made in the Secure Enclave")
-                return key
-            }
-            let refusal = error?.takeRetainedValue()
-            let status = refusal.map { CFErrorGetCode($0) }
-            guard status == Int(errSecMissingEntitlement) else {
-                let why = refusal.map { ($0 as Error).localizedDescription }
-                    ?? "it gave no reason"
-                logger.error("the Secure Enclave refused this pairing key: \(why, privacy: .public)")
-                throw PairingError.keyRefused(
-                    "This device's Secure Enclave would not make a key for pairing: \(why)")
-            }
-            logger.notice(
-                "the Secure Enclave is closed to this build's signature (errSecMissingEntitlement); pairing with a permanent Keychain key instead")
+        // .privateKeyUsage alone, deliberately. A presence flag would put a
+        // biometric prompt inside a TLS handshake running on URLSession's own
+        // queue, with no reason string and nowhere to draw it.
+        //
+        // A nil access control is refused rather than stepped past
+        // (iss-2609190207534043). It is an Enclave attempt that failed, and it
+        // failed for something that is NOT the missing entitlement — the one
+        // condition the spike measured and the only one the fallback is for.
+        // Falling through here would hand the device a software key with
+        // nothing said, which is the silent downgrade the Enclave path was
+        // narrowed to prevent.
+        var accessError: Unmanaged<CFError>?
+        guard let access = SecAccessControlCreateWithFlags(
+            nil, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly, [.privateKeyUsage], &accessError)
+        else {
+            let why = (accessError?.takeRetainedValue()).map { ($0 as Error).localizedDescription }
+                ?? "it gave no reason"
+            logger.error("this device would not make an access control for the pairing key: \(why, privacy: .public)")
+            throw PairingError.keyRefused(
+                "This device would not guard a pairing key in its Secure Enclave: \(why)")
         }
+        privateAttrs[kSecAttrAccessControl as String] = access
+        let enclave: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeySizeInBits as String: 256,
+            kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
+            kSecPrivateKeyAttrs as String: privateAttrs,
+        ]
+        var enclaveError: Unmanaged<CFError>?
+        if let key = SecKeyCreateRandomKey(enclave as CFDictionary, &enclaveError) {
+            keyIsInSecureEnclave = true
+            logger.notice("pairing key made in the Secure Enclave")
+            return key
+        }
+        let refusal = enclaveError?.takeRetainedValue()
+        let status = refusal.map { CFErrorGetCode($0) }
+        guard status == Int(errSecMissingEntitlement) else {
+            let why = refusal.map { ($0 as Error).localizedDescription }
+                ?? "it gave no reason"
+            logger.error("the Secure Enclave refused this pairing key: \(why, privacy: .public)")
+            throw PairingError.keyRefused(
+                "This device's Secure Enclave would not make a key for pairing: \(why)")
+        }
+        logger.notice(
+            "the Secure Enclave is closed to this build's signature (errSecMissingEntitlement); pairing with a permanent Keychain key instead")
         privateAttrs.removeValue(forKey: kSecAttrAccessControl as String)
         let ordinary: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
