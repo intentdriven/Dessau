@@ -2,9 +2,9 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
 	"strconv"
 	"sync"
 	"time"
@@ -49,7 +49,10 @@ func (g *Gateway) observe(on bool, started time.Time) *observation {
 	return &observation{
 		rec:     g.stats,
 		started: started,
-		record:  stats.Record{At: started.UTC().Unix(), Class: stats.ClassOK, FirstTokenMS: stats.NoFirstToken},
+		record: stats.Record{
+			At: started.UTC().Unix(), Class: stats.ClassOK,
+			Source: stats.SourceHTTP, FirstTokenMS: stats.NoFirstToken,
+		},
 	}
 }
 
@@ -64,6 +67,17 @@ func (o *observation) failed(c stats.Class) {
 		return
 	}
 	o.record.Class = c
+}
+
+// sourced names how the request reached this Mac. observe starts every
+// observation as an HTTP one, because that is what every request was until a
+// bridge existed; only a request that did not come over the network says
+// otherwise (adr-2609181004167097 condition 4).
+func (o *observation) sourced(src stats.Source) {
+	if o == nil {
+		return
+	}
+	o.record.Source = src
 }
 
 // resolved names the model, once the registry has said which one it is.
@@ -181,11 +195,11 @@ func (o *observation) relayed(out relayOutcome) {
 // Token counts are dropped for anything but a completed answer: a partial
 // count read off an abandoned stream is a number that means nothing and would
 // be averaged in as if it did.
-func (o *observation) finish(r *http.Request) {
+func (o *observation) finish(ctx context.Context) {
 	if o == nil {
 		return
 	}
-	if !o.delivered && r.Context().Err() != nil {
+	if !o.delivered && ctx.Err() != nil {
 		o.record.Class = stats.ClassCancelled
 	}
 	if o.record.Class != stats.ClassOK {

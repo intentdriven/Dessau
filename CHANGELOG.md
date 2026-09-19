@@ -11,20 +11,29 @@ GitHub release notes.
 
 ## [Unreleased]
 
-### Changed
-
-- **A statistics file Gropius did not write is left alone.** Every bounded file
-  Gropius keeps on this Mac — its own log, the request statistics store and the
-  self-test's results — is created owner-only, and a file standing under one of
-  those names that any other account could read or write is now refused rather
-  than appended to, the way a link or a named pipe under one of them already
-  was. The reference pages say so.
-- **A self-test run is named as a record kind where the records are described.**
-  The request statistics reference now says that a run is the one record kind
-  Gropius writes outside the statistics folder, why it has a file of its own,
-  and where its fields are written down.
 ### Added
 
+- **Answer Discord direct messages and mentions with a model on this Mac.**
+  `impact: additive`. Off unless you turn it on. Paste a Discord bot token in
+  Settings, switch the bridge on, and a direct message to that bot — or a
+  mention of it in a channel it has been invited to — is answered by one of
+  your models: the bot shows typing, a placeholder reply appears and fills in
+  as the answer is written, a long answer continues in a second message cut at
+  a paragraph, and each channel or direct message keeps its own conversation in
+  memory. `/model` shows or sets the model answering a channel and `/reset`
+  clears its conversation. The egress: **messages to the bot and the model's
+  answers pass through Discord and are kept under Discord's terms**, stated
+  beside the switch and on the docs page. Gropius connects out to Discord —
+  no port is opened, the bind address and every inbound surface are untouched,
+  and switching the bridge off closes the connection. A message in a channel
+  that does not mention the bot is never read, so the privileged
+  message-content intent is never requested. The bot token is a secret on
+  every surface the API key is, and a save is never refused over it. A bridged
+  request is recorded like any other with one new fixed field, its `source`;
+  the log line carries the channel and user identifiers as plain numbers and
+  no part of a message or an answer
+  ([how to](docs/discord-bridge.md), decided in
+  [an architecture decision](.abcd/development/decisions/adrs/2609181004167097-an-opt-in-bridge-may-carry-a-conversation-off-the-mac-to-a-t.md)).
 - **A chat client pairs with the server once, and from then on proves itself
   with a key of its own.** The client makes a keypair on the device it is on,
   the server signs it a certificate, and paired requests travel over a second
@@ -41,8 +50,103 @@ GitHub release notes.
   ([how to pair a client](docs/pairing.md), [what pairing is
   worth](docs/pairing-explained.md)).
 
+### Changed
+
+- **The chat client is installed by the same swap that installs the server.**
+  `install.sh` no longer puts `GropiusChat.app` in place itself; it hands that
+  to `gropius place`, a verb on the Gropius binary, from the release archive it
+  has just downloaded and verified. Installing the client therefore downloads
+  the server's archive as well, for the binary inside it, and the installer
+  needs Apple Silicon for either app — an Intel Mac is turned away before
+  anything is downloaded, with the manual route named.
+
 ### Fixed
 
+- **The chat client's message field has the proportions Messages and WhatsApp
+  give theirs.** The composer's capsule was 24 points tall with the placeholder
+  almost against its curve. It is now at least 34 points tall with a clear gap
+  before the first glyph, it still grows to eight lines as the message does,
+  and both measurements scale with the text size chosen in Settings, so the
+  field grows with the words instead of the words outgrowing the field. The
+  send button keeps its circle, now matched to the field's height.
+- **A request whose model needs the memory the self-test is holding now takes
+  it, instead of being refused once.** A self-test run held its model the way
+  any request does, so a client whose own load needed that memory was told the
+  machine was full, and only its retry — after the run noticed the refusal and
+  let go — found the room. The run's hold is now a soft one: the pool asks the
+  run to let go, the run does, and the model it was holding is unloaded for the
+  client's. A client's own hold is never soft, a pinned model is never taken,
+  and a run that will not let go costs the client the refusal it would have had
+  anyway.
+- **The chat client's message field shows the focus ring again.** Drawing the
+  composer's capsule cost it the ring a bordered field shows for itself, so the
+  field gave no sign of holding the keyboard. The capsule now draws that
+  indication itself, in the system's own focus colour and at the thickness the
+  system strokes, and it stays hidden wherever the system's focus-effect
+  preference says focus is not to be shown.
+- **Replacing the chat client can no longer be raced on a Mac several people
+  share.** The bundle was moved into place with the shell's `mv`, which nests
+  inside a destination that is already a directory and writes through one that
+  is a symbolic link, reporting success in both cases — so an account that can
+  write the applications directory could leave every launcher opening its own
+  bundle instead. The placement is now the staged swap the server's own
+  installer performs: it stages under an unguessable name inside the
+  destination, refuses a destination directory that is a symbolic link,
+  replaces rather than follows a symbolic link at the bundle's own name, never
+  nests inside a bundle that is already there, and keeps the installed copy
+  until the new one is in place.
+- **The installer refuses a release archive that carries a symbolic link.**
+  `install.sh` unpacks the archive it has verified and then executes a binary
+  four path components deep inside it — once for the server, and again for the
+  placer the client half runs. It tested only the last of those four components
+  for a symbolic link, and `ditto` restores a link at any of them, so a link at
+  the bundle, at `Contents` or at `MacOS` would send that execution outside the
+  directory the checksum covers. Both halves now scan the whole unpacked tree
+  before anything is read or run, and refuse the archive over a symbolic link
+  anywhere in it: the bundles this project publishes carry none.
+- **`gropius update` refuses a release whose bundle is a symbolic link.** The
+  verb unpacks the archive it has verified and then runs the staged build's own
+  version verb, to report the version it is installing. The check in front of
+  that execution was made on the bundle itself, which meant every path
+  component inside the bundle was tested but the bundle's own name was
+  followed — so a link there would have run a program outside the directory the
+  checksums cover. The check is now made on the unpacked directory and reaches
+  the bundle through it, so the bundle's name is tested like every component
+  below it, and the refusal comes before anything is run.
+- **A statistics file Gropius did not write is left alone.** Every bounded file
+  Gropius keeps on this Mac — its own log, the request statistics store and the
+  self-test's results — is created owner-only, and a file standing under one of
+  those names that any other account could read or write is now refused rather
+  than appended to, the way a link or a named pipe under one of them already
+  was. The reference pages say so.
+- **A self-test run is named as a record kind where the records are described.**
+  The request statistics reference now says that a run is the one record kind
+  Gropius writes outside the statistics folder, why it has a file of its own,
+  and where its fields are written down.
+- **The chat client counts the message you just typed against the device's own
+  model's context window.** The trim shared the window out between the client's
+  instructions and the conversation so far, and then sent the new message on
+  top of a full window; a long message overflowed and was left to a single
+  retry to absorb. The new message is now budgeted with the prior turns, so the
+  older turns make way for it, and a message too long for the window on its own
+  is not sent at all — the chat says so in one sentence and points at a server,
+  instead of a failed turn and a framework error.
+- **The chat client's header is one thin toolbar, whatever the chat shows.**
+  The title was drawn large on a chat that fitted the window and collapsed as
+  a long reply scrolled, so the header had two heights; the toolbar's
+  scroll-edge effect was a soft blur that reached well past the bar and washed
+  out the reply being read; and the transcript was anchored to the foot of the
+  window, which opened an empty band between the toolbar and the first bubble
+  on a fresh conversation. The title is now pinned inline on the Mac and the
+  iPad, the scroll-edge effect ends at the toolbar, and a chat shorter than
+  the window starts under it. A long chat still opens at its newest message.
+- **A half-finished upgrade leaves the application where only your account can
+  reach it.** Where an upgrade cannot put the previous bundle back, that copy
+  is the only one there is and it waits until you move it — and it waited in
+  the applications folder, which every administrator account on this Mac can
+  delete an entry from. It now waits in your account's own Application Support
+  folder, and the command still says where it is. Where that folder is on
+  another volume, the copy is staged as before and a warning says so.
 - **The pinned-models figure is worked out from the batching Gropius is
   actually running with.** Batched requests (decode concurrency) reaches the
   model servers only when Gropius starts, and the control panel was charging
@@ -69,6 +173,63 @@ GitHub release notes.
   given way, and the same mistake cut short the concurrent test of a run that
   got past the load. The loop now claims its place before it asks for it, so a
   measurement gives way to a real request and to nothing else.
+- **The chat client's Default text size means no preference, not a size.** The
+  standard step pinned the system's large size on every window, so a Mac whose
+  own text size is set to something else was overridden by the client. Default
+  now applies no size at all — the shape the appearance setting's System case
+  already had — and the other four steps keep theirs. The picker moves out of
+  the combined Appearance section into its own **Text** section in Settings.
+  `impact: fix`
+- **A chat client's sidebar card shows the date the way the Mac does, and
+  counts exchanges as exchanges.** The card drew the date it started as its own
+  day, month and year rather than in the system's short date style, and it
+  called each of the model's replies an exchange — so a message still waiting
+  for its answer, or a reply that arrived in two parts, made the count read
+  wrong. An exchange is a person's message and the reply that answers it, and
+  that is what the card now counts. `impact: fix`
+- **The chat client's messages name the device you are holding.** The
+  built-in model's error sentences spelled the Mac out whatever they were
+  running on, so the iPad build named a device that was not there; they now
+  use the same device noun as the rest of the client, as does the model
+  picker's filter help — the promise that the device's own model is always
+  offered. The server's address help still says Mac, because the machine at
+  that address is one.
+- **The chat client's bubble colours follow the appearance.** The model's
+  bubble defaulted to a grey that is the same in Light and in Dark, and a
+  colour chosen in Settings was drawn as the one value it was stored as, so a
+  bubble that read in the appearance it was picked in could be lost in the
+  other. The defaults are now the system's own — your accent colour and the
+  system's secondary fill — which follow Light and Dark by themselves; a
+  picked colour keeps its hue and its saturation and is drawn a shade apart
+  from the window it sits on when it would otherwise be lost in it; and the
+  message on a bubble is the system's label colour, read in the appearance
+  the bubble it sits on reads as, rather than a fixed white.
+- **What HuggingFace says about a model is believed only when HuggingFace said
+  it.** Looking a repository up followed a redirect to any host, so another
+  server could answer in the Hub's place and have its answer read as fact about
+  the model — which files it holds, what kind of model it is. Every request for
+  what the Hub says — the model search, a repository lookup, and each page of a
+  file listing — now refuses an answer that arrives from anywhere but the Hub's
+  own address, and refuses it the same way whichever request it was. The
+  refusal comes before the redirect is followed, so nothing — the access token
+  included — is sent to the other address. Fetching the files themselves still
+  follows the Hub's own redirect to its content store, where each weights file
+  is checked against the hash the Hub stated for it.
+- **A download takes no more disk than the repository said it would, and every
+  request asks HuggingFace for exactly the model named.** A file was written
+  out in full before its length was compared with the size the repository
+  listed, so a repository that declared ten bytes and then sent tens of
+  megabytes had every one of them written — for as many files as were being
+  fetched at the time. A download is now held to the smaller of the length the
+  response declares and the size the repository listed, and stops at that
+  boundary rather than after it; a body that ends short of it is refused too,
+  and neither is left behind for a later run to mistake for progress. Every
+  HuggingFace address is also built one way now: the repository name was
+  escaped into the address on one request and put in raw on another, so a name
+  carrying a `#` or a `?` reached a different page than the one asked for. And
+  a file listing that runs to a second page follows it even when HuggingFace
+  gives the address of that page relative to the first, instead of stopping
+  there and reporting the Hub's own address as another server's.
 - **A sidebar search finds every word, wherever it falls.** The chat client
   matched the whole query as one literal piece of text, so a search for two
   words found only the chats that carried them side by side, in the order they
@@ -77,6 +238,29 @@ GitHub release notes.
   when every word is somewhere in its title or its messages, in any order and
   any distance apart. The match ignores accents as well as case, the way search
   does elsewhere on the Mac. `impact: fix`
+- **A chat client's pairing key is made outside the Secure Enclave only where
+  the Enclave is closed to it.** The client tried the Enclave and treated any
+  failure as the signal to make an ordinary Keychain key instead, so a device
+  that refused the Enclave for some other reason would quietly have been given
+  a software key while the app went on reporting a hardware one. The reason is
+  now read: the fallback is taken for the missing-entitlement status alone —
+  the case of a build signed the way this app is — and any other refusal stops
+  the pairing and says what the device reported. Which kind of key was made is
+  written to the log either way.
+- **A reading of a model server's memory always gives up.** The reader shells
+  out to the process listing and bounds it at three seconds, but it then waited
+  for the listing's output to finish arriving — and the listing's output pipe
+  is not Gropius's to close, so a listing the Mac had not finished with left
+  the reading parked for as long as that lasted. Quitting waits on that
+  reading, so the Mac under memory pressure that the bound exists for was
+  exactly the one that could be left waiting. The wait for the output now ends
+  a second after the listing does, and a reading that could not be taken is no
+  reading, which is what the panel already shows for one.
+- **An oversized pairing request is refused rather than half-read.** The
+  pairing endpoint takes no credential, so the body it accepts is bounded — but
+  the bound stopped the reading and not the acceptance, and a request whose
+  opening bytes were a well-formed pairing paired whatever followed them. A body
+  over the limit is now answered `413` and nothing is written.
 
 ## [0.7.1] - 2026-09-18
 

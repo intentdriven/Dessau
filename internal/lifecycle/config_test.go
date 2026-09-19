@@ -37,6 +37,8 @@ func sampleSettings() config.Config {
 	c := config.Default()
 	c.APIKey = "bh_not-a-real-key-0123456789"
 	c.HFToken = "hf_not-a-real-token-0123456789"
+	c.DiscordBridge = true
+	c.DiscordToken = "not-a-real-bot-token-0123456789"
 	c.UpstreamHeaderTimeoutSec = 45
 	c.Preload = []string{"mlx-community/Qwen3-8B-4bit"}
 	temp := 0.7
@@ -353,4 +355,77 @@ func TestNoSettingHidesItsFieldsBehindAPointer(t *testing.T) {
 		}
 	}
 	walk(reflect.TypeOf(config.Config{}), "", 0)
+}
+
+// `gropius config show` reports the paired set, and it was reported only
+// because the walk happens to recurse into a map of structs
+// (iss-2609190200110241). The scope condition for the terminal surface says
+// the verb reports the clients block with the fingerprints shown, so the claim
+// is held here rather than derived from the shape of a reflection loop.
+//
+// The fingerprint is printed in full and never as the placeholder: it is a
+// hash of a public key, and comparing the whole of it against what the client
+// shows is the only check there is on a pairing nobody approved (the narrowing
+// of adr-2609182357322050 recorded on 2026-09-19).
+func TestConfigShowReportsThePairedSetWithItsFingerprints(t *testing.T) {
+	const (
+		bobs   = "AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKK="
+		carols = "LLLLMMMMNNNNOOOOPPPPQQQQRRRRSSSSTTTTUUUUVVV="
+	)
+	settings := sampleSettings()
+	settings.Clients = map[string]config.Client{
+		bobs:   {Name: "Bob's iPad", SPKI: bobs, PairedAt: 1700000000},
+		carols: {Name: "Carol's Mac", SPKI: carols, PairedAt: 1700000001},
+	}
+
+	for _, form := range []struct {
+		name string
+		args []string
+	}{
+		{"the human form", []string{"show"}},
+		{"the machine form", []string{"show", "--json"}},
+	} {
+		t.Run(form.name, func(t *testing.T) {
+			env, out, errOut := configShowEnv(t, settings)
+			if code := RunConfig(env, form.args); code != ExitOK {
+				t.Fatalf("exit = %d (%s)", code, errOut.String())
+			}
+			printed := out.String()
+			for _, want := range []string{"Bob's iPad", "Carol's Mac", bobs, carols} {
+				if !strings.Contains(printed, want) {
+					t.Errorf("the report does not carry %q:\n%s", want, printed)
+				}
+			}
+			for _, key := range []string{
+				"clients." + bobs + ".name", "clients." + bobs + ".spki", "clients." + bobs + ".paired_at",
+				"clients." + carols + ".name", "clients." + carols + ".spki", "clients." + carols + ".paired_at",
+			} {
+				if !strings.Contains(printed, key) {
+					t.Errorf("the report does not spell %s the way config.json does:\n%s", key, printed)
+				}
+			}
+		})
+	}
+
+	// And nothing else of the block. A field added to a paired client is a
+	// field printed to a terminal and pasted into a bug report, so the three
+	// that may be are named here and a fourth has to be argued for.
+	got := map[string]bool{}
+	for key := range SettingsInForce(settings) {
+		if rest, ok := strings.CutPrefix(key, "clients."+bobs+"."); ok {
+			got[rest] = true
+		}
+	}
+	want := map[string]bool{"name": true, "spki": true, "paired_at": true}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("a paired client is reported as %v, want exactly %v", got, want)
+	}
+
+	// The fingerprint is not a secret and must not be reported as one: a
+	// redacted fingerprint is a fingerprint Alice cannot compare, which is the
+	// whole of what pairing gives her.
+	shown := ConfigInForce(settings)
+	if shown.Clients[bobs].SPKI != bobs {
+		t.Errorf("the fingerprint is reported as %q, want the whole of it", shown.Clients[bobs].SPKI)
+	}
 }

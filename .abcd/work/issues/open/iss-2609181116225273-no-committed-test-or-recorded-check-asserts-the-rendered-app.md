@@ -16,3 +16,7 @@ No committed test or recorded check asserts the rendered appearance of the five 
 ## Triage 2026-09-18
 
 Left open for the maintainer: asserting a rendered appearance needs a UI test target the client does not have; standing one up is a decision about how this client is tested, and every other rendering finding here waits on it.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: asserting rendered appearance needs a UI test target the client does not have; standing one up is a decision about how this client is tested, and the other rendering findings wait on it.

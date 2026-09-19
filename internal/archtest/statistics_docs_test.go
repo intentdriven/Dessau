@@ -95,6 +95,11 @@ func TestTheStatisticsPageNamesEveryFieldTheStoreWrites(t *testing.T) {
 			t.Errorf("the page does not name %q, which a request line can carry as its class", class)
 		}
 	}
+	for _, source := range stats.Sources() {
+		if !strings.Contains(page, "`"+string(source)+"`") {
+			t.Errorf("the page does not name %q, which a request line can carry as its source", source)
+		}
+	}
 	for _, kind := range stats.StoreKinds() {
 		if !strings.Contains(page, "`"+kind+"`") {
 			t.Errorf("the page does not name %q, which is one of the kinds of line the store writes", kind)

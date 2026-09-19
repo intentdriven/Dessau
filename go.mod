@@ -5,6 +5,7 @@ go 1.25.6
 require (
 	fyne.io/systray v1.12.2
 	github.com/brutella/dnssd v1.2.14
+	github.com/coder/websocket v1.8.15
 	golang.org/x/sys v0.21.0
 )
 

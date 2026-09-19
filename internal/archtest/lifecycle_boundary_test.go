@@ -56,13 +56,14 @@ var controlPlaneRoots = []string{
 // be uncovered by default and the rule would quietly stop applying to it.
 var offTheControlPlane = map[string]string{
 	lifecyclePkg: "is the package the rule is about",
-	"github.com/intentdriven/Gropius/cmd/gropius":        "is the one place both sides meet, by design: it dispatches a verb typed in a terminal and it starts the server. Nothing imports it, so it is a leaf and not a path",
-	"github.com/intentdriven/Gropius/cmd/gropius-site":   "renders the landing page offline and serves nothing",
-	"github.com/intentdriven/Gropius/internal/archtest":  "is these rules",
-	"github.com/intentdriven/Gropius/internal/mlxtest":   "test helpers; nothing ships in the binary",
-	"github.com/intentdriven/Gropius/internal/sitetest":  "test helpers for the landing-page renderer",
-	"github.com/intentdriven/Gropius/internal/discovery": "advertises the server over mDNS. Only the command imports it, and it answers the network rather than being asked anything by a route; a lifecycle verb reaching it would be advertising from a terminal command, which is why it is written down rather than left uncovered",
-	"github.com/intentdriven/Gropius/internal/instance":  "classifies the process on the server port. The command and the lifecycle verbs both ask it; it imports only the paths, and a route cannot reach a verb through it",
+	"github.com/intentdriven/Gropius/cmd/gropius":             "is the one place both sides meet, by design: it dispatches a verb typed in a terminal and it starts the server. Nothing imports it, so it is a leaf and not a path",
+	"github.com/intentdriven/Gropius/cmd/gropius-site":        "renders the landing page offline and serves nothing",
+	"github.com/intentdriven/Gropius/internal/archtest":       "is these rules",
+	"github.com/intentdriven/Gropius/internal/mlxtest":        "test helpers; nothing ships in the binary",
+	"github.com/intentdriven/Gropius/internal/sitetest":       "test helpers for the landing-page renderer",
+	"github.com/intentdriven/Gropius/internal/discovery":      "advertises the server over mDNS. Only the command imports it, and it answers the network rather than being asked anything by a route; a lifecycle verb reaching it would be advertising from a terminal command, which is why it is written down rather than left uncovered",
+	"github.com/intentdriven/Gropius/internal/instance":       "classifies the process on the server port. The command and the lifecycle verbs both ask it; it imports only the paths, and a route cannot reach a verb through it",
+	"github.com/intentdriven/Gropius/internal/bridge/discord": "the Discord bridge. It imports the gateway rather than the other way round — nothing the control plane serves can reach it, and only the command builds it — so no route arrives here, and it imports no lifecycle verb",
 }
 
 // No package on the control plane's path may see internal/lifecycle, at any

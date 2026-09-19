@@ -12,3 +12,7 @@ found_at: "client/build-ipad.sh"
 ---
 
 The iPad build script's install over USB is conditional on IPAD_DEVICE and has never been run; without it the script only prints the devicectl command, so the press release's install on Bob's own iPad from the Mac it was built on rests on an unexercised path.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: the install over USB needs their own iPad and their personal team sign-in; nothing here can exercise it.

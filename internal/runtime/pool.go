@@ -329,9 +329,35 @@ type entry struct {
 	// excess requests queue on this channel instead.
 	sem chan struct{}
 
+	// soft are the preemptible holds on this model: the id release uses to
+	// remove its own, against the holder's way of being told to let go
+	// (WithSoftHold). A model every one of whose holds is in here belongs to
+	// nobody who would be made to wait, so the eviction plan may take it —
+	// last, and only for a caller that is not itself a soft hold. Guarded by
+	// p.mu, like inFlight, which it is counted against.
+	soft     map[uint64]func()
+	nextSoft uint64
+	// yielding says the holders above have already been asked to let go, so a
+	// second load parked behind the same model does not ask them twice. It is
+	// cleared when a new soft hold is taken, which is a holder that has not
+	// been asked.
+	yielding bool
+
 	// ready is closed once the model answers a real completion.
 	ready    chan struct{}
 	readyErr error
+}
+
+// softOnlyLocked reports whether every hold on this model is preemptible —
+// and that there is at least one, since a model nobody is holding is an
+// ordinary eviction candidate and never comes through here. Callers must hold
+// p.mu.
+//
+// "Every" is the whole of the rule: one ordinary client's request on the model
+// makes it that client's, and a preemptible holder beside them does not make
+// it takeable.
+func softOnlyLocked(e *entry) bool {
+	return len(e.soft) > 0 && len(e.soft) == e.inFlight
 }
 
 // stuckServer is a model server that survived being stopped and then killed.
@@ -406,6 +432,11 @@ type loadWaiter struct {
 	// blocking, is answered from what the waiter already carries — no resolving
 	// the model, no stat-ing the launcher's files under p.mu.
 	drainGen uint64
+	// soft says this waiter's own hold would be preemptible, which is what
+	// keeps it from asking another preemptible holder to let go: a caller that
+	// yields to clients does not take from one. It is a property of the call,
+	// so it is fixed for the life of the waiter.
+	soft bool
 	// mayWait says whether this acquisition honours the eviction grace, which
 	// is what decides the bound it is held to and therefore how long it may
 	// sleep. It is a property of the call — Acquire or AcquireNow — so it is
@@ -677,6 +708,19 @@ var ErrClosed = errors.New("pool is closed")
 // returns the *NoRoomError beside it.
 var errDraining = errors.New("a stopped model server has not exited yet")
 
+// errPreempting marks the second refusal a caller answers by waiting: the
+// memory this load needs is held by a hold that has promised to let go, and
+// its holder has just been asked to. Wrapped around the ordinary no-room
+// refusal for the reason errDraining is, and unexported for the same reason:
+// what this machine is doing with its own memory is not a LAN client's
+// business, so the error that reaches the wire is the *NoRoomError beside it.
+//
+// The wait it starts ends the moment the holder releases — which drops the
+// model to nobody, where the ordinary eviction takes it — and is bounded like
+// every other wait for memory that is coming back. A holder that never lets go
+// costs the caller the refusal it would have had at once.
+var errPreempting = errors.New("a preemptible hold has been asked to let go")
+
 // drainMargin is what a stop is given beyond stopBound before the pool calls
 // the process stuck: SIGKILL has been delivered and not landed, so what is
 // holding the memory now is the kernel, not the server.
@@ -721,6 +765,10 @@ func (p *Pool) AcquireNow(ctx context.Context, repoID string) (*Upstream, func()
 
 func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstream, func(), error) {
 	src := sourceFrom(ctx)
+	// The caller's own way of being told to let go, if it offered one. A hold
+	// taken under it is one the pool may take back rather than refuse another
+	// load — and a caller that offers one never takes anybody else's.
+	yield := softHoldFrom(ctx)
 	key := config.FoldRepoID(repoID)
 	// waited is what this acquisition spent parked for want of room, and it is
 	// reported to the caller: a request that waited for somebody else's model
@@ -771,7 +819,8 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 			// A load that would have to wait for memory to come back must be
 			// able to wait before it destroys anything: a model killed for a
 			// caller that is then refused served nobody.
-			started, err = p.startLocked(repoID, age, adm, p.canParkLocked(mayWait, w, src))
+			started, err = p.startLocked(repoID, age, adm,
+				p.canParkLocked(mayWait, w, src), yield != nil)
 			if err == nil {
 				e = started
 				// Somebody may have been queued for this very model; it has an
@@ -854,6 +903,7 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 				need:    noRoom.need,
 				source:  src,
 				mayWait: mayWait,
+				soft:    yield != nil,
 				signal:  make(chan struct{}, 1),
 			}
 			p.waiters = append(p.waiters, w)
@@ -907,6 +957,22 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 	already := e.inFlight
 	e.inFlight++
 	e.lastUsed = p.opts.now()
+	// Register the hold as preemptible, if that is what it is. It is counted
+	// against inFlight — a model is takeable only when every hold on it is one
+	// of these — and removed by the release below, whichever path reaches it.
+	softID, isSoft := uint64(0), yield != nil
+	if isSoft {
+		if e.soft == nil {
+			e.soft = map[uint64]func(){}
+		}
+		softID = e.nextSoft
+		e.nextSoft++
+		e.soft[softID] = yield
+		// A holder that has just arrived has not been asked for anything, so
+		// the next load that needs this memory asks again rather than assuming
+		// the holder it did ask is still the one here.
+		e.yielding = false
+	}
 	ready := e.ready
 	// The load wait is clocked from here, with the entry in hand, rather than
 	// from the top of Acquire: everything above is contention on this pool's
@@ -927,6 +993,9 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 		p.mu.Lock()
 		e.inFlight--
 		e.lastUsed = p.opts.now()
+		if isSoft {
+			delete(e.soft, softID)
+		}
 		// evictForLocked refuses to evict an entry that is still loading (see
 		// its isReady guard), so a caller giving up mid-load must not leave
 		// the entry to sit there instead: with nobody left to wait for it,
@@ -1086,8 +1155,10 @@ func (p *Pool) chargeLocked(m ResolvedModel) int64 {
 // waited is how long the caller has already been queued for room, which is
 // what bounds the protection an eviction grace gives; adm is what this caller
 // is allowed to do to the models in memory, and is what keeps the queue
-// first-in, first-out.
-func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, canPark bool) (*entry, error) {
+// first-in, first-out. canPark says whether it could wait for memory that is
+// on its way, and soft says its own hold would be preemptible — together they
+// decide whether it may ask a preemptible holder to let go.
+func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, canPark, soft bool) (*entry, error) {
 	m, err := p.opts.Models.Resolve(repoID)
 	if err != nil {
 		return nil, err
@@ -1104,8 +1175,12 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 	// control-panel snapshot takes — so a refusal that did it would let a
 	// client set the rate at which this machine does filesystem work under
 	// that lock, simply by asking for loads that cannot be served.
-	victims, enough := p.evictionPlanLocked(need, waited)
-	if p.grace > 0 && (!enough || !allows(adm, victims)) {
+	// A caller may take a preemptible hold back only if it can wait for the
+	// holder to let go: asking a run to abandon itself for a load that is
+	// about to be refused anyway would destroy something for nobody. A caller
+	// that is itself a soft hold never asks — see evictionPlanLocked.
+	plan := p.evictionPlanLocked(need, waited, canPark && !soft)
+	if p.grace > 0 && (!plan.enough || !allows(adm, plan)) {
 		return nil, p.noRoomLocked(need)
 	}
 	// Stopping a model does not hand its memory back, it moves the charge into
@@ -1125,14 +1200,29 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 	if err := p.opts.Launcher.Precheck(Spec{RepoID: repoID, ModelPath: path}); err != nil {
 		return nil, fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
 	}
-	for _, v := range victims {
+	for _, v := range plan.victims {
 		p.stopEntryLocked(v, StopEvicted)
+	}
+	// The models nobody would be made to wait for are not stopped here: their
+	// holders are asked to let go, and this load waits for them exactly as it
+	// waits for a stopped server to exit. Stopping one under a holder that
+	// still has a request against it would leave a server half gone and the
+	// holder with a connection error rather than the cancellation it asked to
+	// be given.
+	// Only when taking them seats this load: a plan can name every hold there
+	// is and still be short — one ordinary client's request in flight on
+	// another model is enough — and cancelling a holder for a load that is
+	// refused anyway takes something from somebody for nobody
+	// (iss-2609190031063965).
+	if plan.enough && len(plan.preempt) > 0 {
+		p.preemptLocked(plan.preempt, repoID)
+		return nil, fmt.Errorf("%w: %w", errPreempting, p.noRoomLocked(need))
 	}
 	// With grace off the pool has always freed what it could and then refused,
 	// and that is what the off path still does: the plan above is executed
 	// whole before this, and only the on path returns before touching
 	// anything.
-	if !enough {
+	if !plan.enough {
 		return nil, p.noRoomLocked(need)
 	}
 	// The victims stopped just above — and any model another caller stopped a
@@ -1323,12 +1413,12 @@ func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 // wait that it does not need, and it takes nothing from the waiter at the head
 // — that waiter is parked precisely because the free room is not enough for
 // it.
-func allows(adm admission, victims []*entry) bool {
+func allows(adm admission, plan evictionPlan) bool {
 	switch adm {
 	case admitEvict:
 		return true
 	case admitFreeRoom:
-		return len(victims) == 0
+		return !plan.takes()
 	default:
 		return false
 	}
@@ -1367,10 +1457,31 @@ func (p *Pool) evictableChargeLocked() int64 {
 	return p.liveChargeLocked() + p.stuckChargeLocked()
 }
 
+// evictionPlan is what would have to happen for a load to fit.
+type evictionPlan struct {
+	// victims are the idle models to stop, least recently used first.
+	victims []*entry
+	// preempt are the models held only by preemptible holds, whose holders
+	// must be asked to let go before the model can be stopped. They come after
+	// every victim, so a plan that ordinary eviction can satisfy never
+	// contains one: taking a hold back is a last resort, not a preference.
+	preempt []*entry
+	// enough says whether doing all of it makes room.
+	enough bool
+}
+
+// takes reports whether this plan takes anything from anybody.
+func (pl evictionPlan) takes() bool { return len(pl.victims)+len(pl.preempt) > 0 }
+
 // evictionPlanLocked names the models that would have to go for need bytes to
 // fit, least recently used first, and says whether taking them all is enough.
 // Callers must hold p.mu.
-func (p *Pool) evictionPlanLocked(need int64, waited time.Duration) ([]*entry, bool) {
+//
+// mayPreempt says whether this caller may take a preemptible hold back. A
+// caller that cannot wait for the holder to let go must not ask it to, and a
+// caller that is itself a soft hold never asks at all: the self-test takes a
+// model from nobody, itself included.
+func (p *Pool) evictionPlanLocked(need int64, waited time.Duration, mayPreempt bool) evictionPlan {
 	// The models in memory and the servers that will never exit; not the ones
 	// that are still exiting. A plan that counted those would name victims to
 	// free room a process is about to hand back, killing a healthy model to
@@ -1378,24 +1489,38 @@ func (p *Pool) evictionPlanLocked(need int64, waited time.Duration) ([]*entry, b
 	// ones would refuse every load needing room until the app restarted.
 	used := p.evictableChargeLocked()
 	if used+need <= p.maxResident {
-		return nil, true
+		return evictionPlan{enough: true}
 	}
 
 	candidates := make([]*entry, 0, len(p.entries))
+	held := make([]*entry, 0, len(p.entries))
 	for _, e := range p.entries {
 		// Never evict a model that is still loading: its lone waiter can have
 		// already given up (context cancelled or timed out) and dropped
 		// inFlight to 0 while waitReady keeps running in the background.
 		// Killing it here would waste the in-progress load; isReady checks
 		// without blocking. Same reasoning as reapIdle's guard below.
-		if e.inFlight > 0 || !isReady(e) {
+		if !isReady(e) {
 			continue
 		}
 		// A pinned model is removed from the candidate set before the
 		// least-recently-used comparison runs, so it survives even when it
 		// is the better victim by age. That is the whole of the promise:
-		// the load that needed the room fails instead.
+		// the load that needed the room fails instead. It holds for a
+		// preemptible hold too: a pin is the operator's word about the model,
+		// not about who is using it.
 		if p.isPinnedLocked(e.repoID) {
+			continue
+		}
+		if e.inFlight > 0 {
+			// A model held only by holders that have promised to let go is a
+			// last resort rather than a refusal. The eviction grace is not
+			// consulted for it: the grace protects a model that has just
+			// finished a client's request, and what stamped this one was the
+			// holder's own work.
+			if mayPreempt && softOnlyLocked(e) {
+				held = append(held, e)
+			}
 			continue
 		}
 		if !p.graceElapsedLocked(e, waited) {
@@ -1406,16 +1531,30 @@ func (p *Pool) evictionPlanLocked(need int64, waited time.Duration) ([]*entry, b
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].lastUsed.Before(candidates[j].lastUsed)
 	})
+	sort.Slice(held, func(i, j int) bool {
+		return held[i].lastUsed.Before(held[j].lastUsed)
+	})
 
-	victims := make([]*entry, 0, len(candidates))
+	plan := evictionPlan{victims: make([]*entry, 0, len(candidates))}
 	for _, e := range candidates {
-		victims = append(victims, e)
+		plan.victims = append(plan.victims, e)
 		used -= e.charge
 		if used+need <= p.maxResident {
-			return victims, true
+			plan.enough = true
+			return plan
 		}
 	}
-	return victims, false
+	// Only now, with every idle model in the plan and the load still not
+	// fitting: the holds that would be given up if they were asked.
+	for _, e := range held {
+		plan.preempt = append(plan.preempt, e)
+		used -= e.charge
+		if used+need <= p.maxResident {
+			plan.enough = true
+			return plan
+		}
+	}
+	return plan
 }
 
 // graceElapsedLocked reports whether an idle model may be taken. Callers must
@@ -1486,7 +1625,10 @@ func (p *Pool) waitVerdictLocked(mayWait bool, w *loadWaiter, src string, err er
 	// simply has not handed the memory back yet. Every caller waits for that,
 	// including one that honours no grace at all — but as a queued waiter,
 	// counted by Waiting() and held to both queue caps like everyone else.
-	if !errors.Is(err, errDraining) && (!mayWait || p.grace <= 0) {
+	// Waiting for a holder that has just been asked to let go is the same kind
+	// of wait: the memory is on its way rather than being kept from anyone.
+	if !errors.Is(err, errDraining) && !errors.Is(err, errPreempting) &&
+		(!mayWait || p.grace <= 0) {
 		return waitNoGrace
 	}
 	// Only a refusal about the machine being full can be cured by waiting. A
@@ -1575,16 +1717,25 @@ func (p *Pool) canParkLocked(mayWait bool, w *loadWaiter, src string) bool {
 // the registry or the launcher for anything. Callers must hold p.mu.
 //
 // It says when what stands between this waiter and its memory is a process that
-// has not exited: that is a wait every caller may serve out, grace or no grace,
-// and the exit is what ends it.
+// has not exited, or a holder that has been asked to let go: those are waits
+// every caller may serve out, grace or no grace, and each ends when the memory
+// arrives.
 func (p *Pool) parkedRefusalLocked(w *loadWaiter, age time.Duration) error {
 	refusal := p.noRoomLocked(w.need)
-	if !p.drainBlocksLocked(w.need) {
+	plan := p.evictionPlanLocked(w.need, age, p.mayPreemptLocked(w))
+	if !plan.enough {
+		// Even with the memory back this load would not fit, so neither an
+		// exit nor a holder letting go is what it is waiting for.
 		return refusal
 	}
-	if _, enough := p.evictionPlanLocked(w.need, age); !enough {
-		// Even with the memory back this load would not fit, so the exit is not
-		// what it is waiting for.
+	// A holder that has been asked to let go is memory on its way, exactly as
+	// an exiting process is, and this waiter is waiting for it.
+	for _, e := range plan.preempt {
+		if e.yielding {
+			return fmt.Errorf("%w: %w", errPreempting, refusal)
+		}
+	}
+	if !p.drainBlocksLocked(w.need) {
 		return refusal
 	}
 	return fmt.Errorf("%w: %w", errDraining, refusal)
@@ -1627,6 +1778,15 @@ func (p *Pool) worthTryingLocked(w *loadWaiter, age time.Duration, adm admission
 		return false
 	}
 	w.drainGen = p.drainGen
+	// Nor has a waiter whose room is coming from a holder that has already
+	// been asked to let go: asking a second time tells that holder nothing,
+	// and the release is what wakes this waiter. Without this the waiter would
+	// resolve the model and stat the launcher's files under p.mu on every
+	// re-check for the length of the yield, which is the same filesystem work
+	// under the pool's one lock that the drain clause above exists to avoid.
+	if p.preemptPendingLocked(w, age) {
+		return false
+	}
 	// Every caller asks once grace is off: the off path evicts what it can
 	// before it refuses, and skipping the attempt would refuse a request that a
 	// swap would have served.
@@ -1636,8 +1796,36 @@ func (p *Pool) worthTryingLocked(w *loadWaiter, age time.Duration, adm admission
 	if adm == admitNothing {
 		return false
 	}
-	_, enough := p.evictionPlanLocked(w.need, age)
-	return enough
+	return p.evictionPlanLocked(w.need, age, p.mayPreemptLocked(w)).enough
+}
+
+// mayPreemptLocked reports whether this waiter may take a preemptible hold
+// back: it must still have time left on its own bound to wait for the holder
+// to let go, and its own hold must not be preemptible. Callers must hold p.mu.
+func (p *Pool) mayPreemptLocked(w *loadWaiter) bool {
+	if w == nil || w.soft {
+		return false
+	}
+	return time.Since(w.arrived) < p.waitBoundLocked(w.mayWait)
+}
+
+// preemptPendingLocked reports whether what stands between this waiter and its
+// memory is a holder that has already been asked to let go. Callers must hold
+// p.mu.
+//
+// A plan that names a holder nobody has asked yet is not pending: that waiter
+// has something to do, which is to go and ask.
+func (p *Pool) preemptPendingLocked(w *loadWaiter, age time.Duration) bool {
+	plan := p.evictionPlanLocked(w.need, age, p.mayPreemptLocked(w))
+	if !plan.enough || len(plan.preempt) == 0 {
+		return false
+	}
+	for _, e := range plan.preempt {
+		if !e.yielding {
+			return false
+		}
+	}
+	return true
 }
 
 // canEverFitLocked reports whether evicting every model that is not pinned
@@ -1800,6 +1988,53 @@ func (p *Pool) stopEntryLocked(e *entry, reason StopReason) {
 	go p.drainEntry(e.repoID, proc, charge)
 }
 
+// preemptLocked asks the holders of these models to let go, so that a load for
+// forModel can have their memory. Callers must hold p.mu.
+//
+// It stops nothing. What it does is tell each holder, once, and mark the model
+// as asked; the model leaves the pool by the ordinary eviction path when the
+// last hold is released and it becomes an idle candidate like any other. That
+// is what keeps a preempted model from being a half-unloaded one: no process
+// is stopped while anybody still has a request against it.
+//
+// Each holder is told off this lock and on a goroutine of the pool's own, with
+// a recover, for the reason notify makes its reports that way: what is called
+// is a caller's own function, and it must not be able to stall every other
+// caller of the pool by being slow, to take the process down by panicking, or
+// to deadlock by taking a lock of its own that something under p.mu already
+// holds (adr-2609091239058072).
+func (p *Pool) preemptLocked(es []*entry, forModel string) {
+	for _, e := range es {
+		if e.yielding || len(e.soft) == 0 {
+			continue
+		}
+		e.yielding = true
+		yields := make([]func(), 0, len(e.soft))
+		for _, fn := range e.soft {
+			yields = append(yields, fn)
+		}
+		repoID := e.repoID
+		go func() {
+			// The holders first and the log after. The entry is marked as
+			// asked under the lock above, so anything that stood between this
+			// goroutine and the yield — a log sink gone slow is the one to
+			// hand — would be a client waiting out its whole bound for memory
+			// nobody had actually been asked for (iss-2609190029344091).
+			for _, fn := range yields {
+				func() {
+					defer func() { _ = recover() }()
+					fn()
+				}()
+			}
+			// Logged here rather than at the call site for the reason every
+			// other line this file writes is logged off p.mu: the pool has one
+			// lock and a slow sink must not stall every caller of it.
+			p.opts.Log.Info("asked a preemptible hold to let go so another load can have the memory",
+				"model", repoID, "for", forModel)
+		}()
+	}
+}
+
 // drainEntry stops a model server that has left the pool and gives its charge
 // back when the process is gone. Runs off p.mu.
 func (p *Pool) drainEntry(repoID string, proc Process, charge int64) {
@@ -1882,9 +2117,14 @@ type Residency struct {
 	// nothing-could-be-freed refusals, never the never-fits fast path, since
 	// nothing anyone gives up would seat a model larger than the budget. It
 	// only ever grows, and it is what a holder of a model that wants to give
-	// way to a client watches: with eviction grace off a refused client waits
-	// in no queue and appears in no residency, so the count moving is the
-	// only sign it was there (internal/selftest).
+	// way to a client watches: a refused client waits in no queue and appears
+	// in no residency, so the count moving is the sign it was there
+	// (internal/selftest). It is the second sign rather than the first, since
+	// a client that needs the memory a preemptible hold is holding takes it
+	// (WithSoftHold) instead of being refused; what is left for the count is a
+	// client refused over a model the holder is not holding, one refused while
+	// the holder's own model is still loading, and one whose load would not
+	// fit even if the holder let go.
 	Refusals uint64
 }
 
@@ -2232,6 +2472,42 @@ type sourceKey struct{}
 // one to decide whose turn it is when there is no room.
 func WithSource(ctx context.Context, source string) context.Context {
 	return context.WithValue(ctx, sourceKey{}, source)
+}
+
+// softHoldKey types the context value carrying a caller's yield.
+type softHoldKey struct{}
+
+// WithSoftHold marks every acquisition made under ctx as preemptible: a hold
+// the pool may take back when another caller's load needs the memory, rather
+// than refusing that load.
+//
+// yield is how the holder is told to let go. The pool calls it — off its own
+// lock and on a goroutine of its own, like every other callback it makes to a
+// bystander — and then waits for the holder's release, bounded like every
+// other wait for memory that is coming back. A holder that does not let go
+// costs the other caller nothing but the refusal it would have had anyway,
+// and its model is never stopped under it.
+//
+// It is the self-test's promise made enforceable: that a real request is never
+// made to wait for a run of Gropius's own (internal/selftest). It is carried
+// in the context, like the source tag beside it, because a LAN client cannot
+// reach one: an HTTP request builds its context in the gateway, so a caller
+// can only ever mark its own hold, never another's.
+//
+// A nil yield is an ordinary hold, so a caller with nothing to say need not
+// say it.
+func WithSoftHold(ctx context.Context, yield func()) context.Context {
+	if yield == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, softHoldKey{}, yield)
+}
+
+// softHoldFrom returns the yield tagged onto ctx, or nil for an ordinary
+// caller — which is every client.
+func softHoldFrom(ctx context.Context) func() {
+	y, _ := ctx.Value(softHoldKey{}).(func())
+	return y
 }
 
 // sourceFrom returns the caller identity tagged onto ctx, or "" for a caller

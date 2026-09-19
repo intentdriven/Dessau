@@ -34,6 +34,12 @@ Apple Silicon `dist/GropiusChat.app`.
    on; if the Mac cannot answer — Apple Intelligence off, the model still
    downloading, an unsupported language — the empty chat says which, and what
    would fix it, and offers a server instead.
+
+   The device's own model holds a small context window. A long conversation
+   keeps going: the client sends the instructions and the most recent turns
+   that fit alongside the message you just typed. A single message too long for
+   the window is a different matter — it is not sent at all, and the chat says
+   so and points at a server.
 2. To use a Gropius server, click the picker. Under **Servers on your network**
    it lists every Gropius server it can find while the picker is open: each row
    names the server, says whether it needs an API key, and how many models it
@@ -62,8 +68,14 @@ Apple Silicon `dist/GropiusChat.app`.
    Settings. The Mac's own model is not a served model and is always offered.
 
 Settings also offers the appearance (Light, Dark or System), the text size
-— five steps, the system's own, and the whole window follows — and the
-colour of each speaker's bubble.
+— five steps, the system's own, and the whole window follows; Default sets
+nothing, so the Mac's own text size is what you get — and the colour of each
+speaker's bubble. The bubbles start in colours the system supplies — your
+accent colour for your messages, the system's secondary fill for the model's —
+which follow Light and Dark by themselves. A colour you pick is kept as you
+picked it and drawn so that it stays apart from the window in either
+appearance, with the message on it in whichever of the system's label colours
+reads on that bubble.
 
 Replies render their markdown — emphasis, code, lists, headings, block quotes,
 code blocks, links — and a reply's context menu offers **Copy**, which copies

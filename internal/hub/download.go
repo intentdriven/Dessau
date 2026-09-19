@@ -377,7 +377,10 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		}
 	}
 
-	u := c.ResolveURL(req.RepoID, req.Revision, f.Path)
+	u, err := c.ResolveURL(req.RepoID, req.Revision, f.Path)
+	if err != nil {
+		return err
+	}
 	httpReq, err := c.newTokenRequest(ctx, http.MethodGet, u, token)
 	if err != nil {
 		return err
@@ -386,6 +389,15 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		httpReq.Header.Set("Range", fmt.Sprintf("bytes=%d-", resumeAt))
 	}
 
+	// Deliberately not c.do: that seam refuses an answer from off the Hub's
+	// origin, and the Hub answers a /resolve/ GET for an LFS object with a
+	// redirect to its content CDN, on another host by design. What anchors an LFS
+	// object is not where it came from but the sha256 the Hub's own API stated
+	// for it, verified below. A file the repo stores in git rather than LFS
+	// carries no such hash and is checked on length alone, so for those this hole
+	// is wider than the reason it exists — iss-2609190151179403.
+	// TestDownloadFollowsTheHubsRedirectToItsContentCDN holds the hole open for
+	// the case that needs it.
 	resp, err := c.httpClient().Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("download %s: %w", f.Path, err)
@@ -447,18 +459,38 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		return fmt.Errorf("open %s: %w", part, err)
 	}
 
-	_, copyErr := io.Copy(out, &progressReader{
-		r:    resp.Body,
+	bound, declared := bodyBound(resp.ContentLength, f.Size, resumeAt)
+	written, copyErr := io.Copy(out, &progressReader{
+		r:    &boundedReader{r: resp.Body, left: bound},
 		path: f.Path,
 		tr:   tr,
 	})
 	closeErr := out.Close()
 	if copyErr != nil {
+		if errors.Is(copyErr, ErrOversizedBody) {
+			// What is on disk is a prefix of a body the repo disowns, not a
+			// resume point for the file it claimed to be: keeping it would
+			// hand the next run a .part it cannot make sense of.
+			if err := discardPart(root, part, f.Path, tr); err != nil {
+				return err
+			}
+			return fmt.Errorf("download %s: %w (%d bytes)", f.Path, ErrOversizedBody, bound)
+		}
 		// Leave the .part in place — the next run resumes from here.
 		return fmt.Errorf("download %s: %w", f.Path, copyErr)
 	}
 	if closeErr != nil {
 		return closeErr
+	}
+	if declared && written < bound {
+		// A body that ended cleanly short of what it declared is a server that
+		// will say the same thing again; appending the same short body onto
+		// this prefix is not a repair, so the .part goes, as it does for any
+		// other wrong length below.
+		if err := discardPart(root, part, f.Path, tr); err != nil {
+			return err
+		}
+		return fmt.Errorf("download %s: %w (%d of %d bytes)", f.Path, ErrShortBody, written, bound)
 	}
 
 	fi, err := root.Stat(part)
@@ -517,6 +549,116 @@ func validContentRange(h string, resumeAt, size int64) bool {
 		}
 	}
 	return true
+}
+
+// ErrOversizedBody and ErrShortBody are what a download refuses with when a
+// response body does not deliver exactly the number of bytes the Hub declared
+// for the file — its Content-Length, or the size the repo's own file tree
+// stated, whichever is smaller.
+var (
+	ErrOversizedBody = errors.New("the body is longer than the hub declared this file to be")
+	ErrShortBody     = errors.New("the body is shorter than the hub declared this file to be")
+)
+
+// maxUnsizedFile is the ceiling on a file neither the Hub's tree nor the
+// response gave a length for. Such a file is a config or a tokenizer — the
+// Hub sizes every entry it knows about, and a weight shard is an LFS object
+// whose size it always states — so a ceiling three orders of magnitude above
+// any of those refuses an endless body without ever being reached by a real
+// download.
+const maxUnsizedFile = 1 << 30
+
+// bodyBound says how many bytes a response may deliver for one file, and
+// whether that number is also what it owes.
+//
+// Two parties state the length: the response's own Content-Length, and the
+// repo's file tree, which after a resume owes only the tail. The smaller
+// binds — either one being wrong is a reason to refuse, and refusing at the
+// smaller of them is what keeps a tree entry of ten bytes from writing
+// megabytes. When neither states a length there is nothing to meet exactly,
+// only a ceiling not to exceed, and declared is false so that a body shorter
+// than the ceiling is not mistaken for a truncated one.
+func bodyBound(contentLength, size, resumeAt int64) (bound int64, declared bool) {
+	bound = -1
+	if contentLength >= 0 {
+		bound, declared = contentLength, true
+	}
+	if size > 0 {
+		if outstanding := size - resumeAt; !declared || outstanding < bound {
+			bound, declared = outstanding, true
+		}
+	}
+	if !declared {
+		return maxUnsizedFile, false
+	}
+	return bound, true
+}
+
+// boundedReader hands on at most left bytes and fails AT the boundary rather
+// than after it: the byte that would overrun is never returned to the caller,
+// so a body that runs long is refused before its surplus is written to disk.
+//
+// io.LimitReader is not enough on its own. It stops at the limit and reports a
+// clean EOF, which is indistinguishable from a body that ended exactly there —
+// a repo that declares ten bytes against a body streaming megabytes would look
+// like a correct ten-byte download. Reading one byte past the boundary is what
+// tells the two apart.
+type boundedReader struct {
+	r    io.Reader
+	left int64
+}
+
+// maxEmptyReads is how many (0, nil) reads in a row are tolerated before the
+// read is given up on, matching bufio's own limit.
+const maxEmptyReads = 100
+
+func (b *boundedReader) Read(p []byte) (int, error) {
+	if b.left <= 0 {
+		// Nothing more is owed. One further byte on the wire means the body is
+		// longer than it said; a clean end means it was exactly right. A
+		// reader is permitted to return (0, nil) and say nothing either way,
+		// so give up on one that only ever does rather than spin the
+		// goroutine that is moving bytes — bufio's own answer to this.
+		var probe [1]byte
+		for i := 0; i < maxEmptyReads; i++ {
+			n, err := b.r.Read(probe[:])
+			if n > 0 {
+				return 0, ErrOversizedBody
+			}
+			if err != nil {
+				return 0, err // io.EOF included: the body ended where it should
+			}
+		}
+		return 0, io.ErrNoProgress
+	}
+	if int64(len(p)) > b.left {
+		p = p[:b.left]
+	}
+	n, err := b.r.Read(p)
+	b.left -= int64(n)
+	return n, err
+}
+
+// discardPart removes a .part and uncounts its bytes, for the failures where
+// what is on disk is not a resume point. Progress is adjusted from the file's
+// actual size rather than from what was meant to be written, so a partial
+// write cannot leave the tally out by the difference, and the adjustment is
+// emitted: the last figure a caller was handed is otherwise the one from
+// before the bytes went away.
+func discardPart(root *os.Root, part, path string, tr *progressTracker) error {
+	fi, err := root.Stat(part)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := root.Remove(part); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	tr.addCompleted(-fi.Size())
+	tr.emit(path)
+	return nil
 }
 
 // verifySHA256 streams the file at name through SHA-256 and compares it to the

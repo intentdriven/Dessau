@@ -172,14 +172,14 @@ func runUpdate(env Env, args []string, ue UpdateEnv) int {
 	}
 
 	// FOUR: unpack, clear the quarantine attribute on the VERIFIED bundle, and
-	// refuse one whose program is a symbolic link — the same three acts, in the
-	// same order, that the bootstrap performs.
+	// refuse one whose bundle or program is a symbolic link — the same three
+	// acts, in the same order, that the bootstrap performs.
 	extracted := filepath.Join(dir, "extract")
 	if err := ue.Unpack(filepath.Join(dir, updateArchiveName), extracted); err != nil {
 		return updateStopped(env, ue, "unpacking the verified archive", err)
 	}
 	staged := filepath.Join(extracted, bundleName)
-	if err := checkStagedBundle(staged); err != nil {
+	if err := checkStagedBundle(extracted); err != nil {
 		return updateStopped(env, ue, "reading the verified bundle", err)
 	}
 	ue.Dequarantine(staged)

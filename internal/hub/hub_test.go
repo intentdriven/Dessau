@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -301,7 +302,10 @@ func TestTokenIsSentAsBearer(t *testing.T) {
 
 func TestResolveURL(t *testing.T) {
 	c := &Client{BaseURL: "https://huggingface.co"}
-	got := c.ResolveURL("mlx-community/Qwen3-0.6B-4bit", "", "model.safetensors")
+	got, err := c.ResolveURL("mlx-community/Qwen3-0.6B-4bit", "", "model.safetensors")
+	if err != nil {
+		t.Fatalf("ResolveURL: %v", err)
+	}
 	want := "https://huggingface.co/mlx-community/Qwen3-0.6B-4bit/resolve/main/model.safetensors"
 	if got != want {
 		t.Errorf("ResolveURL = %q, want %q", got, want)
@@ -312,13 +316,19 @@ func TestResolveURL(t *testing.T) {
 // the rest into a fragment and the GET hits the wrong path.
 func TestResolveURLEscapesSpecialChars(t *testing.T) {
 	c := &Client{BaseURL: "https://huggingface.co"}
-	got := c.ResolveURL("org/repo", "main", "weights#2.safetensors")
+	got, err := c.ResolveURL("org/repo", "main", "weights#2.safetensors")
+	if err != nil {
+		t.Fatalf("ResolveURL: %v", err)
+	}
 	want := "https://huggingface.co/org/repo/resolve/main/weights%232.safetensors"
 	if got != want {
 		t.Errorf("ResolveURL = %q, want %q", got, want)
 	}
 	// Path separators must survive as separators, not be escaped.
-	nested := c.ResolveURL("org/repo", "main", "sub/dir/model.json")
+	nested, err := c.ResolveURL("org/repo", "main", "sub/dir/model.json")
+	if err != nil {
+		t.Fatalf("ResolveURL: %v", err)
+	}
 	if nested != "https://huggingface.co/org/repo/resolve/main/sub/dir/model.json" {
 		t.Errorf("nested path mangled: %q", nested)
 	}
@@ -585,5 +595,483 @@ func TestRepoInfoSurfacesHTTPError(t *testing.T) {
 	}
 	if !IsNotFound(err) {
 		t.Errorf("err = %v, want a recognizable 404", err)
+	}
+}
+
+// A redirect is the other way a host that is not the Hub can end up answering
+// for it: net/http follows up to ten of them, so without a rule the decoded
+// answer about what a repo is comes from wherever the last hop pointed. The
+// token is not the exposure here — net/http strips Authorization on a redirect
+// to another domain — the body is, and RepoInfo must refuse it the way Files
+// refuses a cross-origin next page.
+func TestRepoInfoRefusesARedirectOffTheHubsOrigin(t *testing.T) {
+	var reached bool
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		fmt.Fprint(w, `{"id":"org/repo","pipeline_tag":"text-generation","tags":["mlx"]}`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	m, err := c.RepoInfo(context.Background(), "org/repo")
+	if err == nil {
+		t.Fatalf("RepoInfo read a redirected answer (%+v); it must refuse", m)
+	}
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want the same class Files gives (ErrCrossOrigin)", err)
+	}
+	if m.PipelineTag != "" || len(m.Tags) != 0 {
+		t.Errorf("a refused answer still carried %q/%v", m.PipelineTag, m.Tags)
+	}
+	_ = reached // the other host may be reached; what must not happen is believing it.
+}
+
+// The same rule, from the other request path: whatever Files refuses a
+// cross-origin next page with is the class RepoInfo answers with too, so a
+// caller asks one question about both.
+func TestFilesRefusesACrossOriginNextPageWithTheSameClass(t *testing.T) {
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[]`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", "<"+evil.URL+"/api/models/org/repo/tree/main?cursor=p2>; rel=\"next\"")
+		fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	_, err := c.Files(context.Background(), "org/repo", "")
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// And Search, the third path that decodes what the Hub says.
+func TestSearchRefusesARedirectOffTheHubsOrigin(t *testing.T) {
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[{"id":"evil/model","tags":["mlx"]}]`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+"/api/models", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	models, err := c.Search(context.Background(), SearchQuery{Search: "qwen"})
+	if err == nil {
+		t.Fatalf("Search read a redirected answer (%v); it must refuse", models)
+	}
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// A redirect back onto the Hub's own origin is ordinary and stays followed —
+// the Hub redirects a re-cased or renamed repo id to its canonical one.
+func TestRepoInfoFollowsARedirectOnTheHubsOwnOrigin(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/org/canonical", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":"org/canonical","pipeline_tag":"text-generation"}`)
+	})
+	mux.HandleFunc("/api/models/ORG/Canonical", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/api/models/org/canonical", http.StatusMovedPermanently)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	m, err := c.RepoInfo(context.Background(), "ORG/Canonical")
+	if err != nil {
+		t.Fatalf("RepoInfo refused a same-origin redirect: %v", err)
+	}
+	if m.ID != "org/canonical" {
+		t.Errorf("ID = %q, want the canonical id the Hub redirected to", m.ID)
+	}
+}
+
+// Refusing the body after the fact is too late for the token. net/http keeps
+// the Authorization header on a redirect to the same hostname — a different
+// port, or a subdomain — so the rule has to be applied to the hop before it is
+// made, not to the answer after it arrives.
+func TestAnAPIRedirectOffTheHubsOriginIsRefusedBeforeTheTokenTravels(t *testing.T) {
+	var gotAuth string
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		fmt.Fprint(w, `{"id":"org/repo"}`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	c.SetToken("secret-hf-token")
+	if _, err := c.RepoInfo(context.Background(), "org/repo"); !errors.Is(err, ErrCrossOrigin) {
+		t.Fatalf("err = %v, want ErrCrossOrigin", err)
+	}
+	if gotAuth != "" {
+		t.Fatalf("TOKEN LEAK: the bearer token was sent to the redirect target (%q)", gotAuth)
+	}
+}
+
+// A hop off the Hub that comes back onto it is still a host that is not the
+// Hub choosing which Hub answer we decode: it can point a lookup of one repo
+// at another repo's authentic metadata. Checking only where the last hop
+// landed accepts that; checking each hop refuses it.
+func TestAnAPIDetourThroughAnotherHostIsRefused(t *testing.T) {
+	var srv *httptest.Server
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, srv.URL+"/api/models/attacker/lookalike", http.StatusFound)
+	}))
+	defer evil.Close()
+
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/models/org/wanted" {
+			http.Redirect(w, r, evil.URL+"/detour", http.StatusFound)
+			return
+		}
+		fmt.Fprint(w, `{"id":"attacker/lookalike","pipeline_tag":"text-generation"}`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	m, err := c.RepoInfo(context.Background(), "org/wanted")
+	if err == nil {
+		t.Fatalf("RepoInfo followed a detour through another host and answered %q", m.ID)
+	}
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// A transport that hands back a response with no record of what was requested
+// leaves the origin unknown, and an unknown origin is refused: a rule about
+// where an answer may come from cannot default to allowing it.
+func TestAnAnswerWithNoRecordedOriginIsRefused(t *testing.T) {
+	c := &Client{
+		BaseURL: "https://huggingface.co",
+		HTTP:    &http.Client{Transport: originlessTransport{}},
+	}
+	if _, err := c.Search(context.Background(), SearchQuery{Search: "qwen"}); !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// originlessTransport answers every request without setting Response.Request,
+// which is how the final URL goes missing.
+type originlessTransport struct{}
+
+func (originlessTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(`[{"id":"evil/model","tags":["mlx"]}]`)),
+	}, nil
+}
+
+// RFC 8288 lets a Link header carry a relative URI-reference, and the Hub's
+// paging URLs are absolute only by current practice. A relative next page is
+// the Hub's own: it must be resolved against the page that carried it and
+// followed, not refused — and certainly not refused as "cross-origin", which
+// names a same-origin path as off-origin and sends a debugger the wrong way.
+func TestFilesFollowsARelativeNextPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "" {
+			w.Header().Set("Link", `</api/models/org/repo/tree/main?recursive=true&cursor=p2>; rel="next"`)
+			fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+			return
+		}
+		fmt.Fprint(w, `[{"type":"file","path":"b.safetensors","size":2,"oid":"b"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	files, err := c.Files(context.Background(), "org/repo", "")
+	if err != nil {
+		t.Fatalf("Files refused a relative next page: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("got %d files, want 2 across both pages", len(files))
+	}
+}
+
+// Resolving a relative next page must not weaken the origin rule: a
+// protocol-relative reference resolves to another host and is still refused,
+// with the token never sent to it.
+func TestFilesRefusesAProtocolRelativeNextPage(t *testing.T) {
+	var leaked bool
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			leaked = true
+		}
+		fmt.Fprint(w, `[]`)
+	}))
+	defer evil.Close()
+	evilHost := strings.TrimPrefix(evil.URL, "http://")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", "<//"+evilHost+"/api/models/org/repo/tree/main?cursor=p2>; rel=\"next\"")
+		fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	c.SetToken("secret-hf-token")
+	_, err := c.Files(context.Background(), "org/repo", "")
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+	if leaked {
+		t.Fatal("TOKEN LEAK: the bearer token was sent to the host a protocol-relative next page named")
+	}
+}
+
+// A next page that will not parse at all is neither followed nor described as
+// cross-origin: it is unparseable, and saying so is what points a debugger at
+// the Link header rather than at the origin rule.
+func TestFilesNamesAnUnparseableNextPageAsUnparseable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", `<::not-a-url>; rel="next"`)
+		fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	_, err := c.Files(context.Background(), "org/repo", "")
+	if err == nil {
+		t.Fatal("Files accepted an unparseable next page")
+	}
+	if !strings.Contains(err.Error(), "unparseable") {
+		t.Errorf("err = %v, want it to say the next page is unparseable", err)
+	}
+	if errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want it not to be reported as cross-origin", err)
+	}
+}
+
+// Every path in this package that puts a repo id into a URL must escape it the
+// same way. It escaped on the RepoInfo path and interpolated raw on the tree
+// and resolve paths, so a repo id carrying a URL-significant character reached
+// a different Hub endpoint than the caller named: a '#' turned the rest of the
+// path into a fragment that is never sent at all.
+func TestEveryPathEscapesTheRepoIDTheSameWay(t *testing.T) {
+	const repoID = "org/repo#1"
+
+	var sawInfo, sawTree, sawResolve string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/tree/main") {
+			sawTree = r.URL.Path
+			fmt.Fprint(w, `[{"type":"file","path":"model.safetensors","size":4,"oid":"a"}]`)
+			return
+		}
+		sawInfo = r.URL.Path
+		fmt.Fprint(w, `{"id":"org/repo#1","tags":["mlx"]}`)
+	})
+	mux.HandleFunc("/org/repo#1/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
+		sawResolve = r.URL.Path
+		w.Write([]byte("abcd"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	if _, err := c.RepoInfo(context.Background(), repoID); err != nil {
+		t.Fatalf("RepoInfo: %v", err)
+	}
+	if _, err := c.Files(context.Background(), repoID, ""); err != nil {
+		t.Fatalf("Files: %v", err)
+	}
+	if err := c.Download(context.Background(), DownloadRequest{RepoID: repoID, Dest: t.TempDir()}); err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+
+	if want := "/api/models/org/repo#1"; sawInfo != want {
+		t.Errorf("RepoInfo asked for %q, want %q", sawInfo, want)
+	}
+	if want := "/api/models/org/repo#1/tree/main"; sawTree != want {
+		t.Errorf("the tree listing asked for %q, want %q", sawTree, want)
+	}
+	if want := "/org/repo#1/resolve/main/model.safetensors"; sawResolve != want {
+		t.Errorf("the file download asked for %q, want %q", sawResolve, want)
+	}
+	if got, _ := c.ResolveURL(repoID, "main", "model.safetensors"); !strings.Contains(got, "org/repo%231/resolve") {
+		t.Errorf("ResolveURL = %q, want the repo id percent-escaped", got)
+	}
+}
+
+// A '.' or '..' is not a path element but an instruction about the path, and
+// url.PathEscape leaves it alone, so escaping cannot make a repo id carrying
+// one name the endpoint the caller asked for. No Hub repo id has such a
+// segment, so every request path refuses it instead.
+func TestARepoIDWithADotSegmentIsRefused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("a request was made for %q; the repo id should have been refused first", r.URL.Path)
+		fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	for _, id := range []string{"org/../../evil", "./org/repo", "org/repo/.."} {
+		if _, err := c.RepoInfo(context.Background(), id); err == nil {
+			t.Errorf("RepoInfo accepted repo id %q", id)
+		}
+		if _, err := c.Files(context.Background(), id, ""); err == nil {
+			t.Errorf("Files accepted repo id %q", id)
+		}
+	}
+}
+
+// A relative next page is resolved against the page the request ended at, not
+// the one it was sent to. The Hub redirects a re-cased or renamed repo id to
+// its canonical URL, so the two differ, and resolving against the wrong one
+// sends the second page request somewhere the first page never was.
+func TestARelativeNextPageResolvesAgainstThePageThatCarriedIt(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/ORG/Repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") != "" {
+			t.Errorf("the next page was fetched from %q, the URL the first request was SENT to, not the one it ended at", r.URL.String())
+			fmt.Fprint(w, `[]`)
+			return
+		}
+		http.Redirect(w, r, "/api/models/org/repo/tree/main?"+r.URL.RawQuery, http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("/api/models/org/repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "" {
+			w.Header().Set("Link", `<?recursive=true&cursor=p2>; rel="next"`)
+			fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+			return
+		}
+		fmt.Fprint(w, `[{"type":"file","path":"b.safetensors","size":2,"oid":"b"}]`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	files, err := c.Files(context.Background(), "ORG/Repo", "")
+	if err != nil {
+		t.Fatalf("Files: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("got %d files, want 2 across both pages", len(files))
+	}
+}
+
+// A next page continues the listing it came from: same path, a different
+// cursor. Resolving a reference against the page that carried it means a
+// reference that is not really a URL at all now resolves to *something* on the
+// Hub's origin, so the origin rule alone no longer decides what gets followed
+// with the bearer token attached.
+func TestFilesRefusesANextPageThatIsNotAContinuationOfTheListing(t *testing.T) {
+	cases := []struct {
+		name string
+		link string
+	}{
+		// Another repo's tree, spliced into the one that was asked for.
+		{"another listing", `</api/models/other/repo/tree/main?cursor=p2>; rel="next"`},
+		// A Link header value that is not a URL. nextPageURL splits on ',',
+		// so what survives is a fragment of it that resolves against the page.
+		{"junk that resolves", `<data:text/plain;base64,AAAA>; rel="next"`},
+	}
+	for _, tc := range cases {
+		var secondRequest string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("cursor") != "" || !strings.HasSuffix(r.URL.Path, "/org/repo/tree/main") {
+				secondRequest = r.URL.String()
+				fmt.Fprint(w, `[{"type":"file","path":"b.safetensors","size":2,"oid":"b"}]`)
+				return
+			}
+			w.Header().Set("Link", tc.link)
+			fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+		}))
+
+		c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+		files, err := c.Files(context.Background(), "org/repo", "")
+		if err == nil {
+			t.Errorf("%s: Files followed it and returned %d files", tc.name, len(files))
+		}
+		if secondRequest != "" {
+			t.Errorf("%s: a second request was made for %q", tc.name, secondRequest)
+		}
+		srv.Close()
+	}
+}
+
+// Userinfo in a next page is not part of the origin — url.URL.Host excludes it
+// — so a next page can carry credentials past the origin check, and net/http
+// turns them into an Authorization header of its own on a request that had
+// none. It is dropped before the reference is used.
+func TestANextPageCarriesNoUserinfo(t *testing.T) {
+	var secondAuth string
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") != "" {
+			secondAuth = r.Header.Get("Authorization")
+			fmt.Fprint(w, `[{"type":"file","path":"b.safetensors","size":2,"oid":"b"}]`)
+			return
+		}
+		host := strings.TrimPrefix(srv.URL, "http://")
+		w.Header().Set("Link", "<http://attacker:hunter2@"+host+r.URL.Path+"?recursive=true&cursor=p2>; rel=\"next\"")
+		fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	files, err := c.Files(context.Background(), "org/repo", "")
+	if err != nil {
+		t.Fatalf("Files: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("got %d files, want 2 across both pages", len(files))
+	}
+	if secondAuth != "" {
+		t.Errorf("the next-page request carried %q; a next page must not be able to put a header on it", secondAuth)
+	}
+}
+
+// The rule that a "." or a ".." is not a path element belongs where the URL is
+// built, not on the one value that happened to be looked at. A revision goes
+// into the same path as the repo id, on the tree endpoint and on the resolve
+// endpoint — and the resolve endpoint is the one with no origin check at all,
+// because it must follow the Hub's redirect to its content store.
+func TestARevisionWithADotSegmentIsRefused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("a request was made for %q; the revision should have been refused first", r.URL.Path)
+		fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	for _, rev := range []string{"..", "."} {
+		if _, err := c.Files(context.Background(), "org/repo", rev); err == nil {
+			t.Errorf("Files accepted revision %q", rev)
+		}
+		if got, err := c.ResolveURL("org/repo", rev, "model.safetensors"); err == nil {
+			t.Errorf("ResolveURL accepted revision %q and built %q", rev, got)
+		}
+	}
+}
+
+// A missing value must not quietly produce a different, valid endpoint:
+// leaving a part out shortens the path by one element, which is the same
+// reshaping the escaping is there to prevent.
+func TestResolveURLRefusesAMissingPart(t *testing.T) {
+	c := &Client{BaseURL: "https://huggingface.co"}
+	if got, err := c.ResolveURL("", "main", "model.safetensors"); err == nil {
+		t.Errorf("ResolveURL built %q from an empty repo id", got)
+	}
+	if got, err := c.ResolveURL("org/repo", "main", ""); err == nil {
+		t.Errorf("ResolveURL built %q from an empty file path", got)
 	}
 }

@@ -47,8 +47,9 @@ func TestChatClientCarriesNoStylingOfItsOwn(t *testing.T) {
 		".textFieldStyle(", "cornerRadius", ".clipShape(", "Color(nsColor:",
 	}
 	exempt := map[string]string{
-		"Effects.swift": "the text-effects renderer draws glyphs itself; that is its purpose",
-		"Bubbles.swift": "the transcript's speech bubbles are a filled shape by definition (iss-2609181055156852), drawn in the system's colours",
+		"Effects.swift":  "the text-effects renderer draws glyphs itself; that is its purpose",
+		"Bubbles.swift":  "the transcript's speech bubbles are a filled shape by definition (iss-2609181055156852), drawn in the system's colours",
+		"Composer.swift": "SwiftUI's bordered capsule offers no way to inset a field's text (iss-2609190004092322), so the composer's capsule is drawn in the system's own material, one file wide",
 	}
 	for name, src := range clientSources(t, root) {
 		if _, ok := exempt[name]; ok {
@@ -327,13 +328,14 @@ func TestChatClientEffectKeepsTheReplySelectable(t *testing.T) {
 // TestChatClientReplyReparseStaysWithinItsBudget holds the streaming reply's
 // re-parse budget (iss-2609181116218893): the spec allows at most four parses
 // a second, so the debounce waits at least a quarter of a second — for the
-// reply and for the thoughts, which are parsed the same way.
+// reply and for the thoughts, which are parsed the same way, on the one
+// debounce they share (TestChatClientThoughtsShareTheReplyScheduler).
 func TestChatClientReplyReparseStaysWithinItsBudget(t *testing.T) {
 	root := repoRootDir(t)
 	src := clientSources(t, root)["GropiusChat.swift"]
 	found := regexp.MustCompile(`([0-9.]+) - Date\(\)\.timeIntervalSince\(last[A-Za-z]*Parse\)`).FindAllStringSubmatch(src, -1)
-	if len(found) < 2 {
-		t.Fatalf("found %d re-parse debounce(s); the reply and the thoughts each have one", len(found))
+	if len(found) == 0 {
+		t.Fatal("no re-parse debounce; a streaming reply is parsed on every chunk that arrives")
 	}
 	for _, m := range found {
 		wait, err := strconv.ParseFloat(m[1], 64)
@@ -364,5 +366,34 @@ func TestChatClientBubbleTextReadsOnItsBubble(t *testing.T) {
 	// A chosen colour survives; the way back is the Default button.
 	if !strings.Contains(bubbles, `Button("Default")`) {
 		t.Error("a chosen bubble colour has no way back to the default")
+	}
+}
+
+// TestChatClientBubbleColoursFollowTheAppearance holds the bubble colours to
+// the chosen appearance (iss-2609181124295668). The defaults are semantic
+// system colours, which resolve themselves in Light and Dark; a colour the
+// person picks is a fixed value, so it is drawn through a path with a face
+// per appearance; and no fixed white is left as the person's bubble text.
+func TestChatClientBubbleColoursFollowTheAppearance(t *testing.T) {
+	root := repoRootDir(t)
+	bubbles := clientSources(t, root)["Bubbles.swift"]
+	for _, want := range []string{"Color.accentColor", "Color.secondary"} {
+		if !strings.Contains(bubbles, want) {
+			t.Errorf("the bubble defaults do not name the semantic system colour %s; "+
+				"a default that is not the system's cannot follow Light and Dark", want)
+		}
+	}
+	if strings.Contains(bubbles, "Color.gray") {
+		t.Error("the model's bubble defaults to Color.gray, which is the same grey in Light and in Dark")
+	}
+	if strings.Contains(bubbles, "Color.white") {
+		t.Error("client/GropiusChat/Bubbles.swift still draws a fixed Color.white; " +
+			"the bubble's text has to be the system's label colour, read in the appearance the fill reads as")
+	}
+	for _, want := range []string{"dynamicProvider:", "userInterfaceStyle", `.environment(\.colorScheme`} {
+		if !strings.Contains(bubbles, want) {
+			t.Errorf("client/GropiusChat/Bubbles.swift does not carry %q; a picked colour is drawn "+
+				"as its stored value whatever the appearance", want)
+		}
 	}
 }

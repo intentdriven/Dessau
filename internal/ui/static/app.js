@@ -183,6 +183,10 @@ function render() {
   // being edited: the list of models to choose from is live state, not a
   // value the user is in the middle of typing.
   refreshOverrideModels();
+  // And for the same reason: what the bridge is doing is a fact about the
+  // server, not a field. Somebody who has just pasted a token is exactly the
+  // person waiting to see it connect.
+  renderBridgeState();
 }
 
 function renderWarnings() {
@@ -252,6 +256,34 @@ function graceWaitHint(graceValue, maxWaitValue, defaults) {
   return `A maximum wait of ${maxWait} s is shorter than the ${grace} s protection, `
     + 'which would refuse a waiting request before its own wait could override that '
     + 'protection. Raise the maximum to at least the protection.';
+}
+
+// blankIsSentence puts a default interval into the words that go beside a
+// field, in minutes where the figure is a whole number of them and in seconds
+// otherwise — rounding 90 seconds to "1.5 minutes" would state a figure the
+// server does not hold. Empty for a threshold the panel was not told, so the
+// sentence disappears rather than naming a figure nobody sent.
+function blankIsSentence(sec) {
+  if (!sec) return '';
+  if (sec % 60 !== 0) return ` Blank is ${sec} seconds.`;
+  const minutes = sec / 60;
+  return ` Blank is ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+}
+
+// renderDefaults says, on the settings fields themselves, what leaving one
+// blank resolves to. A blank field is the default, so the form has to name the
+// figure that stands for — and it is the server's, off the snapshot, rather
+// than Go constants written into the markup a second time
+// (iss-2609190045306656 for the grace pair, iss-2609190146152463 for the idle
+// threshold and the prose beside it). A panel that has not been told them
+// offers no figure, the same silence graceWaitHint keeps: a placeholder the
+// panel made up is worse than an empty one.
+function renderDefaults(defaults) {
+  const d = defaults || {};
+  $('setGraceSec').placeholder = d.eviction_grace_sec ? String(d.eviction_grace_sec) : '';
+  $('setGraceWait').placeholder = d.eviction_max_wait_sec ? String(d.eviction_max_wait_sec) : '';
+  $('setIdleThreshold').placeholder = d.idle_threshold_sec ? String(d.idle_threshold_sec) : '';
+  $('idleThresholdDefault').textContent = blankIsSentence(d.idle_threshold_sec);
 }
 
 function updateGraceHint() {
@@ -1055,6 +1087,33 @@ function renderBindOptions(select, host) {
   select.appendChild(opt);
 }
 
+// renderBridgeState says what the Discord bridge is doing, under the switch.
+//
+// Four states and nothing else: off, connecting, connected since a moment, or
+// stopped with the reason Discord gave. The reason is the server's own
+// sentence about a credential or a configuration and never carries the token,
+// which the panel is never sent in the first place.
+function renderBridgeState() {
+  const el = $('discordState');
+  if (!el) return;
+  const b = state.bridge || {};
+  switch (b.state) {
+    case 'connected':
+      el.textContent = b.since
+        ? `Connected since ${new Date(b.since * 1000).toLocaleString()}.`
+        : 'Connected.';
+      break;
+    case 'connecting':
+      el.textContent = 'Connecting to Discord\u2026';
+      break;
+    case 'stopped':
+      el.textContent = b.reason ? `Stopped: ${b.reason}` : 'Stopped.';
+      break;
+    default:
+      el.textContent = 'The bridge is off.';
+  }
+}
+
 function renderSettings() {
   // Don't stomp on what the user is typing while live updates arrive.
   if (settingsTouched) return;
@@ -1085,9 +1144,12 @@ function renderSettings() {
   $('setBudget').value = budgetFieldValue(state.machine);
   updateBudgetHint();
   $('setHF').value   = c.hf_token || '';
+  $('setDiscordBridge').checked = !!c.discord_bridge;
+  $('setDiscordToken').value = c.discord_token || '';
   $('setGrace').checked = !!c.eviction_grace;
   // Blank rather than zero for an unset interval: blank is how this form says
   // "the default", and the placeholder gives the figure that stands for.
+  renderDefaults(state.defaults);
   $('setGraceSec').value = c.eviction_grace_sec || '';
   $('setGraceWait').value = c.eviction_max_wait_sec || '';
   updateGraceHint();
@@ -1736,6 +1798,8 @@ $('settingsForm').addEventListener('submit', async (e) => {
     idle_timeout_sec:   parseInt($('setIdle').value, 10) || 0,
     decode_concurrency: parseInt($('setConc').value, 10) || 1,
     hf_token:           $('setHF').value,
+    discord_bridge:     $('setDiscordBridge').checked,
+    discord_token:      $('setDiscordToken').value,
     max_resident_bytes: budgetBytes($('setBudget').value),
     eviction_grace:        $('setGrace').checked,
     // Zero is what the server reads as "the default", which is what a cleared

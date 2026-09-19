@@ -108,6 +108,23 @@ func InstalledRoot() (string, error) {
 	return userSupportDir()
 }
 
+// AccountHome is this account's own directory, asked for without a data root
+// in hand: ~/Library/Application Support/Gropius, which is what accountDir
+// answers under a shared root and what the root itself IS under a per-user
+// install.
+//
+// It exists for the swap (internal/lifecycle), which needs somewhere only this
+// account can unlink an entry from while a retired application bundle waits to
+// be put back, and which has no root to derive it from. It deliberately does
+// not honour GROPIUS_ROOT: the property wanted here is the one macOS gives
+// ~/Library and no environment variable can, so a root named from the
+// environment would silently answer with a directory that may not have it.
+//
+// It stays here rather than being spelled out again at the caller for the
+// reason accountDir gives: one rule for where this account's own directory is,
+// so no caller can come to disagree with the rest of the layout about it.
+func AccountHome() (string, error) { return userSupportDir() }
+
 // IsSharedRoot reports whether a root is the machine-wide shared directory,
 // where the models belong to every account on the Mac and this account's own
 // state lives somewhere else entirely (see accountDir).
@@ -567,6 +584,27 @@ type Config struct {
 
 	// HFToken authenticates against gated HuggingFace repos.
 	HFToken string `json:"hf_token"`
+
+	// DiscordBridge switches the Discord bridge on. Off until the operator
+	// turns it on, which is adr-2609181004167097 condition 1: nothing of a
+	// conversation leaves this Mac until they have pasted a token and thrown
+	// this switch. Off closes the connection.
+	DiscordBridge bool `json:"discord_bridge"`
+
+	// DiscordToken is the bot token the bridge identifies with — a bearer
+	// credential, and the third secret this file holds. It is redacted
+	// wherever the API key is, round-tripped through the panel's placeholder,
+	// and never compared against a posted value (adr-2609181004167097
+	// condition 3, the three obligations itd-2609081259493890 established for
+	// the key).
+	//
+	// NOTHING HERE REFUSES A SAVE. A token that is absent, malformed or
+	// rejected by Discord is the bridge's problem and the bridge's alone to
+	// report: Validate says nothing about it, so an operator saving an
+	// unrelated setting is never turned away over a credential they did not
+	// touch. What the bridge will not accept it says on the panel, as its own
+	// state.
+	DiscordToken string `json:"discord_token"`
 
 	// Preload lists repo ids to load into memory at startup, so the first request
 	// after a restart is not a multi-minute cold start. Loaded sequentially and

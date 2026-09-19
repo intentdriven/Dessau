@@ -321,7 +321,7 @@ func (s funcStore) AppendSettings(Settings) error { return nil }
 // undocumented.
 func TestARecordHoldsOnlyCountsTimingsAndTheModel(t *testing.T) {
 	want := []string{
-		"model", "at", "class", "streamed",
+		"model", "at", "class", "source", "streamed",
 		"prompt_tokens", "completion_tokens",
 		"first_token_ms", "duration_ms", "queue_wait_ms", "load_wait_ms",
 		"declared_context", "served_context", "estimated_prompt_tokens", "requested_tokens", "in_flight",

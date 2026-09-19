@@ -274,3 +274,87 @@ func TestForgettingAPairingRemovesTheCertificateToo(t *testing.T) {
 			"not survive the add on the macOS file keychain, where the common name replaces it")
 	}
 }
+
+// The fallback out of the Secure Enclave is the ad-hoc-signing case and nothing
+// else (iss-2609190200098392). The spike of 2026-09-19 measured exactly one
+// condition — `errSecMissingEntitlement`, -34018, the Keychain add refused for
+// want of an entitlement an ad-hoc signature cannot carry — and the decision
+// line falls back on that condition. A fallback taken on ANY nil return reads
+// the same in the source and is not the same thing: a policy change, a revoked
+// profile or a future OSStatus would hand this device a non-Enclave key with
+// nothing said, in the one place the feature sells itself as hardware-backed.
+//
+// So: the CFError is captured and read, the fallback names the status it is
+// for, anything else is thrown to the person pairing, and which kind of key was
+// made is logged rather than inferred.
+func TestTheEnclaveFallbackIsTakenOnlyForTheMissingEntitlement(t *testing.T) {
+	pairing := clientSources(t, repoRootDir(t))["Pairing.swift"]
+	body, ok := swiftFunctionBody(pairing, "static func makeKey() throws -> SecKey {")
+	if !ok {
+		t.Fatal("PairingStore.makeKey does not throw, so a key it could not make has no reason attached " +
+			"and the caller cannot tell a refused Enclave from a refused Keychain")
+	}
+	if !strings.Contains(body, "errSecMissingEntitlement") && !strings.Contains(body, "-34018") {
+		t.Error("the fallback out of the Secure Enclave names no status, so it is taken on any failure at " +
+			"all — wider than the decision of 2026-09-19, which falls back on errSecMissingEntitlement")
+	}
+	if strings.Contains(body, "SecKeyCreateRandomKey(enclave as CFDictionary, nil)") {
+		t.Error("the Enclave attempt discards its CFError, so the reason it failed cannot be read and " +
+			"every failure looks like the one the fallback is for")
+	}
+	if !strings.Contains(body, "&error") {
+		t.Error("no CFError out-parameter is captured in makeKey, so nothing distinguishes the " +
+			"missing-entitlement case from any other refusal")
+	}
+	if !strings.Contains(body, "CFErrorGetCode") && !strings.Contains(body, "localizedDescription") {
+		t.Error("the captured CFError is never read, so it is captured and discarded, which is the defect " +
+			"with an extra variable in it")
+	}
+	if !strings.Contains(body, "throw ") {
+		t.Error("makeKey throws nothing, so an Enclave failure that is not the missing entitlement still " +
+			"ends in a silently downgraded key")
+	}
+	// Which key was made is recorded where it can be read afterwards. An app
+	// that cannot say which kind it holds cannot be held to saying so.
+	if !strings.Contains(body, "logger.") {
+		t.Error("makeKey logs nothing, so which kind of key this device holds is inferred rather than " +
+			"reported")
+	}
+	// And the caller takes the reason rather than flattening it.
+	app := clientSources(t, repoRootDir(t))["GropiusChat.swift"]
+	if !strings.Contains(app, "try PairingStore.makeKey()") {
+		t.Error("the pairing flow does not call makeKey as a throwing call, so the reason a key could not " +
+			"be made is thrown away at the one place it would be shown")
+	}
+}
+
+// The limits page carries the limits adr-2609182357322050 accepted, and a
+// limit missing from it is a reader who believes pairing covers something it
+// does not (iss-2609190200113554).
+//
+// The compromised-Mac item is the one that was half-written: the page named
+// the device holding the client key and not the Mac running the server, which
+// keeps the server's own key, the paired set and the shared API key. Held as
+// the four limits rather than as a form of words, so the page can be rewritten
+// and still be held.
+func TestTheLimitsPageNamesEveryLimitPairingHas(t *testing.T) {
+	page := readDoc(t, "pairing-explained.md")
+
+	if _, _, ok := strings.Cut(page, "## What it does not solve"); !ok {
+		t.Fatal("docs/pairing-explained.md no longer states what pairing does not solve")
+	}
+	for _, limit := range []struct {
+		what    string
+		phrases []string
+	}{
+		{"first-come pairing", []string{"network can pair", "Clients"}},
+		{"trust on first use", []string{"first connection", "fingerprint"}},
+		{"the plain port is still there", []string{"ordinary port", "API key"}},
+		{"a compromised client device", []string{"keychain", "controls the device"}},
+		{"a compromised server Mac", []string{"Mac running your server", "Neither end is protected"}},
+	} {
+		if !containsAll(page, limit.phrases...) {
+			t.Errorf("docs/pairing-explained.md does not tell the reader about %s", limit.what)
+		}
+	}
+}

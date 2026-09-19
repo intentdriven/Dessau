@@ -370,11 +370,11 @@
         force until you restart.</p>
       <label>
         <span>Protect a model that just finished for (seconds)</span>
-        <input id="setGraceSec" type="number" step="1" min="0" max="3600" placeholder="120">
+        <input id="setGraceSec" type="number" step="1" min="0" max="3600">
       </label>
       <label>
         <span>Wait at most (seconds)</span>
-        <input id="setGraceWait" type="number" step="1" min="0" max="3600" placeholder="300">
+        <input id="setGraceWait" type="number" step="1" min="0" max="3600">
       </label>
       <p id="graceHint" class="hint" hidden></p>
     </fieldset>
@@ -488,10 +488,10 @@
         probe page</a> says what the figure means and what it costs.</p>
       <label>
         <span>Idle threshold (seconds)</span>
-        <input id="setIdleThreshold" type="number" step="1" min="60" max="3600" placeholder="300">
+        <input id="setIdleThreshold" type="number" step="1" min="60" max="3600">
       </label>
       <p class="hint">How long the last request must be in the past before the Mac counts as idle,
-        for the context probe and the self-test alike. Blank is five minutes.</p>
+        for the context probe and the self-test alike.<span id="idleThresholdDefault"></span></p>
     </fieldset>
 
     <fieldset class="group">
@@ -577,6 +577,33 @@
         here can ask for that. The
         <a href="https://github.com/intentdriven/Gropius/blob/main/docs/logging.md">logging
         page</a> says what each level writes and where the file is.</p>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Discord bridge</legend>
+      <label class="switch">
+        <input id="setDiscordBridge" type="checkbox">
+        <span>Answer Discord direct messages and mentions with a model on this Mac</span>
+      </label>
+      <p class="hint">Off unless you turn it on. While it is on, <strong>messages to the bot
+        and the model&rsquo;s answers pass through Discord and are kept under Discord&rsquo;s
+        terms</strong> &mdash; which is what this switch trades for reaching your models from
+        a phone. Gropius connects out to Discord; no port on this Mac is opened to the
+        internet, the bind address above is untouched, and switching the bridge off closes
+        the connection. Anyone who can reach the bot may talk to it, so where you invite it
+        is what decides who can. A direct message to the bot, or a message that mentions it
+        in a channel it has been invited to, is answered by a model here; a message that does
+        not mention it is never read. In any channel, <code>/model</code> shows or sets the
+        model answering there and <code>/reset</code> clears that channel&rsquo;s
+        conversation. The
+        <a href="https://github.com/intentdriven/Gropius/blob/main/docs/discord-bridge.md">Discord
+        bridge page</a> says how to make the bot and what leaves this Mac.</p>
+      <label>
+        <span>Discord bot token</span>
+        <input id="setDiscordToken" type="password" autocomplete="off" spellcheck="false"
+               placeholder="no token — the bridge cannot connect without one">
+      </label>
+      <p id="discordState" class="hint"></p>
     </fieldset>
 
     <fieldset class="group">

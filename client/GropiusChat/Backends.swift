@@ -122,7 +122,7 @@ struct BuiltInBackend: ChatBackend {
                     fix: "Pick a server from the model picker.")
             @unknown default:
                 return Unavailable(
-                    reason: "The Mac's own model is not available.",
+                    reason: "The \(deviceNoun)'s own model is not available.",
                     fix: "Pick a server from the model picker.")
             }
         }
@@ -135,7 +135,7 @@ struct BuiltInBackend: ChatBackend {
 
         var reserve = max(512, model.contextSize / 4)
         for attempt in 0..<2 {
-            let entries = try await Self.trimmed(prior, model: model, budget: model.contextSize - reserve)
+            let entries = try await Self.trimmed(prior, prompt: last.text, model: model, reserve: reserve)
             let session = LanguageModelSession(model: model, transcript: Transcript(entries: entries))
             do {
                 let stream = session.streamResponse(to: last.text)
@@ -161,13 +161,30 @@ struct BuiltInBackend: ChatBackend {
         }
     }
 
-    /// The instructions plus the most recent turns that fit the budget, oldest
-    /// dropped first, so the model sees what the person sees minus the start.
-    static func trimmed(_ history: [Message], model: SystemLanguageModel, budget: Int) async throws -> [Transcript.Entry] {
+    /// What the transcript says when the message just typed is longer than the
+    /// window can hold on its own. Nothing is sent: there is no history to
+    /// drop that would make room for it.
+    static let promptTooLong =
+        "That message is too long for the \(deviceNoun)'s own model to read in one go — shorten it, or pick a server from the model picker."
+
+    /// The instructions plus the most recent turns that fit beside the new
+    /// prompt, oldest dropped first, so the model sees what the person sees
+    /// minus the start. The new prompt is budgeted with the prior turns rather
+    /// than after them; when it does not fit on its own, this throws the
+    /// client's own sentence and the turn is never sent.
+    static func trimmed(_ history: [Message], prompt: String, model: SystemLanguageModel, reserve: Int) async throws -> [Transcript.Entry] {
         let instructions = Transcript.Entry.instructions(
             Transcript.Instructions(segments: [.text(Transcript.TextSegment(content: Self.instructions))],
                                     toolDefinitions: []))
-        var used = try await model.tokenCount(for: [instructions])
+        let promptEntry = Transcript.Entry.prompt(
+            Transcript.Prompt(segments: [.text(Transcript.TextSegment(content: prompt))]))
+        var budget = ContextBudget(
+            window: model.contextSize,
+            reserve: reserve,
+            instructions: try await model.tokenCount(for: [instructions]),
+            prompt: try await model.tokenCount(for: [promptEntry]))
+        guard budget.fits else { throw BackendMessage(text: Self.promptTooLong) }
+
         var kept: [Transcript.Entry] = []
         for m in history.reversed() where !m.text.isEmpty {
             let entry: Transcript.Entry
@@ -178,8 +195,7 @@ struct BuiltInBackend: ChatBackend {
                 entry = .response(Transcript.Response(assetIDs: [], segments: [.text(Transcript.TextSegment(content: m.text))]))
             }
             let cost = try await model.tokenCount(for: [entry])
-            if used + cost > budget { break }
-            used += cost
+            if !budget.take(cost) { break }
             kept.append(entry)
         }
         // A transcript must not start with a response; drop a leading one.
@@ -191,16 +207,16 @@ struct BuiltInBackend: ChatBackend {
     private static func words(for error: LanguageModelError) async throws -> String {
         switch error {
         case .contextSizeExceeded:
-            return "This conversation is longer than the Mac's own model can hold. Start a new chat, or pick a server from the model picker."
+            return "This conversation is longer than the \(deviceNoun)'s own model can hold. Start a new chat, or pick a server from the model picker."
         case .guardrailViolation:
-            return "The Mac's own model will not answer that."
+            return "The \(deviceNoun)'s own model will not answer that."
         case .refusal(let refusal):
             let why = (try? await refusal.explanation.content) ?? ""
-            return why.isEmpty ? "The Mac's own model declined to answer." : why
+            return why.isEmpty ? "The \(deviceNoun)'s own model declined to answer." : why
         case .rateLimited:
-            return "The Mac's own model is busy; try again in a moment."
+            return "The \(deviceNoun)'s own model is busy; try again in a moment."
         case .unsupportedLanguageOrLocale:
-            return "The Mac's own model does not support this language."
+            return "The \(deviceNoun)'s own model does not support this language."
         default:
             return error.localizedDescription
         }
@@ -209,7 +225,7 @@ struct BuiltInBackend: ChatBackend {
     private static func words(for error: LanguageModelSession.Error) -> String {
         switch error {
         case .concurrentRequests:
-            return "The Mac's own model is still answering the last message."
+            return "The \(deviceNoun)'s own model is still answering the last message."
         default:
             return error.localizedDescription
         }
@@ -218,7 +234,7 @@ struct BuiltInBackend: ChatBackend {
     private static func words(for error: SystemLanguageModel.Error) -> String {
         switch error {
         case .assetsUnavailable:
-            return "The Mac's own model is not ready yet; try again shortly."
+            return "The \(deviceNoun)'s own model is not ready yet; try again shortly."
         default:
             return error.localizedDescription
         }

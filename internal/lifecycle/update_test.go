@@ -769,3 +769,68 @@ func TestTheUpdateUsesTheSwapTheInstallerAlreadyPerforms(t *testing.T) {
 		t.Error("the update quits with something other than the quit the installer sends")
 	}
 }
+
+// An archive that unpacks to a symbolic link AT the bundle name is refused
+// before the staged build is run.
+//
+// os.OpenRoot resolves symbolic links in the path it is HANDED, so a root
+// opened on <extract>/Gropius.app covers every component below the bundle and
+// follows a link at the bundle name itself. The one exec in this path would
+// then run a program outside the directory the checksums covered — and the
+// later refusal in PlaceBundle comes after it, which is too late for an exec.
+//
+// The staged build here is the real one, running the real program: whether
+// anything ran is recorded by the program itself, not by a stub that stands in
+// for it.
+func TestAnUpdateWhoseStagedBundleIsASymbolicLinkIsRefusedBeforeAnythingIsRun(t *testing.T) {
+	f := newFakeUpdate(t)
+
+	// Outside the extraction directory: a bundle-shaped tree whose program
+	// leaves a mark on this Mac when it runs.
+	outside := t.TempDir()
+	elsewhere := filepath.Join(outside, "Elsewhere.app")
+	if err := os.MkdirAll(filepath.Join(elsewhere, "Contents", "MacOS"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(outside, "it-ran")
+	program := "#!/bin/sh\n: > '" + marker + "'\necho 'gropius 9.9.9'\n"
+	if err := os.WriteFile(filepath.Join(elsewhere, binaryInBundle), []byte(program), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// The archive unpacks to nothing but a link where the bundle belongs.
+	f.env.Unpack = func(_, into string) error {
+		f.calls.unpacked++
+		if err := os.MkdirAll(into, 0o755); err != nil {
+			return err
+		}
+		return os.Symlink(elsewhere, filepath.Join(into, bundleName))
+	}
+	// The real exec, so "nothing was run" is a fact about this Mac rather than
+	// a fact about a fake.
+	f.env.StagedVersion = func(p string) (string, error) {
+		f.calls.staged++
+		return stagedVersion(p)
+	}
+
+	code, _, errOut := f.run(t)
+
+	if _, err := os.Lstat(marker); err == nil {
+		t.Error("the staged build was executed through the symbolic link, outside the directory the checksums covered")
+	}
+	if f.calls.staged != 0 {
+		t.Error("the version of the staged build was read after the bundle was found to be a symbolic link")
+	}
+	if code == ExitOK {
+		t.Errorf("exit = %d, want non-zero for an extraction whose bundle is a symbolic link", code)
+	}
+	if !strings.Contains(errOut, "symbolic link") {
+		t.Errorf("the refusal does not say what it found: %s", errOut)
+	}
+	if len(f.calls.placed) != 0 {
+		t.Errorf("a bundle was placed after the refusal: %v", f.calls.placed)
+	}
+	if len(f.calls.launched) != 0 {
+		t.Error("an application was launched after the refusal")
+	}
+}

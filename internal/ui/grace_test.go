@@ -203,3 +203,53 @@ func TestTheGraceHintTakesItsDefaultsFromTheServer(t *testing.T) {
 		}
 	}
 }
+
+// And the same for the two placeholders. A blank field is the default, the
+// placeholder is where the form says which figure that is, and the markup used
+// to say it in two literals — config.DefaultEvictionGraceSec and
+// config.DefaultEvictionMaxWaitSec written out a third time, bound by nothing
+// (iss-2609190045306656). They are filled from the snapshot instead, so a Mac
+// serving a different pair shows that pair and a panel that has not been told
+// the defaults offers no figure at all rather than one it made up.
+func TestTheGracePlaceholdersAreFilledFromTheServersDefaults(t *testing.T) {
+	page, err := assets.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"setGraceSec", "setGraceWait"} {
+		if got := attr(fieldTag(t, string(page), id), "placeholder"); got != "" {
+			t.Errorf("%s carries placeholder=%q in the markup — a figure nothing binds to the "+
+				"server, which is the copy this field was bound to the snapshot to be rid of", id, got)
+		}
+	}
+
+	// The renderer puts the snapshot's figures on the fields themselves.
+	doc := evalPanelDOM(t, fmt.Sprintf("renderDefaults(%s);",
+		fmt.Sprintf(`{"eviction_grace_sec":%d,"eviction_max_wait_sec":%d}`,
+			config.DefaultEvictionGraceSec, config.DefaultEvictionMaxWaitSec)),
+		"renderDefaults", "blankIsSentence")
+	for _, tc := range []struct{ id, want string }{
+		{"setGraceSec", strconv.Itoa(config.DefaultEvictionGraceSec)},
+		{"setGraceWait", strconv.Itoa(config.DefaultEvictionMaxWaitSec)},
+	} {
+		if got, _ := doc[tc.id]["placeholder"].(string); got != tc.want {
+			t.Errorf("%s's placeholder is %q, want the server's default %s", tc.id, got, tc.want)
+		}
+	}
+
+	// Told nothing, it offers nothing: an empty placeholder is a field with no
+	// claim about what blank means, which beats a figure the panel chose.
+	blank := evalPanelDOM(t, "renderDefaults(undefined);", "renderDefaults", "blankIsSentence")
+	for _, id := range []string{"setGraceSec", "setGraceWait"} {
+		if got, _ := blank[id]["placeholder"].(string); got != "" {
+			t.Errorf("%s's placeholder is %q for a snapshot carrying no defaults, want it blank", id, got)
+		}
+	}
+
+	// And the settings renderer is what hands it the snapshot; a renderer
+	// nothing calls would leave the fields blank on a live panel.
+	if body := extractFunction(t, readPanelSource(t), "renderSettings"); !strings.Contains(body, "renderDefaults(state.defaults)") {
+		t.Error("renderSettings no longer calls renderDefaults(state.defaults), " +
+			"so the placeholders are never filled on a live panel")
+	}
+}

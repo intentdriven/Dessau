@@ -3,14 +3,16 @@ package archtest_test
 import (
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
 
 // TestChatClientComposerHasMessagesForm holds the composer to the form of
 // Messages' (iss-2609181045444147): a capsule text field and a round, filled
-// send button — both standard controls given standard shapes, never a drawn
-// background, so the no-styling rule still holds.
+// send button. The button is a standard control given the system's circle;
+// the field's capsule is drawn in Composer.swift, the no-styling rule's
+// third named exception (iss-2609190004092322).
 func TestChatClientComposerHasMessagesForm(t *testing.T) {
 	root := repoRootDir(t)
 	src := clientSources(t, root)["GropiusChat.swift"]
@@ -24,7 +26,7 @@ func TestChatClientComposerHasMessagesForm(t *testing.T) {
 	}
 	composer := src[start[0] : start[0]+end[0]]
 	for _, want := range []string{
-		`.textInputBorderShape(.capsule)`,
+		`.composerFieldCapsule()`,
 		`.buttonStyle(.borderedProminent)`,
 		`.buttonBorderShape(.circle)`,
 	} {
@@ -60,7 +62,8 @@ func TestChatClientThoughtsToggleOnAClickAnywhere(t *testing.T) {
 
 // TestChatClientDrawsMessagesAsBubbles holds the transcript's bubbles
 // (iss-2609181055156852): the person's in the system's accent colour and the
-// model's in grey by default, both changeable in Settings. The bubble is the
+// model's in the system's secondary fill by default, both changeable in
+// Settings. The bubble is the
 // no-styling rule's second named exception, kept in its own file so the
 // exception is one file wide.
 func TestChatClientDrawsMessagesAsBubbles(t *testing.T) {
@@ -70,7 +73,7 @@ func TestChatClientDrawsMessagesAsBubbles(t *testing.T) {
 	if !ok {
 		t.Fatal("client/GropiusChat/Bubbles.swift is missing; the transcript's bubbles have no home")
 	}
-	for _, want := range []string{`Color.accentColor`, `Color.gray`, `@AppStorage("bubbleColorUser")`, `@AppStorage("bubbleColorModel")`} {
+	for _, want := range []string{`Color.accentColor`, `Color.secondary`, `@AppStorage("bubbleColorUser")`, `@AppStorage("bubbleColorModel")`} {
 		if !strings.Contains(bubbles, want) {
 			t.Errorf("client/GropiusChat/Bubbles.swift does not carry %s", want)
 		}
@@ -114,17 +117,29 @@ func TestChatClientTextSizeScalesTheWholeWindow(t *testing.T) {
 		t.Errorf("TextSize declares the cases %v; the setting is the five steps %v, and nothing else", got, steps)
 	}
 	window, settings := sceneRoots(t, src)
-	if !strings.Contains(window, ".dynamicTypeSize(") {
-		t.Error("the window's root does not apply the Dynamic Type size; the whole window follows one setting")
+	if !strings.Contains(window, ".dynamicTypeSize(ifSet:") {
+		t.Error("the window's root does not apply the Dynamic Type size when one is set; the whole window follows one setting")
 	}
-	if !strings.Contains(settings, ".dynamicTypeSize(") {
-		t.Error("the Settings scene's root does not apply the Dynamic Type size; Settings is its own scene and inherits nothing")
+	if !strings.Contains(settings, ".dynamicTypeSize(ifSet:") {
+		t.Error("the Settings scene's root does not apply the Dynamic Type size when one is set; Settings is its own scene and inherits nothing")
+	}
+	// The default step is the absence of a preference, not a pin on .large:
+	// the shape Appearance's System case has, so a Mac whose own text size is
+	// not large keeps it (iss-2609181124294352).
+	enum := swiftBlock(t, src, "enum TextSize: String, CaseIterable {")
+	if !strings.Contains(enum, "var dynamicType: DynamicTypeSize? {") {
+		t.Error("TextSize.dynamicType is not optional; the default step cannot express the absence of a preference")
+	}
+	if !regexp.MustCompile(`case \.standard: return nil`).MatchString(enum) {
+		t.Error("TextSize's standard step pins a Dynamic Type size; the default step applies no override at all")
 	}
 	if !strings.Contains(src, `@AppStorage("textSize")`) {
 		t.Error("the text size is not stored")
 	}
-	if !strings.Contains(src, `Picker("Text size"`) {
-		t.Error("Settings offers no text-size picker")
+	// The spec gives the text size its own Settings section
+	// (iss-2609181124294842); the picker lives in it, not in Appearance's.
+	if !strings.Contains(swiftBlock(t, src, `Section("Text") {`), `Picker("Text size"`) {
+		t.Error("Settings' Text section does not hold the text-size picker")
 	}
 }
 
@@ -176,6 +191,30 @@ func TestChatClientThoughtsRenderMarkdown(t *testing.T) {
 	}
 }
 
+// TestChatClientThoughtsShareTheReplyScheduler holds iss-2609181213199302:
+// the Thoughts row is parsed by the reply's own parse-and-throttle scheduler,
+// not by a twin of it. One scheduler is declared, one throttle window is
+// computed, and both the reply and the Thoughts row call that scheduler — so
+// a change to the throttle cannot apply to one of them and miss the other.
+func TestChatClientThoughtsShareTheReplyScheduler(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+	if n := strings.Count(src, "private func schedule"); n != 1 {
+		t.Errorf("client/GropiusChat/GropiusChat.swift declares %d parse schedulers; the reply and the Thoughts row share one", n)
+	}
+	throttle := regexp.MustCompile(`let wait = [0-9.]+ - Date\(\)\.timeIntervalSince\(`)
+	if n := len(throttle.FindAllString(src, -1)); n != 1 {
+		t.Errorf("%d throttle windows are computed; the reply and the Thoughts row are throttled by one", n)
+	}
+	reply := swiftBlock(t, src, "private var reply: some View {")
+	thoughts := swiftBlock(t, src, "private var reasoningDisclosure: some View {")
+	for _, block := range []struct{ name, src string }{{"reply", reply}, {"Thoughts row", thoughts}} {
+		if !strings.Contains(block.src, "scheduleParse()") {
+			t.Errorf("the %s does not call scheduleParse(); it parses on some path of its own", block.name)
+		}
+	}
+}
+
 // TestChatClientSidebarShowsCards holds itd-2609181104490133: each row is a
 // card with an icon, the title, the date and a summary of exchanges and
 // words, and the list takes the sidebar style so the selection is the
@@ -201,16 +240,30 @@ func TestChatClientSidebarShowsCards(t *testing.T) {
 			t.Errorf("ConversationCard does not draw %s; its body carries no %q", want.promise, want.fragment)
 		}
 	}
-	// The date is the one the conversation started, drawn as a day, a month
-	// and a year. Matching `createdAt` against the whole file would pass on
-	// the model's own field while the card drew some other date, or none.
-	if !regexp.MustCompile(`Text\(conversation\.createdAt, format: \.dateTime\.day\(\)\.month\(\)\.year\(\)\)`).MatchString(card) {
-		t.Error("ConversationCard does not draw conversation.createdAt as a day, month and year; the date a row shows is the date its chat started")
+	// The date is the one the conversation started, drawn in the system's own
+	// short date style rather than in a field order of the client's choosing
+	// (iss-2609181213194439). Matching `createdAt` against the whole file
+	// would pass on the model's own field while the card drew some other
+	// date, or none.
+	if !regexp.MustCompile(`conversation\.createdAt\.formatted\(date: \.numeric, time: \.omitted\)`).MatchString(card) {
+		t.Error("ConversationCard does not draw conversation.createdAt in the system's short date style; " +
+			"a day, month and year field list is the client ordering the date itself (iss-2609181213194439)")
 	}
 	for _, want := range []string{"exchange", "word"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("ConversationCard's summary counts no %ss", want)
 		}
+	}
+	// An exchange is a person's message and the reply that answers it, so the
+	// card counts PAIRS, through the helper the arithmetic check exercises.
+	// Counting the replies alone is the proxy that was wrong.
+	if !strings.Contains(card, "exchangeCount(fromPerson:") {
+		t.Error("ConversationCard does not count its exchanges with exchangeCount(fromPerson:); " +
+			"the pair count is arithmetic that nothing else here checks (iss-2609181213194439)")
+	}
+	if strings.Contains(card, "role == .assistant }.count") {
+		t.Error("ConversationCard counts the assistant's replies as its exchanges; an exchange is a " +
+			"person's message and the reply that answers it (iss-2609181213194439)")
 	}
 }
 
@@ -291,4 +344,115 @@ func enumCases(t *testing.T, src, name string) []string {
 		}
 	}
 	return out
+}
+
+// TestChatClientComposerFieldHasMessagesProportions holds
+// iss-2609190004092322: the composer's field is a capsule of the proportions
+// Messages and WhatsApp give theirs — tall enough to read as a field rather
+// than a slot, with its text inset from the capsule's curve instead of
+// starting against it. Both numbers are named and both are scaled metrics, so
+// the text-size setting grows the field and not only the glyphs inside it.
+//
+// SwiftUI's own bordered capsule offers no way to inset its text, so the
+// capsule is drawn in client/GropiusChat/Composer.swift, which is why that
+// file is a named exception to the no-styling rule.
+func TestChatClientComposerFieldHasMessagesProportions(t *testing.T) {
+	root := repoRootDir(t)
+	all := clientSources(t, root)
+	src, ok := all["Composer.swift"]
+	if !ok {
+		t.Fatal("client/GropiusChat/Composer.swift is missing; the composer's metrics have no home")
+	}
+	// Messages' field is about 34 to 36 points tall at the standard text
+	// size, with roughly 12 points before the first glyph.
+	for _, m := range []struct {
+		name string
+		low  float64
+		high float64
+	}{
+		{"fieldMinHeight", 34, 36},
+		{"textInset", 12, 16},
+	} {
+		found := regexp.MustCompile(`static let ` + m.name + `: CGFloat = ([0-9.]+)`).FindStringSubmatch(src)
+		if found == nil {
+			t.Errorf("Composer.swift declares no ComposerMetrics.%s; the field's shape is an unnamed number", m.name)
+			continue
+		}
+		got, err := strconv.ParseFloat(found[1], 64)
+		if err != nil {
+			t.Errorf("ComposerMetrics.%s is not a number: %v", m.name, err)
+			continue
+		}
+		if got < m.low || got > m.high {
+			t.Errorf("ComposerMetrics.%s is %v; Messages' composer sits between %v and %v", m.name, got, m.low, m.high)
+		}
+	}
+	// A constant the field reads at a fixed size would leave the field the
+	// same height while the text inside it grew.
+	if strings.Count(src, "@ScaledMetric(relativeTo: .body)") < 2 {
+		t.Error("Composer.swift does not read its metrics as scaled metrics; the text-size setting would grow the text and not the field")
+	}
+	for _, want := range []string{
+		`.frame(minHeight: minHeight)`,
+		`.padding(.horizontal, horizontal)`,
+		`.background(.quaternary, in: .capsule)`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("Composer.swift does not carry %s; the field is not a capsule of a pinned height with its text inset", want)
+		}
+	}
+
+	// The inset has to reach the text the person actually sees: the field
+	// carrying the placeholder is the view the capsule is applied to, not a
+	// wrapper beside it.
+	chat := all["GropiusChat.swift"]
+	field := regexp.MustCompile(`TextField\("Message…", text: \$draft, axis: \.vertical\)\n(\s+\.[^\n]*\n)*\s+\.composerFieldCapsule\(\)`)
+	if !field.MatchString(chat) {
+		t.Error("the placeholder field does not carry .composerFieldCapsule(); the inset applies to something other than the text the person reads")
+	}
+	// The send button keeps its circle, sized to the field so it is centred
+	// beside one line and stays at the foot of a field that has grown.
+	if !strings.Contains(chat, ".composerButtonCircle()") || !strings.Contains(src, "struct ComposerButtonCircle") {
+		t.Error("the send button's circle is not matched to the field's height")
+	}
+}
+
+// TestChatClientComposerShowsTheSystemsFocusRing holds iss-2609190034161350:
+// the drawn capsule says when the field has keyboard focus. A plain field
+// draws no focus effect, so the capsule that replaced the bordered field has
+// to show the indication itself — in the system's own focus colour and at the
+// thickness the system strokes, never a ring of the client's own invention,
+// and only while the environment allows a focus effect, which is how the
+// system's focus-ring preference reaches a view that draws its own.
+func TestChatClientComposerShowsTheSystemsFocusRing(t *testing.T) {
+	root := repoRootDir(t)
+	src, ok := clientSources(t, root)["Composer.swift"]
+	if !ok {
+		t.Fatal("client/GropiusChat/Composer.swift is missing; the composer's focus ring has no home")
+	}
+	for _, want := range []struct{ fragment, why string }{
+		{"@FocusState", "the capsule holds no focus state, so it cannot know the field has keyboard focus"},
+		{".focused($", "the field is never bound to the focus state"},
+		{`@Environment(\.isFocusEffectEnabled)`, "the ring ignores the system's focus-effect preference"},
+		{"keyboardFocusIndicatorColor", "the ring is not drawn in the system's focus colour"},
+		{"#if os(macOS)", "the macOS focus colour is not behind a platform guard, so the iPad build has nowhere to differ"},
+		{".strokeBorder(", "nothing strokes a ring around the capsule"},
+	} {
+		if !strings.Contains(src, want.fragment) {
+			t.Errorf("Composer.swift does not carry %s: %s", want.fragment, want.why)
+		}
+	}
+	// The thickness is named, and it is the one the system strokes on a
+	// bordered field rather than a hairline or a halo.
+	found := regexp.MustCompile(`static let focusRingWidth: CGFloat = ([0-9.]+)`).FindStringSubmatch(src)
+	if found == nil {
+		t.Fatal("Composer.swift declares no ComposerMetrics.focusRingWidth; the ring's thickness is an unnamed number")
+	}
+	width, err := strconv.ParseFloat(found[1], 64)
+	if err != nil {
+		t.Fatalf("ComposerMetrics.focusRingWidth is not a number: %v", err)
+	}
+	if width < 2 || width > 4 {
+		t.Errorf("ComposerMetrics.focusRingWidth is %v; the system strokes a ring between 2 and 4 points on a bordered field", width)
+	}
 }

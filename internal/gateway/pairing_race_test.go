@@ -252,7 +252,7 @@ func TestAPairedKeyIsWhatAdmits_NotTheMintedCertificate(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("served")) })
 	srv := newPairedServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pairedOnly(reg, mux, nil).ServeHTTP(w, r)
+		pairedOnly(reg, mux, nil, nil).ServeHTTP(w, r)
 	}))
 	reg = srv.registry
 

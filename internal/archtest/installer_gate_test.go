@@ -754,6 +754,12 @@ func installerFixture(t *testing.T) *fixture {
 	if runtime.GOOS != "darwin" {
 		t.Skip("install.sh refuses anything but macOS, and it needs ditto and shasum")
 	}
+	if runtime.GOARCH != "arm64" {
+		// The client half needs it too now: the bundle is placed by a Gropius
+		// binary, which is an Apple Silicon build, and the script turns an
+		// Intel Mac away before it reaches the asset directory.
+		t.Skip("install.sh refuses either app on anything but Apple Silicon")
+	}
 	root := repoRootDir(t)
 	floor := plistString(t, filepath.Join(root, "build", "Info.plist"), minimumSystemVersionKey)
 	if hostMacOSMajor(t) < majorOf(t, floor) {

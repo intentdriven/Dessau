@@ -74,6 +74,39 @@ const (
 	ClassGatewayError Class = "gateway_error"
 )
 
+// Source is how a request reached this Mac: over the HTTP API on the LAN, or
+// through a bridge that carried it in from a platform the operator switched
+// on. It is a fixed class of this package's own choosing and never anything a
+// platform, a client or a person supplied — the same rule Class follows, and
+// the rule adr-2609181004167097 condition 4 holds a bridge to: the statistics
+// store gains the source and nothing else.
+type Source string
+
+const (
+	// SourceHTTP is a request that arrived over the OpenAI-compatible API.
+	SourceHTTP Source = "http"
+	// SourceBridge is a request a bridge carried in — today, the Discord
+	// bridge (itd-2609180959397172).
+	SourceBridge Source = "bridge"
+)
+
+// Sources lists every source a record may carry, so the documentation's list
+// of them is held to this one: a source added here without a word about it on
+// the reference page fails the build.
+func Sources() []Source { return []Source{SourceHTTP, SourceBridge} }
+
+// valid reports whether s is one of the fixed classes above. The recorder is
+// handed values rather than bodies, but a source is the one class a caller
+// outside the gateway now sets, so it is checked rather than trusted.
+func (s Source) valid() bool {
+	for _, known := range Sources() {
+		if s == known {
+			return true
+		}
+	}
+	return false
+}
+
 // Reasons an entry left the pool. Only ReasonEvicted is an eviction; the pool
 // removes a model by seven paths and counting them as one would make the load
 // and eviction figures disagree with what actually happened.
@@ -119,6 +152,9 @@ type Record struct {
 	At int64 `json:"at"`
 	// Class is how it ended.
 	Class Class `json:"class"`
+	// Source is how it reached this Mac. One of the fixed classes above and
+	// nothing else; a record made before this existed carries none.
+	Source Source `json:"source"`
 	// Streamed reports whether the client asked for the answer as a stream.
 	Streamed bool `json:"streamed"`
 	// PromptTokens and CompletionTokens are the model server's own counts,
@@ -435,6 +471,14 @@ func (r *Recorder) Add(rec Record) {
 // shared-cache mode and the windows come from it, and the override names
 // are the one thing derived from a client's body.
 func bound(rec Record) Record {
+	// The one class a caller outside the gateway now sets. A source this
+	// package does not define is dropped rather than stored: the store's rule
+	// is that nothing in it is a person's or a client's to write, and a class
+	// nothing recognises would be read back by other people's tools as if it
+	// were one of these.
+	if !rec.Source.valid() {
+		rec.Source = ""
+	}
 	if rec.DeclaredContext < 0 || rec.DeclaredContext > MaxContext {
 		rec.DeclaredContext = 0
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -23,6 +24,14 @@ func TestCancelledDownloadReturnsError(t *testing.T) {
 		w.Write([]byte(`[{"path":"config.json","size":22},{"path":"model.safetensors","size":1048576}]`))
 	})
 	mux.HandleFunc("/org/repo/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
+		// config.json is served as the 22 bytes the tree says it is. Only the
+		// weights stall, so what ends this download is the cancellation rather
+		// than a body disagreeing with the listing — which a download now
+		// refuses on its own.
+		if strings.HasSuffix(r.URL.Path, "config.json") {
+			w.Write(make([]byte, 22))
+			return
+		}
 		flusher, _ := w.(http.Flusher)
 		for i := 0; i < 100; i++ {
 			select {

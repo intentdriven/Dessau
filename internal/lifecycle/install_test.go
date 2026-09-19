@@ -503,6 +503,11 @@ func installFixture(t *testing.T) (Env, InstallEnv, *bytes.Buffer, *bytes.Buffer
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// The environment as well as the field: the staged swap asks the account
+	// for its own directory (config.AccountHome) when it sets an installed
+	// bundle aside, and a fixture that answers with the real one sets bundles
+	// aside in the home of whoever is running the suite.
+	t.Setenv("HOME", home)
 	root := filepath.Join(home, "Library", "Application Support", "Gropius")
 	paths := config.NewPaths(root)
 	dest := filepath.Join(home, "Applications", "Gropius.app")

@@ -47,6 +47,7 @@ var secretSettings = []struct {
 }{
 	{"api_key", func(c config.Config) string { return c.APIKey }, func(c *config.Config, v string) { c.APIKey = v }},
 	{"hf_token", func(c config.Config) string { return c.HFToken }, func(c *config.Config, v string) { c.HFToken = v }},
+	{"discord_token", func(c config.Config) string { return c.DiscordToken }, func(c *config.Config, v string) { c.DiscordToken = v }},
 }
 
 // ConfigInForce is a configuration as this verb may report it: every secret

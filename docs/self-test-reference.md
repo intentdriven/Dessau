@@ -39,8 +39,9 @@ waited on, and the run is dropped with a line in the log.
 ### Outcomes
 
 - `ok` — every test in the set completed.
-- `yielded` — a request from a client arrived, the self-test cancelled its
-  own request and released the model.
+- `yielded` — a request from a client arrived, or a client's load needed the
+  memory the run was holding; the self-test cancelled its own request and
+  released the model.
 - `stopped` — the switch went off, or Gropius quit, during the run.
 - `failed` — the model could not be loaded (`reason` is `load`), or a request
   to it failed or timed out (`reason` is `request`). The reason is a class, not
@@ -93,7 +94,7 @@ for the same model, which times the prompt alone.
 | The idle check | once a minute |
 | Idle means | no request in flight, none waiting for a load, no download running, and the last request older than the idle threshold (`idle_threshold_sec`, five minutes unless set; shared with the context probe) |
 | A model is loaded only when | it fits beside what is in memory; the self-test never evicts |
-| A run in progress ends when | a request is in flight on any model, a load is waiting for room, or a load has been refused room since the run began |
+| A run in progress ends when | a request is in flight on any model, a load is waiting for room, a load has been refused room since the run began, or a client's load needs the memory the run is holding |
 | A run in progress checks for a client | every quarter of a second |
 | A model is measured again after | one day |
 | One load, and one request, may take at most | ten minutes; longer is a failed run |

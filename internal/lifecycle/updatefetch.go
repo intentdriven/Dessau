@@ -341,20 +341,39 @@ func clearQuarantine(bundle string) {
 // somewhere outside the directory that was verified. Only a compromised release
 // can plant one — which is what the checksums are for — and the refusal costs a
 // line and does not depend on that being true.
-// Opened through an os.Root on the bundle, so EVERY component is checked and
-// not only the last one. os.Lstat refuses to follow the final component and
-// follows every one above it, so a bundle carrying `Contents` as a symbolic
-// link would resolve through it and pass — sending the exec exactly where this
-// function says it does not. os.Root is the defence internal/config already
-// uses against the same shape of mistake.
-func checkStagedBundle(bundle string) error {
-	root, err := os.OpenRoot(bundle)
+//
+// The root is opened on the EXTRACTION DIRECTORY rather than on the bundle,
+// and the bundle is reached through it. os.OpenRoot resolves symbolic links in
+// the path it is handed, so a root opened on the bundle covers every component
+// below it and follows a link at the bundle name itself — the one component the
+// archive also chooses. Opened a level up, the root's own no-follow rule covers
+// the bundle name too, and one call answers for the whole path. os.Root is the
+// defence internal/config already uses against the same shape of mistake.
+//
+// The refusal has to happen HERE. The staged swap refuses a bundle that is a
+// symbolic link (place.go), so nothing would be installed either way — but the
+// swap is the end of the run and the staged build is run near the start of it,
+// and a refusal that arrives after an exec has already arrived too late.
+func checkStagedBundle(extracted string) error {
+	root, err := os.OpenRoot(extracted)
 	if err != nil {
-		return fmt.Errorf("the downloaded bundle could not be read (%w)", err)
+		return fmt.Errorf("the unpacked release could not be read (%w)", err)
 	}
 	defer root.Close()
 
-	fi, err := root.Lstat(binaryInBundle)
+	bundle, err := root.Lstat(bundleName)
+	if err != nil {
+		return fmt.Errorf("the downloaded release carries no %s that stays inside it "+
+			"(a missing bundle, or a symbolic link on the way to it)", bundleName)
+	}
+	if bundle.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("the downloaded release carries a symbolic link where %s should be", bundleName)
+	}
+	if !bundle.IsDir() {
+		return fmt.Errorf("the downloaded release has something other than an application bundle at %s", bundleName)
+	}
+
+	fi, err := root.Lstat(filepath.Join(bundleName, binaryInBundle))
 	if err != nil {
 		// os.Root answers this way for a component that is a symbolic link as
 		// well as for one that is absent, so the two are reported together:

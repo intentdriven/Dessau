@@ -484,8 +484,12 @@ final class AppModel: ObservableObject {
     /// never the fingerprint in the pairing answer, which arrived over a plain
     /// port anything on the network can answer on.
     func pair(as name: String) async throws {
-        guard let key = PairingStore.makeKey(),
-              let pub = SecKeyCopyPublicKey(key),
+        // `makeKey` throws rather than returning nil when the Secure Enclave
+        // refuses for a reason that is not this build's signature, so the
+        // reason reaches the sheet instead of a quieter key
+        // (iss-2609190200098392).
+        let key = try PairingStore.makeKey()
+        guard let pub = SecKeyCopyPublicKey(key),
               let spki = spkiOf(pub)
         else { throw PairingError.noKey }
 
@@ -802,13 +806,31 @@ enum TextSize: String, CaseIterable {
         }
     }
 
-    var dynamicType: DynamicTypeSize {
+    /// The Dynamic Type size this step pins, where the default step pins
+    /// nothing at all: like Appearance's System case it is the absence of a
+    /// preference, so a Mac whose own text size is not large keeps it rather
+    /// than being overridden by this client.
+    var dynamicType: DynamicTypeSize? {
         switch self {
         case .smaller: return .small
-        case .standard: return .large
+        case .standard: return nil
         case .larger: return .xLarge
         case .extraLarge: return .xxLarge
         case .huge: return .xxxLarge
+        }
+    }
+}
+
+extension View {
+    /// The chosen Dynamic Type size, or the view left untouched when no size
+    /// is chosen. SwiftUI's own `dynamicTypeSize(_:)` takes no optional the
+    /// way `preferredColorScheme(_:)` does, so "no preference" has to be the
+    /// modifier not being applied; the label keeps the two apart.
+    @ViewBuilder func dynamicTypeSize(ifSet size: DynamicTypeSize?) -> some View {
+        if let size {
+            dynamicTypeSize(size)
+        } else {
+            self
         }
     }
 }
@@ -857,8 +879,8 @@ struct GropiusChatApp: App {
     @State private var settingsShown = false
     #endif
 
-    private var dynamicType: DynamicTypeSize {
-        TextSize(rawValue: textSize)?.dynamicType ?? .large
+    private var dynamicType: DynamicTypeSize? {
+        TextSize(rawValue: textSize)?.dynamicType
     }
 
     private var colorScheme: ColorScheme? {
@@ -873,11 +895,11 @@ struct GropiusChatApp: App {
             #if os(macOS)
             RootView(model: model)
                 .frame(minWidth: 720, minHeight: 480)
-                .dynamicTypeSize(dynamicType)
+                .dynamicTypeSize(ifSet: dynamicType)
                 .preferredColorScheme(colorScheme)
             #else
             RootView(model: model, settingsShown: $settingsShown)
-                .dynamicTypeSize(dynamicType)
+                .dynamicTypeSize(ifSet: dynamicType)
                 .preferredColorScheme(colorScheme)
             #endif
         }
@@ -926,7 +948,7 @@ struct GropiusChatApp: App {
         #if os(macOS)
         Settings {
             SettingsView(model: model)
-                .dynamicTypeSize(dynamicType)
+                .dynamicTypeSize(ifSet: dynamicType)
                 .preferredColorScheme(colorScheme)
         }
         #endif
@@ -1060,6 +1082,10 @@ struct Sidebar: View {
         .listStyle(.sidebar)
         .searchable(text: $query, placement: .sidebar, prompt: "Search")
         .navigationTitle("Chats")
+        // One thin toolbar, as Messages has: left automatic, the title is
+        // drawn large and collapses as the list scrolls, which gives the
+        // header two heights.
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem {
                 Button { selection = model.newChat() } label: { Image(systemName: "square.and.pencil") }
@@ -1090,7 +1116,7 @@ struct ConversationCard: View {
     }
 
     private var summary: String {
-        let exchanges = conversation.messages.filter { $0.role == .assistant }.count
+        let exchanges = exchangeCount(fromPerson: conversation.messages.map { $0.role == .user })
         let words = conversation.messages.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
         return "\(exchanges) exchange\(exchanges == 1 ? "" : "s") · \(words) word\(words == 1 ? "" : "s")"
     }
@@ -1101,7 +1127,7 @@ struct ConversationCard: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(title).font(.headline).lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(conversation.createdAt, format: .dateTime.day().month().year())
+                    Text(conversation.createdAt.formatted(date: .numeric, time: .omitted))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -1134,6 +1160,10 @@ struct ChatDetail: View {
             composer
         }
         .navigationTitle("Gropius Chat")
+        // The header is one fixed height whatever the state
+        // (iss-2609190004097595): the title never switches between a large
+        // form and a collapsed one, so the transcript never moves under it.
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem {
                 Button {
@@ -1142,11 +1172,17 @@ struct ChatDetail: View {
                     Label {
                         Text(model.answerer.displayName)
                     } icon: {
-                        if model.connecting {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: model.answerer == .builtIn ? "apple.intelligence" : "network")
+                        // One size across both states: a spinner and a symbol
+                        // do not measure the same, and a toolbar item that
+                        // changes height takes the header's height with it.
+                        Group {
+                            if model.connecting {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: model.answerer == .builtIn ? "apple.intelligence" : "network")
+                            }
                         }
+                        .frame(width: 16, height: 16)
                     }
                     .labelStyle(.titleAndIcon)
                 }
@@ -1196,7 +1232,19 @@ struct ChatDetail: View {
                 .padding(.horizontal, 28)
                 .padding(.vertical, 12)
             }
-            .defaultScrollAnchor(.bottom)
+            // A conversation opens at its newest message — and only that.
+            // The roleless form of this modifier anchors the ALIGNMENT role
+            // as well, which pins a conversation shorter than the window to
+            // the window's foot and opens an empty band under the toolbar.
+            // The roles do not compose across two of these modifiers — a
+            // second one replaces the first — so this is the one; the scroll
+            // to the newest message while a reply streams is explicit below.
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            // The scroll-edge effect belongs to the toolbar, not to the
+            // transcript: the hard style ends at the bar, where the automatic
+            // one is a soft blur that reaches well down the window and washes
+            // out the reply being read.
+            .scrollEdgeEffectStyle(.hard, for: .top)
             // A link a model wrote opens only as a web address: a served reply
             // is not trusted to hand the Mac a file, shortcut or settings URL.
             .environment(\.openURL, OpenURLAction { url in
@@ -1215,13 +1263,14 @@ struct ChatDetail: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
             // The form of Messages' composer: a capsule field and a round,
-            // filled send button, both standard controls given standard
-            // shapes (the shapes are the system's, not a drawn background).
+            // filled send button. The button is a standard control given the
+            // system's circle; the capsule is drawn in Composer.swift,
+            // because SwiftUI's bordered capsule leaves its text against the
+            // curve and offers no way to inset it (iss-2609190004092322).
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("Message…", text: $draft, axis: .vertical)
                     .lineLimit(1...8)
-                    .textInputBorderShape(.capsule)
-                    .controlSize(.large)
+                    .composerFieldCapsule()
                     .onSubmit(send)
                     .disabled(!model.canSend)
                     .accessibilityLabel("Message")
@@ -1230,12 +1279,14 @@ struct ChatDetail: View {
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.circle)
                         .controlSize(.large)
+                        .composerButtonCircle()
                         .help("Stop")
                 } else {
                     Button(action: send) { Image(systemName: "arrow.up") }
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.circle)
                         .controlSize(.large)
+                        .composerButtonCircle()
                         .keyboardShortcut(.return, modifiers: .command)
                         .disabled(!model.canSend || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .help("Send")
@@ -1326,15 +1377,15 @@ struct MessageRow: View {
     var loadingLabel: String? = nil
     @State private var showReasoning = false
     private let colors = BubbleColors()
-    /// The rendered blocks, parsed once per change of the text — and for the
-    /// reply that is streaming, at most a few times a second.
-    @State private var blocks: [MarkdownBlock] = []
+    /// The rendered blocks of what this row draws — the reply's and the
+    /// thoughts' — keyed by the text each was parsed from, parsed once per
+    /// change of that text and, while a reply is streaming, at most a few
+    /// times a second. One store, so one scheduler and one throttle serve
+    /// both: a pane whose text has not changed keeps its blocks without
+    /// being parsed again, and a text this row no longer shows is dropped.
+    @State private var parsed: [String: [MarkdownBlock]] = [:]
     @State private var lastParse = Date.distantPast
     @State private var parseTask: Task<Void, Never>?
-    /// The thoughts, rendered the same way and on the same throttle.
-    @State private var reasoningBlocks: [MarkdownBlock] = []
-    @State private var lastReasoningParse = Date.distantPast
-    @State private var reasoningTask: Task<Void, Never>?
     /// Whether this row is playing the effect, and whether it already has.
     /// The reply animates at the moment it FINISHES: the model queues the id
     /// in its stream's defer, and the row watches for that change. A row
@@ -1347,6 +1398,8 @@ struct MessageRow: View {
     private var isUser: Bool { message.role == .user }
     private var displayText: String { message.text.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var displayReasoning: String { message.reasoning.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var blocks: [MarkdownBlock] { parsed[displayText] ?? [] }
+    private var reasoningBlocks: [MarkdownBlock] { parsed[displayReasoning] ?? [] }
 
     /// Who spoke, for the label and for VoiceOver.
     private var speaker: String {
@@ -1413,7 +1466,7 @@ struct MessageRow: View {
             // the row was off screen: the effect's moment has passed, so the
             // id goes without playing and no later row can fire on it.
             if model.effectsToPlay.contains(message.id) { model.effectStarted(message.id) }
-            if blocks.isEmpty { blocks = MarkdownBlocks.parse(displayText); lastParse = Date() }
+            if blocks.isEmpty { parseNow() }
         }
         // The reply finishing is the queueing of its id; that change, and only
         // that change, plays the effect, once.
@@ -1463,40 +1516,37 @@ struct MessageRow: View {
         }
     }
 
-    /// The thoughts' twin of scheduleParse.
-    private func scheduleReasoningParse() {
-        let wait = 0.25 - Date().timeIntervalSince(lastReasoningParse)
-        reasoningTask?.cancel()
-        if wait <= 0 {
-            reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
-            lastReasoningParse = Date()
-            return
-        }
-        reasoningTask = Task {
-            try? await Task.sleep(for: .seconds(wait))
-            guard !Task.isCancelled else { return }
-            reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
-            lastReasoningParse = Date()
-        }
-    }
-
     /// Parse now if the last parse is older than a quarter of a second, else
-    /// once at that deadline — four parses a second at most; a finished
-    /// reply's text never changes again.
+    /// once at that deadline — four parses a second at most, for the reply
+    /// and the thoughts together; a finished reply's text never changes
+    /// again. The Thoughts row is on this scheduler too: one pending parse
+    /// for the row, so neither pane can be left behind by the other.
     private func scheduleParse() {
         let wait = 0.25 - Date().timeIntervalSince(lastParse)
         parseTask?.cancel()
         if wait <= 0 {
-            blocks = MarkdownBlocks.parse(displayText)
-            lastParse = Date()
+            parseNow()
             return
         }
         parseTask = Task {
             try? await Task.sleep(for: .seconds(wait))
             guard !Task.isCancelled else { return }
-            blocks = MarkdownBlocks.parse(displayText)
-            lastParse = Date()
+            parseNow()
         }
+    }
+
+    /// The row's one parse pass: whichever of the two texts is shown and has
+    /// changed is parsed, the other keeps the blocks it already has.
+    private func parseNow() {
+        var next: [String: [MarkdownBlock]] = [:]
+        if !displayText.isEmpty {
+            next[displayText] = parsed[displayText] ?? MarkdownBlocks.parse(displayText)
+        }
+        if !displayReasoning.isEmpty {
+            next[displayReasoning] = parsed[displayReasoning] ?? MarkdownBlocks.parse(displayReasoning)
+        }
+        parsed = next
+        lastParse = Date()
     }
 
     @ViewBuilder private func styled(_ s: AttributedString, animate: Bool) -> some View {
@@ -1517,7 +1567,9 @@ struct MessageRow: View {
 
     /// A click anywhere in the row, and anywhere in the expanded thinking,
     /// toggles it — not only the disclosure triangle — so the thinking can be
-    /// hidden while it is being read. Dragging still selects the text.
+    /// hidden while it is being read. Selection is per block: each block the
+    /// thinking is drawn as carries its own textSelection, and the row carries
+    /// none, so a drag selects within one block and does not run across two.
     @ViewBuilder private var reasoningDisclosure: some View {
         DisclosureGroup(isExpanded: $showReasoning) {
             blockViews(reasoningBlocks, animate: false)
@@ -1527,12 +1579,9 @@ struct MessageRow: View {
                 .contentShape(Rectangle())
                 .onTapGesture { withAnimation { showReasoning = false } }
                 .onAppear {
-                    if reasoningBlocks.isEmpty {
-                        reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
-                        lastReasoningParse = Date()
-                    }
+                    if reasoningBlocks.isEmpty { parseNow() }
                 }
-                .onChange(of: displayReasoning) { _, _ in scheduleReasoningParse() }
+                .onChange(of: displayReasoning) { _, _ in scheduleParse() }
         } label: {
             Label {
                 Text(displayText.isEmpty ? "Thinking…" : "Thoughts").font(.caption)
@@ -1630,7 +1679,7 @@ struct SettingsView: View {
             Section("Models to offer") {
                 TextField("Pipeline tags", text: $model.chatPipelineTags, prompt: Text("text-generation, image-text-to-text"))
                 TextField("Required tags", text: $model.chatRequiredTags, prompt: Text("conversational"))
-                Text("The picker offers a server's models carrying these HuggingFace words — a pipeline tag from the first list, and every tag in the second. Every model stays reachable over the API by name. Clear a field to stop testing it. The Mac's own model is always offered.")
+                Text("The picker offers a server's models carrying these HuggingFace words — a pipeline tag from the first list, and every tag in the second. Every model stays reachable over the API by name. Clear a field to stop testing it. The \(BuiltInBackend.deviceNoun)'s own model is always offered.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Appearance") {
@@ -1640,12 +1689,14 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+            }
+            Section("Text") {
                 Picker("Text size", selection: $textSize) {
                     ForEach(TextSize.allCases, id: \.rawValue) { size in
                         Text(size.label).tag(size.rawValue)
                     }
                 }
-                Text("The whole window follows, at the system's own text sizes.")
+                Text("The whole window follows, at the system's own text sizes. Default is whatever this \(BuiltInBackend.deviceNoun) is already set to.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Bubbles") {

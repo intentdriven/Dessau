@@ -108,6 +108,17 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
   announced over Bonjour, what the request log writes down, and what is
   recorded and for how long — and says where Gropius's own view stops
   ([what each line is read from](docs/posture-reference.md)).
+- **Answer Discord messages with a model on this Mac** — off unless you turn it
+  on. Paste a Discord bot token in Settings and a direct message to that bot, or
+  a mention of it in a channel it has been invited to, is answered by one of
+  your models: a placeholder appears and fills in as the answer is written, and
+  `/model` and `/reset` pick the model and clear the conversation in each
+  channel. Gropius connects out to Discord; no port on this Mac is opened to the
+  internet and the bind address is untouched. **Messages to the bot and the
+  model's answers pass through Discord and are kept under Discord's terms** —
+  that is what the switch trades for reaching your models from a phone, and it
+  is stated beside the switch as well as here
+  ([how to](docs/discord-bridge.md)).
 - **It installs, updates, repairs, removes and diagnoses itself** —
   `gropius install` does the provisioning in the foreground and, run again,
   repairs what is missing rather than reinstalling what is not.
@@ -121,8 +132,8 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
   `gropius doctor` separates what it verified from what it could only observe
   — the firewall entry is never a verdict — and says outright that Local
   Network Privacy cannot be determined from here, rather than guessing it.
-  `gropius config show` prints every setting in force, with the API key and
-  the HuggingFace token masked ([how to](docs/lifecycle.md),
+  `gropius config show` prints every setting in force, with the API key, the
+  HuggingFace token and the Discord bot token masked ([how to](docs/lifecycle.md),
   [reference](docs/lifecycle-reference.md)).
 - **Multi-account** — other user accounts on the same Mac share one copy of each
   model on disk and on the GPU. The models are shared; each account keeps its
@@ -173,7 +184,10 @@ which is every Mac that runs macOS 27. It chats with the Mac's own model out
 of the box and offers a Gropius server's models when it finds one on the
 network. A Mac on macOS 26 gets the last client built for it, from release
 v0.6.0, which stays published beside the current release for that purpose and
-is not updated; the same command picks the right one:
+is not updated; the same command picks the right one. The installer needs Apple
+Silicon for either app: both bundles are put in place by a Gropius binary,
+because a shell cannot replace an application directory safely, so installing
+the client downloads the server's archive too for the binary inside it.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash -s -- client
@@ -273,7 +287,8 @@ is written down as
   `runtime` (Python/MLX provisioning + process pool), `gateway` (OpenAI + control
   API), `registry`, `discovery`, `bind` and `netshape` (which addresses are
   bound, and which network each sits on), `stats` (request statistics),
-  `applog` (the server's own log), `config`, `capability`, `ui`, `app`.
+  `applog` (the server's own log), `bridge/discord` (the opt-in Discord
+  bridge), `config`, `capability`, `ui`, `app`.
 - [`docs/`](docs/) — getting-started guide, how-to pages and reference.
 
 Design decisions and the empirical facts behind them: [`DECISIONS.md`](.abcd/development/decisions/DECISIONS.md).

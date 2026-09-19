@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -387,36 +388,77 @@ func isCasePatternLine(code string) bool {
 	return regexp.MustCompile(`^\s*[^()]+\)\s*$`).MatchString(code)
 }
 
-// TestInstallerNeverDeletesTheBundleBeforeTheReplacementLands pins the ordering
-// of the staged swap.
+// TestTheInstallerPlacesEveryBundleInGoAndNeverWithMv is where the staged swap
+// lives now, and the guard that keeps it there.
 //
-// The installed bundle must be renamed ASIDE, never deleted, before the new one
-// is moved into place. An earlier version deleted it first and, on a failed
-// rename, deleted the staged copy too — so an ordinary rename failure left no
-// application at all, which is the exact outcome the staging comment says the
-// staging exists to prevent. The bug needed no attacker and no unusual
-// filesystem: one failing rename was enough.
+// `mv` nests into a destination that already exists as a directory and follows
+// one that is a symbolic link, exiting 0 in both cases. It has no dependable
+// "fail if the destination exists" mode, and any test-then-move in shell is a
+// race by construction — so the ordering this test used to pin (rename aside,
+// then move in, never delete first) was the best a shell could do and not a
+// fix. The server half stopped doing it when `gropius install` took over
+// (iss-2609081310071028); the client half kept it, with the defect recorded in
+// the script's own comment, until iss-2609111454146700.
 //
-// This checks the property that is cheap to check mechanically — that no `rm`
-// of the destination bundle appears before the move that replaces it. It does
-// not prove the swap is atomic, which it is not: `mv` nests into an existing
-// directory and follows a symlink, and closing that needs os.Rename.
-func TestInstallerNeverDeletesTheBundleBeforeTheReplacementLands(t *testing.T) {
-	path := filepath.Join(repoRootDir(t), "install.sh")
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read install.sh: %v", err)
-	}
-	src := string(b)
+// Both halves now hand the placement to a binary the script verified, and the
+// swap is internal/lifecycle/swap.go with its behavioural tests beside it. So
+// the property here is stronger and simpler than an ordering: install.sh MOVES
+// NOTHING. A single `mv` anywhere in it is the defect coming back, whatever
+// order it is written in.
+//
+// What this is: a scan of the script's command positions, with the shell's
+// quoting honoured — the same reading TestInstallerPinsEveryCommandItRuns
+// makes. It sees nothing of a command assembled at runtime or run through
+// eval, and the handover half below is a text match on the invocation. What
+// makes the swap correct is the Go tests; what this holds is that the shell
+// still calls them.
+func TestTheInstallerPlacesEveryBundleInGoAndNeverWithMv(t *testing.T) {
+	root := repoRootDir(t)
+	src := readRepoFile(t, root, "install.sh")
 
-	move := strings.Index(src, `mv "$staged/$APP.app" "$DEST/$APP.app"`)
-	if move < 0 {
-		t.Fatal("install.sh no longer moves the staged bundle into place — update this test")
+	delimiters := heredocDelimiters(src)
+	for i, line := range joinContinuations(strings.Split(stripHeredocs(src), "\n")) {
+		code, _, _ := strings.Cut(line, "#")
+		if isCasePatternLine(code) || delimiters[strings.TrimSpace(code)] {
+			continue
+		}
+		for _, word := range commandPositions(code) {
+			if word != "mv" && word != "/bin/mv" {
+				continue
+			}
+			t.Errorf("install.sh:%d runs %q: `mv` nests into a destination that is already a "+
+				"directory and follows one that is a symbolic link, exiting 0 in both cases. "+
+				"Hand the placement to `gropius place`, which is rename(2) and refuses both: %s",
+				i+1, word, strings.TrimSpace(line))
+		}
 	}
-	if del := strings.Index(src, `rm -rf "$DEST/$APP.app"`); del >= 0 && del < move {
-		t.Errorf("install.sh deletes the installed bundle before the replacement is in "+
-			"place (offset %d, before the move at %d); rename it aside instead, so a "+
-			"failed rename leaves a working application", del, move)
+}
+
+// And the other half of it: the client's bundle is placed by the verb, with the
+// bundle and the destination directory both named, and a binary that does not
+// carry the verb is reported as the version mismatch it is rather than as a
+// failed install.
+//
+// The placer is executed through a variable, which is what
+// TestInstallerPinsEveryCommandItRuns deliberately allows: the path is one the
+// script computed inside the directory it verified, rather than a name handed
+// to PATH.
+func TestTheClientHalfHandsItsPlacementToTheVerb(t *testing.T) {
+	src := readRepoFile(t, repoRootDir(t), "install.sh")
+	for _, want := range []struct{ text, why string }{
+		{`"$PLACER" place --bundle "$tmp/extract/$APP.app" --into "$DEST"`,
+			"the client's bundle is placed by the verb, from the directory this script verified, into the destination it chose"},
+		{`PLACER="$tmp/placer/Gropius.app/Contents/MacOS/gropius"`,
+			"the placer is the binary inside the archive this script just verified, never the copy already installed on this Mac"},
+		{`refuse_symlinks "$PLACER_ASSET" "$tmp/placer"`,
+			"`ditto -x` restores a symbolic link at any component and follows it, so the whole unpacked placer is " +
+				"scanned before the exec — a test on the leaf answers for one component of four (iss-2609190032572500)"},
+		{`if [ "$status" -eq 2 ]`,
+			"a binary that predates the verb refuses it with exit 2, which is a version mismatch and not a failed placement"},
+	} {
+		if !strings.Contains(src, want.text) {
+			t.Errorf("install.sh no longer carries %s — %s", strconv.Quote(want.text), want.why)
+		}
 	}
 }
 
