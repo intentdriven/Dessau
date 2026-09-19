@@ -281,6 +281,59 @@ func TestTheSlashCommandsAnswerTheChannel(t *testing.T) {
 	}
 }
 
+// `/model` picking a model is the acceptance criterion, and the criterion is
+// the NEXT MESSAGE being answered by it: the command stores the choice on the
+// channel's conversation and the answer reads it back on the way to the
+// gateway. Nothing exercised that seam while the fake server offered one
+// model, because the model a request carried was the default either way
+// (iss-2609190242018424).
+func TestAModelPickedWithTheCommandAnswersTheNextMessage(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, asked := recording(t, f, "an answer")
+	connected(t, f, b)
+
+	// Bob asks what the channel is on, and is told the server's default.
+	f.command(commandModel, nil)
+	call := f.waitCall(http.MethodPost, "/interactions/")
+	data, _ := call.Body["data"].(map[string]any)
+	if text, _ := data["content"].(string); !strings.Contains(text, firstModel) {
+		t.Fatalf("/model answered %q, want the default the channel starts on", text)
+	}
+
+	// Then he picks the other one.
+	f.command(commandModel, map[string]string{"name": secondModel})
+	call = f.waitCall(http.MethodPost, "/interactions/")
+	data, _ = call.Body["data"].(map[string]any)
+	if text, _ := data["content"].(string); !strings.Contains(text, secondModel) {
+		t.Fatalf("/model %s answered %q, want the model it was set to", secondModel, text)
+	}
+
+	f.message("what do you think", false, false)
+	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	got := asked()
+	if len(got) != 1 {
+		t.Fatalf("the gateway was asked %d times, want once", len(got))
+	}
+	if got[0].Model != secondModel {
+		t.Errorf("the message was answered by %q, want the model `/model` picked (%q)", got[0].Model, secondModel)
+	}
+
+	// And the short name works the same way, which is how most people will
+	// type one.
+	f.command(commandModel, map[string]string{"name": shortName(firstModel)})
+	f.waitCall(http.MethodPost, "/interactions/")
+	f.drainCalls()
+	f.message("and now", false, false)
+	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	got = asked()
+	if len(got) != 2 {
+		t.Fatalf("the gateway was asked %d times, want twice", len(got))
+	}
+	if got[1].Model != firstModel {
+		t.Errorf("after picking by short name the message was answered by %q, want %q", got[1].Model, firstModel)
+	}
+}
+
 // The log records that a request was bridged, with the identifiers as plain
 // numbers — and carries nothing of the message or the answer.
 //
