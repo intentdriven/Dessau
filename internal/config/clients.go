@@ -65,7 +65,7 @@ func (c Config) ClientIDs() []string {
 // the port beside the plain one. Zero means no TLS listener at all, which is
 // what a tls_port that collides with the plain port is narrowed to.
 func (c Config) EffectiveTLSPort() int {
-	if c.TLSPort == noTLSPort {
+	if c.TLSPort == NoTLSListener {
 		return 0
 	}
 	if c.TLSPort == 0 {
@@ -74,9 +74,11 @@ func (c Config) EffectiveTLSPort() int {
 	return c.TLSPort
 }
 
-// noTLSPort is the stored value meaning "no TLS listener". It is negative so
-// that it cannot be a port, and so that zero keeps meaning "the default".
-const noTLSPort = -1
+// NoTLSListener is the stored tls_port meaning "no TLS listener at all". It is
+// negative so that it cannot be a port, and so that zero keeps meaning "the
+// port beside the plain one" — which is what every configuration written
+// before this field carries.
+const NoTLSListener = -1
 
 // validateClients checks the paired set the way validateModels checks the
 // per-model settings: the ceiling, then each row.
@@ -196,16 +198,16 @@ func (c *Config) sanitizeClients() []string {
 // three times — so the listener goes and the setting says so.
 func (c *Config) sanitizeTLSPort() []string {
 	switch {
-	case c.TLSPort == noTLSPort:
+	case c.TLSPort == NoTLSListener:
 		return nil
 	case c.TLSPort == 0:
 		return nil
 	case c.TLSPort == c.Port:
-		c.TLSPort = noTLSPort
+		c.TLSPort = NoTLSListener
 		return []string{fmt.Sprintf("tls_port %d is the port this server already answers on, so there is no TLS listener", c.Port)}
 	case c.TLSPort < 0 || c.TLSPort > 65535:
 		was := c.TLSPort
-		c.TLSPort = noTLSPort
+		c.TLSPort = NoTLSListener
 		return []string{fmt.Sprintf("tls_port %d is not a port, so there is no TLS listener", was)}
 	}
 	return nil

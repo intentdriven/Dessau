@@ -1443,6 +1443,17 @@ func (c Config) Validate() error {
 	if len(c.Preload) > MaxPreload {
 		return fmt.Errorf("preload names %d models, more than the %d this holds", len(c.Preload), MaxPreload)
 	}
+	// A TLS port this Mac cannot listen on. Refused here and REPAIRED at load
+	// (sanitizeTLSPort), which is the same two-sided treatment log_level gets:
+	// a hand-edited file is narrowed rather than locked out, and a save that
+	// actually carries the value is told while the operator is there to read
+	// it. NoTLSListener is the one value below 1 that means something.
+	if c.TLSPort != NoTLSListener && (c.TLSPort < 0 || c.TLSPort > 65535) {
+		return fmt.Errorf("tls_port %d is not a port; use 0 for the port beside \"port\", or %d for no TLS listener", c.TLSPort, NoTLSListener)
+	}
+	if c.TLSPort == c.Port {
+		return fmt.Errorf("tls_port %d is the port this server already answers on; use 0 for the port beside it, or %d for no TLS listener", c.TLSPort, NoTLSListener)
+	}
 	if err := c.validateClients(); err != nil {
 		return err
 	}
