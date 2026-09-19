@@ -466,3 +466,61 @@ func extractConst(t *testing.T, src, name string) string {
 	t.Fatalf("the declaration of %s is never closed", name)
 	return ""
 }
+
+// The pinned-charge line multiplies each model's cache by the sequences its
+// server may decode at once, so the figure it shows is only the pool's figure
+// while it reads the pool's concurrency. It read state.config.decode_concurrency
+// — the saved value — which the pool does not pick up until a restart, so
+// between a save and that restart the panel showed a charge the pool would not
+// agree with, under a comment claiming it read the figure in force
+// (iss-2609190021445846).
+func TestThePinnedChargeReadsTheDecodeConcurrencyInForce(t *testing.T) {
+	body := extractFunction(t, readPanelSource(t), "updatePinBudget")
+	if !strings.Contains(body, "state.machine.decode_concurrency") {
+		t.Errorf("updatePinBudget does not read state.machine.decode_concurrency, so its charge is not the pool's:\n%s", body)
+	}
+	if strings.Contains(body, "state.config.decode_concurrency") {
+		t.Errorf("updatePinBudget still reads the saved concurrency, which the pool has not picked up until a restart:\n%s", body)
+	}
+}
+
+// And it says so beside the field, in the words the rest of the restart set
+// uses: a figure saved and not in force is the one case where the number in
+// the box and the number the charge below it is worked out from differ.
+func TestThePanelSaysWhenTheSavedConcurrencyIsNotInForce(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		machine, config string
+		want            string
+	}{
+		{"the saved figure is in force", `{"decode_concurrency":4}`, `{"decode_concurrency":4}`, ""},
+		{"a saved figure the pool has not picked up", `{"decode_concurrency":4}`, `{"decode_concurrency":8}`,
+			"Gropius is batching 4 requests at a time. The saved figure of 8 takes effect at the next start, and the memory a pinned model is charged below is worked out from the 4 in force."},
+		{"one request at a time in force", `{"decode_concurrency":1}`, `{"decode_concurrency":2}`,
+			"Gropius is batching 1 request at a time. The saved figure of 2 takes effect at the next start, and the memory a pinned model is charged below is worked out from the 1 in force."},
+		{"nothing known", `{}`, `{}`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := evalPanel(t, fmt.Sprintf("concurrencyNotice(%s, %s)", tc.machine, tc.config), "concurrencyNotice")
+			if got != tc.want {
+				t.Errorf("concurrencyNotice(%s, %s) = %q, want %q", tc.machine, tc.config, got, tc.want)
+			}
+		})
+	}
+}
+
+// The notice is only worth its words while the page has somewhere to put them
+// and the settings render fills it. Those two lines are the seam the test
+// above cannot reach without a DOM.
+func TestTheConcurrencyNoticeIsDrawnBesideTheField(t *testing.T) {
+	page, err := assets.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(page), `<p id="concHint"`) {
+		t.Error("the settings page has no concHint line, so the notice has nowhere to appear")
+	}
+	if body := extractFunction(t, readPanelSource(t), "renderSettings"); !strings.Contains(body, "updateConcurrencyNotice();") {
+		t.Errorf("renderSettings never writes the concurrency notice:\n%s", body)
+	}
+}

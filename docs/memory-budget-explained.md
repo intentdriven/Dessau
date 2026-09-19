@@ -70,7 +70,10 @@ tokens can cost more than a whole Mac at that window; served at 32,768 it costs
 a fraction of it, and it is a model this Mac can hold beside another rather
 than one it cannot hold at all. Lowering **Batched requests (decode
 concurrency)** does the same thing, in proportion: each sequence that may run
-at once holds its own cache.
+at once holds its own cache. That one is not immediate — the model servers take
+the concurrency when Gropius starts, so a change to it is charged from the next
+start, and every figure Gropius shows in the meantime is worked out from the
+concurrency in force.
 
 A model whose charge does not fit the budget is refused rather than loaded on a
 smaller figure. The refusal names the window and the concurrency it was charged
