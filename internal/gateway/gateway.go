@@ -22,6 +22,7 @@ import (
 
 	"github.com/intentdriven/Gropius/internal/capability"
 	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Gropius/internal/pairing"
 	"github.com/intentdriven/Gropius/internal/registry"
 	"github.com/intentdriven/Gropius/internal/runtime"
 	"github.com/intentdriven/Gropius/internal/stats"
@@ -130,12 +131,29 @@ func New(opts Options) *Gateway {
 
 // Handler returns the OpenAI-compatible routes.
 func (g *Gateway) Handler() http.Handler {
+	return g.withAuth(g.routes())
+}
+
+// TLSHandler is the same routes for the TLS listener, where a paired client's
+// own key is what admits it and the shared API key is never asked for
+// (adr-2609182357322050, decision 3).
+//
+// Two handlers over one set of routes, and never one handler deciding which
+// rule to apply: the plain port's behaviour is an obligation of that ADR and
+// must not move for an unpaired client, so the plain path is left exactly as it
+// was and the new admission is a wrapper the plain listener never reaches.
+func (g *Gateway) TLSHandler(reg *pairing.Registry) http.Handler {
+	return pairedOnly(reg, g.routes(), g.log)
+}
+
+// routes is the OpenAI-compatible surface, before any admission rule.
+func (g *Gateway) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/models", g.handleListModels)
 	mux.HandleFunc("POST /v1/chat/completions", g.handleCompletions)
 	mux.HandleFunc("POST /v1/completions", g.handleCompletions)
 	mux.HandleFunc("GET /health", g.handleHealth)
-	return g.withAuth(mux)
+	return mux
 }
 
 // withAuth enforces the bearer token when one is configured.

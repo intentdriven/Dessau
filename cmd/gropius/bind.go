@@ -170,6 +170,13 @@ func secureExposedBind(paths config.Paths, cfg *config.Config, lns []net.Listene
 // closeExtra drops every listener but the loopback one, which is always first.
 // Closed rather than merely unreported: an open socket serves whatever the
 // server is mounted on, whatever the plan says about it.
+//
+// The TLS listeners need no equivalent, and the reason is the ORDER rather than
+// an exemption: they are acquired in runServer, from the plan this function has
+// already narrowed, so a lockdown here means the TLS set is loopback before it
+// exists. Acquiring them earlier would put a second socket set behind this
+// rule's back, which is the fail-open the whole of adr-2609091123526871 rule 3
+// exists to prevent.
 func closeExtra(lns []net.Listener) []net.Listener {
 	for _, ln := range lns[1:] {
 		ln.Close()
