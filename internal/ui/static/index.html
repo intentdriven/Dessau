@@ -70,10 +70,12 @@
 <!-- ── Find Models ───────────────────────────────────────── -->
 <section id="tab-search" class="panel">
   <form id="searchForm" class="searchbar">
-    <input id="searchInput" type="search" placeholder="Search MLX models, e.g. qwen3, llama, mistral…" autocomplete="off">
+    <input id="searchInput" type="search" placeholder="Search MLX models, e.g. qwen3 — or type a repository id in full" autocomplete="off">
     <button type="submit">Search</button>
   </form>
-  <p class="hint">Searching the <code>mlx-community</code> organisation. Prefix with <code>author:someone</code> to look elsewhere.</p>
+  <p class="hint">Searching the <code>mlx-community</code> organisation. Type a repository id in full,
+    such as <code>alice/Bonsai-27B-mlx-4bit</code>, to fetch that exact model from any account, or prefix
+    with <code>author:someone</code> to search another account.</p>
   <div id="searchResults"></div>
 </section>
 

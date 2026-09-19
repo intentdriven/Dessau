@@ -34,8 +34,9 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
 
 ## Features
 
-- **Model browser** — search the `mlx-community` org, download with live progress,
-  resume interrupted transfers.
+- **Model browser** — search the `mlx-community` org, or type any repository id
+  in full to reach a model published under another account; download with live
+  progress, resume interrupted transfers.
 - **OpenAI-compatible server** — `/v1/chat/completions`, `/v1/completions`,
   `/v1/models`, streaming included. Drop-in for any OpenAI SDK.
 - **Context window published** — the models list gives each model's maximum

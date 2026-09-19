@@ -31,6 +31,15 @@ GitHub release notes.
 
 ### Fixed
 
+- **A model typed as a full repository id is found, whatever account owns it.**
+  The Find Models search asks the `mlx-community` organisation, so an MLX
+  conversion published under someone else's account was not offered even to a
+  person who knew its name to the letter. A query that is a well-formed
+  repository id is now also looked up exactly on HuggingFace and offered first
+  when the repo is there and is an MLX one; the organisation search still runs
+  alongside it. Both routes out of the default organisation — the typed id and
+  the `author:someone` prefix — are stated in the search box and in
+  [Getting started](docs/getting-started.md).
 - **A measurement no longer gives way to itself.** The idle loop watches the
   pool while a run of its own is in flight and stands aside the moment anyone
   else asks for a model. It counted its own load as somebody else's: the pool
