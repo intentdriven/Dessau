@@ -1241,13 +1241,14 @@ struct ChatDetail: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
             // The form of Messages' composer: a capsule field and a round,
-            // filled send button, both standard controls given standard
-            // shapes (the shapes are the system's, not a drawn background).
+            // filled send button. The button is a standard control given the
+            // system's circle; the capsule is drawn in Composer.swift,
+            // because SwiftUI's bordered capsule leaves its text against the
+            // curve and offers no way to inset it (iss-2609190004092322).
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("Message…", text: $draft, axis: .vertical)
                     .lineLimit(1...8)
-                    .textInputBorderShape(.capsule)
-                    .controlSize(.large)
+                    .composerFieldCapsule()
                     .onSubmit(send)
                     .disabled(!model.canSend)
                     .accessibilityLabel("Message")
@@ -1256,12 +1257,14 @@ struct ChatDetail: View {
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.circle)
                         .controlSize(.large)
+                        .composerButtonCircle()
                         .help("Stop")
                 } else {
                     Button(action: send) { Image(systemName: "arrow.up") }
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.circle)
                         .controlSize(.large)
+                        .composerButtonCircle()
                         .keyboardShortcut(.return, modifiers: .command)
                         .disabled(!model.canSend || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .help("Send")
