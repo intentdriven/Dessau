@@ -40,9 +40,13 @@ Anything holding the shared API key still reaches your server on the ordinary
 port, and pairing does not change that. If the key has been shared more widely
 than you meant, pairing a client does not help — change the key.
 
-**A compromised device is compromised.** A key in a device's keychain is
+**A compromised Mac or device is compromised.** A key in a device's keychain is
 available to whoever controls the device. Pairing says which device is talking,
-never who is holding it.
+never who is holding it. The same holds at the other end: the Mac running your
+server keeps the server's own key, the list of paired clients and the shared
+API key, so anything with control of that Mac reads all three, pairs itself and
+answers in your server's place. Neither end is protected from a machine that is
+already compromised.
 
 **The key is what is trusted, not the certificate.** Your server checks the key
 a client presents against the list on your panel, and looks at nothing else in
