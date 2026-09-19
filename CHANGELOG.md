@@ -11,82 +11,6 @@ GitHub release notes.
 
 ## [Unreleased]
 
-### Fixed
-
-- **The chat client's message field has the proportions Messages and WhatsApp
-  give theirs.** The composer's capsule was 24 points tall with the placeholder
-  almost against its curve. It is now at least 34 points tall with a clear gap
-  before the first glyph, it still grows to eight lines as the message does,
-  and both measurements scale with the text size chosen in Settings, so the
-  field grows with the words instead of the words outgrowing the field. The
-  send button keeps its circle, now matched to the field's height.
-- **A request whose model needs the memory the self-test is holding now takes
-  it, instead of being refused once.** A self-test run held its model the way
-  any request does, so a client whose own load needed that memory was told the
-  machine was full, and only its retry — after the run noticed the refusal and
-  let go — found the room. The run's hold is now a soft one: the pool asks the
-  run to let go, the run does, and the model it was holding is unloaded for the
-  client's. A client's own hold is never soft, a pinned model is never taken,
-  and a run that will not let go costs the client the refusal it would have had
-  anyway.
-- **The chat client's message field shows the focus ring again.** Drawing the
-  composer's capsule cost it the ring a bordered field shows for itself, so the
-  field gave no sign of holding the keyboard. The capsule now draws that
-  indication itself, in the system's own focus colour and at the thickness the
-  system strokes, and it stays hidden wherever the system's focus-effect
-  preference says focus is not to be shown.
-### Changed
-
-- **The chat client is installed by the same swap that installs the server.**
-  `install.sh` no longer puts `GropiusChat.app` in place itself; it hands that
-  to `gropius place`, a verb on the Gropius binary, from the release archive it
-  has just downloaded and verified. Installing the client therefore downloads
-  the server's archive as well, for the binary inside it, and the installer
-  needs Apple Silicon for either app — an Intel Mac is turned away before
-  anything is downloaded, with the manual route named.
-
-### Fixed
-
-- **Replacing the chat client can no longer be raced on a Mac several people
-  share.** The bundle was moved into place with the shell's `mv`, which nests
-  inside a destination that is already a directory and writes through one that
-  is a symbolic link, reporting success in both cases — so an account that can
-  write the applications directory could leave every launcher opening its own
-  bundle instead. The placement is now the staged swap the server's own
-  installer performs: it stages under an unguessable name inside the
-  destination, refuses a destination directory that is a symbolic link,
-  replaces rather than follows a symbolic link at the bundle's own name, never
-  nests inside a bundle that is already there, and keeps the installed copy
-  until the new one is in place.
-- **The installer refuses a release archive that carries a symbolic link.**
-  `install.sh` unpacks the archive it has verified and then executes a binary
-  four path components deep inside it — once for the server, and again for the
-  placer the client half runs. It tested only the last of those four components
-  for a symbolic link, and `ditto` restores a link at any of them, so a link at
-  the bundle, at `Contents` or at `MacOS` would send that execution outside the
-  directory the checksum covers. Both halves now scan the whole unpacked tree
-  before anything is read or run, and refuse the archive over a symbolic link
-  anywhere in it: the bundles this project publishes carry none.
-- **`gropius update` refuses a release whose bundle is a symbolic link.** The
-  verb unpacks the archive it has verified and then runs the staged build's own
-  version verb, to report the version it is installing. The check in front of
-  that execution was made on the bundle itself, which meant every path
-  component inside the bundle was tested but the bundle's own name was
-  followed — so a link there would have run a program outside the directory the
-  checksums cover. The check is now made on the unpacked directory and reaches
-  the bundle through it, so the bundle's name is tested like every component
-  below it, and the refusal comes before anything is run.
-
-- **A statistics file Gropius did not write is left alone.** Every bounded file
-  Gropius keeps on this Mac — its own log, the request statistics store and the
-  self-test's results — is created owner-only, and a file standing under one of
-  those names that any other account could read or write is now refused rather
-  than appended to, the way a link or a named pipe under one of them already
-  was. The reference pages say so.
-- **A self-test run is named as a record kind where the records are described.**
-  The request statistics reference now says that a run is the one record kind
-  Gropius writes outside the statistics folder, why it has a file of its own,
-  and where its fields are written down.
 ### Added
 
 - **Answer Discord direct messages and mentions with a model on this Mac.**
@@ -126,8 +50,79 @@ GitHub release notes.
   ([how to pair a client](docs/pairing.md), [what pairing is
   worth](docs/pairing-explained.md)).
 
+### Changed
+
+- **The chat client is installed by the same swap that installs the server.**
+  `install.sh` no longer puts `GropiusChat.app` in place itself; it hands that
+  to `gropius place`, a verb on the Gropius binary, from the release archive it
+  has just downloaded and verified. Installing the client therefore downloads
+  the server's archive as well, for the binary inside it, and the installer
+  needs Apple Silicon for either app — an Intel Mac is turned away before
+  anything is downloaded, with the manual route named.
+
 ### Fixed
 
+- **The chat client's message field has the proportions Messages and WhatsApp
+  give theirs.** The composer's capsule was 24 points tall with the placeholder
+  almost against its curve. It is now at least 34 points tall with a clear gap
+  before the first glyph, it still grows to eight lines as the message does,
+  and both measurements scale with the text size chosen in Settings, so the
+  field grows with the words instead of the words outgrowing the field. The
+  send button keeps its circle, now matched to the field's height.
+- **A request whose model needs the memory the self-test is holding now takes
+  it, instead of being refused once.** A self-test run held its model the way
+  any request does, so a client whose own load needed that memory was told the
+  machine was full, and only its retry — after the run noticed the refusal and
+  let go — found the room. The run's hold is now a soft one: the pool asks the
+  run to let go, the run does, and the model it was holding is unloaded for the
+  client's. A client's own hold is never soft, a pinned model is never taken,
+  and a run that will not let go costs the client the refusal it would have had
+  anyway.
+- **The chat client's message field shows the focus ring again.** Drawing the
+  composer's capsule cost it the ring a bordered field shows for itself, so the
+  field gave no sign of holding the keyboard. The capsule now draws that
+  indication itself, in the system's own focus colour and at the thickness the
+  system strokes, and it stays hidden wherever the system's focus-effect
+  preference says focus is not to be shown.
+- **Replacing the chat client can no longer be raced on a Mac several people
+  share.** The bundle was moved into place with the shell's `mv`, which nests
+  inside a destination that is already a directory and writes through one that
+  is a symbolic link, reporting success in both cases — so an account that can
+  write the applications directory could leave every launcher opening its own
+  bundle instead. The placement is now the staged swap the server's own
+  installer performs: it stages under an unguessable name inside the
+  destination, refuses a destination directory that is a symbolic link,
+  replaces rather than follows a symbolic link at the bundle's own name, never
+  nests inside a bundle that is already there, and keeps the installed copy
+  until the new one is in place.
+- **The installer refuses a release archive that carries a symbolic link.**
+  `install.sh` unpacks the archive it has verified and then executes a binary
+  four path components deep inside it — once for the server, and again for the
+  placer the client half runs. It tested only the last of those four components
+  for a symbolic link, and `ditto` restores a link at any of them, so a link at
+  the bundle, at `Contents` or at `MacOS` would send that execution outside the
+  directory the checksum covers. Both halves now scan the whole unpacked tree
+  before anything is read or run, and refuse the archive over a symbolic link
+  anywhere in it: the bundles this project publishes carry none.
+- **`gropius update` refuses a release whose bundle is a symbolic link.** The
+  verb unpacks the archive it has verified and then runs the staged build's own
+  version verb, to report the version it is installing. The check in front of
+  that execution was made on the bundle itself, which meant every path
+  component inside the bundle was tested but the bundle's own name was
+  followed — so a link there would have run a program outside the directory the
+  checksums cover. The check is now made on the unpacked directory and reaches
+  the bundle through it, so the bundle's name is tested like every component
+  below it, and the refusal comes before anything is run.
+- **A statistics file Gropius did not write is left alone.** Every bounded file
+  Gropius keeps on this Mac — its own log, the request statistics store and the
+  self-test's results — is created owner-only, and a file standing under one of
+  those names that any other account could read or write is now refused rather
+  than appended to, the way a link or a named pipe under one of them already
+  was. The reference pages say so.
+- **A self-test run is named as a record kind where the records are described.**
+  The request statistics reference now says that a run is the one record kind
+  Gropius writes outside the statistics folder, why it has a file of its own,
+  and where its fields are written down.
 - **The chat client counts the message you just typed against the device's own
   model's context window.** The trim shared the window out between the client's
   instructions and the conversation so far, and then sent the new message on
@@ -195,7 +190,10 @@ GitHub release notes.
 - **The chat client's messages name the device you are holding.** The
   built-in model's error sentences spelled the Mac out whatever they were
   running on, so the iPad build named a device that was not there; they now
-  use the same device noun as the rest of the client.
+  use the same device noun as the rest of the client, as does the model
+  picker's filter help — the promise that the device's own model is always
+  offered. The server's address help still says Mac, because the machine at
+  that address is one.
 - **The chat client's bubble colours follow the appearance.** The model's
   bubble defaulted to a grey that is the same in Light and in Dark, and a
   colour chosen in Settings was drawn as the one value it was stored as, so a
@@ -206,10 +204,6 @@ GitHub release notes.
   from the window it sits on when it would otherwise be lost in it; and the
   message on a bubble is the system's label colour, read in the appearance
   the bubble it sits on reads as, rather than a fixed white.
-  use the same device noun as the rest of the client, as does the model
-  picker's filter help — the promise that the device's own model is always
-  offered. The server's address help still says Mac, because the machine at
-  that address is one.
 - **What HuggingFace says about a model is believed only when HuggingFace said
   it.** Looking a repository up followed a redirect to any host, so another
   server could answer in the Hub's place and have its answer read as fact about
