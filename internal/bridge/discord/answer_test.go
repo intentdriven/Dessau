@@ -26,6 +26,35 @@ func connected(t *testing.T, f *fakeDiscord, b *Bridge) {
 	f.drainCalls()
 }
 
+// answered waits for a message to be answered AND for the answer to be
+// finished with.
+//
+// Waiting on the POST alone is not enough, and the trap is a real one: the
+// placeholder is posted from inside the streaming callback, while the
+// channel's answering lock is still held, so a test that sent its next message
+// then would be met with "I am still answering your last message here" — which
+// is a POST to the same path, and would satisfy the next wait as though it
+// were an answer (iss-2609190312182409). The lock is what says the answer is
+// over, so the lock is what is waited on.
+func answered(t *testing.T, f *fakeDiscord, b *Bridge) restCall {
+	t.Helper()
+	call := f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	if got, _ := call.Body["content"].(string); got == stillAnswering {
+		t.Fatalf("the bot replied %q: the channel was still answering the message before this one", got)
+	}
+	conv := b.conversations().get(channelID)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if conv.answering.TryLock() {
+			conv.answering.Unlock()
+			return call
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("the channel was still answering five seconds after it posted")
+	return call
+}
+
 // A direct message is answered, and the answer is the model's text.
 func TestADirectMessageIsAnswered(t *testing.T) {
 	f := newFakeDiscord(t)
@@ -309,7 +338,7 @@ func TestAModelPickedWithTheCommandAnswersTheNextMessage(t *testing.T) {
 	}
 
 	f.message("what do you think", false, false)
-	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	answered(t, f, b)
 	got := asked()
 	if len(got) != 1 {
 		t.Fatalf("the gateway was asked %d times, want once", len(got))
@@ -324,7 +353,7 @@ func TestAModelPickedWithTheCommandAnswersTheNextMessage(t *testing.T) {
 	f.waitCall(http.MethodPost, "/interactions/")
 	f.drainCalls()
 	f.message("and now", false, false)
-	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	answered(t, f, b)
 	got = asked()
 	if len(got) != 2 {
 		t.Fatalf("the gateway was asked %d times, want twice", len(got))

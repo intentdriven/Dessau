@@ -383,7 +383,7 @@ func TestAChannelKeepsItsConversationAndModelAcrossAReconnect(t *testing.T) {
 	f.command(commandModel, map[string]string{"name": secondModel})
 	f.waitCall(http.MethodPost, "/interactions/")
 	f.message("first question", false, false)
-	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	answered(t, f, b)
 
 	// The socket drops and the session is resumed, which is the sleeping
 	// Mac's own path.
@@ -393,7 +393,7 @@ func TestAChannelKeepsItsConversationAndModelAcrossAReconnect(t *testing.T) {
 	f.drainCalls()
 
 	f.message("second question", false, false)
-	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	answered(t, f, b)
 
 	got := asked()
 	if len(got) != 2 {
@@ -422,7 +422,7 @@ func TestStoppingTheBridgeForgetsEveryChannelsConversation(t *testing.T) {
 	f.command(commandModel, map[string]string{"name": secondModel})
 	f.waitCall(http.MethodPost, "/interactions/")
 	f.message("first question", false, false)
-	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	answered(t, f, b)
 
 	b.Apply(false, "")
 	if state, _, _ := b.State(); state != StateOff {
@@ -431,7 +431,7 @@ func TestStoppingTheBridgeForgetsEveryChannelsConversation(t *testing.T) {
 	connected(t, f, b)
 
 	f.message("after the restart", false, false)
-	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	answered(t, f, b)
 
 	got := asked()
 	if len(got) != 2 {
