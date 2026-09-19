@@ -11,6 +11,17 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The pinned-models figure is worked out from the batching Gropius is
+  actually running with.** Batched requests (decode concurrency) reaches the
+  model servers only when Gropius starts, and the control panel was charging
+  pinned models at the figure last saved — so between saving a new one and
+  restarting, the panel showed a memory figure the server itself did not agree
+  with, and a set it said would fit could be refused on save. The panel now
+  reads the concurrency in force, and says under the field when the saved
+  figure is waiting for the next start.
+
 ## [0.7.1] - 2026-09-18
 
 ### Fixed

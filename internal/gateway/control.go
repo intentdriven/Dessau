@@ -357,6 +357,18 @@ type Machine struct {
 	// Budget is the ceiling on the total charged size of resident models, as
 	// the pool is enforcing it.
 	Budget int64 `json:"budget"`
+	// DecodeConcurrency is how many requests one model server may decode at
+	// once, as the pool is running with it. It sits beside Budget because it is
+	// the same kind of figure: both are pool options, read once when the pool
+	// is built, so a change to either only reaches the pool at a restart. It is
+	// published because the charge a model costs the budget is worked out once
+	// per sequence, so a reader that took the concurrency from
+	// config.decode_concurrency — the saved value — would do its fit arithmetic
+	// on a figure the pool does not agree with for as long as a save is waiting
+	// for that restart (iss-2609190021445846). The saved value stays on Config,
+	// where the settings form reads it: the two are different facts and the
+	// panel needs both.
+	DecodeConcurrency int `json:"decode_concurrency"`
 	// DefaultBudget is the share of this Mac's memory a budget of none would
 	// give. The panel needs it to say what clearing the field would do, which
 	// is a question only this Mac can answer.
@@ -426,15 +438,19 @@ func (c *Control) snapshot() State {
 	exiting, stuck := residency.ExitingBytes, residency.StuckServers
 	resident := residentCharge(st.Resident) + exiting
 	st.Machine = Machine{
-		TotalRAM:        c.App.MachineRAM(),
-		Budget:          budget,
-		DefaultBudget:   capability.DefaultBudget(c.App.MachineRAM()),
-		BudgetIsDefault: cfg.MaxResidentBytes == 0,
-		WarnAbove:       c.App.BudgetWarnAbove(),
-		ResidentBytes:   resident,
-		ExitingBytes:    exiting,
-		StuckServers:    stuck,
-		OverBudget:      resident > budget,
+		TotalRAM: c.App.MachineRAM(),
+		Budget:   budget,
+		// Asked of the pool, like the budget above it, and for the same
+		// reason: both are read once when the pool is built, and the saved
+		// figure on Config is the one that has not arrived yet.
+		DecodeConcurrency: c.App.Pool.DecodeConcurrency(),
+		DefaultBudget:     capability.DefaultBudget(c.App.MachineRAM()),
+		BudgetIsDefault:   cfg.MaxResidentBytes == 0,
+		WarnAbove:         c.App.BudgetWarnAbove(),
+		ResidentBytes:     resident,
+		ExitingBytes:      exiting,
+		StuckServers:      stuck,
+		OverBudget:        resident > budget,
 	}
 	if stuck > 0 {
 		st.Warnings = append(st.Warnings, fmt.Sprintf(
