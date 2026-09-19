@@ -22,6 +22,27 @@ GitHub release notes.
   send button keeps its circle, now matched to the field's height.
 ### Changed
 
+- **The chat client is installed by the same swap that installs the server.**
+  `install.sh` no longer puts `GropiusChat.app` in place itself; it hands that
+  to `gropius place`, a verb on the Gropius binary, from the release archive it
+  has just downloaded and verified. Installing the client therefore downloads
+  the server's archive as well, for the binary inside it, and the installer
+  needs Apple Silicon for either app — an Intel Mac is turned away before
+  anything is downloaded, with the manual route named.
+
+### Fixed
+
+- **Replacing the chat client can no longer be raced on a Mac several people
+  share.** The bundle was moved into place with the shell's `mv`, which nests
+  inside a destination that is already a directory and writes through one that
+  is a symbolic link, reporting success in both cases — so an account that can
+  write the applications directory could leave every launcher opening its own
+  bundle instead. The placement is now the staged swap the server's own
+  installer performs: it stages under an unguessable name inside the
+  destination, refuses a destination directory that is a symbolic link,
+  replaces rather than follows a symbolic link at the bundle's own name, never
+  nests inside a bundle that is already there, and keeps the installed copy
+  until the new one is in place.
 - **A statistics file Gropius did not write is left alone.** Every bounded file
   Gropius keeps on this Mac — its own log, the request statistics store and the
   self-test's results — is created owner-only, and a file standing under one of

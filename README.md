@@ -173,7 +173,10 @@ which is every Mac that runs macOS 27. It chats with the Mac's own model out
 of the box and offers a Gropius server's models when it finds one on the
 network. A Mac on macOS 26 gets the last client built for it, from release
 v0.6.0, which stays published beside the current release for that purpose and
-is not updated; the same command picks the right one:
+is not updated; the same command picks the right one. The installer needs Apple
+Silicon for either app: both bundles are put in place by a Gropius binary,
+because a shell cannot replace an application directory safely, so installing
+the client downloads the server's archive too for the binary inside it.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash -s -- client

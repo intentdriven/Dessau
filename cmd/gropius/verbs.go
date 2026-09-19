@@ -18,6 +18,7 @@ var lifecycleVerbs = map[string]func(lifecycle.Env, []string) int{
 	"doctor":    lifecycle.RunDoctor,
 	"config":    lifecycle.RunConfig,
 	"install":   lifecycle.RunInstall,
+	"place":     lifecycle.RunPlace,
 	"uninstall": lifecycle.RunUninstall,
 	"update":    lifecycle.RunUpdate,
 }
