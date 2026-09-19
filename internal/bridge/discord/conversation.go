@@ -25,6 +25,23 @@ const maxTurns = 64
 // trusted to be whatever the platform currently allows.
 const maxMessageRunes = 8000
 
+// WHAT THE THREE BOUNDS ABOVE COST, SAID OUT LOUD (iss-2609190312188937).
+//
+// 256 channels × 64 turns × 8,000 runes is 131 million runes, and a rune is up
+// to four UTF-8 bytes: the ceiling is half a gibibyte of text, held for as
+// long as the bridge is on rather than until the next dropped socket, which is
+// what iss-2609190241509478 changed. It is a stranger's to drive — anyone who
+// can reach the bot may talk to it, a turn is stored before the completion is
+// asked for, so a refused request stores it too, and one guild with 256
+// channels and a mention in each reaches the bound without a model ever
+// answering. Ordinary text is one byte a rune, which puts the realistic
+// figure at 128 MiB.
+//
+// Held here as a figure rather than a change: lowering the channel count or
+// bounding the turn in bytes instead of runes are both product decisions
+// (the second falls hardest on scripts where a rune is three bytes), and the
+// record is the maintainer's to take.
+
 // turn is one side of a conversation.
 type turn struct {
 	Role    string `json:"role"`
