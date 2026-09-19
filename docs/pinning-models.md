@@ -59,6 +59,13 @@ models you have ticked. A model that is still downloading is charged the size
 it declares, so pinning one before it lands is measured on the same terms as
 pinning one already on disk.
 
+The concurrency in that sum is the one Gropius is running with, not the one in
+**Settings → Batched requests**. The two are the same figure until you change
+it: a saved concurrency reaches the model servers at the next start, and a line
+under the field says so while they differ. The figure beside the boxes follows
+the concurrency in force, because that is the one the memory check on save
+applies too.
+
 Pin close to the whole budget and Gropius has nothing left to serve anything
 else with: every request for an unpinned model is refused rather than served by
 a swap. Ticking a box that takes the set past the budget is refused when you
