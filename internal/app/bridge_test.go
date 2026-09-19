@@ -38,6 +38,14 @@ func (f *fakeBridge) Apply(on bool, token string) {
 	}
 }
 
+// reconnecting is the state a bridge is in between a dropped session and the
+// next attempt: not connected, and still knowing when it last was.
+func (f *fakeBridge) reconnecting() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.state, f.reason = "connecting", ""
+}
+
 func (f *fakeBridge) State() (string, time.Time, string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -131,6 +139,26 @@ func TestTheBridgesStateReachesTheSnapshot(t *testing.T) {
 	got = a.BridgeState()
 	if got.State != "stopped" || got.Reason == "" {
 		t.Errorf("state = %+v, want stopped with a reason", got)
+	}
+}
+
+// The moment the bridge last connected reaches the snapshot while it is NOT
+// connected, which is the only path the criterion it answers is about: a
+// session drops, the bridge re-opens it by itself, and the panel says when it
+// last worked (iss-2609190242334438).
+func TestTheLastConnectedMomentReachesTheSnapshotWhileReconnecting(t *testing.T) {
+	a := newBridgeTestApp(t, config.Default())
+	fake := &fakeBridge{}
+	a.SetBridge(fake)
+	fake.Apply(true, "a-token")
+
+	fake.reconnecting()
+	got := a.BridgeState()
+	if got.State != "connecting" {
+		t.Fatalf("state = %q, want connecting", got.State)
+	}
+	if got.Since != 1_700_000_000 {
+		t.Errorf("since = %d, want the moment the bridge last connected", got.Since)
 	}
 }
 

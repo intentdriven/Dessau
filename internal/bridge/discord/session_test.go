@@ -445,3 +445,44 @@ func TestStoppingTheBridgeForgetsEveryChannelsConversation(t *testing.T) {
 		t.Errorf("after a stop and a start the request carried %v, want the new message alone", got[1].Messages)
 	}
 }
+
+// A socket that drops says so on the panel, and keeps the moment it last
+// connected.
+//
+// The eleventh acceptance criterion of itd-2609180959397172 is that a dropped
+// session resumes by itself and the panel shows when it last connected. The
+// state only moved to connecting when the next attempt was made, which is up
+// to half a minute of backoff later — so for that whole window the panel went
+// on reading "connected since" for a session that was gone
+// (iss-2609190242334438).
+func TestADroppedSessionSaysSoAtOnceAndKeepsTheLastConnectedMoment(t *testing.T) {
+	f := newFakeDiscord(t)
+	b := answering(t, f)
+	connected(t, f, b)
+	_, connectedAt, _ := b.State()
+	if connectedAt.IsZero() {
+		t.Fatal("a connected bridge reported no moment it connected at")
+	}
+
+	f.drop()
+
+	// Well inside the shortest backoff: the panel is told the session is gone
+	// when it goes, not when the next attempt is made.
+	var state string
+	var since time.Time
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		state, since, _ = b.State()
+		if state == StateConnecting {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if state != StateConnecting {
+		t.Fatalf("a second after the socket dropped the panel still reads %q", state)
+	}
+	if !since.Equal(connectedAt) {
+		t.Errorf("while reconnecting the bridge reports %v as its last connection, want the moment it did connect (%v)",
+			since, connectedAt)
+	}
+}

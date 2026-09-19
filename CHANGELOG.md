@@ -269,6 +269,13 @@ GitHub release notes.
   rather than to the connection, so it survives a reconnection and still goes —
   as it always has, and still without ever reaching disk — when the bridge is
   switched off.
+- **The panel says when the Discord bridge last connected, and says at once
+  when it drops.** A dropped session left the card reading "connected since"
+  for as long as the wait before the next attempt — up to half a minute — and
+  then dropped the moment from the card altogether while it re-opened. The
+  bridge now reports a lost session the moment it is lost, and the card reads
+  "last connected at …" whenever the bridge is not connected, which is the one
+  time a person is asking.
 
 ## [0.7.1] - 2026-09-18
 

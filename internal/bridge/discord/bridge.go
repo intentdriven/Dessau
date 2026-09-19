@@ -116,11 +116,15 @@ type Bridge struct {
 	// running describes the session the goroutine below is running, so Apply
 	// can tell "already running under these settings" from "running under
 	// different ones".
-	on      bool
-	token   string
-	cancel  context.CancelFunc
-	done    chan struct{}
-	state   string
+	on     bool
+	token  string
+	cancel context.CancelFunc
+	done   chan struct{}
+	state  string
+	// since is the moment the bridge last connected. It is kept while the
+	// session is being re-opened, so the panel can say when it last connected
+	// rather than losing the fact on exactly the path the criterion is about,
+	// and it goes when the switch goes off.
 	since   time.Time
 	reason  string
 	closing bool
@@ -263,8 +267,9 @@ func (b *Bridge) stopLocked() {
 	b.mu.Lock()
 }
 
-// State reports what the bridge is doing: one of the four words above, when
-// the live session was established, and the reason it stopped.
+// State reports what the bridge is doing: one of the four words above, when it
+// last connected — the live session's moment while it is connected, and the
+// previous one while it is not — and the reason it stopped.
 //
 // It is three plain values rather than a struct so that nothing outside this
 // package has to import it to ask. internal/app renders them onto the snapshot
@@ -304,6 +309,10 @@ func (b *Bridge) setStateLocked(state, reason string) {
 		b.since = b.now()
 		return
 	}
+	// Connecting and stopped KEEP it: it is the last-connected moment, and a
+	// bridge that has dropped is the one case where a person wants it. Only
+	// the switch going off clears it, because then there is no bridge to have
+	// last connected.
 	if state == StateOff {
 		b.since = time.Time{}
 	}
@@ -358,6 +367,12 @@ func (b *Bridge) run(ctx context.Context, token string) {
 			b.log.Debug("the Discord bridge lost its session and will reconnect",
 				"err", out.err, "in", backoff)
 		}
+		// Said when the session goes, not when the next attempt is made: the
+		// wait below is up to half a minute, and for the whole of it the
+		// panel would otherwise go on reading "connected since" for a session
+		// that is gone (iss-2609190242334438). The moment it last connected
+		// is kept, which is what the panel shows while it reconnects.
+		b.setState(StateConnecting, "")
 		select {
 		case <-ctx.Done():
 			return

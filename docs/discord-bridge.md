@@ -51,7 +51,9 @@ bot works without any server at all.
 3. Turn the switch on and save.
 
 Under the switch the panel says what the bridge is doing: off, connecting,
-connected since a moment, or stopped with the reason. A token Discord refuses
+connected since a moment, or stopped with the reason. Whenever the bridge is
+not connected it also says when it last was, so a session re-opening after the
+Mac wakes shows the moment the bot was last on Discord. A token Discord refuses
 stops the bridge and says so there; it never refuses a save, so you can change
 any other setting while the bridge is unhappy.
 
