@@ -201,16 +201,30 @@ func TestChatClientSidebarShowsCards(t *testing.T) {
 			t.Errorf("ConversationCard does not draw %s; its body carries no %q", want.promise, want.fragment)
 		}
 	}
-	// The date is the one the conversation started, drawn as a day, a month
-	// and a year. Matching `createdAt` against the whole file would pass on
-	// the model's own field while the card drew some other date, or none.
-	if !regexp.MustCompile(`Text\(conversation\.createdAt, format: \.dateTime\.day\(\)\.month\(\)\.year\(\)\)`).MatchString(card) {
-		t.Error("ConversationCard does not draw conversation.createdAt as a day, month and year; the date a row shows is the date its chat started")
+	// The date is the one the conversation started, drawn in the system's own
+	// short date style rather than in a field order of the client's choosing
+	// (iss-2609181213194439). Matching `createdAt` against the whole file
+	// would pass on the model's own field while the card drew some other
+	// date, or none.
+	if !regexp.MustCompile(`conversation\.createdAt\.formatted\(date: \.numeric, time: \.omitted\)`).MatchString(card) {
+		t.Error("ConversationCard does not draw conversation.createdAt in the system's short date style; " +
+			"a day, month and year field list is the client ordering the date itself (iss-2609181213194439)")
 	}
 	for _, want := range []string{"exchange", "word"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("ConversationCard's summary counts no %ss", want)
 		}
+	}
+	// An exchange is a person's message and the reply that answers it, so the
+	// card counts PAIRS, through the helper the arithmetic check exercises.
+	// Counting the replies alone is the proxy that was wrong.
+	if !strings.Contains(card, "exchangeCount(fromPerson:") {
+		t.Error("ConversationCard does not count its exchanges with exchangeCount(fromPerson:); " +
+			"the pair count is arithmetic that nothing else here checks (iss-2609181213194439)")
+	}
+	if strings.Contains(card, "role == .assistant }.count") {
+		t.Error("ConversationCard counts the assistant's replies as its exchanges; an exchange is a " +
+			"person's message and the reply that answers it (iss-2609181213194439)")
 	}
 }
 

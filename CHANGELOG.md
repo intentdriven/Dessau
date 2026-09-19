@@ -49,6 +49,13 @@ GitHub release notes.
   given way, and the same mistake cut short the concurrent test of a run that
   got past the load. The loop now claims its place before it asks for it, so a
   measurement gives way to a real request and to nothing else.
+- **A chat client's sidebar card shows the date the way the Mac does, and
+  counts exchanges as exchanges.** The card drew the date it started as its own
+  day, month and year rather than in the system's short date style, and it
+  called each of the model's replies an exchange — so a message still waiting
+  for its answer, or a reply that arrived in two parts, made the count read
+  wrong. An exchange is a person's message and the reply that answers it, and
+  that is what the card now counts. `impact: fix`
 
 ## [0.7.1] - 2026-09-18
 
