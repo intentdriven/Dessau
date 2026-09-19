@@ -1376,7 +1376,9 @@ struct MessageRow: View {
 
     /// A click anywhere in the row, and anywhere in the expanded thinking,
     /// toggles it — not only the disclosure triangle — so the thinking can be
-    /// hidden while it is being read. Dragging still selects the text.
+    /// hidden while it is being read. Selection is per block: each block the
+    /// thinking is drawn as carries its own textSelection, and the row carries
+    /// none, so a drag selects within one block and does not run across two.
     @ViewBuilder private var reasoningDisclosure: some View {
         DisclosureGroup(isExpanded: $showReasoning) {
             blockViews(reasoningBlocks, animate: false)
