@@ -73,10 +73,19 @@ type Options struct {
 	// real one.
 	APIBase string
 	// HTTPClient is used for both the WebSocket handshake and the REST calls.
-	// Empty means a client of this package's own, which verifies TLS the way
-	// Go verifies it everywhere: nothing here relaxes certificate checking,
-	// and the one place that could — a transport handed in — is the caller's
-	// own and is never built with InsecureSkipVerify by anything in this tree.
+	//
+	// Empty means a client of this package's own, with no transport of its
+	// own — so the handshake is verified the way Go verifies every handshake,
+	// and nothing in this package can arrange otherwise. That is what
+	// TestTheBridgeNeverWeakensTheOutboundHandshake holds: this is the one
+	// place in the product that dials out holding a bearer credential, and the
+	// handshake is the whole of what stands between the token and anyone on
+	// the path.
+	//
+	// The Timeout on the default client bounds the handshake only. The
+	// WebSocket library moves it onto the dial's context and hands the
+	// connection a client with none, so a live session is not cut off after
+	// it; the REST calls bound themselves with a context apiece.
 	HTTPClient *http.Client
 	// Now is the clock. Tests move it rather than sleeping.
 	Now func() time.Time

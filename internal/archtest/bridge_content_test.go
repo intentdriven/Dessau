@@ -254,3 +254,34 @@ func bridgeSourceFiles(t *testing.T) []string {
 	}
 	return out
 }
+
+// The bridge's outbound connection verifies the other end, and nothing in the
+// package may arrange otherwise.
+//
+// It is the one place in this product that dials out to somebody else's
+// servers holding a bearer credential, so the handshake is the whole of what
+// stands between the token and anyone on the path. Go verifies by default and
+// the bridge asks for no transport of its own; this is what notices the day
+// somebody adds one "to make a test work".
+func TestTheBridgeNeverWeakensTheOutboundHandshake(t *testing.T) {
+	for _, path := range bridgeSourceFiles(t) {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(b)
+		for _, weakening := range []string{"InsecureSkipVerify", "TLSClientConfig", "MinVersion"} {
+			if strings.Contains(src, weakening) {
+				t.Errorf("%s names %s. The bridge dials out holding a bearer credential and the "+
+					"handshake is what protects it; nothing here may configure the transport "+
+					"(adr-2609181004167097 condition 3)", filepath.Base(path), weakening)
+			}
+		}
+		// And it never builds a URL that would carry the connection off TLS.
+		// The one ws:// spelling the package holds is the test seam in
+		// resumeURL, which refuses to downgrade a wss session.
+		if strings.Contains(src, `"http://`) {
+			t.Errorf("%s builds a plaintext URL", filepath.Base(path))
+		}
+	}
+}
