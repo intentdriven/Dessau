@@ -190,6 +190,30 @@ func TestChatClientThoughtsRenderMarkdown(t *testing.T) {
 	}
 }
 
+// TestChatClientThoughtsShareTheReplyScheduler holds iss-2609181213199302:
+// the Thoughts row is parsed by the reply's own parse-and-throttle scheduler,
+// not by a twin of it. One scheduler is declared, one throttle window is
+// computed, and both the reply and the Thoughts row call that scheduler — so
+// a change to the throttle cannot apply to one of them and miss the other.
+func TestChatClientThoughtsShareTheReplyScheduler(t *testing.T) {
+	root := repoRootDir(t)
+	src := clientSources(t, root)["GropiusChat.swift"]
+	if n := strings.Count(src, "private func schedule"); n != 1 {
+		t.Errorf("client/GropiusChat/GropiusChat.swift declares %d parse schedulers; the reply and the Thoughts row share one", n)
+	}
+	throttle := regexp.MustCompile(`let wait = [0-9.]+ - Date\(\)\.timeIntervalSince\(`)
+	if n := len(throttle.FindAllString(src, -1)); n != 1 {
+		t.Errorf("%d throttle windows are computed; the reply and the Thoughts row are throttled by one", n)
+	}
+	reply := swiftBlock(t, src, "private var reply: some View {")
+	thoughts := swiftBlock(t, src, "private var reasoningDisclosure: some View {")
+	for _, block := range []struct{ name, src string }{{"reply", reply}, {"Thoughts row", thoughts}} {
+		if !strings.Contains(block.src, "scheduleParse()") {
+			t.Errorf("the %s does not call scheduleParse(); it parses on some path of its own", block.name)
+		}
+	}
+}
+
 // TestChatClientSidebarShowsCards holds itd-2609181104490133: each row is a
 // card with an icon, the title, the date and a summary of exchanges and
 // words, and the list takes the sidebar style so the selection is the
