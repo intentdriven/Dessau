@@ -23,8 +23,35 @@ GitHub release notes.
   The request statistics reference now says that a run is the one record kind
   Gropius writes outside the statistics folder, why it has a file of its own,
   and where its fields are written down.
+### Added
+
+- **A chat client pairs with the server once, and from then on proves itself
+  with a key of its own.** The client makes a keypair on the device it is on,
+  the server signs it a certificate, and paired requests travel over a second
+  port with that key instead of the shared API key, which a paired client is
+  never asked for. The control panel gains a **Clients** pane listing every
+  paired client with the name it chose, its key fingerprint, when it paired and
+  when it was last heard from, and a button to revoke it — enforced on that
+  client's next request, including on a connection it already had open. The
+  server's own fingerprint is shown on that pane and travels in the Bonjour
+  announcement, so it can be compared against what a client shows: anything on
+  the network can pair with a Gropius server, and reading the list is how an
+  operator finds out that something did. Unpaired OpenAI clients keep the
+  ordinary port and the shared key, unchanged. `impact: additive`
+  ([how to pair a client](docs/pairing.md), [what pairing is
+  worth](docs/pairing-explained.md)).
+
 ### Fixed
 
+- **A model typed as a full repository id is found, whatever account owns it.**
+  The Find Models search asks the `mlx-community` organisation, so an MLX
+  conversion published under someone else's account was not offered even to a
+  person who knew its name to the letter. A query that is a well-formed
+  repository id is now also looked up exactly on HuggingFace and offered first
+  when the repo is there and is an MLX one; the organisation search still runs
+  alongside it. Both routes out of the default organisation — the typed id and
+  the `author:someone` prefix — are stated in the search box and in
+  [Getting started](docs/getting-started.md).
 - **A measurement no longer gives way to itself.** The idle loop watches the
   pool while a run of its own is in flight and stands aside the moment anyone
   else asks for a model. It counted its own load as somebody else's: the pool
