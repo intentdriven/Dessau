@@ -112,6 +112,16 @@ func (e *editor) write(ctx context.Context, force bool) bool {
 	if e.messageID == "" {
 		var msg message
 		msg, limit, err = e.rest.createMessage(ctx, e.channelID, e.pending, e.replyTo)
+		if err == nil && !validID(msg.ID) {
+			// The id of the message to edit comes back over the network and
+			// goes straight into the next call's path (iss-2609190057562775).
+			// Without one there is nothing to edit; the answer continues in
+			// new messages rather than editing something that is not a
+			// message.
+			e.messageID, e.sent = "", ""
+			e.nextEdit = e.now().Add(minEditInterval)
+			return true
+		}
 		if err == nil {
 			e.messageID = msg.ID
 			// Only the first message of an answer is a reply; the rest

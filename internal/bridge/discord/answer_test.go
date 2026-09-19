@@ -342,3 +342,62 @@ func (b *lockedBuffer) String() string {
 	defer b.mu.Unlock()
 	return b.buf.String()
 }
+
+// One busy channel does not stop every other conversation.
+//
+// A generation runs for minutes and there are a small, fixed number of
+// workers, so a second message in a channel that is already being answered
+// must be recognised rather than waited on: anyone who can reach the bot may
+// talk to it, and waiting would let one person stop the bot answering anybody
+// by pressing send twice (iss-2609190058038096).
+func TestABusyChannelDoesNotStopEveryOtherConversation(t *testing.T) {
+	f := newFakeDiscord(t)
+	opts := f.options(time.Now)
+	hold := make(chan struct{})
+	var held sync.Once
+	opts.Ask = func(ctx context.Context, req gateway.AskRequest) error {
+		// The first answer blocks; every later one returns at once.
+		first := false
+		held.Do(func() { first = true })
+		if first {
+			<-hold
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"choices": []any{map[string]any{"delta": map[string]any{"content": "an answer"}}},
+		})
+		req.OnEvent(payload)
+		return nil
+	}
+	b := New(opts)
+	t.Cleanup(func() { _ = b.Close() })
+	connected(t, f, b)
+
+	// One long answer in flight in this channel.
+	f.message("the first question", false, false)
+	f.waitCall(http.MethodPost, "/typing")
+
+	// More messages than there are workers, into the same channel. Each must
+	// be answered and release its worker rather than parking on the lock.
+	for range answerWorkers + 2 {
+		f.message("and another", false, false)
+	}
+	for range answerWorkers + 2 {
+		call := f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+		if got, _ := call.Body["content"].(string); got != stillAnswering {
+			t.Fatalf("a second message in a busy channel was answered with %q, want the busy reply", got)
+		}
+	}
+
+	// And a different channel is still answered while the first is busy,
+	// which is the property that actually matters.
+	f.dispatch("MESSAGE_CREATE", map[string]any{
+		"id": "900000000000000009", "channel_id": "666666666666666666",
+		"content": "hello from somewhere else", "type": 0,
+		"author": map[string]any{"id": humanID, "bot": false},
+	})
+	call := f.waitCall(http.MethodPost, "/channels/666666666666666666/messages")
+	if got, _ := call.Body["content"].(string); got != "an answer" {
+		t.Errorf("another channel was answered with %q while one channel was busy", got)
+	}
+	close(hold)
+}

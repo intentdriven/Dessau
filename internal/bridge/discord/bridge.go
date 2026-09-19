@@ -93,6 +93,14 @@ type Bridge struct {
 	log  *slog.Logger
 	now  func() time.Time
 
+	// applyMu serialises whole applications of the settings. mu guards the
+	// values; this guards the sequence — stop the running session, wait for
+	// it, start the next — which is not one step and must not interleave with
+	// another Apply's, or a save and a shutdown racing would leave a session
+	// running that nothing holds a handle to. It is taken before mu and
+	// nothing taken under mu takes it, so it adds no order to anything else.
+	applyMu sync.Mutex
+
 	mu sync.Mutex
 	// running describes the session the goroutine below is running, so Apply
 	// can tell "already running under these settings" from "running under
@@ -152,6 +160,8 @@ func New(opts Options) *Bridge {
 // bridge changes. A save that did not touch either setting is a no-op, which
 // is what keeps an unrelated save from dropping a live session.
 func (b *Bridge) Apply(on bool, token string) {
+	b.applyMu.Lock()
+	defer b.applyMu.Unlock()
 	b.mu.Lock()
 	if b.closing {
 		b.mu.Unlock()
@@ -194,6 +204,8 @@ func (b *Bridge) Apply(on bool, token string) {
 
 // Close stops the bridge for good and waits for its goroutine.
 func (b *Bridge) Close() error {
+	b.applyMu.Lock()
+	defer b.applyMu.Unlock()
 	b.mu.Lock()
 	b.closing = true
 	b.stopLocked()

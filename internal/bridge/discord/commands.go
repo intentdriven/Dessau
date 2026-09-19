@@ -49,6 +49,16 @@ func commandDefinitions() []any {
 // could not be registered is a thing the operator can see in the log rather
 // than a reason to refuse the whole bridge.
 func (s *session) registerCommands(ctx context.Context) {
+	// The application id came off the READY payload, which arrived over the
+	// network. Everything this bridge puts in a URL is a snowflake or it is
+	// nothing: an id of "../../channels/X" would make an authenticated call,
+	// as the bot, against an endpoint nothing here meant to reach
+	// (iss-2609190057562775).
+	if !validID(s.appID) {
+		s.bridge.log.Info("the gateway named an application id that is not a number; no slash commands were registered",
+			"bridge", bridgeName)
+		return
+	}
 	if err := s.rest.overwriteCommands(ctx, s.appID, commandDefinitions()); err != nil {
 		s.bridge.log.Info("could not register the bridge's slash commands",
 			"bridge", bridgeName, "err", err)
@@ -86,7 +96,11 @@ func (s *session) onInteraction(ctx context.Context, data json.RawMessage) {
 	if json.Unmarshal(data, &in) != nil || in.Type != interactionCommand {
 		return
 	}
-	if in.ID == "" || in.Token == "" || !validID(in.ChannelID) {
+	// Same rule as a message's: the id goes in a URL path, so it is a
+	// snowflake or it is nothing. The token is not a snowflake — it is
+	// Discord's own opaque string — so it is escaped where it is used rather
+	// than pattern-matched here (iss-2609190057562775).
+	if !validID(in.ID) || in.Token == "" || !validID(in.ChannelID) {
 		return
 	}
 	if !s.submit(func() { s.runCommand(ctx, in) }) {

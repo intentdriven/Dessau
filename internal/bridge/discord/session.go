@@ -179,7 +179,6 @@ type session struct {
 	work     chan func()
 	workOnce sync.Once
 	workWG   sync.WaitGroup
-	workStop chan struct{}
 }
 
 // answerWorkers is how many bridged answers may be in flight at once, and
@@ -197,7 +196,6 @@ const (
 func (s *session) startWork() {
 	s.workOnce.Do(func() {
 		s.work = make(chan func(), queueDepth)
-		s.workStop = make(chan struct{})
 		for range answerWorkers {
 			s.workWG.Add(1)
 			go func() {
@@ -214,7 +212,9 @@ func (s *session) stopWork() {
 	if s.work == nil {
 		return
 	}
-	close(s.workStop)
+	// Closed only here, and only after the read loop has returned: submit is
+	// called from the read loop alone, so there is nothing left that could
+	// send into a closed channel.
 	close(s.work)
 	s.workWG.Wait()
 }

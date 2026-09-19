@@ -239,7 +239,11 @@ func (r *rest) respondToInteraction(ctx context.Context, id, token, text string)
 			"allowed_mentions": map[string]any{"parse": []string{}},
 		},
 	}
-	_, err := r.do(ctx, http.MethodPost, "/interactions/"+id+"/"+token+"/callback", body, nil)
+	// The token is Discord's own opaque string rather than a snowflake, so it
+	// is escaped rather than validated: it is the one value in a path here
+	// that cannot be held to a shape (iss-2609190057562775).
+	_, err := r.do(ctx, http.MethodPost,
+		"/interactions/"+id+"/"+url.PathEscape(token)+"/callback", body, nil)
 	return err
 }
 

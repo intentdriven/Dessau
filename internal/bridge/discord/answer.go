@@ -130,9 +130,20 @@ func numericID(id string) uint64 {
 // request through the gateway's own path, the placeholder filling in, and the
 // one log line that says it happened.
 func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, text string) {
-	// Serialised per channel, so two messages in the same channel are
-	// answered one after the other rather than into each other's placeholder.
-	conv.mu.Lock()
+	// One answer at a time per channel, and a channel that is already being
+	// answered is recognised rather than waited on.
+	//
+	// WAITING HERE IS A DENIAL OF SERVICE (iss-2609190058038096). A generation
+	// runs for minutes and there are a small, fixed number of workers; a job
+	// that blocked on this lock would hold a worker for the whole of it, so
+	// two messages sent into one channel would occupy every worker and no
+	// other channel or direct message would be answered until the first
+	// answer finished. Anyone who can reach the bot may talk to it, which
+	// makes that something one person can cause by pressing send twice.
+	if !conv.mu.TryLock() {
+		s.say(ctx, msg.ChannelID, msg.ID, stillAnswering)
+		return
+	}
 	defer conv.mu.Unlock()
 
 	model := conv.model
@@ -223,6 +234,10 @@ func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, 
 // genericProblem is what a stranger is told when something went wrong on this
 // Mac that is none of their business.
 const genericProblem = "Something went wrong answering that."
+
+// stillAnswering is what somebody is told when they send a second message
+// into a channel whose answer is still being written.
+const stillAnswering = "I am still answering your last message here."
 
 // publicRefusal is what may be repeated to whoever asked.
 func publicRefusal(err error) string {
