@@ -49,6 +49,16 @@ GitHub release notes.
   given way, and the same mistake cut short the concurrent test of a run that
   got past the load. The loop now claims its place before it asks for it, so a
   measurement gives way to a real request and to nothing else.
+- **What HuggingFace says about a model is believed only when HuggingFace said
+  it.** Looking a repository up followed a redirect to any host, so another
+  server could answer in the Hub's place and have its answer read as fact about
+  the model — which files it holds, what kind of model it is. Every request for
+  what the Hub says — the model search, a repository lookup, and each page of a
+  file listing — now refuses an answer that arrives from anywhere but the Hub's
+  own address, and refuses it the same way whichever request it was. Fetching
+  the files themselves still follows the Hub's own redirect to its content
+  store, where each weights file is checked against the hash the Hub stated for
+  it.
 
 ## [0.7.1] - 2026-09-18
 

@@ -207,6 +207,43 @@ func (c *Client) newTokenRequest(ctx context.Context, method, u, token string) (
 	return req, nil
 }
 
+// do issues an API request and refuses an answer that did not come from the
+// Hub's own origin.
+//
+// Every path in this package that decodes what the Hub *says* — Search,
+// RepoInfo, and each page of Files — goes through here, so all three answer
+// the same way about where a response may come from. Redirects are the reason:
+// net/http follows up to ten of them, so a 302 would otherwise let any host
+// answer for the Hub and have its body decoded as fact. (net/http strips the
+// Authorization header on a redirect to another domain, so the access token
+// does not travel; what this refuses is believing the body.) Files keeps its
+// own check in addition, on the URL rather than the response, because a
+// rel="next" is a URL we would attach the token to before any redirect logic
+// runs — it is the same sameOrigin rule, applied one step earlier.
+//
+// A file download deliberately does not come through here: the Hub answers a
+// /resolve/ GET with a redirect to its content CDN, which is another host by
+// design. What makes those bytes trustworthy is not their origin but the
+// sha256 this same API stated for them, which downloadFile verifies.
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// resp.Request is the last request in the redirect chain; fall back to the
+	// one we built if a transport left it unset.
+	final := req.URL
+	if resp.Request != nil && resp.Request.URL != nil {
+		final = resp.Request.URL
+	}
+	if !sameOrigin(c.baseURL(), final.String()) {
+		resp.Body.Close()
+		return nil, fmt.Errorf("%s was answered by %s://%s — refusing to read it: %w",
+			req.URL.Path, final.Scheme, final.Host, ErrCrossOrigin)
+	}
+	return resp, nil
+}
+
 // APIError is a non-2xx response from the Hub.
 type APIError struct {
 	StatusCode int
@@ -270,7 +307,7 @@ func (c *Client) Search(ctx context.Context, q SearchQuery) ([]Model, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.httpClient().Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("search huggingface: %w", err)
 	}
@@ -292,7 +329,8 @@ func (c *Client) Search(ctx context.Context, q SearchQuery) ([]Model, error) {
 // and cannot get them any other way — a search result is not in hand when a
 // download is started by name, and nothing in the downloaded files says what
 // kind of model they are. One request, to the host the download is already
-// talking to, bounded by the same maxJSONBody every other decode here is.
+// talking to — and answered by that host or not at all, because it goes
+// through do — bounded by the same maxJSONBody every other decode here is.
 //
 // The caller decides what a failure means. For a download it means no category,
 // which is the same state as a repo the Hub does not tag; it never means the
@@ -306,7 +344,7 @@ func (c *Client) RepoInfo(ctx context.Context, repoID string) (Model, error) {
 	if err != nil {
 		return Model{}, err
 	}
-	resp, err := c.httpClient().Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return Model{}, fmt.Errorf("read repo info for %s: %w", repoID, err)
 	}
@@ -361,7 +399,7 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 		if err != nil {
 			return nil, err
 		}
-		resp, err := c.httpClient().Do(req)
+		resp, err := c.do(req)
 		if err != nil {
 			return nil, fmt.Errorf("list files for %s: %w", repoID, err)
 		}
@@ -384,7 +422,7 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 		// "rel=next" pointing at another host would leak the HuggingFace token off
 		// to it. Only follow a next-page URL on the same origin we started from.
 		if next != "" && !sameOrigin(c.baseURL(), next) {
-			return nil, fmt.Errorf("file tree for %s returned a cross-origin next page (%s) — refusing to follow it", repoID, next)
+			return nil, fmt.Errorf("file tree for %s returned a cross-origin next page (%s) — refusing to follow it: %w", repoID, next, ErrCrossOrigin)
 		}
 
 		entries = append(entries, pageEntries...)
@@ -408,6 +446,12 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 	}
 	return out, nil
 }
+
+// ErrCrossOrigin is what every request path in this package refuses with when
+// an answer would come from, or a next page would point at, a host that is not
+// the Hub's own origin. One class, so a caller asks one question of all of
+// them.
+var ErrCrossOrigin = errors.New("the answer did not come from the hub's origin")
 
 // sameOrigin reports whether target has the same scheme and host as base. A
 // parse failure or missing host counts as different, i.e. refuse it.

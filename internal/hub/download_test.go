@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -595,5 +597,59 @@ func TestDownloadKeepsPerUserDirsPrivate(t *testing.T) {
 		if fi.Mode()&0o020 != 0 {
 			t.Errorf("%s mode = %v, want no group-write in a per-user install", d, fi.Mode())
 		}
+	}
+}
+
+// The origin rule that governs the API paths deliberately stops short of the
+// file body: the real Hub answers a /resolve/ GET for an LFS object with a
+// redirect to its content CDN, on a different host, and a download that
+// refused that would fetch nothing at all. What anchors those bytes is not
+// their origin but the sha256 the Hub's own API stated for them, which is
+// verified here. This pins the exception so it is not "simplified" into a
+// blanket refusal.
+func TestDownloadFollowsTheHubsRedirectToItsContentCDN(t *testing.T) {
+	repo := standardRepo()
+
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, ok := repo[strings.TrimPrefix(r.URL.Path, "/cdn/")]
+		if !ok {
+			http.Error(w, "no such object", http.StatusNotFound)
+			return
+		}
+		w.Write(body)
+	}))
+	defer cdn.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/org/repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
+		var entries []File
+		for p, b := range repo {
+			e := File{Path: p, Size: int64(len(b))}
+			e.LFS = &struct {
+				OID  string `json:"oid"`
+				Size int64  `json:"size"`
+			}{OID: sha256Hex(b), Size: int64(len(b))}
+			entries = append(entries, e)
+		}
+		json.NewEncoder(w).Encode(entries)
+	})
+	mux.HandleFunc("/org/repo/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/org/repo/resolve/main/")
+		http.Redirect(w, r, cdn.URL+"/cdn/"+name, http.StatusFound)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dest := t.TempDir()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+		t.Fatalf("Download refused the Hub's own redirect to its content CDN: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, "model.safetensors"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, repo["model.safetensors"]) {
+		t.Error("the CDN-served weights did not land intact")
 	}
 }

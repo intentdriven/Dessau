@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -585,5 +586,105 @@ func TestRepoInfoSurfacesHTTPError(t *testing.T) {
 	}
 	if !IsNotFound(err) {
 		t.Errorf("err = %v, want a recognizable 404", err)
+	}
+}
+
+// A redirect is the other way a host that is not the Hub can end up answering
+// for it: net/http follows up to ten of them, so without a rule the decoded
+// answer about what a repo is comes from wherever the last hop pointed. The
+// token is not the exposure here — net/http strips Authorization on a redirect
+// to another domain — the body is, and RepoInfo must refuse it the way Files
+// refuses a cross-origin next page.
+func TestRepoInfoRefusesARedirectOffTheHubsOrigin(t *testing.T) {
+	var reached bool
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		fmt.Fprint(w, `{"id":"org/repo","pipeline_tag":"text-generation","tags":["mlx"]}`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	m, err := c.RepoInfo(context.Background(), "org/repo")
+	if err == nil {
+		t.Fatalf("RepoInfo read a redirected answer (%+v); it must refuse", m)
+	}
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want the same class Files gives (ErrCrossOrigin)", err)
+	}
+	if m.PipelineTag != "" || len(m.Tags) != 0 {
+		t.Errorf("a refused answer still carried %q/%v", m.PipelineTag, m.Tags)
+	}
+	_ = reached // the other host may be reached; what must not happen is believing it.
+}
+
+// The same rule, from the other request path: whatever Files refuses a
+// cross-origin next page with is the class RepoInfo answers with too, so a
+// caller asks one question about both.
+func TestFilesRefusesACrossOriginNextPageWithTheSameClass(t *testing.T) {
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[]`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", "<"+evil.URL+"/api/models/org/repo/tree/main?cursor=p2>; rel=\"next\"")
+		fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	_, err := c.Files(context.Background(), "org/repo", "")
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// And Search, the third path that decodes what the Hub says.
+func TestSearchRefusesARedirectOffTheHubsOrigin(t *testing.T) {
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[{"id":"evil/model","tags":["mlx"]}]`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+"/api/models", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	models, err := c.Search(context.Background(), SearchQuery{Search: "qwen"})
+	if err == nil {
+		t.Fatalf("Search read a redirected answer (%v); it must refuse", models)
+	}
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// A redirect back onto the Hub's own origin is ordinary and stays followed —
+// the Hub redirects a re-cased or renamed repo id to its canonical one.
+func TestRepoInfoFollowsARedirectOnTheHubsOwnOrigin(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/org/canonical", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":"org/canonical","pipeline_tag":"text-generation"}`)
+	})
+	mux.HandleFunc("/api/models/ORG/Canonical", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/api/models/org/canonical", http.StatusMovedPermanently)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	m, err := c.RepoInfo(context.Background(), "ORG/Canonical")
+	if err != nil {
+		t.Fatalf("RepoInfo refused a same-origin redirect: %v", err)
+	}
+	if m.ID != "org/canonical" {
+		t.Errorf("ID = %q, want the canonical id the Hub redirected to", m.ID)
 	}
 }
