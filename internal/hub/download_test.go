@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -673,5 +675,179 @@ func TestDownloadFollowsTheHubsRedirectToItsContentCDN(t *testing.T) {
 	}
 	if !bytes.Equal(got, repo[lfsFile]) {
 		t.Error("the CDN-served weights did not land intact")
+	}
+}
+
+// A download is bounded by what the Hub said the file is. A tree entry that
+// declares ten bytes against a body that streams tens of megabytes must be
+// refused at the boundary, before the surplus is written: peak disk during a
+// download is what the repo said it would be, times Concurrency, not whatever
+// answers the request.
+func TestDownloadRefusesABodyLongerThanTheHubDeclared(t *testing.T) {
+	const declared = 10
+	const flood = 32 << 20
+
+	var served atomic.Int64
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/org/repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]File{
+			{Path: "model.safetensors", Type: "file", Size: declared, OID: "a"},
+		})
+	})
+	mux.HandleFunc("/org/repo/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
+		chunk := weights(64 << 10)
+		for served.Load() < flood {
+			n, err := w.Write(chunk)
+			served.Add(int64(n))
+			if err != nil {
+				return
+			}
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dest := t.TempDir()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
+	if err == nil {
+		t.Fatal("a body far longer than the declared size was accepted")
+	}
+	if !errors.Is(err, ErrOversizedBody) {
+		t.Fatalf("err = %v, want ErrOversizedBody", err)
+	}
+	// The refusal happens at the boundary, so the flood never gets drawn down
+	// the wire, let alone onto the disk. The margin is for the bytes already in
+	// flight when the client stops reading.
+	if n := served.Load(); n > 8<<20 {
+		t.Errorf("the client drew %d bytes off a body declared as %d; it must stop at the boundary", n, declared)
+	}
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("an oversized body left %d file(s) behind: %v", len(entries), entries)
+	}
+}
+
+// The same bound the other way: a body that ends before it has delivered what
+// the Hub declared is refused as short, and nothing is renamed into place.
+func TestDownloadRefusesABodyShorterThanTheHubDeclared(t *testing.T) {
+	const declared = 8192
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/org/repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]File{
+			{Path: "model.safetensors", Type: "file", Size: declared, OID: "a"},
+		})
+	})
+	mux.HandleFunc("/org/repo/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
+		// Flush so the response is chunked and declares no Content-Length:
+		// net/http enforces that one itself, and the size the Hub's own tree
+		// stated is the declaration this download has to hold the body to.
+		w.Write(weights(declared / 2))
+		w.(http.Flusher).Flush()
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dest := t.TempDir()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
+	if err == nil {
+		t.Fatal("a body shorter than the declared size was accepted")
+	}
+	if !errors.Is(err, ErrShortBody) {
+		t.Fatalf("err = %v, want ErrShortBody", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dest, "model.safetensors")); statErr == nil {
+		t.Error("a short body must not be renamed onto the final name")
+	}
+}
+
+// The bound is what is outstanding, not the whole file: a resumed download
+// asks for the tail and must accept exactly that tail. This is the case a
+// bound computed from the file's full size would break.
+func TestAResumedDownloadIsBoundedByWhatIsOutstanding(t *testing.T) {
+	repo := standardRepo()
+	fh := newFakeHub(repo)
+	srv := fh.server(t)
+	dest := t.TempDir()
+
+	full := repo["model.safetensors"]
+	part := filepath.Join(dest, "model.safetensors"+partSuffix)
+	if err := os.WriteFile(part, full[:1000], 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, "model.safetensors"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, full) {
+		t.Errorf("resumed file is wrong: got %d bytes, want %d", len(got), len(full))
+	}
+}
+
+// What a response body may deliver, and whether that number is also what it
+// owes. A file neither the tree nor the response gave a length for is the one
+// case with nothing to hold it to exactly; it gets a ceiling instead, so an
+// endless body is still a read error rather than a full disk.
+func TestBodyBound(t *testing.T) {
+	cases := []struct {
+		name          string
+		contentLength int64
+		size          int64
+		resumeAt      int64
+		wantBound     int64
+		wantDeclared  bool
+	}{
+		{"both agree", 4096, 4096, 0, 4096, true},
+		{"the tree is smaller than the response claims", 32 << 20, 10, 0, 10, true},
+		{"the response is smaller than the tree", 10, 4096, 0, 10, true},
+		{"a resume owes only the tail", 3096, 4096, 1000, 3096, true},
+		{"no content-length: the tree binds it", -1, 4096, 0, 4096, true},
+		{"no content-length on a resumed tail", -1, 4096, 1000, 3096, true},
+		{"size unknown: the content-length binds it", 512, 0, 0, 512, true},
+		{"neither: a ceiling, owed nothing exactly", -1, 0, 0, maxUnsizedFile, false},
+	}
+	for _, tc := range cases {
+		bound, declared := bodyBound(tc.contentLength, tc.size, tc.resumeAt)
+		if bound != tc.wantBound || declared != tc.wantDeclared {
+			t.Errorf("%s: bodyBound(%d, %d, %d) = (%d, %v), want (%d, %v)",
+				tc.name, tc.contentLength, tc.size, tc.resumeAt, bound, declared, tc.wantBound, tc.wantDeclared)
+		}
+	}
+}
+
+// boundedReader must hand on every byte it is owed and refuse the first byte
+// beyond, without mistaking a body that ended exactly at the boundary for one
+// that ran past it.
+func TestBoundedReader(t *testing.T) {
+	read := func(body string, limit int64) (string, error) {
+		var out bytes.Buffer
+		// A one-byte destination buffer so the boundary is crossed a byte at a
+		// time rather than in one 32KB gulp.
+		_, err := io.CopyBuffer(&out, &boundedReader{r: strings.NewReader(body), left: limit}, make([]byte, 1))
+		return out.String(), err
+	}
+
+	if got, err := read("abcd", 4); err != nil || got != "abcd" {
+		t.Errorf("a body ending exactly at the bound: got %q, %v; want %q, nil", got, err, "abcd")
+	}
+	if got, err := read("abc", 4); err != nil || got != "abc" {
+		t.Errorf("a body ending before the bound: got %q, %v; want %q, nil (short is the caller's to judge)", got, err, "abc")
+	}
+	got, err := read("abcdefgh", 4)
+	if !errors.Is(err, ErrOversizedBody) {
+		t.Errorf("a body running past the bound: err = %v, want ErrOversizedBody", err)
+	}
+	if got != "abcd" {
+		t.Errorf("a body running past the bound handed on %q, want only the %d bytes it was owed", got, 4)
 	}
 }
