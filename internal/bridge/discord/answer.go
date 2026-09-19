@@ -1,0 +1,276 @@
+package discord
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strconv"
+	"time"
+
+	"github.com/intentdriven/Gropius/internal/gateway"
+	"github.com/intentdriven/Gropius/internal/stats"
+)
+
+// incoming is as much of a MESSAGE_CREATE as this bridge reads.
+//
+// The content is read because relaying it is what a bridge is
+// (adr-2609181004167097 condition 4, and the readers' list in
+// internal/archtest admits this package by name for it). Nothing of it is
+// logged, recorded or kept on disk.
+type incoming struct {
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
+	GuildID   string `json:"guild_id"`
+	Content   string `json:"content"`
+	Author    struct {
+		ID  string `json:"id"`
+		Bot bool   `json:"bot"`
+	} `json:"author"`
+	Mentions []struct {
+		ID string `json:"id"`
+	} `json:"mentions"`
+	// Type distinguishes an ordinary message from the dozens of system
+	// messages Discord sends down the same event — a pin, a join, a boost.
+	// Only the two ordinary kinds are answered.
+	Type int `json:"type"`
+}
+
+// The two message types this bridge answers: a plain message, and a reply.
+const (
+	messageTypeDefault = 0
+	messageTypeReply   = 19
+)
+
+// onMessage decides whether a message is for us and queues the answer.
+//
+// The decision is made here, on the read loop, and it is deliberately narrow:
+// a direct message, or a guild message whose MENTIONS array — Discord's own,
+// not the text — names this bot. Text that merely looks like a mention is not
+// one, which is what keeps somebody from making the bot answer by typing an
+// id; and a message in a channel that does not mention the bot is not read at
+// all, which is why the privileged message-content intent is never asked for
+// (itd-2609180959397172).
+func (s *session) onMessage(ctx context.Context, data json.RawMessage) {
+	var msg incoming
+	if json.Unmarshal(data, &msg) != nil {
+		return
+	}
+	if msg.Type != messageTypeDefault && msg.Type != messageTypeReply {
+		return
+	}
+	// Never answer a bot, and never answer ourselves: two bots that answer
+	// each other are a loop that runs until somebody notices.
+	if msg.Author.Bot || msg.Author.ID == "" || msg.Author.ID == s.botID {
+		return
+	}
+	if !validID(msg.ChannelID) || !validID(msg.Author.ID) {
+		// An identifier that is not a snowflake is not something to build a
+		// URL from. Discord sends numbers; anything else arrived from
+		// somewhere this bridge is not talking to.
+		return
+	}
+	direct := msg.GuildID == ""
+	if !direct && !s.mentionsUs(msg) {
+		return
+	}
+	text := headRunes(msg.Content, maxMessageRunes)
+	if text == "" {
+		return
+	}
+	conv := s.convos.get(msg.ChannelID)
+	queued := s.submit(func() { s.answer(ctx, conv, msg, text) })
+	if !queued {
+		// Said once, with nothing of the message in it. A channel busy enough
+		// to fill the queue is the one case an operator would want to see.
+		s.bridge.log.Info("dropped a bridged message: too many are already being answered",
+			"bridge", bridgeName, "channel", numericID(msg.ChannelID))
+	}
+}
+
+// mentionsUs reports whether Discord itself resolved a mention of this bot.
+func (s *session) mentionsUs(msg incoming) bool {
+	if s.botID == "" {
+		return false
+	}
+	for _, m := range msg.Mentions {
+		if m.ID == s.botID {
+			return true
+		}
+	}
+	return false
+}
+
+// validID reports whether an identifier is a Discord snowflake: digits, and
+// short enough to be one. Everything this bridge puts in a URL or a log line
+// goes through here first.
+func validID(id string) bool {
+	if id == "" || len(id) > 20 {
+		return false
+	}
+	for _, c := range id {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// numericID renders an identifier for a log line as the number it is, or 0
+// when it is not one. The log carries channel and user identifiers as opaque
+// numbers and never as names (adr-2609181004167097 condition 4).
+func numericID(id string) uint64 {
+	n, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// answer runs one bridged request end to end: the typing indicator, the
+// request through the gateway's own path, the placeholder filling in, and the
+// one log line that says it happened.
+func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, text string) {
+	// Serialised per channel, so two messages in the same channel are
+	// answered one after the other rather than into each other's placeholder.
+	conv.mu.Lock()
+	defer conv.mu.Unlock()
+
+	model := conv.model
+	if model == "" {
+		model = s.defaultModel()
+		conv.model = model
+	}
+	if model == "" {
+		s.say(ctx, msg.ChannelID, msg.ID, "This server has no chat model to answer with yet.")
+		return
+	}
+
+	// The turn is appended under the same lock the answer holds, so the
+	// history a second message sees already has this one in it.
+	conv.turns = append(conv.turns, turn{Role: roleUser, Content: text})
+	if len(conv.turns) > maxTurns {
+		conv.turns = append([]turn(nil), conv.turns[len(conv.turns)-maxTurns:]...)
+	}
+
+	body, err := buildRequest(model, conv.turns, s.bridge.opts.ServedContext(model))
+	if err != nil {
+		s.say(ctx, msg.ChannelID, msg.ID, genericProblem)
+		return
+	}
+
+	ed := newEditor(s.rest, msg.ChannelID, msg.ID, s.bridge.now)
+	typingCtx, stopTyping := context.WithCancel(ctx)
+	go ed.showTyping(typingCtx, s.rest)
+
+	started := time.Now()
+	var answer string
+	askErr := s.bridge.opts.Ask(ctx, gateway.AskRequest{
+		Model:  model,
+		Body:   body,
+		Source: stats.SourceBridge,
+		OnEvent: func(payload []byte) {
+			delta := deltaText(payload)
+			if delta == "" {
+				return
+			}
+			if answer == "" {
+				// The first token: the placeholder is about to exist, so the
+				// typing indicator has done its job.
+				stopTyping()
+			}
+			answer += delta
+			ed.add(ctx, delta)
+		},
+	})
+	stopTyping()
+
+	if askErr != nil {
+		// The detailed reason is the operator's; what travels is the generic
+		// one, because the informative texts describe this Mac and the person
+		// on the other end is a stranger (itd-2609180959397172).
+		s.bridge.log.Info("refused a bridged request",
+			"bridge", bridgeName, "channel", numericID(msg.ChannelID),
+			"user", numericID(msg.Author.ID), "model", model, "reason", askErr.Error())
+		if !ed.wrote() {
+			s.say(ctx, msg.ChannelID, msg.ID, publicRefusal(askErr))
+			return
+		}
+	}
+	if err := ed.finish(ctx); err != nil {
+		s.bridge.log.Debug("could not finish a bridged answer",
+			"bridge", bridgeName, "channel", numericID(msg.ChannelID), "err", err)
+	}
+	if answer != "" {
+		conv.turns = append(conv.turns, turn{Role: roleAssistant, Content: answer})
+	} else if askErr == nil {
+		s.say(ctx, msg.ChannelID, msg.ID, "The model answered with nothing.")
+	}
+
+	// The one line a bridged request writes. It names the bridge, the channel
+	// and the user as numbers, the model, the sizes and the timing — and no
+	// part of the message or the answer. The sizes are lengths, which is a
+	// count, not content.
+	s.bridge.log.Info("bridged a request",
+		"bridge", bridgeName,
+		"channel", numericID(msg.ChannelID),
+		"user", numericID(msg.Author.ID),
+		"model", model,
+		"prompt_bytes", len(body),
+		"answer_bytes", len(answer),
+		"duration_ms", time.Since(started).Milliseconds())
+}
+
+// genericProblem is what a stranger is told when something went wrong on this
+// Mac that is none of their business.
+const genericProblem = "Something went wrong answering that."
+
+// publicRefusal is what may be repeated to whoever asked.
+func publicRefusal(err error) string {
+	var askErr *gateway.AskError
+	if errors.As(err, &askErr) {
+		return askErr.Public()
+	}
+	return genericProblem
+}
+
+// say posts one message, best effort. It is used for the refusals and the
+// answers that are not a stream.
+func (s *session) say(ctx context.Context, channelID, replyTo, text string) {
+	if _, _, err := s.rest.createMessage(ctx, channelID, text, replyTo); err != nil {
+		s.bridge.log.Debug("could not post a bridged message",
+			"bridge", bridgeName, "channel", numericID(channelID), "err", err)
+	}
+}
+
+// deltaText reads the generated text out of one streamed event.
+//
+// This is the other half of what the bridge is admitted to read: the answer it
+// is posting. It reads the delta's text and the non-streamed field beside it
+// (some servers send the whole piece rather than a delta on the first event),
+// and nothing else in the event.
+func deltaText(payload []byte) string {
+	var ev struct {
+		Choices []struct {
+			Delta struct {
+				Content string `json:"content"`
+			} `json:"delta"`
+			Text string `json:"text"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal(payload, &ev) != nil || len(ev.Choices) == 0 {
+		return ""
+	}
+	if c := ev.Choices[0].Delta.Content; c != "" {
+		return c
+	}
+	return ev.Choices[0].Text
+}
+
+// defaultModel is the model a channel starts on: the first the server offers.
+func (s *session) defaultModel() string {
+	models := s.bridge.opts.ChatModels()
+	if len(models) == 0 {
+		return ""
+	}
+	return models[0]
+}

@@ -377,6 +377,10 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 	// gateway reads the key live (a.Config) so setting one in the control panel
 	// takes effect without a restart.
 	g := gateway.New(gateway.Options{ConfigFunc: a.Config, Pool: a.Pool, Models: a.Registry, Log: log, Stats: a.Stats})
+	// The Discord bridge, wired here because it needs the gateway. SetBridge
+	// puts the stored settings in force — which for an install that has never
+	// touched it means off, and nothing is opened.
+	a.SetBridge(newDiscordBridge(a, g, log))
 	apiHandler := g.Handler()
 	for _, p := range []string{"/v1/", "/health"} {
 		mux.Handle(p, apiHandler)
