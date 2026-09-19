@@ -49,6 +49,15 @@ GitHub release notes.
   given way, and the same mistake cut short the concurrent test of a run that
   got past the load. The loop now claims its place before it asks for it, so a
   measurement gives way to a real request and to nothing else.
+- **A chat client's pairing key is made outside the Secure Enclave only where
+  the Enclave is closed to it.** The client tried the Enclave and treated any
+  failure as the signal to make an ordinary Keychain key instead, so a device
+  that refused the Enclave for some other reason would quietly have been given
+  a software key while the app went on reporting a hardware one. The reason is
+  now read: the fallback is taken for the missing-entitlement status alone —
+  the case of a build signed the way this app is — and any other refusal stops
+  the pairing and says what the device reported. Which kind of key was made is
+  written to the log either way.
 
 ## [0.7.1] - 2026-09-18
 

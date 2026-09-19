@@ -484,8 +484,12 @@ final class AppModel: ObservableObject {
     /// never the fingerprint in the pairing answer, which arrived over a plain
     /// port anything on the network can answer on.
     func pair(as name: String) async throws {
-        guard let key = PairingStore.makeKey(),
-              let pub = SecKeyCopyPublicKey(key),
+        // `makeKey` throws rather than returning nil when the Secure Enclave
+        // refuses for a reason that is not this build's signature, so the
+        // reason reaches the sheet instead of a quieter key
+        // (iss-2609190200098392).
+        let key = try PairingStore.makeKey()
+        guard let pub = SecKeyCopyPublicKey(key),
               let spki = spkiOf(pub)
         else { throw PairingError.noKey }
 
