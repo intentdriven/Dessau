@@ -232,17 +232,6 @@ GitHub release notes.
   the case of a build signed the way this app is — and any other refusal stops
   the pairing and says what the device reported. Which kind of key was made is
   written to the log either way.
-### Fixed
-
-- **A request whose model needs the memory the self-test is holding now takes
-  it, instead of being refused once.** A self-test run held its model the way
-  any request does, so a client whose own load needed that memory was told the
-  machine was full, and only its retry — after the run noticed the refusal and
-  let go — found the room. The run's hold is now a soft one: the pool asks the
-  run to let go, the run does, and the model it was holding is unloaded for the
-  client's. A client's own hold is never soft, a pinned model is never taken,
-  and a run that will not let go costs the client the refusal it would have had
-  anyway.
 - **A reading of a model server's memory always gives up.** The reader shells
   out to the process listing and bounds it at three seconds, but it then waited
   for the listing's output to finish arriving — and the listing's output pipe
