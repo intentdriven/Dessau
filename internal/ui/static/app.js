@@ -254,6 +254,19 @@ function graceWaitHint(graceValue, maxWaitValue, defaults) {
     + 'protection. Raise the maximum to at least the protection.';
 }
 
+// renderGraceDefaults says, on the fields themselves, what a blank interval
+// resolves to. A blank field is the default, so the form has to name the
+// figure that stands for — and it is the server's, off the snapshot, rather
+// than two Go constants written into the markup a third time
+// (iss-2609190045306656). A panel that has not been told them offers no
+// figure, the same silence graceWaitHint keeps: a placeholder the panel made
+// up is worse than an empty one.
+function renderGraceDefaults(defaults) {
+  const d = defaults || {};
+  $('setGraceSec').placeholder = d.eviction_grace_sec ? String(d.eviction_grace_sec) : '';
+  $('setGraceWait').placeholder = d.eviction_max_wait_sec ? String(d.eviction_max_wait_sec) : '';
+}
+
 function updateGraceHint() {
   const hint = graceWaitHint($('setGraceSec').value, $('setGraceWait').value,
     state && state.defaults);
@@ -1085,6 +1098,7 @@ function renderSettings() {
   $('setGrace').checked = !!c.eviction_grace;
   // Blank rather than zero for an unset interval: blank is how this form says
   // "the default", and the placeholder gives the figure that stands for.
+  renderGraceDefaults(state.defaults);
   $('setGraceSec').value = c.eviction_grace_sec || '';
   $('setGraceWait').value = c.eviction_max_wait_sec || '';
   updateGraceHint();
