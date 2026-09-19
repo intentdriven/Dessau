@@ -162,7 +162,7 @@ var notEnforcement = map[string]string{
 	"github.com/intentdriven/Gropius/internal/mlxtest":      "test helpers; nothing ships in the binary",
 	"github.com/intentdriven/Gropius/internal/sitetest":     "test helpers for the landing-page renderer",
 	"github.com/intentdriven/Gropius/internal/contextprobe": "measures a model's servable window as a job of the self-test's idle loop. It decides nothing about who may reach the server: it is a client of this Mac's own loopback endpoint, and it imports config, registry, runtime's two sentinel errors and selftest — no address, nothing to enforce on",
-	"github.com/intentdriven/Gropius/internal/selftest":     "measures the models while nobody is using them. It decides nothing about who may reach the server or what it will do for them: it talks only to the model server the pool hands it, on loopback, and it imports config for the fold rule and nothing else of ours, so there is no address in it to enforce on",
+	"github.com/intentdriven/Gropius/internal/selftest":     "measures the models while nobody is using them. It decides nothing about who may reach the server or what it will do for them: it talks only to the model server the pool hands it, on loopback, and it imports config for the fold rule and applog for the writer its results file is written by, and nothing else of ours, so there is no address in it to enforce on",
 	"github.com/intentdriven/Gropius/cmd/gropius-site":      "renders the landing page offline and serves nothing",
 }
 
