@@ -166,6 +166,13 @@ GitHub release notes.
   already had — and the other four steps keep theirs. The picker moves out of
   the combined Appearance section into its own **Text** section in Settings.
   `impact: fix`
+- **A chat client's sidebar card shows the date the way the Mac does, and
+  counts exchanges as exchanges.** The card drew the date it started as its own
+  day, month and year rather than in the system's short date style, and it
+  called each of the model's replies an exchange — so a message still waiting
+  for its answer, or a reply that arrived in two parts, made the count read
+  wrong. An exchange is a person's message and the reply that answers it, and
+  that is what the card now counts. `impact: fix`
 - **A sidebar search finds every word, wherever it falls.** The chat client
   matched the whole query as one literal piece of text, so a search for two
   words found only the chats that carried them side by side, in the order they

@@ -1112,7 +1112,7 @@ struct ConversationCard: View {
     }
 
     private var summary: String {
-        let exchanges = conversation.messages.filter { $0.role == .assistant }.count
+        let exchanges = exchangeCount(fromPerson: conversation.messages.map { $0.role == .user })
         let words = conversation.messages.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
         return "\(exchanges) exchange\(exchanges == 1 ? "" : "s") · \(words) word\(words == 1 ? "" : "s")"
     }
@@ -1123,7 +1123,7 @@ struct ConversationCard: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(title).font(.headline).lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(conversation.createdAt, format: .dateTime.day().month().year())
+                    Text(conversation.createdAt.formatted(date: .numeric, time: .omitted))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
