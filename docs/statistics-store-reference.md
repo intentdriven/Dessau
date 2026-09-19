@@ -183,6 +183,25 @@ it.
 | `bytes` | How large it was when it was counted. |
 | `newest` | Its newest record, in whole UTC seconds. Together with `bytes` this tells the file that was counted from a later file that happens to have taken its name. |
 
+## `kind: "run"` — one self-test run
+
+The eighth record kind Gropius writes, and the one that is not in these files.
+A run is what the [self-test](self-test.md) measured of one model while nobody
+was using the Mac, and it is written to `selftest/results.jsonl` beside this
+folder, by the same writer and under the same rules: one JSON object per line,
+mode `0600`, a file started again when it reaches its cap, and a name standing
+for anything but this account's own plain file refused rather than written to.
+
+It is a separate file rather than a line in these because a run is not a
+request: it has no class, no client and no served window, and the readings a
+run carries are of a model rather than of something somebody asked for. Folding
+it in would put lines in these files that every reader of them — the dashboard,
+the Usage tab, a person's own `jq` — would have to learn to skip.
+
+Its fields are on the [self-test reference page](self-test-reference.md), which
+is where the retention it is under is described too: the cap, and nothing else.
+The two limits below are this store's and do not reach it.
+
 ## Retention
 
 Two limits, both set in **Settings → Request statistics**:

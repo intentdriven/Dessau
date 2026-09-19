@@ -11,6 +11,19 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **A statistics file Gropius did not write is left alone.** Every bounded file
+  Gropius keeps on this Mac — its own log, the request statistics store and the
+  self-test's results — is created owner-only, and a file standing under one of
+  those names that any other account could read or write is now refused rather
+  than appended to, the way a link or a named pipe under one of them already
+  was. The reference pages say so.
+- **A self-test run is named as a record kind where the records are described.**
+  The request statistics reference now says that a run is the one record kind
+  Gropius writes outside the statistics folder, why it has a file of its own,
+  and where its fields are written down.
+
 ## [0.7.1] - 2026-09-18
 
 ### Fixed
