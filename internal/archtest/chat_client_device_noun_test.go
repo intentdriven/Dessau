@@ -113,32 +113,51 @@ func macOSBranchLines(src string) []bool {
 	return marks
 }
 
+// serverMacSentences are the literals that mean the Mac at the other end of
+// the network -- the machine running the Gropius server, which is a Mac
+// whichever device the client is on. They are the one kind of sentence that
+// may spell "Mac" out, so they are named here one by one rather than matched
+// by a pattern: a new sentence about the device the person is holding must
+// fail this guard rather than slip past a loose rule.
+var serverMacSentences = map[string]bool{
+	"A Gropius server's address: the Mac's .local name or LAN address, port 11535. " +
+		"Servers on your network are offered in the model picker without typing anything.": true,
+}
+
 // TestChatClientNamesTheDeviceThePersonIsHolding holds every sentence the
-// built-in backend shows to the one noun that knows which device it is on.
+// client shows to the one noun that knows which device it is on.
 //
 // The failure it guards is silent on the machine the client is written on: a
 // hard-coded "the Mac's own model" is right on a Mac and wrong on an iPad, and
-// only the iPad build shows it. Nothing else in the file may spell the device
-// out either -- the declaration of deviceNoun itself is inside the macOS
-// branch, which is the one place the word belongs.
+// only the iPad build shows it. Nothing else in these sources may spell the
+// device out either -- the declaration of deviceNoun itself is inside the
+// macOS branch, which is the one place the word belongs -- except a sentence
+// about the server's Mac, which is allow-listed above.
 func TestChatClientNamesTheDeviceThePersonIsHolding(t *testing.T) {
 	root := repoRootDir(t)
-	src := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "Backends.swift"))
 
-	if !strings.Contains(src, `static let deviceNoun = "Mac"`) {
+	backends := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "Backends.swift"))
+	if !strings.Contains(backends, `static let deviceNoun = "Mac"`) {
 		t.Fatal("client/GropiusChat/Backends.swift declares no deviceNoun = \"Mac\"; " +
 			"the one place the device is named has moved and this guard reads the wrong file")
 	}
 
-	macOS := macOSBranchLines(src)
-	for _, lit := range swiftStringLiterals(src) {
-		if lit.line < len(macOS) && macOS[lit.line] {
-			continue
-		}
-		if strings.Contains(lit.text, "Mac") {
-			t.Errorf("client/GropiusChat/Backends.swift:%d spells the device out: %q. "+
+	for _, name := range []string{"Backends.swift", "GropiusChat.swift"} {
+		rel := filepath.Join("client", "GropiusChat", name)
+		src := readRepoFile(t, root, rel)
+		macOS := macOSBranchLines(src)
+		for _, lit := range swiftStringLiterals(src) {
+			if lit.line < len(macOS) && macOS[lit.line] {
+				continue
+			}
+			if !strings.Contains(lit.text, "Mac") || serverMacSentences[lit.text] {
+				continue
+			}
+			t.Errorf("%s:%d spells the device out: %q. "+
 				"The same source is compiled for the iPad, where that sentence names a device "+
-				"the person is not holding; interpolate deviceNoun instead", lit.line, lit.text)
+				"the person is not holding; interpolate BuiltInBackend.deviceNoun instead "+
+				"(or, if it means the server's Mac, add it to serverMacSentences)",
+				filepath.ToSlash(rel), lit.line, lit.text)
 		}
 	}
 }

@@ -197,6 +197,10 @@ GitHub release notes.
   from the window it sits on when it would otherwise be lost in it; and the
   message on a bubble is the system's label colour, read in the appearance
   the bubble it sits on reads as, rather than a fixed white.
+  use the same device noun as the rest of the client, as does the model
+  picker's filter help — the promise that the device's own model is always
+  offered. The server's address help still says Mac, because the machine at
+  that address is one.
 - **A sidebar search finds every word, wherever it falls.** The chat client
   matched the whole query as one literal piece of text, so a search for two
   words found only the chats that carried them side by side, in the order they
