@@ -22,6 +22,18 @@ GitHub release notes.
   client's. A client's own hold is never soft, a pinned model is never taken,
   and a run that will not let go costs the client the refusal it would have had
   anyway.
+### Changed
+
+- **A statistics file Gropius did not write is left alone.** Every bounded file
+  Gropius keeps on this Mac — its own log, the request statistics store and the
+  self-test's results — is created owner-only, and a file standing under one of
+  those names that any other account could read or write is now refused rather
+  than appended to, the way a link or a named pipe under one of them already
+  was. The reference pages say so.
+- **A self-test run is named as a record kind where the records are described.**
+  The request statistics reference now says that a run is the one record kind
+  Gropius writes outside the statistics folder, why it has a file of its own,
+  and where its fields are written down.
 ### Added
 
 - **A chat client pairs with the server once, and from then on proves itself
@@ -42,6 +54,14 @@ GitHub release notes.
 
 ### Fixed
 
+- **The pinned-models figure is worked out from the batching Gropius is
+  actually running with.** Batched requests (decode concurrency) reaches the
+  model servers only when Gropius starts, and the control panel was charging
+  pinned models at the figure last saved — so between saving a new one and
+  restarting, the panel showed a memory figure the server itself did not agree
+  with, and a set it said would fit could be refused on save. The panel now
+  reads the concurrency in force, and says under the field when the saved
+  figure is waiting for the next start.
 - **A model typed as a full repository id is found, whatever account owns it.**
   The Find Models search asks the `mlx-community` organisation, so an MLX
   conversion published under someone else's account was not offered even to a
@@ -60,6 +80,14 @@ GitHub release notes.
   given way, and the same mistake cut short the concurrent test of a run that
   got past the load. The loop now claims its place before it asks for it, so a
   measurement gives way to a real request and to nothing else.
+- **A sidebar search finds every word, wherever it falls.** The chat client
+  matched the whole query as one literal piece of text, so a search for two
+  words found only the chats that carried them side by side, in the order they
+  were typed — a chat whose title held one word and whose answers held the
+  other was hidden. The query is now split into its words and a chat is listed
+  when every word is somewhere in its title or its messages, in any order and
+  any distance apart. The match ignores accents as well as case, the way search
+  does elsewhere on the Mac. `impact: fix`
 
 ## [0.7.1] - 2026-09-18
 

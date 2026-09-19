@@ -12,9 +12,16 @@ mode 0700, on the first write, and the file is mode 0600.
 
 The format is JSON Lines: one object per line, one run per object, appended
 in the order the runs happened. The file is bounded at 4 MiB. When the next
-line would take it past that, the file is truncated and the line is written to
-the empty file, so the newest run is always kept and the history is at most
-the cap. There is no rotation and no second file.
+line would take it past that, the file is started again and the line is the
+first in it, so the newest run is always kept and the history is at most the
+cap. There is one file: no numbered predecessors and nothing beside it.
+
+It is written by the same writer as Gropius's own log and its
+[request statistics](statistics-store-reference.md#kind-run--one-self-test-run),
+and held to the same rules. A name in this folder standing for something that
+is not this account's own plain file — a link, a named pipe, a folder, or a
+file any other account could read — is refused rather than written to or
+waited on, and the run is dropped with a line in the log.
 
 ## A run
 
