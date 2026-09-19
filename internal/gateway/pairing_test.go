@@ -498,3 +498,40 @@ func TestEveryPairingEventIsLoggedAtTheShippedLevelByNameAndNeverByKey(t *testin
 		}
 	}
 }
+
+// The content type is a media type, not a prefix (iss-2609190226069369).
+// Matching it with a prefix accepts "application/jsonevil" — a type nobody
+// declared and this server does not read — and refuses "APPLICATION/JSON",
+// which RFC 9110 makes the same type as the one the guard is written for. The
+// second is the one a person feels: a client that spells the header in capitals
+// is refused a pairing for no reason at all.
+func TestThePairingContentTypeIsTheMediaTypeAndNotItsPrefix(t *testing.T) {
+	k := newClientKey(t)
+	body := `{"name":"Bob's iPad","public_key":"` + base64.StdEncoding.EncodeToString(k.spki) + `"}`
+
+	for _, c := range []struct {
+		header string
+		accept bool
+	}{
+		{"application/json", true},
+		{"APPLICATION/JSON", true},
+		{"Application/Json; charset=utf-8", true},
+		{"application/json; charset=utf-8", true},
+		{"application/jsonevil", false},
+		{"application/json-patch+json", false},
+		{"text/plain", false},
+		{"", false},
+	} {
+		r := httptest.NewRequest("POST", "/pair", strings.NewReader(body))
+		if c.header != "" {
+			r.Header.Set("Content-Type", c.header)
+		}
+		_, err := readPairRequest(r)
+		if c.accept && err != nil {
+			t.Errorf("a pairing posted as %q was refused: %v", c.header, err)
+		}
+		if !c.accept && err == nil {
+			t.Errorf("a pairing posted as %q was read as JSON this server declared it takes", c.header)
+		}
+	}
+}

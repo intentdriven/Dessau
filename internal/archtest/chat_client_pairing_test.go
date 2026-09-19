@@ -314,6 +314,26 @@ func TestTheEnclaveFallbackIsTakenOnlyForTheMissingEntitlement(t *testing.T) {
 		t.Error("makeKey throws nothing, so an Enclave failure that is not the missing entitlement still " +
 			"ends in a silently downgraded key")
 	}
+	// The access control is the second way out of the Enclave block, and it was
+	// the one left standing (iss-2609190207534043). A nil return from
+	// SecAccessControlCreateWithFlags is an Enclave attempt that failed for a
+	// reason which is NOT the missing entitlement — the single condition the
+	// spike measured — so it belongs with the other refusals: the CFError is
+	// read and thrown. Stepping past it into the software key is the same
+	// silent downgrade, taken on a condition nobody has ever observed.
+	if strings.Contains(body, "[.privateKeyUsage], nil)") {
+		t.Error("SecAccessControlCreateWithFlags discards its CFError, so a nil access control carries no " +
+			"reason and the one place the refusal could be read is thrown away")
+	}
+	if !strings.Contains(body, "guard let access = SecAccessControlCreateWithFlags") {
+		t.Error("a nil access control does not stop makeKey, so it falls through to a non-Enclave key: " +
+			"the downgrade this fallback was narrowed to prevent, on a condition that is not the " +
+			"missing entitlement")
+	}
+	if strings.Count(body, "Unmanaged<CFError>?") < 2 {
+		t.Error("the access control call and the key call do not each capture a CFError, so one of the " +
+			"two ways the Enclave can refuse has no reason attached")
+	}
 	// Which key was made is recorded where it can be read afterwards. An app
 	// that cannot say which kind it holds cannot be held to saying so.
 	if !strings.Contains(body, "logger.") {
