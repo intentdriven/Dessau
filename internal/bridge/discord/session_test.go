@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,39 @@ func answering(t *testing.T, f *fakeDiscord, pieces ...string) *Bridge {
 	b := New(opts)
 	t.Cleanup(func() { _ = b.Close() })
 	return b
+}
+
+// recording is answering with the requests kept: the completion path records
+// the body it was handed before streaming the answer back, so a test can say
+// which model answered a message and what history was sent with it.
+func recording(t *testing.T, f *fakeDiscord, pieces ...string) (*Bridge, func() []request) {
+	t.Helper()
+	var mu sync.Mutex
+	var asked []request
+	opts := f.options(time.Now)
+	opts.Ask = func(ctx context.Context, req gateway.AskRequest) error {
+		var body request
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return err
+		}
+		mu.Lock()
+		asked = append(asked, body)
+		mu.Unlock()
+		for _, p := range pieces {
+			payload, _ := json.Marshal(map[string]any{
+				"choices": []any{map[string]any{"delta": map[string]any{"content": p}}},
+			})
+			req.OnEvent(payload)
+		}
+		return nil
+	}
+	b := New(opts)
+	t.Cleanup(func() { _ = b.Close() })
+	return b, func() []request {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]request(nil), asked...)
+	}
 }
 
 // The bridge is off until the switch is thrown, which is condition 1 of
@@ -329,5 +363,209 @@ func TestAPastedTokenIsTrimmed(t *testing.T) {
 	b2.Apply(true, "   \n\t ")
 	if _, reason := waitState(t, b2, StateStopped); reason == "" {
 		t.Error("a token of nothing but whitespace produced no reason on the panel")
+	}
+}
+
+// A channel's conversation and the model it is on survive a reconnect.
+//
+// The bridge resumes by itself after the Mac sleeps (ac-10 of
+// itd-2609180959397172), and the intent's scope condition says a conversation
+// is gone when the BRIDGE STOPS — not when the socket does. Holding the
+// conversations on the session made every drop a silent `/reset` that also
+// forgot the model Bob had chosen, with nothing said in the channel
+// (iss-2609190241509478).
+func TestAChannelKeepsItsConversationAndModelAcrossAReconnect(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, asked := recording(t, f, "an answer")
+	connected(t, f, b)
+
+	// Bob puts the channel on the second model and asks something.
+	f.command(commandModel, map[string]string{"name": secondModel})
+	f.waitCall(http.MethodPost, "/interactions/")
+	f.message("first question", false, false)
+	answered(t, f, b)
+
+	// The socket drops and the session is resumed, which is the sleeping
+	// Mac's own path.
+	f.drop()
+	f.waitFrame(opResume)
+	waitState(t, b, StateConnected)
+	f.drainCalls()
+
+	f.message("second question", false, false)
+	answered(t, f, b)
+
+	got := asked()
+	if len(got) != 2 {
+		t.Fatalf("the gateway was asked %d times, want once before the reconnect and once after", len(got))
+	}
+	if got[1].Model != secondModel {
+		t.Errorf("after the reconnect the channel was answered by %q, want the model `/model` chose (%q)",
+			got[1].Model, secondModel)
+	}
+	if len(got[1].Messages) < 2 || got[1].Messages[0].Content != "first question" {
+		t.Errorf("after the reconnect the request carried %v, want the channel's history in front of the new message",
+			got[1].Messages)
+	}
+	if last := got[1].Messages[len(got[1].Messages)-1]; last.Content != "second question" {
+		t.Errorf("the newest turn was %q, want the message that was just sent", last.Content)
+	}
+}
+
+// And it goes when the bridge stops, which is the bound the intent actually
+// asks for: nothing of a conversation outlives the switch.
+func TestStoppingTheBridgeForgetsEveryChannelsConversation(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, asked := recording(t, f, "an answer")
+	connected(t, f, b)
+
+	f.command(commandModel, map[string]string{"name": secondModel})
+	f.waitCall(http.MethodPost, "/interactions/")
+	f.message("first question", false, false)
+	answered(t, f, b)
+
+	b.Apply(false, "")
+	if state, _, _ := b.State(); state != StateOff {
+		t.Fatalf("state = %q, want %q", state, StateOff)
+	}
+	connected(t, f, b)
+
+	f.message("after the restart", false, false)
+	answered(t, f, b)
+
+	got := asked()
+	if len(got) != 2 {
+		t.Fatalf("the gateway was asked %d times, want once before the switch and once after", len(got))
+	}
+	if got[1].Model != firstModel {
+		t.Errorf("after a stop and a start the channel was answered by %q, want the server default (%q)",
+			got[1].Model, firstModel)
+	}
+	if len(got[1].Messages) != 1 || got[1].Messages[0].Content != "after the restart" {
+		t.Errorf("after a stop and a start the request carried %v, want the new message alone", got[1].Messages)
+	}
+}
+
+// A socket that drops says so on the panel, and keeps the moment it last
+// connected.
+//
+// The eleventh acceptance criterion of itd-2609180959397172 is that a dropped
+// session resumes by itself and the panel shows when it last connected. The
+// state only moved to connecting when the next attempt was made, which is up
+// to half a minute of backoff later — so for that whole window the panel went
+// on reading "connected since" for a session that was gone
+// (iss-2609190242334438).
+func TestADroppedSessionSaysSoAtOnceAndKeepsTheLastConnectedMoment(t *testing.T) {
+	f := newFakeDiscord(t)
+	b := answering(t, f)
+	connected(t, f, b)
+	_, connectedAt, _ := b.State()
+	if connectedAt.IsZero() {
+		t.Fatal("a connected bridge reported no moment it connected at")
+	}
+
+	f.drop()
+
+	// Well inside the shortest backoff: the panel is told the session is gone
+	// when it goes, not when the next attempt is made.
+	var state string
+	var since time.Time
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		state, since, _ = b.State()
+		if state == StateConnecting {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if state != StateConnecting {
+		t.Fatalf("a second after the socket dropped the panel still reads %q", state)
+	}
+	if !since.Equal(connectedAt) {
+		t.Errorf("while reconnecting the bridge reports %v as its last connection, want the moment it did connect (%v)",
+			since, connectedAt)
+	}
+}
+
+// held is how many channels the bridge is keeping a conversation for, or -1
+// when it holds no store at all.
+func held(b *Bridge) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.convos == nil {
+		return -1
+	}
+	b.convos.mu.Lock()
+	defer b.convos.mu.Unlock()
+	return len(b.convos.byID)
+}
+
+// A bridge Discord stops carries nothing of what was said to it.
+//
+// The switch is not the only way the bridge stops: a token revoked or
+// regenerated, intents changed in the portal, or a READY too large to read
+// end the run loop for good, with the reason on the panel. The conversations
+// have to go on that path too — the goroutine is gone, no session exists, and
+// what would be left is every stranger's message text held for the life of
+// the process, with nothing the operator can do about it from Settings
+// (iss-2609190312064731).
+func TestAFatalStopForgetsEveryChannelsConversation(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, _ := recording(t, f, "an answer")
+	connected(t, f, b)
+	f.message("a stranger's message", false, false)
+	answered(t, f, b)
+	if held(b) != 1 {
+		t.Fatalf("the bridge holds %d conversations, want the one channel that was answered", held(b))
+	}
+
+	// 4004: Discord refusing the token, which is not weather.
+	f.refuse(4004)
+	if _, reason := waitState(t, b, StateStopped); reason == "" {
+		t.Fatal("the bridge stopped with no reason on the panel")
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if held(b) == -1 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Errorf("Discord stopped the bridge and it is still holding %d channels' conversations", held(b))
+}
+
+// A token the operator has just pasted is credited with no session it did not
+// have.
+//
+// The last-connected moment is a fact about the credential that connected. It
+// is kept across a drop, which is what the panel shows while the bridge
+// re-opens — but carrying it into a DIFFERENT token's states told the
+// operator that the token they had just pasted last connected at a moment it
+// did not exist, on exactly the diagnostic path the moment was added for
+// (iss-2609190312313645).
+func TestADifferentTokenStartsWithNoLastConnectedMoment(t *testing.T) {
+	f := newFakeDiscord(t)
+	b := answering(t, f)
+	connected(t, f, b)
+	if _, since, _ := b.State(); since.IsZero() {
+		t.Fatal("a connected bridge reported no moment it connected at")
+	}
+
+	b.Apply(true, "a-different-token")
+	if state, since, _ := b.State(); !since.IsZero() {
+		t.Errorf("a freshly pasted token is %s and reports last connecting at %v, want no moment at all",
+			state, since)
+	}
+
+	// And switching the bridge on with no token at all is the same: there is
+	// no credential to have connected.
+	b2 := answering(t, newFakeDiscord(t))
+	b2.Apply(true, "a-token")
+	waitState(t, b2, StateConnected)
+	b2.Apply(true, "")
+	waitState(t, b2, StateStopped)
+	if _, since, _ := b2.State(); !since.IsZero() {
+		t.Errorf("a bridge with the token taken away reports last connecting at %v", since)
 	}
 }

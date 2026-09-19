@@ -51,7 +51,9 @@ bot works without any server at all.
 3. Turn the switch on and save.
 
 Under the switch the panel says what the bridge is doing: off, connecting,
-connected since a moment, or stopped with the reason. A token Discord refuses
+connected since a moment, or stopped with the reason. Whenever the bridge is
+not connected it also says when it last was, so a session re-opening after the
+Mac wakes shows the moment the bot was last on Discord. A token Discord refuses
 stops the bridge and says so there; it never refuses a save, so you can change
 any other setting while the bridge is unhappy.
 
@@ -67,7 +69,9 @@ prints the API key.
 - A reply appears as a placeholder and fills in as the model writes. A long
   answer is cut at a paragraph and continues in a second message.
 - Each channel and each direct message is its own conversation, held in memory
-  while the bridge runs. Nothing of a message is written to disk.
+  for as long as the bridge is on. A connection that drops and comes back keeps
+  it; switching the bridge off forgets it. Nothing of a message is written to
+  disk.
 
 Two commands work in any channel and in a direct message:
 

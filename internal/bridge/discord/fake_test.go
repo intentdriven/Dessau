@@ -89,7 +89,7 @@ func (f *fakeDiscord) options(now func() time.Time) Options {
 		HTTPClient:    f.srv.Client(),
 		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Now:           now,
-		ChatModels:    func() []string { return []string{"mlx-community/Qwen3-8B-4bit"} },
+		ChatModels:    func() []string { return []string{firstModel, secondModel} },
 		ServedContext: func(string) int64 { return 8192 },
 	}
 }
@@ -150,6 +150,15 @@ func (f *fakeDiscord) handleGateway(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// The chat models the fake server offers, the first being the default a
+// channel starts on. TWO of them, because `/model` picking a model and the
+// next message being answered by it — the acceptance criterion — cannot be
+// exercised against a server with only one (iss-2609190242018424).
+const (
+	firstModel  = "mlx-community/Qwen3-8B-4bit"
+	secondModel = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+)
+
 // The identifiers the fake uses for itself, so a test can write a mention.
 const (
 	botUserID = "111111111111111111"
@@ -186,6 +195,19 @@ func (f *fakeDiscord) drop() {
 	f.mu.Unlock()
 	if conn != nil {
 		_ = conn.CloseNow()
+	}
+}
+
+// refuse closes the live connection with a close code, which is how Discord
+// refuses a session that is already running: a token revoked or regenerated
+// while the bridge is connected.
+func (f *fakeDiscord) refuse(code websocket.StatusCode) {
+	f.mu.Lock()
+	conn := f.conn
+	f.conn = nil
+	f.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close(code, "refused")
 	}
 }
 

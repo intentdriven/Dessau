@@ -261,6 +261,22 @@ GitHub release notes.
   the bound stopped the reading and not the acceptance, and a request whose
   opening bytes were a well-formed pairing paired whatever followed them. A body
   over the limit is now answered `413` and nothing is written.
+- **A Discord channel keeps its conversation and its model when the bridge
+  reconnects.** The bridge resumes by itself after the Wi-Fi blinks or the Mac
+  sleeps, and every one of those reconnections used to be a silent `/reset`:
+  the channel's history was gone and it was back on the server's default model,
+  with nothing said in the channel. A conversation now belongs to the bridge
+  rather than to the connection, so it survives a reconnection and still goes —
+  as it always has, and still without ever reaching disk — when the bridge is
+  switched off.
+- **The panel says when the Discord bridge last connected, and says at once
+  when it drops.** A dropped session left the card reading "connected since"
+  for as long as the wait before the next attempt — up to half a minute — and
+  then dropped the moment from the card altogether while it re-opened. The
+  bridge now reports a lost session the moment it is lost, and the card reads
+  "last connected at …" whenever the bridge is not connected, which is the one
+  time a person is asking. A token you have just pasted is credited with no
+  moment until it connects.
 - **A request that stalls halfway through is let go of.** Both listeners bound
   how long a peer may take over the headers, and the endpoints bound how large
   a body they will accept, but nothing bounded how long a body was allowed to

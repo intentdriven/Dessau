@@ -17,7 +17,9 @@
 // the sizes and the timing.
 //
 // Nothing of a conversation is written to disk. A channel's history lives in
-// memory for as long as the bridge is running and goes when it stops.
+// memory for as long as the bridge is running — across a dropped session and
+// the resume that follows it — and goes the moment it stops running, whether
+// that is the switch, the app closing, or Discord refusing the credentials.
 package discord
 
 import (
@@ -115,14 +117,32 @@ type Bridge struct {
 	// running describes the session the goroutine below is running, so Apply
 	// can tell "already running under these settings" from "running under
 	// different ones".
-	on      bool
-	token   string
-	cancel  context.CancelFunc
-	done    chan struct{}
-	state   string
+	on     bool
+	token  string
+	cancel context.CancelFunc
+	done   chan struct{}
+	state  string
+	// since is the moment the bridge last connected UNDER THE TOKEN IN FORCE.
+	// It is kept while the session is being re-opened, so the panel can say
+	// when it last connected rather than losing the fact on exactly the path
+	// the criterion is about; it goes when the switch goes off, and when the
+	// token changes, because a credential that has not connected has no
+	// moment to show.
 	since   time.Time
 	reason  string
 	closing bool
+	// convos is every channel this bridge has seen while it has been on.
+	//
+	// IT BELONGS TO THE BRIDGE AND NOT TO THE CONNECTION (iss-2609190241509478).
+	// A gateway session drops whenever the Wi-Fi blinks or the lid closes,
+	// and the bridge resumes by itself; a conversation held on the session
+	// would make every one of those a silent `/reset` that also forgot the
+	// model the channel chose. The bound itd-2609180959397172 asks for is the
+	// bridge RUNNING: its life is exactly the life of the goroutine below,
+	// which is made with it and drops it as it ends — the switch, a token
+	// change, the app closing, and Discord refusing the credentials alike.
+	// Nothing of a conversation is ever written to disk either way.
+	convos *conversations
 }
 
 // New builds a Bridge. It connects to nothing: the bridge is off until Apply
@@ -183,6 +203,16 @@ func (b *Bridge) Apply(on bool, token string) {
 		b.mu.Unlock()
 		return
 	}
+	// The last-connected moment belongs to the credential that connected. A
+	// token the operator has just pasted has never connected, whatever the
+	// one before it did, and a panel that credited it with the old one's
+	// moment would be answering the operator's "did this work?" with a
+	// session that was somebody else's (iss-2609190312313645). Before the
+	// branches, so it covers the switch on under a new token, the token being
+	// changed under a running bridge, and the token being taken away.
+	if b.token != token {
+		b.since = time.Time{}
+	}
 	// The switch on with no token is not an error and never refuses the save
 	// (itd-2609180959397172): the bridge says so as its own state and nothing
 	// else happens.
@@ -206,6 +236,7 @@ func (b *Bridge) Apply(on bool, token string) {
 	}
 	b.stopLocked()
 	b.on, b.token = true, token
+	b.convos = newConversations()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	b.cancel, b.done = cancel, done
@@ -213,7 +244,20 @@ func (b *Bridge) Apply(on bool, token string) {
 	b.mu.Unlock()
 
 	go func() {
+		// The conversations go with this goroutine, WHICHEVER WAY IT ENDS
+		// (iss-2609190312064731): the switch, a token change, the app
+		// closing, or Discord refusing the credentials and stopping the loop
+		// for good. The fatal path returns without ever reaching stopLocked,
+		// so a store dropped there alone outlived the bridge on exactly the
+		// stop an operator cannot undo from Settings.
+		//
+		// THE ORDER OF THESE TWO IS LOAD-BEARING. Defers run last-registered
+		// first, so the close below is registered first in order to run
+		// LAST — after the drop. Whoever is waiting on done goes straight on
+		// to build the next store, and a goroutine that dropped after closing
+		// could drop that one instead of its own.
 		defer close(done)
+		defer b.dropConversations()
 		b.run(ctx, token)
 	}()
 }
@@ -246,8 +290,9 @@ func (b *Bridge) stopLocked() {
 	b.mu.Lock()
 }
 
-// State reports what the bridge is doing: one of the four words above, when
-// the live session was established, and the reason it stopped.
+// State reports what the bridge is doing: one of the four words above, when it
+// last connected — the live session's moment while it is connected, and the
+// previous one while it is not — and the reason it stopped.
 //
 // It is three plain values rather than a struct so that nothing outside this
 // package has to import it to ask. internal/app renders them onto the snapshot
@@ -256,6 +301,40 @@ func (b *Bridge) State() (state string, since time.Time, reason string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.state, b.since, b.reason
+}
+
+// dropConversations forgets every channel's conversation. It runs as the
+// bridge's goroutine ends, which is the one moment that covers every way the
+// bridge stops running.
+func (b *Bridge) dropConversations() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.convos = nil
+}
+
+// conversations is the store this bridge's sessions share. A session asks for
+// it once, at the moment it is built, and holds the pointer for as long as it
+// runs; the store itself outlives every one of them and goes when the bridge
+// stops.
+func (b *Bridge) conversations() *conversations {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.convos == nil {
+		// Unreachable as the code stands: the store is made before the
+		// goroutine that opens a session, and dropped only as that goroutine
+		// ends. It SAYS SO rather than absorbing it in silence
+		// (iss-2609190312312041), because a later change that dropped the
+		// store under a live session would otherwise leave that session
+		// writing a history nobody owns, with nothing in the log and no test
+		// the wiser. The session is given a store of its own and thrown away
+		// with it, which is the safe direction: a stopped bridge holds no
+		// conversation, and a message in flight is answered without a history
+		// rather than on a nil map.
+		b.log.Info("the Discord bridge answered without a conversation store; this is a bug in its lifetime",
+			"bridge", bridgeName)
+		return newConversations()
+	}
+	return b.convos
 }
 
 func (b *Bridge) setState(state, reason string) {
@@ -270,6 +349,10 @@ func (b *Bridge) setStateLocked(state, reason string) {
 		b.since = b.now()
 		return
 	}
+	// Connecting and stopped KEEP it: it is the last-connected moment, and a
+	// bridge that has dropped is the one case where a person wants it. Only
+	// the switch going off clears it, because then there is no bridge to have
+	// last connected.
 	if state == StateOff {
 		b.since = time.Time{}
 	}
@@ -324,6 +407,12 @@ func (b *Bridge) run(ctx context.Context, token string) {
 			b.log.Debug("the Discord bridge lost its session and will reconnect",
 				"err", out.err, "in", backoff)
 		}
+		// Said when the session goes, not when the next attempt is made: the
+		// wait below is up to half a minute, and for the whole of it the
+		// panel would otherwise go on reading "connected since" for a session
+		// that is gone (iss-2609190242334438). The moment it last connected
+		// is kept, which is what the panel shows while it reconnects.
+		b.setState(StateConnecting, "")
 		select {
 		case <-ctx.Done():
 			return

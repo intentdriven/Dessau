@@ -36,9 +36,13 @@ type Bridge interface {
 type BridgeState struct {
 	// State is one of off, connecting, connected, stopped.
 	State string `json:"state"`
-	// Since is when the live session was established, in whole UTC seconds,
-	// and is absent unless the bridge is connected. It is what answers
-	// "the panel shows when it last connected".
+	// Since is when the bridge last connected, in whole UTC seconds: the live
+	// session's moment while it is connected, and the previous one while it
+	// is re-opening or stopped. It is what answers "the panel shows when it
+	// last connected", which is asked of exactly the path where the bridge is
+	// NOT connected. It is absent until the bridge has connected under the
+	// token now in force: a credential that has never connected is credited
+	// with no moment, whatever the one before it did.
 	Since int64 `json:"since,omitempty"`
 	// Reason is why the bridge stopped, absent when it has not.
 	Reason string `json:"reason,omitempty"`

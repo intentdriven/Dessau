@@ -26,6 +26,46 @@ func connected(t *testing.T, f *fakeDiscord, b *Bridge) {
 	f.drainCalls()
 }
 
+// answered waits for a message to be answered AND for the answer to be
+// finished with.
+//
+// Waiting on the POST alone is not enough, and the trap is a real one: the
+// placeholder is posted from inside the streaming callback, while the
+// channel's answering lock is still held, so a test that sent its next message
+// then would be met with "I am still answering your last message here" — which
+// is a POST to the same path, and would satisfy the next wait as though it
+// were an answer (iss-2609190312182409). The lock is what says the answer is
+// over, so the lock is what is waited on.
+func answered(t *testing.T, f *fakeDiscord, b *Bridge) restCall {
+	t.Helper()
+	call := f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	if got, _ := call.Body["content"].(string); got == stillAnswering {
+		t.Fatalf("the bot replied %q: the channel was still answering the message before this one", got)
+	}
+	// Against the bridge's OWN store, or not at all: conversations() mints a
+	// throwaway when the bridge holds none, and waiting on a lock in a store
+	// nothing else can reach would synchronise on nothing and pass
+	// (iss-2609190312182409's second half). Every caller runs on a live
+	// bridge; this says so rather than trusting it.
+	b.mu.Lock()
+	store := b.convos
+	b.mu.Unlock()
+	if store == nil {
+		t.Fatal("the bridge holds no conversations: it is not running, and this wait would mean nothing")
+	}
+	conv := store.get(channelID)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if conv.answering.TryLock() {
+			conv.answering.Unlock()
+			return call
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("the channel was still answering five seconds after it posted")
+	return call
+}
+
 // A direct message is answered, and the answer is the model's text.
 func TestADirectMessageIsAnswered(t *testing.T) {
 	f := newFakeDiscord(t)
@@ -265,7 +305,7 @@ func TestTheSlashCommandsAnswerTheChannel(t *testing.T) {
 	f.command(commandModel, nil)
 	call = f.waitCall(http.MethodPost, "/interactions/")
 	data, _ = call.Body["data"].(map[string]any)
-	if text, _ := data["content"].(string); !strings.Contains(text, "mlx-community/Qwen3-8B-4bit") {
+	if text, _ := data["content"].(string); !strings.Contains(text, firstModel) {
 		t.Errorf("/model with no argument answered %q, want the channel's model", text)
 	}
 
@@ -278,6 +318,59 @@ func TestTheSlashCommandsAnswerTheChannel(t *testing.T) {
 	}
 	if strings.Contains(text, "not-a-model-here") {
 		t.Error("the refusal echoed the name back, which puts a stranger's text in a message this bot posts")
+	}
+}
+
+// `/model` picking a model is the acceptance criterion, and the criterion is
+// the NEXT MESSAGE being answered by it: the command stores the choice on the
+// channel's conversation and the answer reads it back on the way to the
+// gateway. Nothing exercised that seam while the fake server offered one
+// model, because the model a request carried was the default either way
+// (iss-2609190242018424).
+func TestAModelPickedWithTheCommandAnswersTheNextMessage(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, asked := recording(t, f, "an answer")
+	connected(t, f, b)
+
+	// Bob asks what the channel is on, and is told the server's default.
+	f.command(commandModel, nil)
+	call := f.waitCall(http.MethodPost, "/interactions/")
+	data, _ := call.Body["data"].(map[string]any)
+	if text, _ := data["content"].(string); !strings.Contains(text, firstModel) {
+		t.Fatalf("/model answered %q, want the default the channel starts on", text)
+	}
+
+	// Then he picks the other one.
+	f.command(commandModel, map[string]string{"name": secondModel})
+	call = f.waitCall(http.MethodPost, "/interactions/")
+	data, _ = call.Body["data"].(map[string]any)
+	if text, _ := data["content"].(string); !strings.Contains(text, secondModel) {
+		t.Fatalf("/model %s answered %q, want the model it was set to", secondModel, text)
+	}
+
+	f.message("what do you think", false, false)
+	answered(t, f, b)
+	got := asked()
+	if len(got) != 1 {
+		t.Fatalf("the gateway was asked %d times, want once", len(got))
+	}
+	if got[0].Model != secondModel {
+		t.Errorf("the message was answered by %q, want the model `/model` picked (%q)", got[0].Model, secondModel)
+	}
+
+	// And the short name works the same way, which is how most people will
+	// type one.
+	f.command(commandModel, map[string]string{"name": shortName(firstModel)})
+	f.waitCall(http.MethodPost, "/interactions/")
+	f.drainCalls()
+	f.message("and now", false, false)
+	answered(t, f, b)
+	got = asked()
+	if len(got) != 2 {
+		t.Fatalf("the gateway was asked %d times, want twice", len(got))
+	}
+	if got[1].Model != firstModel {
+		t.Errorf("after picking by short name the message was answered by %q, want %q", got[1].Model, firstModel)
 	}
 }
 

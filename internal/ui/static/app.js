@@ -1123,28 +1123,38 @@ function renderBindOptions(select, host) {
 
 // renderBridgeState says what the Discord bridge is doing, under the switch.
 //
-// Four states and nothing else: off, connecting, connected since a moment, or
-// stopped with the reason Discord gave. The reason is the server's own
-// sentence about a credential or a configuration and never carries the token,
-// which the panel is never sent in the first place.
+// Four states and nothing else: off, connecting, connected, or stopped with
+// the reason Discord gave, each with the moment the bridge last connected
+// where there is one. The reason is the server's own sentence about a
+// credential or a configuration and never carries the token, which the panel
+// is never sent in the first place.
 function renderBridgeState() {
   const el = $('discordState');
   if (!el) return;
-  const b = state.bridge || {};
+  el.textContent = bridgeStateText(state.bridge || {});
+}
+
+// bridgeStateText is the sentence the card shows, computed from the snapshot's
+// bridge alone so it can be asserted without a DOM.
+//
+// The moment the bridge last connected is shown in every state that has one,
+// and not only while it is connected: a session that has dropped and is being
+// re-opened is exactly when somebody wants to know when the bot last worked.
+// The moment is absent until the bridge has connected once under the current
+// switch, and the sentence then says only what it is doing.
+function bridgeStateText(b) {
+  const at = b.since ? new Date(b.since * 1000).toLocaleString() : '';
   switch (b.state) {
     case 'connected':
-      el.textContent = b.since
-        ? `Connected since ${new Date(b.since * 1000).toLocaleString()}.`
-        : 'Connected.';
-      break;
+      return at ? `Connected since ${at}.` : 'Connected.';
     case 'connecting':
-      el.textContent = 'Connecting to Discord\u2026';
-      break;
-    case 'stopped':
-      el.textContent = b.reason ? `Stopped: ${b.reason}` : 'Stopped.';
-      break;
+      return at ? `Last connected at ${at}; reconnecting\u2026` : 'Connecting to Discord\u2026';
+    case 'stopped': {
+      const why = b.reason ? `Stopped: ${b.reason}.` : 'Stopped.';
+      return at ? `${why} Last connected at ${at}.` : why;
+    }
     default:
-      el.textContent = 'The bridge is off.';
+      return 'The bridge is off.';
   }
 }
 
