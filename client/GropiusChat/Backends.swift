@@ -233,6 +233,11 @@ struct ServerBackend: ChatBackend {
     /// Builds an authenticated request for a path under the API base, or nil
     /// when the stored address is not one a request may be sent to.
     let request: (String) -> URLRequest?
+    /// The app's one session. It carries the delegate that answers the server
+    /// trust and client certificate challenges a paired connection raises;
+    /// URLSession.shared takes no delegate, so a paired request sent through it
+    /// would be refused at the handshake with nothing to explain it.
+    let session: URLSession
 
     func reply(to history: [Message], deliver: @escaping (ReplyEvent) -> Void) async throws {
         guard var req = request("/chat/completions") else {
@@ -251,7 +256,7 @@ struct ServerBackend: ChatBackend {
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        let (bytes, resp) = try await URLSession.shared.bytes(for: req)
+        let (bytes, resp) = try await session.bytes(for: req)
         if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
             if http.statusCode == 401 {
                 throw BackendMessage(text: "This server needs an API key; add it in Settings.")

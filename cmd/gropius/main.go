@@ -32,6 +32,7 @@ import (
 	"github.com/intentdriven/Gropius/internal/discovery"
 	"github.com/intentdriven/Gropius/internal/gateway"
 	"github.com/intentdriven/Gropius/internal/instance"
+	"github.com/intentdriven/Gropius/internal/pairing"
 	"github.com/intentdriven/Gropius/internal/ui"
 )
 
@@ -372,6 +373,7 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 	}()
 
 	mux := http.NewServeMux()
+	var tlsSrv *http.Server
 
 	// OpenAI-compatible API — LAN-facing, guarded by the optional API key. The
 	// gateway reads the key live (a.Config) so setting one in the control panel
@@ -385,7 +387,40 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 	// Control plane + web UI — administrative, so loopback-only (Control.Handler
 	// enforces it). Mounted at "/" as the catch-all for everything that is not a
 	// /v1 or /health request.
-	ctrl := &gateway.Control{App: a, UI: ui.Handler(), Root: paths.Root, Notices: notices, Version: version}
+	ctrl := &gateway.Control{App: a, UI: ui.Handler(), Root: paths.Root, Notices: notices, Version: version, Log: log}
+
+	// The server's own TLS identity, and the listeners paired clients reach it
+	// on (adr-2609182357322050). The key persists across restarts because it is
+	// what every paired client pinned; the leaf is derived from it here, at
+	// every start, so a renamed Mac or a new address costs nobody their
+	// pairing. A server that cannot make itself a key serves plain HTTP exactly
+	// as it did before, and says why.
+	var tlsLns []net.Listener
+	if identity, err := pairing.LoadIdentity(serverKeyFile(paths), tlsSANs(plan, config.LocalHostName())); err != nil {
+		log.Error("no certificate of this server's own, so no client can pair", "err", err)
+	} else {
+		reg := pairing.NewRegistry(a.Config)
+		tlsLns = acquireTLSBind(plan, cfg, identity, reg, log)
+		// Pairing exists only where a paired client has somewhere to go. An
+		// operator who set tls_port to -1, or whose TLS port is held by
+		// something else, would otherwise still be running an unauthenticated
+		// endpoint that mints certificates and writes their settings file for a
+		// port nothing is listening on (iss-2609190110237996).
+		if len(tlsLns) > 0 {
+			ctrl.Identity, ctrl.Clients = identity, reg
+			// The pairing call is the one route on the plain listener that is
+			// not the gateway's and not the control plane's. It has to be
+			// plain: a client that has not paired has no certificate, and the
+			// TLS listener refuses a handshake without one.
+			mux.Handle("/pair", ctrl.PairHandler())
+			tlsSrv = &http.Server{
+				Handler:           withLogging(g.TLSHandler(reg), log),
+				ReadHeaderTimeout: 15 * time.Second,
+				IdleTimeout:       120 * time.Second,
+			}
+		}
+	}
+
 	mux.Handle("/", ctrl.Handler())
 
 	srv := &http.Server{
@@ -403,6 +438,16 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 			log.Error("http server failed", "err", err)
 		}
 	})
+	for _, ln := range tlsLns {
+		log.Info("serving paired clients", "addr", ln.Addr().String(), "fingerprint", ctrl.Identity.Fingerprint())
+	}
+	if tlsSrv != nil && len(tlsLns) > 0 {
+		serveAll(tlsSrv, tlsLns, func(err error) {
+			if !errors.Is(err, http.ErrServerClosed) {
+				log.Error("tls server failed", "err", err)
+			}
+		})
+	}
 
 	// Advertise on the network so other machines can find this Mac by name.
 	var adv *discovery.Advertiser
@@ -411,7 +456,19 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 			Port:         cfg.Port,
 			Models:       func() int { return len(a.Registry.Ready()) },
 			AuthRequired: func() bool { return a.Config().APIKey != "" },
-			Log:          log,
+			Fingerprint: func() string {
+				if ctrl.Identity == nil {
+					return ""
+				}
+				return ctrl.Identity.Fingerprint()
+			},
+			TLSPort: func() int {
+				if len(tlsLns) == 0 {
+					return 0
+				}
+				return a.Config().EffectiveTLSPort()
+			},
+			Log: log,
 		}
 		if err := adv.Start(context.Background()); err != nil {
 			// Not fatal: clients can still use an IP address.
@@ -433,6 +490,15 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
 			srv.Close()
+		}
+		// The TLS server is a second http.Server rather than a second mount on
+		// the first, because its admission rule is different and the plain
+		// port's behaviour is an obligation that must not move. A second server
+		// is a second shutdown, and this is it.
+		if tlsSrv != nil {
+			if err := tlsSrv.Shutdown(ctx); err != nil {
+				tlsSrv.Close()
+			}
 		}
 	}
 
