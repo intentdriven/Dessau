@@ -125,6 +125,28 @@ func (m Model) Quantization() string {
 	return ""
 }
 
+// IsMLX reports whether the Hub says this repo holds an MLX model, i.e. one
+// this server could actually load.
+//
+// The Hub says it twice. A conversion that declares its library carries the
+// "mlx" tag, which is the Hub's own answer and the reliable one. A conversion
+// that declares nothing still names itself: the convention on the Hub is an
+// "mlx" marker in the repo name, and reading that as the second answer is what
+// lets a conversion published under somebody's own account be recognised at
+// all. Both are words the Hub holds; neither is a guess about the weights, and
+// a repo that says neither is not offered as an MLX model.
+func (m Model) IsMLX() bool {
+	for _, t := range m.Tags {
+		if strings.EqualFold(t, "mlx") {
+			return true
+		}
+	}
+	name := strings.ToLower(m.Name())
+	return strings.HasPrefix(name, "mlx-") ||
+		strings.HasSuffix(name, "-mlx") ||
+		strings.Contains(name, "-mlx-")
+}
+
 // File is one entry in a repo's file tree.
 type File struct {
 	Path string `json:"path"`
