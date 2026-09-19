@@ -321,6 +321,44 @@ verify() {
 	fi
 }
 
+# refuse_symlinks <asset-name> <directory>: refuse the archive if the tree
+# `ditto -x -k` has just restored out of it carries a symbolic link ANYWHERE.
+#
+# The whole tree, and not the path that is about to be executed, because a path
+# test answers for one component at a time. `ditto -x -k` restores a link at any
+# component and `-x` follows one, and each half of this script execs something
+# four components deep: a link at Gropius.app, at Contents or at MacOS sends the
+# exec outside the directory the checksum covered while a test on the leaf finds
+# an ordinary executable file and passes. That is what the two leaf tests here
+# used to be, and it closed one component of four (iss-2609190032572500).
+#
+# It is a rule the archives can carry because neither bundle this product
+# publishes contains a symbolic link — no embedded frameworks, no
+# Versions/Current — so an archive with one anywhere in it is not an archive
+# this script should be running a binary out of, whatever component it sits at.
+# Should a bundle ever need to ship a link, this refusal is where that shows up,
+# loudly, rather than in what gets executed.
+#
+# Only a release whose bytes verify can plant one, which is what the checksum
+# above is for; this costs a scan of a just-unpacked directory and does not
+# depend on that being true. `find` is given neither -H nor -L, so it does not
+# follow what it finds, and a scan that cannot be completed is a refusal: a tree
+# nothing can read is not a tree to execute out of.
+refuse_symlinks() {
+	local asset="$1" dir="$2" links="" first=""
+	links="$(/usr/bin/find "$dir" -type l)" ||
+		die "the unpacked $asset could not be read, so nothing here can say where its executables point. Refusing to run anything out of it."
+	[ -n "$links" ] || return 0
+	first="${links%%$'\n'*}"
+	# The name is reported as a path inside the archive, with control characters
+	# replaced: it was written by whoever built the archive, and a message about
+	# a hostile archive is the last place to let that archive write to somebody's
+	# terminal.
+	first="${first#"$dir"/}"
+	first="${first//[[:cntrl:]]/?}"
+	die "$asset carries a symbolic link ($first), and a Gropius archive carries none. A link at any component of a path this script executes would send that exec outside the directory the checksum covered. Refusing to run anything out of it."
+}
+
 verify "$ASSET" "$tmp/SHA256SUMS.txt" "$tmp"
 echo "Checksum OK."
 
@@ -352,6 +390,8 @@ else
 fi
 
 /usr/bin/ditto -x -k "$zip" "$tmp/extract" || die "could not unpack $ASSET."
+# Before anything reads, walks or executes what was unpacked.
+refuse_symlinks "$ASSET" "$tmp/extract"
 [ -d "$tmp/extract/$APP.app" ] || die "$ASSET did not contain $APP.app."
 # Safe to clear the quarantine now: we have verified this .app is the exact
 # artifact the release workflow built. (curl downloads are usually not
@@ -366,13 +406,9 @@ if [ "$mode" = "server" ]; then
 	# of an install a single thing rather than a negotiation between a script
 	# from one release and an application from another.
 	VERIFIED_BIN="$tmp/extract/$APP.app/Contents/MacOS/gropius"
-	# `ditto -x -k` restores symbolic links from the archive, and `-x` follows
-	# one — so a link here would send the single exec this whole bootstrap
-	# exists to reach somewhere outside the directory that was verified. Only a
-	# compromised release can plant one, which is what the checksum above is
-	# for; the refusal costs a line and does not depend on that being true.
-	[ ! -L "$VERIFIED_BIN" ] ||
-		die "$ASSET carries a symbolic link where $APP.app/Contents/MacOS/gropius should be — refusing to run it."
+	# Every component of this path is an ordinary directory or file: the whole
+	# extracted tree was scanned for symbolic links above, before anything
+	# walked it. A test here would answer for the last component only.
 	[ -x "$VERIFIED_BIN" ] ||
 		die "$ASSET carries no executable at $APP.app/Contents/MacOS/gropius — refusing to install it."
 
@@ -458,14 +494,10 @@ if [ "$PLACER_RELEASE_PATH" != "$RELEASE_PATH" ]; then
 fi
 verify "$PLACER_ASSET" "$placer_sums" "$tmp"
 /usr/bin/ditto -x -k "$placer_zip" "$tmp/placer" || die "could not unpack $PLACER_ASSET."
+# The same rule as the bundle above, and for the same reason: the exec below is
+# four components deep in a directory a downloaded archive laid out.
+refuse_symlinks "$PLACER_ASSET" "$tmp/placer"
 PLACER="$tmp/placer/Gropius.app/Contents/MacOS/gropius"
-# `ditto -x -k` restores symbolic links from the archive, and `-x` follows one —
-# so a link here would send the exec below somewhere outside the directory that
-# was verified. Only a compromised release can plant one, which is what the
-# checksum above is for; the refusal costs a line and does not depend on that
-# being true.
-[ ! -L "$PLACER" ] ||
-	die "$PLACER_ASSET carries a symbolic link where Gropius.app/Contents/MacOS/gropius should be — refusing to run it."
 [ -x "$PLACER" ] ||
 	die "$PLACER_ASSET carries no executable at Gropius.app/Contents/MacOS/gropius — refusing to place $APP.app with it."
 

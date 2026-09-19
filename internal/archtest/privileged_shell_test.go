@@ -450,8 +450,9 @@ func TestTheClientHalfHandsItsPlacementToTheVerb(t *testing.T) {
 			"the client's bundle is placed by the verb, from the directory this script verified, into the destination it chose"},
 		{`PLACER="$tmp/placer/Gropius.app/Contents/MacOS/gropius"`,
 			"the placer is the binary inside the archive this script just verified, never the copy already installed on this Mac"},
-		{`[ ! -L "$PLACER" ]`,
-			"`ditto -x` follows a symbolic link, so a link where the placer should be would send the exec outside the verified directory"},
+		{`refuse_symlinks "$PLACER_ASSET" "$tmp/placer"`,
+			"`ditto -x` restores a symbolic link at any component and follows it, so the whole unpacked placer is " +
+				"scanned before the exec — a test on the leaf answers for one component of four (iss-2609190032572500)"},
 		{`if [ "$status" -eq 2 ]`,
 			"a binary that predates the verb refuses it with exit 2, which is a version mismatch and not a failed placement"},
 	} {
