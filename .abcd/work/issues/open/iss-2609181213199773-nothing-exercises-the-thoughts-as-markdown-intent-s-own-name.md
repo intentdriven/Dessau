@@ -12,3 +12,7 @@ found_at: "client/GropiusChat/GropiusChat.swift"
 ---
 
 Nothing exercises the thoughts-as-markdown intent's own named falsifier - reasoning that streams in fragments the parser mis-renders until it is complete; the only shipped check is a source-text grep and no hand check with a thinking model is recorded.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: exercising the fragment-streaming falsifier needs a hand check with a thinking model on a served server, recorded in a decision line; the source grep is what ships until then.

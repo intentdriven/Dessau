@@ -16,3 +16,7 @@ The models list is fetched with the stored API key only when the request's origi
 ## Triage 2026-09-18
 
 Left open for the maintainer: the delivered behaviour is the safer one — a key entered for one server is not sent to a newly found one — so the acceptance criterion is the likelier thing to change, and sending a stored credential more widely is not a call to make in a defect sweep.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: sending a stored credential to a newly found server is a policy call; the acceptance criterion is the likelier thing to change.

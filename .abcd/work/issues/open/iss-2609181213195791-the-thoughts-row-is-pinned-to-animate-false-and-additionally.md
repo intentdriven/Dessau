@@ -12,3 +12,7 @@ found_at: "client/GropiusChat/GropiusChat.swift"
 ---
 
 The Thoughts row is pinned to animate false and additionally styled callout, italic and secondary, so the promise that thoughts are drawn the way the reply below them is holds for the parse and the blocks but not for the drawing; an emphasised word renders italic inside italic text.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: the Thoughts row's italic, secondary, callout styling was their manual-test ask on 2026-09-18; dropping the italic to fix italic-in-italic is a look they should choose. Nitpick.

@@ -16,3 +16,7 @@ The App Intents metadata test greps client/build.sh for the processor step inste
 ## Triage 2026-09-18
 
 Left open for the maintainer: holding a built bundle needs the Swift toolchain inside a Go test, which CI does not have — how the metadata step gets a real check is an infrastructure decision, not a test to tighten in place.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: a real check of the App Intents metadata needs the Swift toolchain inside CI, an infrastructure decision.

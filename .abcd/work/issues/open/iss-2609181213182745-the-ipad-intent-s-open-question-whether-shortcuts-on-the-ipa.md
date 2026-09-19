@@ -12,3 +12,7 @@ found_at: "client/build-ipad.sh"
 ---
 
 The iPad intent's open question - whether Shortcuts on the iPad lists the three actions from a personally signed bundle, checked after the first install and recorded - is unanswered; the build step only asserts the metadata file was written.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: whether Shortcuts on the iPad lists the three actions from a personally signed bundle is answered only on a real device after the first install.
