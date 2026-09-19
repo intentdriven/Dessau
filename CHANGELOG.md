@@ -57,6 +57,10 @@ GitHub release notes.
   given way, and the same mistake cut short the concurrent test of a run that
   got past the load. The loop now claims its place before it asks for it, so a
   measurement gives way to a real request and to nothing else.
+- **The chat client's messages name the device you are holding.** The
+  built-in model's error sentences spelled the Mac out whatever they were
+  running on, so the iPad build named a device that was not there; they now
+  use the same device noun as the rest of the client.
 
 ## [0.7.1] - 2026-09-18
 

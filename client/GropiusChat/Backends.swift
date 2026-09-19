@@ -122,7 +122,7 @@ struct BuiltInBackend: ChatBackend {
                     fix: "Pick a server from the model picker.")
             @unknown default:
                 return Unavailable(
-                    reason: "The Mac's own model is not available.",
+                    reason: "The \(deviceNoun)'s own model is not available.",
                     fix: "Pick a server from the model picker.")
             }
         }
@@ -207,16 +207,16 @@ struct BuiltInBackend: ChatBackend {
     private static func words(for error: LanguageModelError) async throws -> String {
         switch error {
         case .contextSizeExceeded:
-            return "This conversation is longer than the Mac's own model can hold. Start a new chat, or pick a server from the model picker."
+            return "This conversation is longer than the \(deviceNoun)'s own model can hold. Start a new chat, or pick a server from the model picker."
         case .guardrailViolation:
-            return "The Mac's own model will not answer that."
+            return "The \(deviceNoun)'s own model will not answer that."
         case .refusal(let refusal):
             let why = (try? await refusal.explanation.content) ?? ""
-            return why.isEmpty ? "The Mac's own model declined to answer." : why
+            return why.isEmpty ? "The \(deviceNoun)'s own model declined to answer." : why
         case .rateLimited:
-            return "The Mac's own model is busy; try again in a moment."
+            return "The \(deviceNoun)'s own model is busy; try again in a moment."
         case .unsupportedLanguageOrLocale:
-            return "The Mac's own model does not support this language."
+            return "The \(deviceNoun)'s own model does not support this language."
         default:
             return error.localizedDescription
         }
@@ -225,7 +225,7 @@ struct BuiltInBackend: ChatBackend {
     private static func words(for error: LanguageModelSession.Error) -> String {
         switch error {
         case .concurrentRequests:
-            return "The Mac's own model is still answering the last message."
+            return "The \(deviceNoun)'s own model is still answering the last message."
         default:
             return error.localizedDescription
         }
@@ -234,7 +234,7 @@ struct BuiltInBackend: ChatBackend {
     private static func words(for error: SystemLanguageModel.Error) -> String {
         switch error {
         case .assetsUnavailable:
-            return "The Mac's own model is not ready yet; try again shortly."
+            return "The \(deviceNoun)'s own model is not ready yet; try again shortly."
         default:
             return error.localizedDescription
         }
