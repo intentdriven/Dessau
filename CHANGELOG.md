@@ -39,6 +39,14 @@ GitHub release notes.
   older turns make way for it, and a message too long for the window on its own
   is not sent at all — the chat says so in one sentence and points at a server,
   instead of a failed turn and a framework error.
+- **The pinned-models figure is worked out from the batching Gropius is
+  actually running with.** Batched requests (decode concurrency) reaches the
+  model servers only when Gropius starts, and the control panel was charging
+  pinned models at the figure last saved — so between saving a new one and
+  restarting, the panel showed a memory figure the server itself did not agree
+  with, and a set it said would fit could be refused on save. The panel now
+  reads the concurrency in force, and says under the field when the saved
+  figure is waiting for the next start.
 - **A model typed as a full repository id is found, whatever account owns it.**
   The Find Models search asks the `mlx-community` organisation, so an MLX
   conversion published under someone else's account was not offered even to a
