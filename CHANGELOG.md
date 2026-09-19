@@ -69,6 +69,13 @@ GitHub release notes.
   on a fresh conversation. The title is now pinned inline on the Mac and the
   iPad, the scroll-edge effect ends at the toolbar, and a chat shorter than
   the window starts under it. A long chat still opens at its newest message.
+- **A half-finished upgrade leaves the application where only your account can
+  reach it.** Where an upgrade cannot put the previous bundle back, that copy
+  is the only one there is and it waits until you move it — and it waited in
+  the applications folder, which every administrator account on this Mac can
+  delete an entry from. It now waits in your account's own Application Support
+  folder, and the command still says where it is. Where that folder is on
+  another volume, the copy is staged as before and a warning says so.
 - **The pinned-models figure is worked out from the batching Gropius is
   actually running with.** Batched requests (decode concurrency) reaches the
   model servers only when Gropius starts, and the control panel was charging
