@@ -143,6 +143,11 @@ var enforcementPath = []string{
 	// this account's model traffic to it. That is an admission decision, and
 	// it must not start reading which network anything is on to make it.
 	"github.com/intentdriven/Gropius/internal/instance",
+	// The paired set and the TLS identity: it answers whether the key a client
+	// is presenting is one this server has paired, which is the admission
+	// decision for the whole TLS listener. It must never start deciding that
+	// from which network the client is on.
+	"github.com/intentdriven/Gropius/internal/pairing",
 }
 
 // notEnforcement is every other package in the module, each with the reason it

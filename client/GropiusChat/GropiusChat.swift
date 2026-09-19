@@ -203,6 +203,13 @@ final class AppModel: ObservableObject {
     /// Whether certain words in a reply animate once.
     @AppStorage("effectsEnabled") var effectsEnabled: Bool = true
 
+    /// The pairing this client holds, read from the Keychain at launch.
+    ///
+    /// In the Keychain rather than in UserDefaults, for the reason the API key
+    /// already is: a preferences plist is rewritable by anything running as the
+    /// user, and a pin anything can rewrite is not a pin.
+    @Published var pairedServer: PairedServer?
+
     // Which served models the picker offers, as two comma-separated lists of
     // HuggingFace's own words. The defaults are the server's shipped rule; a
     // test in the server's suite holds them to it.
@@ -255,11 +262,19 @@ final class AppModel: ObservableObject {
     private var residencyTask: Task<Void, Never>?
 
     init() {
+        // One session for the whole app, carrying the delegate that answers the
+        // two TLS challenges a paired connection raises. URLSession.shared
+        // takes no delegate at all, which is why nothing here uses it any more.
+        let pinning = PinningDelegate()
+        self.pinning = pinning
+        self.session = URLSession(configuration: .default, delegate: pinning, delegateQueue: nil)
         if let legacy = UserDefaults.standard.string(forKey: "apiKey"), !legacy.isEmpty {
             Keychain.write(legacy)
             UserDefaults.standard.removeObject(forKey: "apiKey")
         }
         apiKey = Keychain.read()
+        pairedServer = PairingStore.read()
+        pinning.pinnedSPKI = pairedServer?.pinnedSPKI
         load()
         if conversations.isEmpty {
             let c = Conversation()
@@ -439,11 +454,136 @@ final class AppModel: ObservableObject {
         Keychain.write(value)
     }
 
+    // MARK: Pairing
+
+    /// The pairing this client holds, if the server it is pointed at is the one
+    /// it paired with. A pairing is a property of a server, so pointing the
+    /// client somewhere else does not make it paired there.
+    var paired: PairedServer? {
+        guard let p = pairedServer, p.origin == serverOrigin else { return nil }
+        return p
+    }
+
+    /// Whether the connection to the server in front of the user is a paired
+    /// one — which is what the lock beside its name means, and it means nothing
+    /// else: it is not about the API key.
+    var pairedHere: Bool { paired != nil }
+
+    /// The session every request goes through. One session, not one per
+    /// request: a session retains its delegate until it is invalidated, and the
+    /// delegate is what answers both TLS challenges.
+    let session: URLSession
+    let pinning: PinningDelegate
+
+    /// Pair with the server this client is pointed at.
+    ///
+    /// Three steps, and the third is the one that matters. The key is made
+    /// here and its private half never leaves the device; the public half goes
+    /// to the server, which signs it a certificate. Then this client opens a
+    /// TLS connection of its own and pins the key THAT handshake presented —
+    /// never the fingerprint in the pairing answer, which arrived over a plain
+    /// port anything on the network can answer on.
+    func pair(as name: String) async throws {
+        guard let key = PairingStore.makeKey(),
+              let pub = SecKeyCopyPublicKey(key),
+              let spki = spkiOf(pub)
+        else { throw PairingError.noKey }
+
+        guard let url = URL(string: serverOrigin + "/pair") else { throw PairingError.noKey }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 30
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(
+            PairRequest(name: name, public_key: spki.base64EncodedString()))
+
+        let (data, resp) = try await session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw PairingError.badAnswer }
+        guard http.statusCode == 200 else {
+            throw PairingError.refused(serverMessage(in: data)
+                ?? "That server refused the pairing request.")
+        }
+        guard let answer = try? JSONDecoder().decode(PairAnswer.self, from: data),
+              let der = Data(base64Encoded: answer.leaf),
+              PairingStore.store(leaf: der)
+        else { throw PairingError.badAnswer }
+
+        // The pin comes from a handshake this client made, and from nothing a
+        // server or a Bonjour record told it.
+        var record = PairedServer(origin: serverOrigin, tlsPort: answer.tls_port,
+                                  pinnedSPKI: "", name: answer.name,
+                                  clientSPKI: spkiFingerprint(spki),
+                                  leafDER: answer.leaf)
+        guard let httpsBase = record.httpsBase,
+              let probe = URL(string: httpsBase + "/health")
+        else {
+            PairingStore.removeLeaf(der)
+            throw PairingError.noHandshake
+        }
+        // Learning a pin means having none for the length of one handshake. The
+        // pin in force is put back on every way out of here that does not set a
+        // new one: leaving the delegate unpinned would make the next connection
+        // to an already-paired server accept any certificate at all
+        // (iss-2609190100212365).
+        let previous = pinning.pinnedSPKI
+        pinning.pinnedSPKI = nil
+        // And forget whatever handshake was last seen, or a probe that never
+        // completes one leaves the fingerprint of the PREVIOUS server standing
+        // — which would write a pairing for this server holding that one's key,
+        // and show it under "That server's key", which is the one human
+        // comparison the whole design rests on (iss-2609190110244227).
+        pinning.forgetLastPresented()
+        var reached = false
+        if let (_, response) = try? await session.data(from: probe) {
+            reached = (response as? HTTPURLResponse) != nil
+        }
+        guard reached, let presented = pinning.lastPresentedSPKI else {
+            pinning.pinnedSPKI = previous
+            PairingStore.removeLeaf(der)
+            throw PairingError.noHandshake
+        }
+        record.pinnedSPKI = presented
+        pinning.pinnedSPKI = presented
+        PairingStore.write(record)
+        pairedServer = record
+    }
+
+    /// Forget a pairing, so this client asks for an API key again.
+    func unpair() {
+        PairingStore.forget()
+        pairedServer = nil
+        pinning.pinnedSPKI = nil
+    }
+
+    private func serverMessage(in data: Data) -> String? {
+        struct Envelope: Decodable {
+            struct Inner: Decodable { let message: String? }
+            let error: Inner?
+        }
+        return (try? JSONDecoder().decode(Envelope.self, from: data))?.error?.message
+    }
+
     /// An authenticated request for a path under the API base, or nil when
-    /// the stored address is not one a request may be sent to. The bearer
-    /// token is attached only to the host it was entered for: a server picked
-    /// from the network is asked without it, and says so if it needs one.
+    /// the stored address is not one a request may be sent to.
+    ///
+    /// Two ways of proving who this client is, and never both. A PAIRED server
+    /// is reached over TLS on its own port, with the client's own key, and the
+    /// API key is neither sent nor asked for. Everything else is exactly what
+    /// it was: the bearer token is attached only to the host it was entered
+    /// for, so a server picked from the network is asked without it and says
+    /// so if it needs one.
+    ///
+    /// A paired server is reached over TLS or not at all. There is deliberately
+    /// no fallback to the plain port on a TLS failure: a fallback is an off
+    /// switch anything on the network could reach for, and it would put this
+    /// client's traffic back in the clear at the moment it most matters.
     func request(_ path: String) -> URLRequest? {
+        if let p = paired, let httpsBase = p.httpsBase {
+            guard let url = URL(string: httpsBase + apiPath + path) else { return nil }
+            var r = URLRequest(url: url)
+            r.timeoutInterval = 60
+            return r
+        }
         guard let url = URL(string: base + apiPath + path),
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
@@ -471,7 +611,7 @@ final class AppModel: ObservableObject {
         status = "Connecting…"
         needsAPIKey = false
         do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
+            let (data, resp) = try await session.data(for: req)
             guard let http = resp as? HTTPURLResponse else {
                 status = "No response from the server."; connected = false; return
             }
@@ -567,7 +707,7 @@ final class AppModel: ObservableObject {
         guard var req = request("/models") else { return nil }
         req.httpMethod = "GET"
         req.timeoutInterval = 10
-        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+        guard let (data, resp) = try? await session.data(for: req),
               (resp as? HTTPURLResponse)?.statusCode == 200,
               let list = try? JSONDecoder().decode(ModelsResponse.self, from: data)
         else { return nil }
@@ -597,7 +737,7 @@ final class AppModel: ObservableObject {
         let backend: ChatBackend
         switch answerer {
         case .builtIn: backend = BuiltInBackend()
-        case .server(let model): backend = ServerBackend(model: model, request: { [weak self] in self?.request($0) })
+        case .server(let model): backend = ServerBackend(model: model, request: { [weak self] in self?.request($0) }, session: session)
         }
 
         do {
@@ -1437,6 +1577,9 @@ struct MessageRow: View {
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var key = ""
+    @State private var pairingName = ""
+    @State private var pairing = false
+    @State private var pairingFailure: String?
     @AppStorage("bubbleColorUser") private var bubbleUser: String = ""
     @AppStorage("bubbleColorModel") private var bubbleModel: String = ""
     @AppStorage("textSize") private var textSize: String = TextSize.standard.rawValue
@@ -1444,6 +1587,20 @@ struct SettingsView: View {
 
     private var typedAddress: Binding<String> {
         Binding(get: { model.serverURL }, set: { model.useTypedAddress($0) })
+    }
+
+    /// Pair with the server the client is pointed at, and say plainly when it
+    /// does not work rather than leaving a button that did nothing.
+    private func pair() async {
+        pairing = true
+        pairingFailure = nil
+        defer { pairing = false }
+        do {
+            try await model.pair(as: pairingName.trimmingCharacters(in: .whitespaces))
+            pairingName = ""
+        } catch {
+            pairingFailure = error.localizedDescription
+        }
     }
 
     var body: some View {
@@ -1464,6 +1621,36 @@ struct SettingsView: View {
                      ? "The key is sent only to the server it is entered for."
                      : "The key is sent only to \(model.apiKeyHost).")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Pairing") {
+                if let paired = model.paired {
+                    LabeledContent("Paired as", value: paired.name)
+                    // Shown so it can be compared with the fingerprint on the
+                    // server's own Clients page. That comparison is the only
+                    // check there is on a pairing nobody approved: anything on
+                    // the network can answer a pairing request, and a client
+                    // that pinned the wrong answer looks exactly like one that
+                    // pinned the right one.
+                    LabeledContent("That server's key", value: paired.pinnedSPKI)
+                        .textSelection(.enabled)
+                    LabeledContent("This client's key", value: paired.clientSPKI)
+                        .textSelection(.enabled)
+                    Text("Compare the server's key with the one shown on its control panel. If they differ, this client is talking to something else — forget the pairing and look at your network.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Forget this pairing") { model.unpair() }
+                } else {
+                    TextField("Name for this \(BuiltInBackend.deviceNoun)", text: $pairingName,
+                              prompt: Text("Bob's \(BuiltInBackend.deviceNoun)"))
+                    Button("Pair with this server") {
+                        Task { await pair() }
+                    }
+                    .disabled(pairingName.trimmingCharacters(in: .whitespaces).isEmpty || pairing)
+                    if let failure = pairingFailure {
+                        Text(failure).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("Pairing gives this \(BuiltInBackend.deviceNoun) a key of its own on that server. Once paired it never asks for an API key, and what passes between them is no longer readable by everything on your network. Anything on the network can pair with a Gropius server, so whoever runs it should check the list on its control panel.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section("Models to offer") {
                 TextField("Pipeline tags", text: $model.chatPipelineTags, prompt: Text("text-generation, image-text-to-text"))

@@ -21,6 +21,14 @@ import (
 // This is what stops it being paid twice. A second map keyed by model id is
 // how the split comes back, so the count is pinned at one: a new per-model
 // setting is a field on config.ModelSettings, beside the ones already there.
+// notKeyedByModelID is every map on config.Config whose key is not a model id,
+// with what its key is instead. An entry here costs a sentence, which is the
+// point: the count below is what stops the per-model rules splitting in two,
+// and a map waved past it has to say why it could not split them.
+var notKeyedByModelID = map[string]string{
+	"Clients": "keyed by a paired client's key fingerprint, and holds nothing about a model (adr-2609182357322050)",
+}
+
 func TestConfigHoldsExactlyOnePerModelMap(t *testing.T) {
 	var found []string
 	rt := reflect.TypeOf(config.Config{})
@@ -32,6 +40,17 @@ func TestConfigHoldsExactlyOnePerModelMap(t *testing.T) {
 		if f.Type.Kind() != reflect.Map ||
 			f.Type.Key().Kind() != reflect.String ||
 			f.Type.Elem().Kind() != reflect.Struct {
+			continue
+		}
+		// A map keyed by something that is not a model id is not a per-model
+		// map, whatever its shape. Clients is keyed by a client's key
+		// fingerprint (adr-2609182357322050) and holds nothing about a model,
+		// so counting it here would report a split that does not exist — and
+		// widening the shape test to exclude it by name is what the comment
+		// above refuses. The exclusion is by what the key IS, named here with
+		// its reason, and a third map would still have to answer for itself.
+		if reason, ok := notKeyedByModelID[f.Name]; ok {
+			t.Logf("%s is not a per-model map: %s", f.Name, reason)
 			continue
 		}
 		found = append(found, f.Name+" "+f.Type.String())
