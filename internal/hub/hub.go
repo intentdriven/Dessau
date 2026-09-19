@@ -404,6 +404,18 @@ const maxJSONBody = 32 << 20
 // far beyond any real model — while refusing an endpoint that loops forever.
 const maxTreePages = 1000
 
+// maxTreeBytes and maxTreeEntries bound a file listing as a whole, which
+// maxJSONBody and maxTreePages do not: those cap one page and the number of
+// hops, and their product — 32 GiB — is what a hostile Hub gets to spend,
+// because every page's entries are appended to one slice. A whole listing may
+// therefore cost at most what a single page may, and may name at most
+// maxTreeEntries files: two orders of magnitude above the most heavily sharded
+// real model, and far below anything that threatens this Mac's memory.
+const (
+	maxTreeBytes   = maxJSONBody
+	maxTreeEntries = 100_000
+)
+
 // Files lists a repo's file tree at the given revision (default "main"),
 // including sizes, which the downloader needs for progress reporting.
 //
@@ -411,6 +423,9 @@ const maxTreePages = 1000
 // `Link: <...>; rel="next"` header. We follow it to the end: a repo with more
 // than 1000 tree entries (a heavily-sharded model, say) would otherwise yield a
 // silently truncated list, and the download would "succeed" while missing shards.
+//
+// The listing is bounded as a whole, not a page at a time: see maxTreeBytes
+// and maxTreeEntries. A listing past either is refused with ErrOversizedBody.
 func (c *Client) Files(ctx context.Context, repoID, revision string) ([]File, error) {
 	return c.files(ctx, repoID, revision, c.Token())
 }
@@ -430,6 +445,7 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 	u := base + "?recursive=true"
 
 	var entries []File
+	budget := int64(maxTreeBytes)
 	for page := 0; u != ""; page++ {
 		if page >= maxTreePages {
 			return nil, fmt.Errorf("file tree for %s did not terminate after %d pages", repoID, maxTreePages)
@@ -448,10 +464,28 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 			return nil, err
 		}
 
+		// One byte past the remaining budget is read deliberately: reaching
+		// it is how the page is known to have spent more than the listing had
+		// left, and it is refused as oversized rather than as a decode error.
+		// While the budget is larger than a page may be, the per-page cap is
+		// what binds and this reads exactly as it did before.
 		var pageEntries []File
-		if err := json.NewDecoder(io.LimitReader(resp.Body, maxJSONBody)).Decode(&pageEntries); err != nil {
+		counted := &countingReader{r: io.LimitReader(resp.Body, min(int64(maxJSONBody), budget+1))}
+		decodeErr := json.NewDecoder(counted).Decode(&pageEntries)
+		if counted.n > budget {
 			resp.Body.Close()
-			return nil, fmt.Errorf("decode file tree for %s: %w", repoID, err)
+			return nil, fmt.Errorf("file tree for %s ran past the %d bytes one listing may cost, at page %d: %w",
+				repoID, maxTreeBytes, page+1, ErrOversizedBody)
+		}
+		if decodeErr != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("decode file tree for %s: %w", repoID, decodeErr)
+		}
+		budget -= counted.n
+		if len(entries)+len(pageEntries) > maxTreeEntries {
+			resp.Body.Close()
+			return nil, fmt.Errorf("file tree for %s names more than the %d files one listing may hold: %w",
+				repoID, maxTreeEntries, ErrOversizedBody)
 		}
 		link := resp.Header.Get("Link")
 		// The page this Link came off is where the request ended up, not where
@@ -487,6 +521,21 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 		out = append(out, e)
 	}
 	return out, nil
+}
+
+// countingReader reports how many bytes were taken from the reader beneath it.
+// A json.Decoder reads ahead into its own buffer, so what it consumed is not
+// what the JSON it returned was worth; the count below is of bytes handed on,
+// which is what the listing's budget is spent in.
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
 }
 
 // nextPage is the rel="next" URL of the page fetched from pageURL, or "" when

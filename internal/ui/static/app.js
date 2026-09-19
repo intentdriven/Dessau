@@ -258,16 +258,45 @@ function graceWaitHint(graceValue, maxWaitValue, defaults) {
     + 'protection. Raise the maximum to at least the protection.';
 }
 
-// blankIsSentence puts a default interval into the words that go beside a
-// field, in minutes where the figure is a whole number of them and in seconds
-// otherwise — rounding 90 seconds to "1.5 minutes" would state a figure the
-// server does not hold. Empty for a threshold the panel was not told, so the
-// sentence disappears rather than naming a figure nobody sent.
-function blankIsSentence(sec) {
+// intervalWords puts an interval into words, in minutes where the figure is a
+// whole number of them and in seconds otherwise — rounding 90 seconds to
+// "1.5 minutes" would state a figure the server does not hold. Empty for an
+// interval the panel was not told, so whatever is written from it says nothing
+// rather than naming a figure nobody sent.
+function intervalWords(sec) {
   if (!sec) return '';
-  if (sec % 60 !== 0) return ` Blank is ${sec} seconds.`;
+  if (sec % 60 !== 0) return `${sec} second${sec === 1 ? '' : 's'}`;
   const minutes = sec / 60;
-  return ` Blank is ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+}
+
+// blankIsSentence puts a default interval into the words that go beside a
+// field. Empty for a threshold the panel was not told, so the sentence
+// disappears rather than naming a figure nobody sent.
+function blankIsSentence(sec) {
+  const words = intervalWords(sec);
+  return words ? ` Blank is ${words}.` : '';
+}
+
+// idleThresholdWords is how long this Mac must have gone unasked before it
+// counts as idle, in the words the status prose reads it in. It is the
+// threshold in force — the setting where one is set, the server's default
+// where it is not, which is config.EffectiveIdleThresholdSec on the Go side —
+// and never a figure the panel holds a copy of (iss-2609190201317726). Told
+// neither, it names the setting instead of a number: the sentences this goes
+// into run on either side of it, so it cannot simply vanish the way the
+// sentence beside the field does.
+function idleThresholdWords(state) {
+  const s = state || {};
+  const c = s.config || {};
+  const d = s.defaults || {};
+  return intervalWords(c.idle_threshold_sec || d.idle_threshold_sec) || 'the idle threshold';
+}
+
+// renderIdleProse fills the figure in the Self-test hint, which is prose about
+// the threshold in force rather than a hint about what a blank field means.
+function renderIdleProse(state) {
+  $('selfTestIdleFigure').textContent = idleThresholdWords(state);
 }
 
 // renderDefaults says, on the settings fields themselves, what leaving one
@@ -897,15 +926,20 @@ function postureLines(state) {
 
   // The self-test loads models on its own while the Mac is idle, which is a
   // thing that can be on; the page says so from the setting, which applies
-  // the moment it is saved.
+  // the moment it is saved. The interval it names is the threshold in force,
+  // off the snapshot: the setting where one is set, the served default where
+  // it is not, and never a figure written into this page (iss-2609190201317726).
+  const idleFor = intervalWords(c.idle_threshold_sec || (state.defaults || {}).idle_threshold_sec)
+    || 'the idle threshold';
   const selfTest = c.self_test
-    ? 'The self-test is on: while nothing has asked this Mac for a model for five minutes and ' +
+    ? `The self-test is on: while nothing has asked this Mac for a model for ${idleFor} and ` +
       'nothing is downloading, Gropius loads one of its models at a time where it fits beside ' +
       'what is loaded, measures it with a fixed set of prompts, and unloads what it loaded. A request ' +
       'from anyone ends the run. The figures go to a file in this account\'s Gropius data folder and ' +
       'hold no prompt and no answer.'
     : 'The self-test is off: Gropius loads no model on its own.';
-  lines.push({ id: 'selftest', heading: 'Self-test', text: selfTest, reads: ['config.self_test'] });
+  lines.push({ id: 'selftest', heading: 'Self-test', text: selfTest,
+    reads: ['config.self_test', 'config.idle_threshold_sec', 'defaults.idle_threshold_sec'] });
 
   return lines;
 }
@@ -1160,6 +1194,7 @@ function renderSettings() {
   // Blank rather than zero for an unset interval: blank is how this form says
   // "the default", and the placeholder gives the figure that stands for.
   renderDefaults(state.defaults);
+  renderIdleProse(state);
   $('setGraceSec').value = c.eviction_grace_sec || '';
   $('setGraceWait').value = c.eviction_max_wait_sec || '';
   updateGraceHint();
@@ -1921,14 +1956,25 @@ function selfTestRow(run) {
   };
 }
 
+// selfTestHint says whether the self-test is running and, while it is, how
+// long this Mac must go unasked before the next run — in the words the panel
+// was given rather than a figure it holds. A test that is off runs at no
+// interval, so the off lines name none.
+function selfTestHint(on, measured, idleFor) {
+  if (!on) {
+    return measured
+      ? 'Off. These are the runs from when it was on; turn it on in Settings to measure again.'
+      : 'Off. Turn on Test the models when this Mac is idle in Settings to measure your models.';
+  }
+  return measured
+    ? `On. Gropius measures a model whenever this Mac has been idle for ${idleFor}.`
+    : `On. Nothing measured yet: the first run starts once this Mac has been idle for ${idleFor}.`;
+}
+
 function renderSelfTest(view) {
   const on = !!(view && view.enabled);
   const latest = (view && view.latest) || [];
-  $('selftestHint').textContent = on
-    ? (latest.length ? 'On. Gropius measures a model whenever this Mac has been idle for five minutes.'
-      : 'On. Nothing measured yet: the first run starts once this Mac has been idle for five minutes.')
-    : (latest.length ? 'Off. These are the runs from when it was on; turn it on in Settings to measure again.'
-      : 'Off. Turn on Test the models when this Mac is idle in Settings to measure your models.');
+  $('selftestHint').textContent = selfTestHint(on, latest.length > 0, idleThresholdWords(state));
   $('selftestBody').hidden = latest.length === 0;
   const rows = $('selftestRows');
   rows.replaceChildren();

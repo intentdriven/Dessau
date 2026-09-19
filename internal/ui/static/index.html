@@ -501,7 +501,8 @@
         <span>Test the models when this Mac is idle</span>
       </label>
       <p class="hint">Off unless you turn it on. While it is on, whenever nothing has asked this Mac
-        for a model for five minutes and nothing is downloading, Gropius loads one of your
+        for a model for <span id="selfTestIdleFigure">the idle threshold</span> and nothing
+        is downloading, Gropius loads one of your
         models, runs the same short set of tests against it &mdash; how long the load takes,
         how fast it reads a long prompt, how fast it generates, and what that becomes when
         several requests arrive at once &mdash; writes one line of figures to a file in your

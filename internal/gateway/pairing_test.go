@@ -18,6 +18,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -495,6 +496,103 @@ func TestEveryPairingEventIsLoggedAtTheShippedLevelByNameAndNeverByKey(t *testin
 		}
 		if strings.Contains(line, k.fingerprint()) {
 			t.Errorf("%q carries the client's whole key fingerprint: %s", msg, line)
+		}
+	}
+}
+
+// pairedOnly's refusal line is bounded because the HANDSHAKE bounds it, and
+// this is where the two packages are tied together (iss-2609190225574067).
+//
+// The line is keyed on a fingerprint the client presented, which is a string
+// the client chose — the one thing logEvery's own comment says a caller must
+// never key on. It is safe here for exactly one reason: internal/pairing's
+// VerifyConnection refuses a key this server has not paired before there is a
+// request to refuse, so the key space is the paired set and not the network.
+// internal/pairing/tlsconfig_test.go holds that check; this holds the
+// consequence, which is that an unpaired client writes no line at all.
+func TestAnUnpairedClientIsTurnedAwayBeforeThereIsARequestToLog(t *testing.T) {
+	var logged bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	// The registry only exists once the server is up, and the handler runs on
+	// the server's goroutine — so it is published through an atomic rather
+	// than a plain variable, and what the inner handler records is a count the
+	// test goroutine reads. A t.Error from a request goroutine in a test that
+	// expects no request is a report about the wrong thing.
+	var reg atomic.Pointer[pairing.Registry]
+	var served atomic.Int64
+	srv := newPairedServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pairedOnly(reg.Load(), http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			served.Add(1)
+		}), log, newLogEvery(time.Minute)).ServeHTTP(w, r)
+	}))
+	reg.Store(srv.registry)
+	srv.pair(t, newClientKey(t), "Bob's iPad") // somebody is paired; the caller below is not
+
+	// An unpaired key under a certificate it signed itself, which is all an
+	// attacker on this network can produce.
+	stranger := newClientKey(t)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "Carol's laptop"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &stranger.priv.PublicKey, stranger.priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hc := srv.client(tls.Certificate{Certificate: [][]byte{der}, PrivateKey: stranger.priv})
+	resp, err := hc.Get("https://" + srv.tlsAddr + "/v1/models")
+	if err == nil {
+		resp.Body.Close()
+		t.Fatalf("an unpaired client completed a handshake and was answered %d: "+
+			"the refusal has moved to the request path, and its log key is a string "+
+			"any peer on the network may choose", resp.StatusCode)
+	}
+	if n := served.Load(); n != 0 {
+		t.Errorf("an unpaired client was served %d time(s)", n)
+	}
+	if strings.Contains(logged.String(), "refused a request from a client this server has not paired") {
+		t.Error("an unpaired client wrote a refusal line: it reached the request path, " +
+			"which is the unbounded log key iss-2609190225574067 records")
+	}
+}
+
+// The content type is a media type, not a prefix (iss-2609190226069369).
+// Matching it with a prefix accepts "application/jsonevil" — a type nobody
+// declared and this server does not read — and refuses "APPLICATION/JSON",
+// which RFC 9110 makes the same type as the one the guard is written for. The
+// second is the one a person feels: a client that spells the header in capitals
+// is refused a pairing for no reason at all.
+func TestThePairingContentTypeIsTheMediaTypeAndNotItsPrefix(t *testing.T) {
+	k := newClientKey(t)
+	body := `{"name":"Bob's iPad","public_key":"` + base64.StdEncoding.EncodeToString(k.spki) + `"}`
+
+	for _, c := range []struct {
+		header string
+		accept bool
+	}{
+		{"application/json", true},
+		{"APPLICATION/JSON", true},
+		{"Application/Json; charset=utf-8", true},
+		{"application/json; charset=utf-8", true},
+		{"application/jsonevil", false},
+		{"application/json-patch+json", false},
+		{"text/plain", false},
+		{"", false},
+	} {
+		r := httptest.NewRequest("POST", "/pair", strings.NewReader(body))
+		if c.header != "" {
+			r.Header.Set("Content-Type", c.header)
+		}
+		_, err := readPairRequest(r)
+		if c.accept && err != nil {
+			t.Errorf("a pairing posted as %q was refused: %v", c.header, err)
+		}
+		if !c.accept && err == nil {
+			t.Errorf("a pairing posted as %q was read as JSON this server declared it takes", c.header)
 		}
 	}
 }

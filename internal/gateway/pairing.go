@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
@@ -139,7 +140,15 @@ func (c *Control) PairHandler() http.Handler {
 // network rather than every website anybody on it visits
 // (iss-2609190110118690).
 func readPairRequest(r *http.Request) (pairRequest, error) {
-	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+	// The media type, parsed, and not a prefix of the header (iss-2609190226069369).
+	// A prefix match reads "application/jsonevil" as the type this server
+	// declared it takes, and refuses "APPLICATION/JSON", which RFC 9110 makes
+	// the same type. Neither is a CSRF gain — no application/json variant is
+	// CORS-safelisted, so the preflight this guard relies on still happens —
+	// but the second refuses a pairing to a client that spelt a header in
+	// capitals, for no reason it could ever find.
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || !strings.EqualFold(mediaType, "application/json") {
 		return pairRequest{}, errors.New(`pairing is posted as "application/json"`)
 	}
 	if r.Header.Get("Origin") != "" {

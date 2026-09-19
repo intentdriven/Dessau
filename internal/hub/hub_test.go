@@ -1075,3 +1075,107 @@ func TestResolveURLRefusesAMissingPart(t *testing.T) {
 		t.Errorf("ResolveURL built %q from an empty file path", got)
 	}
 }
+
+// A listing is bounded as a whole, not a page at a time. maxJSONBody caps one
+// page and maxTreePages caps the hops, but their product is what a hostile Hub
+// gets to spend: it pages forever, each page as large as one page may be, and
+// the entries all land in one slice. Both halves of the whole-listing bound are
+// exercised here — the bytes decoded across every page, and the number of
+// entries held.
+func TestFilesRefusesAListingThatIsOversizedAsAWhole(t *testing.T) {
+	t.Run("bytes across pages", func(t *testing.T) {
+		// One entry per page, its path a few MiB long: no single page is near
+		// maxJSONBody, but enough pages run past what a whole listing may cost.
+		page := `[{"type":"file","path":"` + strings.Repeat("a", 4<<20) + `","size":1,"oid":"a"}]`
+		var pages int
+		var mu sync.Mutex
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			pages++
+			n := pages
+			mu.Unlock()
+			w.Header().Set("Link", fmt.Sprintf(`<?recursive=true&cursor=p%d>; rel="next"`, n+1))
+			fmt.Fprint(w, page)
+		}))
+		defer srv.Close()
+
+		c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+		_, err := c.Files(context.Background(), "org/repo", "")
+		if !errors.Is(err, ErrOversizedBody) {
+			t.Fatalf("Files err = %v, want ErrOversizedBody for a listing past the byte budget", err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if want := maxTreeBytes/len(page) + 2; pages > want {
+			t.Errorf("the hub served %d pages before the refusal; the budget should have stopped it by %d", pages, want)
+		}
+	})
+
+	t.Run("entries held", func(t *testing.T) {
+		// Small entries, so the byte budget is not what bites: a Hub that pages
+		// short listings forever still may not make the client hold an
+		// unbounded number of them.
+		var b strings.Builder
+		b.WriteString("[")
+		for i := 0; i < 1000; i++ {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			fmt.Fprintf(&b, `{"type":"file","path":"f%d.bin","size":1,"oid":"o%d"}`, i, i)
+		}
+		b.WriteString("]")
+		page := b.String()
+
+		var pages int
+		var mu sync.Mutex
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			pages++
+			n := pages
+			mu.Unlock()
+			w.Header().Set("Link", fmt.Sprintf(`<?recursive=true&cursor=p%d>; rel="next"`, n+1))
+			fmt.Fprint(w, page)
+		}))
+		defer srv.Close()
+
+		c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+		_, err := c.Files(context.Background(), "org/repo", "")
+		if !errors.Is(err, ErrOversizedBody) {
+			t.Fatalf("Files err = %v, want ErrOversizedBody for a listing past the entry cap", err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if want := maxTreeEntries/1000 + 1; pages > want {
+			t.Errorf("the hub served %d pages before the refusal; the entry cap should have stopped it by %d", pages, want)
+		}
+	})
+}
+
+// A real listing — many pages, ordinary entries — is still followed to its end.
+// The whole-listing bound must refuse the hostile case without truncating the
+// heavily-sharded repo the pagination exists for.
+func TestFilesStillFollowsAnOrdinaryMultiPageListing(t *testing.T) {
+	const pages = 12
+	var seen int
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen++
+		n := seen
+		mu.Unlock()
+		if n < pages {
+			w.Header().Set("Link", fmt.Sprintf(`<?recursive=true&cursor=p%d>; rel="next"`, n+1))
+		}
+		fmt.Fprintf(w, `[{"type":"file","path":"shard-%05d.safetensors","size":1,"oid":"o%d"}]`, n, n)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	files, err := c.Files(context.Background(), "org/repo", "")
+	if err != nil {
+		t.Fatalf("Files: %v", err)
+	}
+	if len(files) != pages {
+		t.Fatalf("got %d files, want %d across every page", len(files), pages)
+	}
+}

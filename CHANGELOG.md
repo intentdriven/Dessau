@@ -277,6 +277,33 @@ GitHub release notes.
   "last connected at …" whenever the bridge is not connected, which is the one
   time a person is asking. A token you have just pasted is credited with no
   moment until it connects.
+- **A request that stalls halfway through is let go of.** Both listeners bound
+  how long a peer may take over the headers, and the endpoints bound how large
+  a body they will accept, but nothing bounded how long a body was allowed to
+  take to arrive: a caller that sent headers and then trickled — or stopped —
+  held a connection and a goroutine for as long as it kept the socket open, on
+  a pairing endpoint that asks for no credential. The whole request now has
+  thirty seconds to arrive on either listener — the bound the completions
+  endpoint already put on its own body, now covering every other route as well.
+  Answers are untouched: a completion still streams for as long as the model
+  takes.
+- **A model's file listing is bounded as a whole, not one page at a time.**
+  The listing that names a repository's files is paged, and each page was
+  bounded on its own while the number of pages was bounded separately — so the
+  two bounds multiplied, and a hub that paged a large listing forever could
+  make Gropius hold far more of it than any real model needs, before a byte of
+  the model was downloaded. A whole listing may now cost at most what a single
+  page may, and may name at most a hundred thousand files; past either, it is
+  refused the way an oversized answer already is. A genuinely sharded model is
+  still followed to the end of its pages. `impact: fix`
+- **A pairing key the Secure Enclave cannot guard refuses the pairing instead
+  of quietly becoming a software key.** The chat client asks the Enclave for a
+  key and falls back to an ordinary Keychain key for one measured condition:
+  the entitlement an ad-hoc signature cannot carry. Building the access control
+  that guards the key was a second way out of that path, and it fell through to
+  the software key with nothing said and nothing logged — in the one place the
+  client reports a key as hardware-backed. A refusal there is now read for its
+  reason and shown to the person pairing.
 
 ## [0.7.1] - 2026-09-18
 
