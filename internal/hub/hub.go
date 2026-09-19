@@ -207,39 +207,70 @@ func (c *Client) newTokenRequest(ctx context.Context, method, u, token string) (
 	return req, nil
 }
 
-// do issues an API request and refuses an answer that did not come from the
-// Hub's own origin.
+// maxRedirects is the hop limit refuseOffOrigin re-imposes. Setting
+// CheckRedirect replaces net/http's own default of 10, so it is spelled here
+// rather than inherited.
+const maxRedirects = 10
+
+// refuseOffOrigin is the redirect policy every API request runs under: a hop
+// that would leave the Hub's origin is refused before it is made.
+//
+// Before, not after, for two reasons. The Authorization header travels on a
+// redirect whenever the target hostname is the Hub's or a subdomain of it —
+// net/http strips it only for a different domain — so a hop to
+// "<sub>.huggingface.co", or to the same host on another port, would carry the
+// access token with it. And a host that answers one hop chooses the next: a
+// detour that returns to the Hub's own origin still lets it pick which Hub URL
+// we end up decoding, e.g. answering a lookup of one repo with another repo's
+// authentic metadata.
+func (c *Client) refuseOffOrigin(req *http.Request, via []*http.Request) error {
+	if !sameOrigin(c.baseURL(), req.URL.String()) {
+		return fmt.Errorf("redirected to %s://%s: %w", req.URL.Scheme, req.URL.Host, ErrCrossOrigin)
+	}
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	}
+	return nil
+}
+
+// do issues an API request under refuseOffOrigin and refuses an answer that
+// did not come from the Hub's own origin.
 //
 // Every path in this package that decodes what the Hub *says* — Search,
 // RepoInfo, and each page of Files — goes through here, so all three answer
-// the same way about where a response may come from. Redirects are the reason:
-// net/http follows up to ten of them, so a 302 would otherwise let any host
-// answer for the Hub and have its body decoded as fact. (net/http strips the
-// Authorization header on a redirect to another domain, so the access token
-// does not travel; what this refuses is believing the body.) Files keeps its
-// own check in addition, on the URL rather than the response, because a
-// rel="next" is a URL we would attach the token to before any redirect logic
-// runs — it is the same sameOrigin rule, applied one step earlier.
+// the same way about where a response may come from. The policy is installed
+// on a shallow copy of the client, which shares its transport and so its
+// connection pool: the copy is what keeps the rule off the file-download path
+// below. The check on the answer that arrives is a backstop for the copy not
+// being in force, and an origin it cannot determine is refused rather than
+// allowed. Files keeps its own check in addition, on a rel="next" URL rather
+// than on a response, because that URL is followed by a fresh request the
+// token is attached to and no redirect policy sees it.
 //
 // A file download deliberately does not come through here: the Hub answers a
-// /resolve/ GET with a redirect to its content CDN, which is another host by
-// design. What makes those bytes trustworthy is not their origin but the
-// sha256 this same API stated for them, which downloadFile verifies.
+// /resolve/ GET for an LFS object with a redirect to its content CDN, which is
+// another host by design, and those bytes are anchored by the sha256 this same
+// API stated for them. Small files the repo stores in git carry no such hash
+// and are checked on length alone, so for those the exception is wider than
+// that justification — iss-2609190151179403 holds the question of narrowing it
+// to files the tree gave a hash for.
 func (c *Client) do(req *http.Request) (*http.Response, error) {
-	resp, err := c.httpClient().Do(req)
+	hc := *c.httpClient()
+	hc.CheckRedirect = c.refuseOffOrigin
+	resp, err := hc.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	// resp.Request is the last request in the redirect chain; fall back to the
-	// one we built if a transport left it unset.
-	final := req.URL
-	if resp.Request != nil && resp.Request.URL != nil {
-		final = resp.Request.URL
+	// resp.Request is the last request in the redirect chain.
+	final := resp.Request
+	if final == nil || final.URL == nil {
+		resp.Body.Close()
+		return nil, fmt.Errorf("%s came back with no record of what answered it: %w", req.URL.Path, ErrCrossOrigin)
 	}
-	if !sameOrigin(c.baseURL(), final.String()) {
+	if !sameOrigin(c.baseURL(), final.URL.String()) {
 		resp.Body.Close()
 		return nil, fmt.Errorf("%s was answered by %s://%s — refusing to read it: %w",
-			req.URL.Path, final.Scheme, final.Host, ErrCrossOrigin)
+			req.URL.Path, final.URL.Scheme, final.URL.Host, ErrCrossOrigin)
 	}
 	return resp, nil
 }
@@ -418,9 +449,10 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 		resp.Body.Close()
 
 		// The Link header is attacker-influenced (it comes from the Hub response).
-		// newRequest attaches the bearer token to whatever URL we pass, so a
+		// newTokenRequest attaches the bearer token to whatever URL we pass, so a
 		// "rel=next" pointing at another host would leak the HuggingFace token off
-		// to it. Only follow a next-page URL on the same origin we started from.
+		// to it. This is a fresh request rather than a redirect, so refuseOffOrigin
+		// never sees it: the same sameOrigin rule is applied here instead.
 		if next != "" && !sameOrigin(c.baseURL(), next) {
 			return nil, fmt.Errorf("file tree for %s returned a cross-origin next page (%s) — refusing to follow it: %w", repoID, next, ErrCrossOrigin)
 		}

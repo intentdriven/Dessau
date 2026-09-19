@@ -55,10 +55,11 @@ GitHub release notes.
   the model — which files it holds, what kind of model it is. Every request for
   what the Hub says — the model search, a repository lookup, and each page of a
   file listing — now refuses an answer that arrives from anywhere but the Hub's
-  own address, and refuses it the same way whichever request it was. Fetching
-  the files themselves still follows the Hub's own redirect to its content
-  store, where each weights file is checked against the hash the Hub stated for
-  it.
+  own address, and refuses it the same way whichever request it was. The
+  refusal comes before the redirect is followed, so nothing — the access token
+  included — is sent to the other address. Fetching the files themselves still
+  follows the Hub's own redirect to its content store, where each weights file
+  is checked against the hash the Hub stated for it.
 
 ## [0.7.1] - 2026-09-18
 

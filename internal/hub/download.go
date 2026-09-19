@@ -388,10 +388,13 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 
 	// Deliberately not c.do: that seam refuses an answer from off the Hub's
 	// origin, and the Hub answers a /resolve/ GET for an LFS object with a
-	// redirect to its content CDN, on another host by design. What anchors these
-	// bytes is not where they came from but the sha256 the Hub's own API stated
-	// for them, verified below. TestDownloadFollowsTheHubsRedirectToItsContentCDN
-	// holds this open.
+	// redirect to its content CDN, on another host by design. What anchors an LFS
+	// object is not where it came from but the sha256 the Hub's own API stated
+	// for it, verified below. A file the repo stores in git rather than LFS
+	// carries no such hash and is checked on length alone, so for those this hole
+	// is wider than the reason it exists — iss-2609190151179403.
+	// TestDownloadFollowsTheHubsRedirectToItsContentCDN holds the hole open for
+	// the case that needs it.
 	resp, err := c.httpClient().Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("download %s: %w", f.Path, err)

@@ -688,3 +688,85 @@ func TestRepoInfoFollowsARedirectOnTheHubsOwnOrigin(t *testing.T) {
 		t.Errorf("ID = %q, want the canonical id the Hub redirected to", m.ID)
 	}
 }
+
+// Refusing the body after the fact is too late for the token. net/http keeps
+// the Authorization header on a redirect to the same hostname — a different
+// port, or a subdomain — so the rule has to be applied to the hop before it is
+// made, not to the answer after it arrives.
+func TestAnAPIRedirectOffTheHubsOriginIsRefusedBeforeTheTokenTravels(t *testing.T) {
+	var gotAuth string
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		fmt.Fprint(w, `{"id":"org/repo"}`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	c.SetToken("secret-hf-token")
+	if _, err := c.RepoInfo(context.Background(), "org/repo"); !errors.Is(err, ErrCrossOrigin) {
+		t.Fatalf("err = %v, want ErrCrossOrigin", err)
+	}
+	if gotAuth != "" {
+		t.Fatalf("TOKEN LEAK: the bearer token was sent to the redirect target (%q)", gotAuth)
+	}
+}
+
+// A hop off the Hub that comes back onto it is still a host that is not the
+// Hub choosing which Hub answer we decode: it can point a lookup of one repo
+// at another repo's authentic metadata. Checking only where the last hop
+// landed accepts that; checking each hop refuses it.
+func TestAnAPIDetourThroughAnotherHostIsRefused(t *testing.T) {
+	var srv *httptest.Server
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, srv.URL+"/api/models/attacker/lookalike", http.StatusFound)
+	}))
+	defer evil.Close()
+
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/models/org/wanted" {
+			http.Redirect(w, r, evil.URL+"/detour", http.StatusFound)
+			return
+		}
+		fmt.Fprint(w, `{"id":"attacker/lookalike","pipeline_tag":"text-generation"}`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	m, err := c.RepoInfo(context.Background(), "org/wanted")
+	if err == nil {
+		t.Fatalf("RepoInfo followed a detour through another host and answered %q", m.ID)
+	}
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// A transport that hands back a response with no record of what was requested
+// leaves the origin unknown, and an unknown origin is refused: a rule about
+// where an answer may come from cannot default to allowing it.
+func TestAnAnswerWithNoRecordedOriginIsRefused(t *testing.T) {
+	c := &Client{
+		BaseURL: "https://huggingface.co",
+		HTTP:    &http.Client{Transport: originlessTransport{}},
+	}
+	if _, err := c.Search(context.Background(), SearchQuery{Search: "qwen"}); !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// originlessTransport answers every request without setting Response.Request,
+// which is how the final URL goes missing.
+type originlessTransport struct{}
+
+func (originlessTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(`[{"id":"evil/model","tags":["mlx"]}]`)),
+	}, nil
+}
