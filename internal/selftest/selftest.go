@@ -524,31 +524,42 @@ func (r *Runner) quiet(act Activity, now time.Time) bool { return r.heldBy(act, 
 // bounds the batch and a client arriving on the model waits in it, visibly),
 // and how many refusals the pool had made when the run began.
 type hold struct {
-	model    string
+	model string
+	// count is how many of the pool's in-flight entries on model are the
+	// loop's own. It counts an acquisition still in progress as well as one
+	// that has returned: the pool counts a load as in flight from the moment
+	// Acquire is called, so a place is claimed here before it is asked for.
 	count    int
 	refusals uint64
 	// parks says the holder's own load may be among the pool's waiters; see
 	// Job.Parks.
 	parks bool
+	// loading says one of those claimed places is an Acquire still in
+	// progress, which is what makes a waiter possibly the holder's own. It is
+	// its own field rather than count == 0 because the place is claimed
+	// before the load starts (iss-2609190018027384).
+	loading bool
 }
 
 // busy reports whether anyone but the self-test wants the pool: a request in
 // flight the loop is not holding itself, a load waiting for room, or a load
 // refused room since the run began.
 //
-// While the loop's own Acquire is still parked, h.count is 0 and the waiter
-// the pool counts may be the self-test's own, so waiters are not read then: a
-// client that arrives during the load shows up as a request in flight on its
-// model, or as a refusal, or is parked behind the self-test's load and cannot
-// be told from the self-test's own place in that queue.
+// While the loop's own Acquire is still parked, the waiter the pool counts
+// may be the self-test's own, so waiters are not read then: a client that
+// arrives during the load shows up as a request in flight on its model, or as
+// a refusal, or is parked behind the self-test's load and cannot be told from
+// the self-test's own place in that queue. The load's own place in flight is
+// h.count's, claimed before Acquire is called, so it is never read as a
+// client's either.
 func busy(act Activity, h hold) bool {
 	if act.Refusals > h.refusals {
 		return true
 	}
 	// A waiter is a client unless it might be the holder's own parked load,
 	// which is only possible for a job that parks and only while its load is
-	// in progress (count == 0).
-	if act.Waiting > 0 && (!h.parks || h.count > 0) {
+	// in progress.
+	if act.Waiting > 0 && (!h.parks || !h.loading) {
 		return true
 	}
 	held := config.FoldRepoID(h.model)
@@ -629,7 +640,7 @@ func (r *Runner) run(ctx context.Context, model string, wasResident bool) {
 	// The self-test's own Acquire may park for room, so it is a parking job.
 	w := r.startWatch(ctx, model, true)
 	runCtx := w.ctx
-	setHold := w.setHold
+	claim := w.claim
 	r.setStatus(func(st *Status) { st.Job, st.Model, st.Step = "self-test", model, "" })
 	defer r.setStatus(func(st *Status) { st.Job, st.Model, st.Step = "", "", "" })
 	// ended stops the watcher and names the outcome of a run cut short.
@@ -646,14 +657,17 @@ func (r *Runner) run(ctx context.Context, model string, wasResident bool) {
 	loadCtx, cancelLoad := context.WithTimeout(runCtx, r.opts.RequestTimeout)
 	defer cancelLoad()
 	started := time.Now()
+	// The place is claimed before it is asked for; see watch.claim.
+	claim(1, true)
 	up, release, err := r.opts.Server.Acquire(loadCtx, model)
 	if err != nil {
+		claim(0, false)
 		res.Outcome, res.Reason = OutcomeFailed, ReasonLoad
 		ended()
 		return
 	}
 	res.LoadMs = time.Since(started).Milliseconds()
-	setHold(1)
+	claim(1, false)
 	defer func() {
 		release()
 		r.mu.Lock()
@@ -677,17 +691,24 @@ func (r *Runner) run(ctx context.Context, model string, wasResident bool) {
 		// pool before it sends them, so the model server never decodes more
 		// than the pool allows and a client arriving meanwhile queues in the
 		// pool, where the watcher sees it, rather than beside the batch.
+		// Claimed before asked for, as the load was: each of these
+		// acquisitions is in flight in the pool before it returns, and a claim
+		// raised only afterwards is the same false client as the load's.
+		if spec.Parallel > 1 {
+			claim(spec.Parallel, false)
+		}
 		extra, releaseExtra, err := r.holdMore(runCtx, model, spec.Parallel-1)
 		if err != nil {
 			releaseExtra()
+			claim(1, false)
 			res.Outcome, res.Reason = OutcomeFailed, ReasonLoad
 			ended()
 			return
 		}
-		setHold(1 + extra)
+		claim(1+extra, false)
 		t, err := r.runTest(runCtx, up, spec)
 		releaseExtra()
-		setHold(1)
+		claim(1, false)
 		if err != nil {
 			res.Outcome, res.Reason = OutcomeFailed, ReasonRequest
 			ended()
@@ -736,7 +757,10 @@ type watch struct {
 func (r *Runner) startWatch(ctx context.Context, model string, parks bool) *watch {
 	runCtx, cancel := context.WithCancel(ctx)
 	w := &watch{ctx: runCtx, cancel: cancel, done: make(chan struct{}),
-		held: hold{model: model, refusals: r.opts.Server.Activity().Refusals, parks: parks}}
+		// A parking holder is taken to be loading until it says otherwise:
+		// its load is the first thing it does, and the pool's waiter count may
+		// be its own for as long as that lasts.
+		held: hold{model: model, refusals: r.opts.Server.Activity().Refusals, parks: parks, loading: parks}}
 	go func() {
 		defer close(w.done)
 		poll := time.NewTicker(r.opts.Poll)
@@ -762,9 +786,20 @@ func (r *Runner) startWatch(ctx context.Context, model string, parks bool) *watc
 	return w
 }
 
-func (w *watch) setHold(n int) {
+// setHold is what a job reports through Session.Hold: n requests of its own in
+// flight. A job that holds nothing is between requests, which for a job that
+// parks is where its own load can be.
+func (w *watch) setHold(n int) { w.claim(n, n == 0) }
+
+// claim records how many of the pool's in-flight entries on the model are the
+// loop's own, and whether one of them is an Acquire still in progress. The
+// loop claims a place before it asks for it and drops the claim only after
+// the place is released: the pool counts a load as in flight from the moment
+// Acquire is called, so a claim raised afterwards leaves the loop's own load
+// looking like a client's for the whole of it (iss-2609190018027384).
+func (w *watch) claim(n int, loading bool) {
 	w.mu.Lock()
-	w.held.count = n
+	w.held.count, w.held.loading = n, loading
 	w.mu.Unlock()
 }
 

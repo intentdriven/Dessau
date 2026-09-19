@@ -23,6 +23,17 @@ GitHub release notes.
   The request statistics reference now says that a run is the one record kind
   Gropius writes outside the statistics folder, why it has a file of its own,
   and where its fields are written down.
+### Fixed
+
+- **A measurement no longer gives way to itself.** The idle loop watches the
+  pool while a run of its own is in flight and stands aside the moment anyone
+  else asks for a model. It counted its own load as somebody else's: the pool
+  reports a model as in use from the moment the load starts, and the loop only
+  claimed the load as its own once the model was ready. Every measurement that
+  had to load a model was abandoned seconds into it and recorded as having
+  given way, and the same mistake cut short the concurrent test of a run that
+  got past the load. The loop now claims its place before it asks for it, so a
+  measurement gives way to a real request and to nothing else.
 
 ## [0.7.1] - 2026-09-18
 
