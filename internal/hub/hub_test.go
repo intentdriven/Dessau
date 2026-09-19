@@ -923,3 +923,38 @@ func TestARepoIDWithADotSegmentIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// A relative next page is resolved against the page the request ended at, not
+// the one it was sent to. The Hub redirects a re-cased or renamed repo id to
+// its canonical URL, so the two differ, and resolving against the wrong one
+// sends the second page request somewhere the first page never was.
+func TestARelativeNextPageResolvesAgainstThePageThatCarriedIt(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/ORG/Repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") != "" {
+			t.Errorf("the next page was fetched from %q, the URL the first request was SENT to, not the one it ended at", r.URL.String())
+			fmt.Fprint(w, `[]`)
+			return
+		}
+		http.Redirect(w, r, "/api/models/org/repo/tree/main?"+r.URL.RawQuery, http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("/api/models/org/repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "" {
+			w.Header().Set("Link", `<?recursive=true&cursor=p2>; rel="next"`)
+			fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+			return
+		}
+		fmt.Fprint(w, `[{"type":"file","path":"b.safetensors","size":2,"oid":"b"}]`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	files, err := c.Files(context.Background(), "ORG/Repo", "")
+	if err != nil {
+		t.Fatalf("Files: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("got %d files, want 2 across both pages", len(files))
+	}
+}

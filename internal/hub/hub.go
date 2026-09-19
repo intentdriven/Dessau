@@ -449,9 +449,15 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 			return nil, fmt.Errorf("decode file tree for %s: %w", repoID, err)
 		}
 		link := resp.Header.Get("Link")
+		// The page this Link came off is where the request ended up, not where
+		// it was sent: the Hub redirects a re-cased or renamed repo id to its
+		// canonical URL, and a relative next page has to be resolved against
+		// the canonical one. do guarantees resp.Request is set and that its
+		// URL is on the Hub's own origin.
+		pageURL := resp.Request.URL.String()
 		resp.Body.Close()
 
-		next, err := c.nextPage(u, link)
+		next, err := c.nextPage(pageURL, link)
 		if err != nil {
 			return nil, fmt.Errorf("file tree for %s %w", repoID, err)
 		}
