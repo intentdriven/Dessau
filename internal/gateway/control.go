@@ -329,6 +329,12 @@ type State struct {
 	ProbeQueue []string        `json:"probe_queue"`
 	// Warnings surface things the user should know, e.g. an open LAN endpoint.
 	Warnings []string `json:"warnings"`
+	// Bridge is what the Discord bridge is doing: off, connecting, connected
+	// since a moment, or stopped with the reason. Always present, so the
+	// Settings pane has one shape to draw whether the switch is on or off
+	// (adr-2609181004167097 condition 1 — the panel is one of the three
+	// surfaces the switch, the token and the state live on).
+	Bridge app.BridgeState `json:"bridge"`
 	// Stats is the per-model summary, present only while the operator has
 	// recording on. The request rows and the minute buckets are deliberately
 	// not here: this snapshot is re-encoded and redrawn on every event and
@@ -417,6 +423,7 @@ func (c *Control) snapshot() State {
 		Version:    c.Version,
 		IdleJobs:   c.App.SelfTest.Status(),
 		ProbeQueue: c.App.Probe.Queued(),
+		Bridge:     c.App.BridgeState(),
 	}
 	st.Bind.Port = c.App.BindPort()
 	st.Bind.Advertising = c.App.Advertising()
@@ -743,6 +750,9 @@ func redactConfig(c config.Config) config.Config {
 	}
 	if c.HFToken != "" {
 		c.HFToken = "********"
+	}
+	if c.DiscordToken != "" {
+		c.DiscordToken = "********"
 	}
 	// The chat rule is resolved rather than reported raw. The panel serves the
 	// stored settings into its form and the form posts them back, so an unset
@@ -1445,6 +1455,9 @@ func (c *Control) applySettings(raw []byte) (map[string]any, error) {
 	if incoming.HFToken == redacted {
 		incoming.HFToken = current.HFToken
 	}
+	if incoming.DiscordToken == redacted {
+		incoming.DiscordToken = current.DiscordToken
+	}
 
 	if err := c.App.SetConfig(incoming); err != nil {
 		return nil, refusalNamingWhatChanged(err, current, incoming, raw)
@@ -1569,9 +1582,9 @@ func changedSettings(before, after config.Config, posted []byte) []string {
 
 // secretSettingKeys are the settings whose value may never be compared with a
 // guess, because the comparison's result is published in a refusal. They are
-// the two redactConfig blanks, and a third secret added to the configuration
-// belongs here the day it is added.
-var secretSettingKeys = map[string]bool{"api_key": true, "hf_token": true}
+// the three redactConfig blanks, and a fourth secret added to the
+// configuration belongs here the day it is added.
+var secretSettingKeys = map[string]bool{"api_key": true, "hf_token": true, "discord_token": true}
 
 // postedASecret reports whether this body asks to change the named secret: it
 // carries the key, and what it carries is not the placeholder the panel echoes
