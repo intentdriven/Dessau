@@ -126,6 +126,7 @@ func numericSettingsControls() []settingsControl {
 	}
 	return []settingsControl{
 		{"setPort", true, func(c *config.Config, v float64) { c.Port = int(v) }},
+		{"setTLSPort", true, func(c *config.Config, v float64) { c.TLSPort = int(v) }},
 		{"setIdle", true, func(c *config.Config, v float64) { c.IdleTimeoutSec = int(v) }},
 		{"setBudget", false, func(c *config.Config, v float64) { c.MaxResidentBytes = int64(v * (1 << 30)) }},
 		{"setGraceSec", true, func(c *config.Config, v float64) { c.EvictionGraceSec = int(v) }},

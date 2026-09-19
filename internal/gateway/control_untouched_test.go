@@ -336,6 +336,7 @@ func uneditedFormBody(t *testing.T, stored config.Config) string {
 		"host":                  host,
 		"bind_mode":             mode,
 		"port":                  shown.Port,
+		"tls_port":              shown.TLSPort,
 		"advertise":             shown.Advertise,
 		"api_key":               shown.APIKey,
 		"idle_timeout_sec":      shown.IdleTimeoutSec,

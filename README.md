@@ -34,8 +34,9 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
 
 ## Features
 
-- **Model browser** — search the `mlx-community` org, download with live progress,
-  resume interrupted transfers.
+- **Model browser** — search the `mlx-community` org, or type any repository id
+  in full to reach a model published under another account; download with live
+  progress, resume interrupted transfers.
 - **OpenAI-compatible server** — `/v1/chat/completions`, `/v1/completions`,
   `/v1/models`, streaming included. Drop-in for any OpenAI SDK.
 - **Context window published** — the models list gives each model's maximum
@@ -233,6 +234,16 @@ when a key is set. With no key set, a client on the network still gets every
 downloaded model's name and nothing about what this Mac is doing with them —
 though it can still time a request to find out. Keeping activity private from
 the network means setting the key, not leaving the fields off.
+
+A chat client can instead **pair** with the server, which gives it a key of its
+own: it is made on the device, never leaves it, and replaces the API key for
+that client. Paired clients use a second port, and the control panel lists each
+one with its fingerprint, when it paired and when it was last heard from, with
+a button to revoke it. Anything on your network can pair, and reading that list
+is how you find out that something did — [what pairing is
+worth](docs/pairing-explained.md) says what this protects against and what it
+does not, and [how to pair a client](docs/pairing.md) says how. Unpaired
+clients keep the ordinary port and the shared key, unchanged.
 
 The server's request log records the method, path, status and duration of a
 request, and never the client's network address.
