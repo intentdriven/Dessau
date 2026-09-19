@@ -458,8 +458,10 @@ func TestAnIdleMacGetsEveryModelMeasuredAndLeftAsFound(t *testing.T) {
 				t.Errorf("%s = %+v; want the server's counts", test.Name, test)
 			}
 		}
+		// Fatal, not an error: the checks below index the set this names, and
+		// a run cut short would panic on them rather than say what went wrong.
 		if got, want := strings.Join(names, ","), "pp512,tg128,tg128x2"; got != want {
-			t.Errorf("tests = %s, want %s", got, want)
+			t.Fatalf("tests = %s, want %s (run = %+v)", got, want, run)
 		}
 		if run.Tests[2].Parallel != 2 || run.Tests[2].CompletionTokens != 2*run.Tests[1].CompletionTokens {
 			t.Errorf("the parallel test = %+v; want two requests' counts added up", run.Tests[2])
@@ -805,10 +807,22 @@ func TestResultsAreKeyedOnTheFoldedId(t *testing.T) {
 	}
 	// While the self-test's own load is parked, the waiter the pool counts
 	// may be its own, and is not read; a client in flight elsewhere is, and
-	// so is a client refused room since the run began.
-	loading := hold{model: "org/a", refusals: 3, parks: true}
+	// so is a client refused room since the run began. The load's own place in
+	// flight is claimed before Acquire is called, so the hold carries it
+	// throughout (iss-2609190018027384).
+	loading := hold{model: "org/a", count: 1, refusals: 3, parks: true, loading: true}
 	if busy(Activity{Waiting: 1}, loading) {
 		t.Error("the self-test's own parked load counted as a client's")
+	}
+	if busy(Activity{Models: []ModelActivity{{RepoID: "org/a", InFlight: 1}}}, loading) {
+		t.Error("the self-test's own load in flight counted as a client's")
+	}
+	if !busy(Activity{Models: []ModelActivity{{RepoID: "org/a", InFlight: 2}}}, loading) {
+		t.Error("a client on the model the self-test is loading was not seen")
+	}
+	// Once that load has returned, a waiter can only be a client's.
+	if !busy(Activity{Waiting: 1}, hold{model: "org/a", count: 1, parks: true}) {
+		t.Error("a waiter during a run whose own load is done was not seen")
 	}
 	if !busy(Activity{Models: []ModelActivity{{RepoID: "org/b", InFlight: 1}}}, loading) {
 		t.Error("a client in flight during the load was not seen")
@@ -995,5 +1009,28 @@ func TestAPlantedResultsLocationIsRefused(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("the writer or the reader blocked on a FIFO")
+	}
+}
+
+// The loop does not yield to its own load.
+//
+// The pool counts a load as in flight from the moment Acquire is called, and
+// a cold load is the longest thing a run does. A hold raised only once
+// Acquire had returned left the loop's own load indistinguishable from a
+// client's request on the model under test: the watcher cancelled the run it
+// was watching, and every cold-load run was recorded as yielded with no
+// tests. The same window reopened at each extra acquisition the parallel test
+// takes, which cut runs short at two tests on a loaded build runner
+// (iss-2609190018027384).
+func TestTheLoopDoesNotYieldToItsOwnAcquisitions(t *testing.T) {
+	srv := newFakeServer(t, "org/a")
+	// A load many polls long, as a cold load is, and nobody else on the Mac.
+	srv.acquireDelay = 150 * time.Millisecond
+	r := fastRunner(t, srv, t.TempDir())
+	r.SetEnabled(true)
+	waitFor(t, "the run", func() bool { return len(runsIn(t, r)) == 1 })
+	run := runsIn(t, r)[0]
+	if run.Outcome != OutcomeOK || len(run.Tests) != 3 {
+		t.Fatalf("run = %+v; want an ok run with the whole set: nobody but the loop asked for the model", run)
 	}
 }
