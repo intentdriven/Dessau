@@ -62,7 +62,6 @@ var offTheControlPlane = map[string]string{
 	"github.com/intentdriven/Gropius/internal/mlxtest":   "test helpers; nothing ships in the binary",
 	"github.com/intentdriven/Gropius/internal/sitetest":  "test helpers for the landing-page renderer",
 	"github.com/intentdriven/Gropius/internal/discovery": "advertises the server over mDNS. Only the command imports it, and it answers the network rather than being asked anything by a route; a lifecycle verb reaching it would be advertising from a terminal command, which is why it is written down rather than left uncovered",
-	"github.com/intentdriven/Gropius/internal/applog":    "builds the process's own log and imports nothing of ours",
 	"github.com/intentdriven/Gropius/internal/instance":  "classifies the process on the server port. The command and the lifecycle verbs both ask it; it imports only the paths, and a route cannot reach a verb through it",
 }
 

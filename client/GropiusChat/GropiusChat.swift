@@ -1044,13 +1044,14 @@ struct Sidebar: View {
     @State private var query = ""
 
     /// The conversations the search leaves: all of them for an empty
-    /// query, else those whose title or messages contain the words.
+    /// query, else those whose title or messages contain the words — each
+    /// word looked for on its own, wherever it falls. `SidebarSearch` is the
+    /// match itself, in a file `client/tests/sidebar-search.sh` can run.
     private var shown: [Conversation] {
-        let q = query.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return model.conversations }
+        let words = SidebarSearch.words(in: query)
+        guard !words.isEmpty else { return model.conversations }
         return model.conversations.filter { c in
-            c.title.localizedCaseInsensitiveContains(q)
-                || c.messages.contains { $0.text.localizedCaseInsensitiveContains(q) }
+            SidebarSearch.matches(words: words, title: c.title, messages: c.messages.map(\.text))
         }
     }
 
