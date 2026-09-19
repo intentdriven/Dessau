@@ -119,6 +119,54 @@ func (p *stubPool) releases() int {
 	return p.released
 }
 
+// gatewayRequest is one request a client on the network makes, in the shape a
+// test can replay.
+//
+// host is empty for the ordinary case, where the request carries the loopback
+// host httptest gives it and the loopback exemption admits it without a key. A
+// fixture that names a host of its own is a request the exemption does not
+// cover, which is the only way to reach the refusals from a test whose client
+// really does connect from 127.0.0.1.
+type gatewayRequest struct {
+	name   string
+	method string
+	path   string
+	key    string
+	host   string
+	body   string
+}
+
+// gatewayRequests is THE set of requests the gateway answers, shared by every
+// test that has to replay them rather than restated per test
+// (iss-2609190200112161). It is the plain port's surface as an OpenAI client
+// meets it: the models list and health, a completion that succeeds, the
+// refusals a request the loopback exemption does not cover is given, and a
+// route that is not there.
+//
+// The successful completion is the row that matters most and the one that was
+// missing: it is the path a real client spends its whole life on, so an
+// invariant about the plain port that skipped it held only for the answers
+// nobody waits for.
+var gatewayRequests = []gatewayRequest{
+	{name: "the models list", method: "GET", path: "/v1/models"},
+	{name: "the models list with the key", method: "GET", path: "/v1/models", key: "secret"},
+	{name: "the models list with a wrong key", method: "GET", path: "/v1/models", key: "wrong"},
+	{name: "health", method: "GET", path: "/health"},
+	{name: "health with the key", method: "GET", path: "/health", key: "secret"},
+	{name: "a completion with the key", method: "POST", path: "/v1/chat/completions", key: "secret",
+		body: `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`},
+	{name: "a completion under the loopback exemption", method: "POST", path: "/v1/chat/completions",
+		body: `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`},
+	{name: "the models list from off this Mac with no key", method: "GET", path: "/v1/models",
+		host: "gropius.example:11535"},
+	{name: "the models list from off this Mac with a wrong key", method: "GET", path: "/v1/models",
+		key: "wrong", host: "gropius.example:11535"},
+	{name: "a completion from off this Mac with no key", method: "POST", path: "/v1/chat/completions",
+		host: "gropius.example:11535",
+		body: `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`},
+	{name: "a route that is not there", method: "GET", path: "/v1/nope", key: "secret"},
+}
+
 // newTestGateway wires a gateway to a fake mlx server holding one model.
 func newTestGateway(t *testing.T, cfg config.Config) (*httptest.Server, *stubPool, *mlxtest.Server) {
 	t.Helper()
