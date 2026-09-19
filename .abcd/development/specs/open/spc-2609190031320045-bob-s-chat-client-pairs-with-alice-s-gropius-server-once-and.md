@@ -318,11 +318,32 @@ the lock that already means "this server wants an API key".
 
 ## Verification
 
-`make test`, `gofmt -l .`, `go vet ./...`, `abcd docs lint`; `client/build.sh`
-builds, and `SIM=1 client/build-ipad.sh` if the simulator is present. The
-adversarial security review that adr-2609182357322050 obliges runs over the
-whole diff before the branch is presented, and its findings are captured before
-they are fixed.
+`make test` (`go test -race ./...`), `gofmt -l .`, `go vet ./...`, `abcd docs
+lint`; `client/build.sh` builds, and `SIM=1 client/build-ipad.sh` builds and
+launches on an iPad Pro 13-inch simulator. The adversarial security review that
+adr-2609182357322050 obliges runs over the whole diff before the branch is
+presented, and its findings are captured before they are fixed.
+
+**Driven end to end against the built server, on one Mac over loopback.** The
+server was started headless on a temporary root; it made its key at 0600 and
+came up on both ports, logging its fingerprint. A throwaway Swift client made a
+Keychain key, called `POST /pair` on the plain port, stored the minted leaf,
+formed the identity, pinned the SPKI the TLS handshake presented — which was the
+fingerprint the server had logged — and was answered `200` on `/v1/models` over
+mutual TLS. `config.json` then held the client under its own fingerprint; the
+state snapshot carried it with a live last sighting and served the settings form
+none of it; the plain port answered exactly as before. Restarted, the server
+reported the same fingerprint and kept the pairing, and the sighting was gone —
+which is what "not since this server started" means. Revoking over
+`POST /api/clients/revoke` emptied the pane and the file and wrote
+`client revoked client="…" fingerprint=B+h7jXOH`. The endpoint refused a name
+with a line break, a key that is not base64 and a name of 200 bytes, each with
+the reason and nothing written.
+
+What stays owed by hand, and cannot be shown here: a real iPad; the Local
+Network prompt on a device whose grant has been reset; a second Mac on the LAN;
+and the Secure Enclave path, which needs a build signed with a provisioning
+profile.
 
 **The spike, run before any of the server was written (2026-09-19).** A
 throwaway Go server with `ClientAuth: RequireAnyClientCert` and a
