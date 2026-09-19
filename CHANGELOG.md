@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-19
+
 ### Added
 
 - **Answer Discord direct messages and mentions with a model on this Mac.**
