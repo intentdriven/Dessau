@@ -16,3 +16,7 @@ The client reads SystemLanguageModel.availability and shows its own Apple-Intell
 ## Triage 2026-09-18
 
 Left open for the maintainer: either the client stops reading availability or the text-intelligence intent stops promising it does not — a choice between two shipped promises, and the delivered message is the more useful of the two.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: a choice between two shipped promises (the client stops reading availability, or the text-intelligence intent stops promising it does not).

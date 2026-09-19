@@ -16,3 +16,7 @@ Nothing sent anywhere for the built-in model rests on the source-reading archite
 ## Triage 2026-09-18
 
 Left open for the maintainer: the shipping decision line records a hand check only a person can have made, and DECISIONS.md is append-only — the correcting line is theirs to write.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: the correcting line in the append-only DECISIONS.md records a hand check only they can have made.

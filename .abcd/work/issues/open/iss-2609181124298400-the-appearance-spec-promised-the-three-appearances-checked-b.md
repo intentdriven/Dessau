@@ -12,3 +12,7 @@ found_at: ".abcd/work/DECISIONS.md"
 ---
 
 The appearance spec promised the three appearances checked by hand and recorded in the shipping decision line; the decision line records only the architecture test, naming the hand check neither as done nor as owed.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: the three appearances checked by hand is a check only a person can make, and the recording line in the append-only DECISIONS.md is theirs to write.

@@ -16,3 +16,7 @@ The gate deciding whether a reply animates matches effect words over the whole r
 ## Triage 2026-09-18
 
 Left open for the maintainer: making the gate agree with the renderer means matching over the parsed blocks, which puts a markdown parse in AppModel's stream path — a placement decision. Today the disagreement is one-sided and harmless: the gate is broader, so it can queue an id no block animates.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: matching the animation gate over parsed blocks puts a markdown parse in AppModel's stream path, a placement decision; the disagreement is one-sided and harmless today.

@@ -12,3 +12,7 @@ found_at: "client/GropiusChat/GropiusChat.swift"
 ---
 
 No coverage of any kind exists for the sidebar selection's behaviour across a live search filter, and the search field's own named falsifier - a sidebar column that cannot host the field at its minimum width - was never exercised.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: coverage of the sidebar selection across a live filter and of the column's minimum width needs the UI test target of iss-2609181116225273.

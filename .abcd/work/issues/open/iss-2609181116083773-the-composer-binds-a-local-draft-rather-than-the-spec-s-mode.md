@@ -16,3 +16,7 @@ The composer binds a local draft rather than the spec's model input binding, and
 ## Triage 2026-09-18
 
 Left open for the maintainer: the local draft and the spec's model binding differ in where a half-typed prompt survives a view's recreation; which the client wants is a design call, and the test pins what ships either way.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: where a half-typed prompt survives a view's recreation is a design call; the test pins what ships.

@@ -16,3 +16,7 @@ The markdown parse cache is per-row view state rather than the spec's cache keye
 ## Triage 2026-09-18
 
 Left open for the maintainer: a cache keyed by message id and text length has to live above the rows and be bounded and evicted; where it lives and how big it gets is a design call, not a move.
+
+## Deferral 2026-09-19
+
+Waits on the maintainer: a bounded, evicted parse cache above the rows is a design call (where it lives, how big).
