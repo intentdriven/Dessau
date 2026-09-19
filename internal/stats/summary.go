@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/intentdriven/Gropius/internal/applog"
 )
 
 // The summary written before deletion (itd-2609061602043757).
@@ -562,7 +564,12 @@ func (w *storeWriter) createSummaryTemp() (string, *os.File, error) {
 			return "", nil, err
 		}
 		name := summaryTempPrefix + hex.EncodeToString(b[:]) + summaryTempSuffix
-		f, err := w.root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0o600)
+		// Through the one guarded open, like every other file the store
+		// touches, with O_EXCL in place of O_APPEND: this name must not exist
+		// yet, and a create that finds it does is a name to try again rather
+		// than a file to write.
+		f, _, err := applog.OpenIn(w.root, name,
+			os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, applog.FilePerm)
 		if err == nil {
 			return name, f, nil
 		}

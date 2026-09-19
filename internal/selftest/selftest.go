@@ -312,8 +312,13 @@ func (r *Runner) Enabled() bool {
 	return r.cancel != nil
 }
 
-// Close is SetEnabled(false) for the end of the process.
-func (r *Runner) Close() { r.SetEnabled(false) }
+// Close is SetEnabled(false) for the end of the process, and it releases the
+// results file's handles. A Runner closed and switched on again opens them
+// afresh on its next result.
+func (r *Runner) Close() {
+	r.SetEnabled(false)
+	r.file.close()
+}
 
 // SetQuiet changes the idle threshold in force, so a saved setting applies
 // to the next tick rather than the next start.
