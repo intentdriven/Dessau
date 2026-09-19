@@ -20,6 +20,12 @@ GitHub release notes.
   and both measurements scale with the text size chosen in Settings, so the
   field grows with the words instead of the words outgrowing the field. The
   send button keeps its circle, now matched to the field's height.
+- **The chat client's message field shows the focus ring again.** Drawing the
+  composer's capsule cost it the ring a bordered field shows for itself, so the
+  field gave no sign of holding the keyboard. The capsule now draws that
+  indication itself, in the system's own focus colour and at the thickness the
+  system strokes, and it stays hidden wherever the system's focus-effect
+  preference says focus is not to be shown.
 
 ## [0.7.1] - 2026-09-18
 
