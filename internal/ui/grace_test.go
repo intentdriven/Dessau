@@ -94,28 +94,112 @@ func attr(tag, name string) string {
 // wait below the grace is easiest to type. The server refuses that pair, and a
 // form that let it be posted would answer a save with an error the operator
 // has to decode; say it beside the field instead.
-func TestThePanelWarnsWhenTheMaximumWaitIsBelowTheGrace(t *testing.T) {
+//
+// The rule is not restated here. Each case is taken to the server's own
+// validator over the same two figures, and the hint has to appear exactly when
+// that refuses — so config.validateGrace, through Validate, stays the one home
+// of the rule and the panel is held to it rather than to a second copy of it
+// in this file. The figures the hint names are the server's too: a blank field
+// is the default, and the defaults reach the panel from the snapshot.
+func TestThePanelWarnsExactlyWhenTheServerRefusesTheGracePair(t *testing.T) {
+	defaults := fmt.Sprintf(`{"eviction_grace_sec":%d,"eviction_max_wait_sec":%d}`,
+		config.DefaultEvictionGraceSec, config.DefaultEvictionMaxWaitSec)
 	for _, tc := range []struct {
 		name           string
 		grace, maxWait string
-		want           string
 	}{
-		{"a maximum wait below the grace", "300", "60", "shorter"},
-		{"a maximum wait equal to the grace", "300", "300", ""},
-		{"a maximum wait above the grace", "60", "300", ""},
-		{"both left to the defaults", "", "", ""},
-		{"a blank maximum wait against a grace above the default", "600", "", "shorter"},
+		{"a maximum wait below the grace", "300", "60"},
+		{"a maximum wait equal to the grace", "300", "300"},
+		{"a maximum wait above the grace", "60", "300"},
+		{"both left to the defaults", "", ""},
+		{"a blank maximum wait against a grace above the default", "600", ""},
+		{"a blank grace against a maximum wait below the default", "", "60"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			cfg := gracePairProbe(t, tc.grace, tc.maxWait)
+			refused := cfg.Validate()
 			got := evalPanel(t,
-				fmt.Sprintf("graceWaitHint(%q, %q)", tc.grace, tc.maxWait), "graceWaitHint")
-			if tc.want == "" && got != "" {
-				t.Errorf("graceWaitHint(%q, %q) = %q, want nothing", tc.grace, tc.maxWait, got)
+				fmt.Sprintf("graceWaitHint(%q, %q, %s)", tc.grace, tc.maxWait, defaults),
+				"graceWaitHint")
+			if refused != nil && got == "" {
+				t.Fatalf("the server refuses grace=%q wait=%q (%v) and the panel says nothing — "+
+					"the save is answered with an error the operator has to decode",
+					tc.grace, tc.maxWait, refused)
 			}
-			if tc.want != "" && !strings.Contains(got, tc.want) {
-				t.Errorf("graceWaitHint(%q, %q) = %q, want it to mention %q",
-					tc.grace, tc.maxWait, got, tc.want)
+			if refused == nil {
+				if got != "" {
+					t.Fatalf("graceWaitHint(%q, %q) = %q, and the server accepts that pair — "+
+						"the panel is warning about a save that would have worked",
+						tc.grace, tc.maxWait, got)
+				}
+				return
+			}
+			// And it warns in the figures that would be in force, which for a
+			// blank field is the server's default rather than a number the
+			// panel chose.
+			for _, want := range []string{
+				fmt.Sprintf("%d s", cfg.MaxWaitSeconds()),
+				fmt.Sprintf("%d s", cfg.GraceSeconds()),
+			} {
+				if !strings.Contains(got, want) {
+					t.Errorf("graceWaitHint(%q, %q) = %q, want it to name %s — the figure the "+
+						"server resolves that field to", tc.grace, tc.maxWait, got, want)
+				}
 			}
 		})
+	}
+}
+
+// gracePairProbe is a configuration valid but for the pair under test: the
+// grace is on so the rule applies, it carries an API key so the exposure rule
+// is not what refuses, and the idle timeout is off so the other cross-field
+// rule on these two figures cannot fire either. What is left to refuse the
+// pair is the rule the hint is about.
+func gracePairProbe(t *testing.T, grace, maxWait string) config.Config {
+	t.Helper()
+	c := settingsProbeBase()
+	c.EvictionGrace = true
+	c.APIKey = "a-key-so-the-exposure-rule-is-not-the-one-refusing"
+	c.IdleTimeoutSec = 0
+	c.EvictionGraceSec = graceField(t, grace)
+	c.EvictionMaxWaitSec = graceField(t, maxWait)
+	return c
+}
+
+// graceField reads a field the way the server reads the setting behind it: a
+// blank field is unset, and unset is the default.
+func graceField(t *testing.T, value string) int {
+	t.Helper()
+	if strings.TrimSpace(value) == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		t.Fatalf("%q is not a number the field could hold", value)
+	}
+	return n
+}
+
+// The hint is bound to the server's defaults only while the panel hands it
+// what the server sent. A call that dropped them would leave a blank field
+// resolving to nothing, and the warning would quietly stop appearing; a hint
+// that kept its own copy of the two figures is the drift this binding exists
+// to end (iss-2609190029273153).
+func TestTheGraceHintTakesItsDefaultsFromTheServer(t *testing.T) {
+	src := readPanelSource(t)
+	if body := extractFunction(t, src, "updateGraceHint"); !strings.Contains(body, "state.defaults") {
+		t.Error("updateGraceHint no longer passes the server's defaults to graceWaitHint, " +
+			"so a blank field resolves to a figure the panel made up")
+	}
+	hint := extractFunction(t, src, "graceWaitHint")
+	for _, literal := range []string{
+		strconv.Itoa(config.DefaultEvictionGraceSec),
+		strconv.Itoa(config.DefaultEvictionMaxWaitSec),
+	} {
+		if strings.Contains(hint, literal) {
+			t.Errorf("graceWaitHint carries %s — the server's own default, written out a second "+
+				"time in the panel, which is the copy this hint was bound to the snapshot to be rid of",
+				literal)
+		}
 	}
 }

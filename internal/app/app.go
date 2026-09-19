@@ -678,6 +678,18 @@ func (a *App) checkBudgetFitsTheMachine(budget, current int64) error {
 // the operator is the one who knows what else this Mac runs.
 const warnAbovePercent = 85
 
+// BudgetChargeNote is the claim the memory-budget warning rests on, written
+// once: what a model costs is arithmetic on its own configuration, not a
+// measurement of this Mac, which is why a budget the machine cannot really
+// carry is advice here rather than a refusal.
+//
+// The server says it when such a budget is saved. The control panel's
+// as-you-type hint says it while the figure is still being typed, in the same
+// words, and a test in internal/ui holds the panel's copy to this constant —
+// the sentence used to be written out twice, and the copy nobody reads when
+// this one changes is the panel's (iss-2609190029273153).
+const BudgetChargeNote = "a model's charge is worked out from its configuration rather than measured on this Mac"
+
 // BudgetWarnAbove is the budget above which the panel warns, or 0 when this
 // Mac's memory cannot be read and there is nothing to take a share of.
 func (a *App) BudgetWarnAbove() int64 {
@@ -712,7 +724,8 @@ func (a *App) MemoryBudgetWarning() string {
 		return ""
 	}
 	return fmt.Sprintf(
-		"The memory budget (%s) is most of this Mac's memory (%s). macOS and everything else running share it, and a model's charge is worked out from its configuration rather than measured on this Mac, so requests can still run the machine out of memory.",
+		"The memory budget (%s) is most of this Mac's memory (%s). macOS and everything else running share it, and "+
+			BudgetChargeNote+", so requests can still run the machine out of memory.",
 		runtime.HumanBytes(budget), runtime.HumanBytes(a.machineRAM))
 }
 

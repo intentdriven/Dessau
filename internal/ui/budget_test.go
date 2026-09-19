@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/Gropius/internal/app"
 )
 
 // inputWithID returns the whole <input> tag with the given id, so a test can
@@ -97,6 +99,30 @@ func TestSettingsFormSaysWhenTheMachineIsOverItsBudget(t *testing.T) {
 	}
 	if !strings.Contains(line, "unload") {
 		t.Errorf("budgetHint = %q, want it to say nothing is unloaded on the operator's behalf", line)
+	}
+}
+
+// And it gives that advice in the server's words. The claim the warning rests
+// on — a charge is arithmetic on a model's configuration, not a measurement of
+// this Mac — is one constant in internal/app, said by the server when such a
+// budget is saved and by the panel while the figure is still being typed. Two
+// copies of a sentence drift, and the panel's is the copy nobody is reading
+// when the Go one changes (iss-2609190029273153).
+//
+// The source check runs everywhere; the rendered one needs node and skips
+// without it, which would otherwise leave this unguarded on a machine with no
+// node.
+func TestThePanelsBudgetWarningRestsOnTheServersOwnClaim(t *testing.T) {
+	if !strings.Contains(readPanelSource(t), app.BudgetChargeNote) {
+		t.Fatalf("the panel's budget hint does not say %q — the server says it about the same "+
+			"budget, and a second wording of one claim is two rules the operator has to reconcile",
+			app.BudgetChargeNote)
+	}
+	line := evalPanel(t, `budgetHint({"total_ram":137438953472,"budget":133143986176,`+
+		`"budget_is_default":false,"warn_above":116824368742,"resident_bytes":0,"over_budget":false})`,
+		"bytes", "size", "budgetHint")
+	if !strings.Contains(line, app.BudgetChargeNote) {
+		t.Errorf("budgetHint = %q, want it to carry the server's own claim %q", line, app.BudgetChargeNote)
 	}
 }
 

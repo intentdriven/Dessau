@@ -95,7 +95,7 @@ func TestARefusedRequestStillCarriesItsEstimatedSize(t *testing.T) {
 // it, by name; no number the client sent reaches the record.
 func TestOverridesAreNamedAndNeverValued(t *testing.T) {
 	srv, rec := measuredGateway(t, 0, 0)
-	status, _ := completion(t, srv, `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"temperature":0.123456,"max_completion_tokens":777,"top_p":0.5}`)
+	status, _ := completion(t, srv, `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"temperature":0.123456,"max_completion_tokens":54321,"top_p":0.98765}`)
 	if status != 200 {
 		t.Fatalf("status %d", status)
 	}
@@ -103,8 +103,20 @@ func TestOverridesAreNamedAndNeverValued(t *testing.T) {
 	if !reflect.DeepEqual(got.Overrides, []string{"temperature", "top_p", "max_tokens"}) {
 		t.Errorf("overrides = %v", got.Overrides)
 	}
+	// The arrival stamp is the one figure in the record whose digits are
+	// nobody's choice, and searching it for a client's value asks the wall
+	// clock to stay out of the way for good. On 2026-09-19 the seconds read
+	// 1789777xxx for a quarter of an hour, the "777" in them was read as the
+	// client's max_completion_tokens, and this test failed on two pushes to
+	// main (iss-2609181159253108). The stamp is checked as a stamp and then
+	// left out of the search, and every value the client sends is long enough
+	// that no figure the gateway records can spell one by accident.
+	if got.At <= 0 {
+		t.Errorf("the record carries no arrival stamp: at = %d", got.At)
+	}
+	got.At = 0
 	raw, _ := json.Marshal(got)
-	for _, value := range []string{"0.123456", "777", "0.5"} {
+	for _, value := range []string{"0.123456", "54321", "0.98765"} {
 		if strings.Contains(string(raw), value) {
 			t.Errorf("the record carries the client's value %s:\n%s", value, raw)
 		}
