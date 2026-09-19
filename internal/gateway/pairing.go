@@ -43,6 +43,9 @@ type pairAnswer struct {
 	Fingerprint string `json:"fingerprint"`
 	TLSPort     int    `json:"tls_port"`
 	Name        string `json:"name"`
+	// clientSPKI is the pairing's own fingerprint, for the log line. Unexported
+	// so it does not travel: the client computed it and does not need it back.
+	clientSPKI string
 }
 
 // PairHandler is POST /pair, and it is mounted on the PLAIN listener only.
@@ -68,39 +71,52 @@ func (c *Control) PairHandler() http.Handler {
 		c.settingsMu.Lock()
 		defer c.settingsMu.Unlock()
 		cfg := c.App.Config()
-		if !c.pairInto(&cfg, w, r) {
+		answer, ok := c.pairInto(&cfg, w, r)
+		if !ok {
 			return
 		}
+		// The answer is written only once the pairing is stored. A client takes
+		// the certificate in it as proof that it is paired, so answering before
+		// the save would hand it one for a pairing this server does not hold —
+		// and every request it then made would be refused as unpaired, with
+		// nothing on either side to explain it.
 		if err := c.App.SetConfig(cfg); err != nil {
 			writeError(w, http.StatusInternalServerError, "this server could not record the pairing")
 			return
 		}
+		if c.Log != nil {
+			c.Log.Info("client paired", "client", answer.Name, "fingerprint", shortFingerprint(answer.clientSPKI))
+		}
+		writeJSON(w, http.StatusOK, answer)
 	})
 }
 
-// pairInto validates a pairing request and writes it into cfg, reporting
-// whether it wrote anything. It is separate from the saving so that everything
-// it refuses is testable without a whole App behind it — and so that nothing
-// malformed ever reaches the settings file.
-func (c *Control) pairInto(cfg *config.Config, w http.ResponseWriter, r *http.Request) bool {
+// pairInto validates a pairing request and writes it into cfg, returning the
+// answer for the caller to send once the save has succeeded.
+//
+// It refuses into w and it never ANSWERS into w: a refusal is final, while an
+// answer depends on a save this function does not make. It is separate from
+// the saving so that everything it refuses is testable without a whole App
+// behind it, and so that nothing malformed ever reaches the settings file.
+func (c *Control) pairInto(cfg *config.Config, w http.ResponseWriter, r *http.Request) (pairAnswer, bool) {
 	var req pairRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxPairBodyBytes)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "the pairing request is not JSON this server reads")
-		return false
+		return pairAnswer{}, false
 	}
 	if err := config.ValidClientName(req.Name); err != nil {
 		writeError(w, http.StatusBadRequest, "that name is not one this server will record: "+err.Error())
-		return false
+		return pairAnswer{}, false
 	}
 	der, err := base64.StdEncoding.DecodeString(req.PublicKey)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "the public key is not base64")
-		return false
+		return pairAnswer{}, false
 	}
 	pub, err := pairing.PublicKeyFromSPKI(der)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
-		return false
+		return pairAnswer{}, false
 	}
 	fingerprint := pairing.Fingerprint(der)
 	if _, already := cfg.Clients[fingerprint]; !already && len(cfg.Clients) >= config.MaxClients {
@@ -108,16 +124,16 @@ func (c *Control) pairInto(cfg *config.Config, w http.ResponseWriter, r *http.Re
 		// from growing config.json until the next start cannot read it.
 		writeError(w, http.StatusConflict,
 			"this server is already paired with as many clients as it holds; revoke one on the control panel first")
-		return false
+		return pairAnswer{}, false
 	}
 	if c.Identity == nil {
 		writeError(w, http.StatusServiceUnavailable, "this server has no certificate of its own, so it cannot pair")
-		return false
+		return pairAnswer{}, false
 	}
 	leaf, err := c.Identity.MintLeaf(pub, req.Name)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "this server could not sign a certificate for that key")
-		return false
+		return pairAnswer{}, false
 	}
 	if cfg.Clients == nil {
 		cfg.Clients = map[string]config.Client{}
@@ -129,16 +145,13 @@ func (c *Control) pairInto(cfg *config.Config, w http.ResponseWriter, r *http.Re
 		pairedAt = was.PairedAt
 	}
 	cfg.Clients[fingerprint] = config.Client{Name: req.Name, SPKI: fingerprint, PairedAt: pairedAt}
-	if c.Log != nil {
-		c.Log.Info("client paired", "client", req.Name, "fingerprint", shortFingerprint(fingerprint))
-	}
-	writeJSON(w, http.StatusOK, pairAnswer{
+	return pairAnswer{
 		Leaf:        base64.StdEncoding.EncodeToString(leaf),
 		Fingerprint: c.Identity.Fingerprint(),
 		TLSPort:     cfg.EffectiveTLSPort(),
 		Name:        req.Name,
-	})
-	return true
+		clientSPKI:  fingerprint,
+	}, true
 }
 
 // handleRevoke takes a client off the paired set. Its own route rather than a

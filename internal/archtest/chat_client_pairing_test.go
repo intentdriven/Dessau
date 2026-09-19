@@ -209,3 +209,56 @@ func swiftFunctionBody(src, signature string) (string, bool) {
 	}
 	return "", false
 }
+
+// Learning a pin means having none for the length of one handshake. The pin in
+// force has to be put back on every way out of pairing that does not set a new
+// one, or a failed pairing leaves an already-paired client accepting any
+// certificate until the app is relaunched (iss-2609190100212365).
+func TestAFailedPairingRestoresThePinItCleared(t *testing.T) {
+	app := clientSources(t, repoRootDir(t))["GropiusChat.swift"]
+	body, ok := swiftFunctionBody(app, "func pair(as name: String) async throws {")
+	if !ok {
+		t.Fatal("the client's pairing flow is gone")
+	}
+	if !strings.Contains(body, "pinning.pinnedSPKI = nil") {
+		t.Skip("pairing no longer clears the pin, so there is nothing to restore")
+	}
+	cleared := strings.Count(body, "pinning.pinnedSPKI = nil")
+	restored := strings.Count(body, "pinning.pinnedSPKI = previous")
+	if restored < cleared {
+		t.Errorf("pairing clears the pin %d time(s) and restores it %d time(s); a path out that does "+
+			"neither leaves this client accepting any certificate", cleared, restored)
+	}
+	// And the certificate is not left in the keychain by a pairing that did
+	// not finish (iss-2609190100217781).
+	if strings.Count(body, "PairingStore.removeLeaf") < 2 {
+		t.Error("a pairing that cannot complete the handshake leaves its certificate in the keychain")
+	}
+}
+
+// Forgetting a pairing removes everything it made. The certificate was added
+// with no tag of its own, so a delete keyed on the tag misses it and every
+// pairing leaves one more behind (iss-2609190100217781).
+func TestForgettingAPairingRemovesTheCertificateToo(t *testing.T) {
+	pairing := clientSources(t, repoRootDir(t))["Pairing.swift"]
+	body, ok := swiftFunctionBody(pairing, "static func forget() {")
+	if !ok {
+		t.Fatal("PairingStore.forget is gone")
+	}
+	if !strings.Contains(body, "removeLeaf") {
+		t.Error("forgetting a pairing does not remove the certificate it stored")
+	}
+	for _, want := range []string{"kSecClassIdentity", "kSecClassKey"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("forgetting a pairing does not remove the %s", want)
+		}
+	}
+	remove, ok := swiftFunctionBody(pairing, "static func removeLeaf(_ der: Data) {")
+	if !ok {
+		t.Fatal("PairingStore.removeLeaf is gone")
+	}
+	if !strings.Contains(remove, "kSecValueRef") {
+		t.Error("the certificate is removed by something other than its bytes; a label this app chose does " +
+			"not survive the add on the macOS file keychain, where the common name replaces it")
+	}
+}

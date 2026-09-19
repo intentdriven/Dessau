@@ -512,13 +512,27 @@ final class AppModel: ObservableObject {
         // server or a Bonjour record told it.
         var record = PairedServer(origin: serverOrigin, tlsPort: answer.tls_port,
                                   pinnedSPKI: "", name: answer.name,
-                                  clientSPKI: spkiFingerprint(spki))
+                                  clientSPKI: spkiFingerprint(spki),
+                                  leafDER: answer.leaf)
         guard let httpsBase = record.httpsBase,
               let probe = URL(string: httpsBase + "/health")
-        else { throw PairingError.noHandshake }
+        else {
+            PairingStore.removeLeaf(der)
+            throw PairingError.noHandshake
+        }
+        // Learning a pin means having none for the length of one handshake. The
+        // pin in force is put back on every way out of here that does not set a
+        // new one: leaving the delegate unpinned would make the next connection
+        // to an already-paired server accept any certificate at all
+        // (iss-2609190100212365).
+        let previous = pinning.pinnedSPKI
         pinning.pinnedSPKI = nil
         _ = try? await session.data(from: probe)
-        guard let presented = pinning.lastPresentedSPKI else { throw PairingError.noHandshake }
+        guard let presented = pinning.lastPresentedSPKI else {
+            pinning.pinnedSPKI = previous
+            PairingStore.removeLeaf(der)
+            throw PairingError.noHandshake
+        }
         record.pinnedSPKI = presented
         pinning.pinnedSPKI = presented
         PairingStore.write(record)

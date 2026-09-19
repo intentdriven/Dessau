@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/json"
 	"io"
 	"math/big"
 	"net"
@@ -246,7 +245,7 @@ func TestThePairingEndpointStopsAtTheCeiling(t *testing.T) {
 	k := newClientKey(t)
 	body := `{"name":"one too many","public_key":"` + base64.StdEncoding.EncodeToString(k.spki) + `"}`
 	w := httptest.NewRecorder()
-	ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair", strings.NewReader(body)))
+	_, _ = ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair", strings.NewReader(body)))
 	if w.Code == http.StatusOK {
 		t.Error("the pairing endpoint paired a client over the ceiling")
 	}
@@ -270,7 +269,7 @@ func TestPairingTwiceWithOneKeyUpdatesTheSameClient(t *testing.T) {
 	}
 	for _, name := range []string{"Bob's iPad", "Bob's iPad Pro"} {
 		w := httptest.NewRecorder()
-		ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair", strings.NewReader(body(name))))
+		_, _ = ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair", strings.NewReader(body(name))))
 		if w.Code != http.StatusOK {
 			t.Fatalf("pairing %q was refused: %d %s", name, w.Code, w.Body)
 		}
@@ -294,18 +293,10 @@ func TestPairingAnswersWithTheLeafAndTheServersFingerprint(t *testing.T) {
 	ctrl := &Control{Identity: id}
 	k := newClientKey(t)
 	w := httptest.NewRecorder()
-	ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair",
+	answer, ok := ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair",
 		strings.NewReader(`{"name":"Bob","public_key":"`+base64.StdEncoding.EncodeToString(k.spki)+`"}`)))
-	if w.Code != http.StatusOK {
+	if !ok {
 		t.Fatalf("pairing was refused: %d %s", w.Code, w.Body)
-	}
-	var answer struct {
-		Leaf        string `json:"leaf"`
-		Fingerprint string `json:"fingerprint"`
-		TLSPort     int    `json:"tls_port"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &answer); err != nil {
-		t.Fatal(err)
 	}
 	der, err := base64.StdEncoding.DecodeString(answer.Leaf)
 	if err != nil {
@@ -323,5 +314,34 @@ func TestPairingAnswersWithTheLeafAndTheServersFingerprint(t *testing.T) {
 	}
 	if answer.TLSPort != cfg.EffectiveTLSPort() {
 		t.Errorf("the answer names port %d, want %d", answer.TLSPort, cfg.EffectiveTLSPort())
+	}
+}
+
+// A pairing the server could not record must not answer as though it had.
+//
+// The client takes the 200 and the certificate in it as proof that it is
+// paired. If the save failed, every request it then makes is refused as
+// unpaired, with nothing on either side to explain it (iss-2609190100210971).
+func TestAPairingThatCouldNotBeSavedIsNotAnsweredWithACertificate(t *testing.T) {
+	cfg := config.Default()
+	id, err := pairing.LoadIdentity(filepath.Join(t.TempDir(), "k.pem"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctrl := &Control{Identity: id}
+	k := newClientKey(t)
+	w := httptest.NewRecorder()
+	answer, ok := ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair",
+		strings.NewReader(`{"name":"Bob","public_key":"`+base64.StdEncoding.EncodeToString(k.spki)+`"}`)))
+	if !ok {
+		t.Fatalf("an ordinary pairing was refused: %d %s", w.Code, w.Body)
+	}
+	if answer.Leaf == "" {
+		t.Fatal("the answer carries no certificate")
+	}
+	// Nothing has been written yet: the caller writes it, and only after the
+	// save it has not made yet succeeds.
+	if w.Body.Len() != 0 {
+		t.Errorf("the validation step wrote a %d-byte answer before anything was saved: %s", w.Body.Len(), w.Body)
 	}
 }

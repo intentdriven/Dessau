@@ -69,6 +69,9 @@ struct PairedServer: Codable, Equatable {
     var name: String
     /// This client's own key, so its row on the panel can be recognised.
     var clientSPKI: String
+    /// The certificate this server minted, as base64 DER, kept so that
+    /// forgetting the pairing can remove it from the keychain again.
+    var leafDER: String = ""
 
     /// The base this client's requests go to once paired.
     var httpsBase: String? {
@@ -123,7 +126,15 @@ enum PairingStore {
     }
 
     /// Forget a pairing: the record, the certificate and the key.
+    ///
+    /// The certificate goes first and it goes by its bytes. Leaving it behind
+    /// was the defect iss-2609190100217781 records: it was added with no tag of
+    /// its own, so a delete keyed on the tag missed it and every pairing left
+    /// one more certificate in the person's keychain for ever.
     static func forget() {
+        if let leaf = read()?.leafDER, let der = Data(base64Encoded: leaf) {
+            removeLeaf(der)
+        }
         SecItemDelete(baseQuery as CFDictionary)
         SecItemDelete([
             kSecClass as String: kSecClassIdentity,
@@ -188,6 +199,12 @@ enum PairingStore {
 
     /// Store the certificate the server minted so the Keychain can form the
     /// identity from it and the key already there.
+    ///
+    /// The DER is kept beside the pairing record, because it is the only way to
+    /// remove the certificate again: the macOS file keychain overwrites a
+    /// certificate's chosen label with its common name, so a label this app
+    /// picked does not survive the add and cannot be used to find it. Deleting
+    /// by kSecValueRef, from the bytes, is what works.
     static func store(leaf der: Data) -> Bool {
         guard let cert = SecCertificateCreateWithData(nil, der as CFData) else { return false }
         let status = SecItemAdd([
@@ -195,6 +212,15 @@ enum PairingStore {
             kSecValueRef as String: cert,
         ] as CFDictionary, nil)
         return status == errSecSuccess || status == errSecDuplicateItem
+    }
+
+    /// Remove a certificate this app stored, by the bytes it stored.
+    static func removeLeaf(_ der: Data) {
+        guard let cert = SecCertificateCreateWithData(nil, der as CFData) else { return }
+        SecItemDelete([
+            kSecClass as String: kSecClassCertificate,
+            kSecValueRef as String: cert,
+        ] as CFDictionary)
     }
 
     /// This client's identity, if it has one.
