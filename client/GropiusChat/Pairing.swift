@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import CryptoKit
+import os
 
 // MARK: - Pairing
 //
@@ -26,7 +27,8 @@ import CryptoKit
 //     `kSecAttrTokenIDSecureEnclave` fails with `errSecMissingEntitlement`
 //     (-34018), so the fallback is a permanent Keychain key. A build signed
 //     with a provisioning profile takes the Enclave path without any other
-//     change.
+//     change. That status is the whole of the fallback: any other refusal
+//     stops pairing rather than quietly making a software key.
 
 /// The fixed DER header of a P-256 SubjectPublicKeyInfo, which turns the X9.63
 /// point the Security framework hands back into the structure the server hashes.
@@ -98,6 +100,11 @@ enum PairingStore {
     /// this feature sells itself.
     private(set) static var keyIsInSecureEnclave = false
 
+    /// Where this store says which kind of key it made. Which key a device
+    /// holds is a thing to be read afterwards rather than inferred from the
+    /// signature it was built with.
+    nonisolated private static let logger = Logger(subsystem: "dev.gropius.chat", category: "pairing")
+
     // MARK: the record
 
     static func read() -> PairedServer? {
@@ -161,10 +168,27 @@ enum PairingStore {
     /// One code path and two attempt dictionaries, so a build signed with a
     /// provisioning profile takes the Enclave without a second design and this
     /// one still works without it.
-    static func makeKey() -> SecKey? {
+    ///
+    /// The fallback is for ONE condition. The spike of 2026-09-19 measured
+    /// `errSecMissingEntitlement` (-34018): the Enclave key is made and only
+    /// the Keychain add is refused, for want of a `keychain-access-groups`
+    /// entitlement an ad-hoc signature cannot carry. Every other refusal is a
+    /// different thing, and taking the fallback for it would hand this device a
+    /// software key while the app went on reporting a hardware one. So the
+    /// CFError is read, the fallback is taken for that status alone, and
+    /// anything else is thrown to the person pairing (iss-2609190200098392).
+    ///
+    /// The code is what is matched and the domain is not: Security hands back
+    /// the OSStatus as the CFError's code, and no second reading of -34018 is
+    /// in play here.
+    static func makeKey() throws -> SecKey {
         // Start clean: a key left from an earlier pairing would be found by the
         // identity query and presented instead of the new one.
         SecItemDelete([kSecClass as String: kSecClassKey, kSecAttrApplicationTag as String: keyTag] as CFDictionary)
+        // And clean about what was made, before anything is. The claim is only
+        // ever raised by the Enclave attempt returning a key: a path that
+        // throws leaves no key behind and must leave no claim to one either.
+        keyIsInSecureEnclave = false
 
         var privateAttrs: [String: Any] = [
             kSecAttrIsPermanent as String: true,
@@ -182,19 +206,39 @@ enum PairingStore {
                 kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
                 kSecPrivateKeyAttrs as String: privateAttrs,
             ]
-            if let key = SecKeyCreateRandomKey(enclave as CFDictionary, nil) {
+            var error: Unmanaged<CFError>?
+            if let key = SecKeyCreateRandomKey(enclave as CFDictionary, &error) {
                 keyIsInSecureEnclave = true
+                logger.notice("pairing key made in the Secure Enclave")
                 return key
             }
+            let refusal = error?.takeRetainedValue()
+            let status = refusal.map { CFErrorGetCode($0) }
+            guard status == Int(errSecMissingEntitlement) else {
+                let why = refusal.map { ($0 as Error).localizedDescription }
+                    ?? "it gave no reason"
+                logger.error("the Secure Enclave refused this pairing key: \(why, privacy: .public)")
+                throw PairingError.keyRefused(
+                    "This device's Secure Enclave would not make a key for pairing: \(why)")
+            }
+            logger.notice(
+                "the Secure Enclave is closed to this build's signature (errSecMissingEntitlement); pairing with a permanent Keychain key instead")
         }
-        keyIsInSecureEnclave = false
         privateAttrs.removeValue(forKey: kSecAttrAccessControl as String)
         let ordinary: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeySizeInBits as String: 256,
             kSecPrivateKeyAttrs as String: privateAttrs,
         ]
-        return SecKeyCreateRandomKey(ordinary as CFDictionary, nil)
+        var error: Unmanaged<CFError>?
+        guard let key = SecKeyCreateRandomKey(ordinary as CFDictionary, &error) else {
+            let why = (error?.takeRetainedValue()).map { ($0 as Error).localizedDescription }
+                ?? "it gave no reason"
+            logger.error("this device would not make a pairing key: \(why, privacy: .public)")
+            throw PairingError.keyRefused("This device would not make a key for pairing: \(why)")
+        }
+        logger.notice("pairing key made as a permanent Keychain key, outside the Secure Enclave")
+        return key
     }
 
     /// Store the certificate the server minted so the Keychain can form the
@@ -349,6 +393,11 @@ struct PairAnswer: Decodable {
 
 enum PairingError: LocalizedError {
     case noKey
+    /// A key could not be made, and the Security framework said why. Distinct
+    /// from `noKey`, which is the case with nothing to report: this one carries
+    /// this client's own sentence with the framework's reason quoted inside it,
+    /// so a refused Secure Enclave is shown rather than worked around.
+    case keyRefused(String)
     case badAnswer
     case refused(String)
     case noHandshake
@@ -356,6 +405,7 @@ enum PairingError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noKey: return "This device would not make a key for pairing."
+        case .keyRefused(let why): return why
         case .badAnswer: return "That server answered the pairing request with something this client cannot use."
         case .refused(let why): return why
         case .noHandshake: return "This client could not reach that server over its secure port."

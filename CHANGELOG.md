@@ -223,6 +223,15 @@ GitHub release notes.
   when every word is somewhere in its title or its messages, in any order and
   any distance apart. The match ignores accents as well as case, the way search
   does elsewhere on the Mac. `impact: fix`
+- **A chat client's pairing key is made outside the Secure Enclave only where
+  the Enclave is closed to it.** The client tried the Enclave and treated any
+  failure as the signal to make an ordinary Keychain key instead, so a device
+  that refused the Enclave for some other reason would quietly have been given
+  a software key while the app went on reporting a hardware one. The reason is
+  now read: the fallback is taken for the missing-entitlement status alone —
+  the case of a build signed the way this app is — and any other refusal stops
+  the pairing and says what the device reported. Which kind of key was made is
+  written to the log either way.
 
 ## [0.7.1] - 2026-09-18
 
