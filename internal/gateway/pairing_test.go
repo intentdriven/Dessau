@@ -359,3 +359,37 @@ func mustPairRequest(t *testing.T, body string) pairRequest {
 	}
 	return req
 }
+
+// A bound that only stops READING is not a bound on what is accepted
+// (iss-2609190200099532). A streaming decoder stops at the first complete JSON
+// value, so a request whose opening bytes are a well-formed pairing and whose
+// remainder is anything at all used to pair — on an endpoint that is
+// unauthenticated by design and writes the settings file. The refusal has to be
+// the endpoint's answer, not a side effect of running out of bytes to read.
+func TestThePairingEndpointRefusesABodyOverItsLimit(t *testing.T) {
+	srv, a, _ := newPairingServer(t, config.Default())
+	k := newClientKey(t)
+	within := `{"name":"Bob's iPad","public_key":"` + base64.StdEncoding.EncodeToString(k.spki) + `"}`
+	over := within + strings.Repeat("x", maxPairBodyBytes)
+
+	resp := postJSON(t, srv, "/pair", over)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Errorf("a pairing body over the limit answered %d, want 413", resp.StatusCode)
+	}
+	if got := len(a.Config().Clients); got != 0 {
+		t.Errorf("a pairing body over the limit paired %d clients; it must write nothing", got)
+	}
+
+	// And the bound is on the size and on nothing else: the same pairing within
+	// it is still accepted, so the refusal above is not this test passing for
+	// the wrong reason.
+	ok := postJSON(t, srv, "/pair", within)
+	defer ok.Body.Close()
+	if ok.StatusCode != http.StatusOK {
+		t.Fatalf("an ordinary pairing answered %d, want 200", ok.StatusCode)
+	}
+	if got := len(a.Config().Clients); got != 1 {
+		t.Errorf("an ordinary pairing left %d clients paired, want one", got)
+	}
+}

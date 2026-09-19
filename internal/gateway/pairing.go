@@ -75,7 +75,11 @@ func (c *Control) PairHandler() http.Handler {
 		// operator makes, for as long as it stayed open (iss-2609190110110353).
 		req, err := readPairRequest(r)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			status := http.StatusBadRequest
+			if errors.Is(err, errPairBodyTooLarge) {
+				status = http.StatusRequestEntityTooLarge
+			}
+			writeError(w, status, err.Error())
 			return
 		}
 		// The same lock the settings handler takes, in the same order
@@ -141,12 +145,32 @@ func readPairRequest(r *http.Request) (pairRequest, error) {
 	if r.Header.Get("Origin") != "" {
 		return pairRequest{}, errors.New("pairing is not something a web page may ask for")
 	}
+	// One byte past the bound, so that reaching it is a fact about the REQUEST
+	// and not about how much this server felt like reading. A streaming decoder
+	// over a LimitReader stops at the first complete JSON value, so a body whose
+	// opening bytes are a well-formed pairing and whose remainder is anything at
+	// all decoded and paired — the read was bounded, the acceptance was not
+	// (iss-2609190200099532). Unmarshal over the whole body also refuses trailing
+	// content INSIDE the bound, which is the same fault at a smaller size.
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxPairBodyBytes+1))
+	if err != nil {
+		return pairRequest{}, errors.New("the pairing request could not be read")
+	}
+	if len(body) > maxPairBodyBytes {
+		return pairRequest{}, errPairBodyTooLarge
+	}
 	var req pairRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxPairBodyBytes)).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		return pairRequest{}, errors.New("the pairing request is not JSON this server reads")
 	}
 	return req, nil
 }
+
+// errPairBodyTooLarge is the one refusal from readPairRequest that is not a
+// 400: the caller is told the size is the problem, because a client that is
+// told "not JSON" about a body that is perfectly good JSON has nothing to act
+// on.
+var errPairBodyTooLarge = errors.New("the pairing request is larger than this server accepts")
 
 // pairInto validates a pairing request and writes it into cfg, returning the
 // answer for the caller to send once the save has succeeded.

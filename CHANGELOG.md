@@ -49,6 +49,11 @@ GitHub release notes.
   given way, and the same mistake cut short the concurrent test of a run that
   got past the load. The loop now claims its place before it asks for it, so a
   measurement gives way to a real request and to nothing else.
+- **An oversized pairing request is refused rather than half-read.** The
+  pairing endpoint takes no credential, so the body it accepts is bounded — but
+  the bound stopped the reading and not the acceptance, and a request whose
+  opening bytes were a well-formed pairing paired whatever followed them. A body
+  over the limit is now answered `413` and nothing is written.
 
 ## [0.7.1] - 2026-09-18
 
