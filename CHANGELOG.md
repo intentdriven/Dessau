@@ -261,6 +261,15 @@ GitHub release notes.
   the bound stopped the reading and not the acceptance, and a request whose
   opening bytes were a well-formed pairing paired whatever followed them. A body
   over the limit is now answered `413` and nothing is written.
+- **A model's file listing is bounded as a whole, not one page at a time.**
+  The listing that names a repository's files is paged, and each page was
+  bounded on its own while the number of pages was bounded separately — so the
+  two bounds multiplied, and a hub that paged a large listing forever could
+  make Gropius hold far more of it than any real model needs, before a byte of
+  the model was downloaded. A whole listing may now cost at most what a single
+  page may, and may name at most a hundred thousand files; past either, it is
+  refused the way an oversized answer already is. A genuinely sharded model is
+  still followed to the end of its pages. `impact: fix`
 - **A pairing key the Secure Enclave cannot guard refuses the pairing instead
   of quietly becoming a software key.** The chat client asks the Enclave for a
   key and falls back to an ordinary Keychain key for one measured condition:
