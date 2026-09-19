@@ -1325,15 +1325,15 @@ struct MessageRow: View {
     var loadingLabel: String? = nil
     @State private var showReasoning = false
     private let colors = BubbleColors()
-    /// The rendered blocks, parsed once per change of the text — and for the
-    /// reply that is streaming, at most a few times a second.
-    @State private var blocks: [MarkdownBlock] = []
+    /// The rendered blocks of what this row draws — the reply's and the
+    /// thoughts' — keyed by the text each was parsed from, parsed once per
+    /// change of that text and, while a reply is streaming, at most a few
+    /// times a second. One store, so one scheduler and one throttle serve
+    /// both: a pane whose text has not changed keeps its blocks without
+    /// being parsed again, and a text this row no longer shows is dropped.
+    @State private var parsed: [String: [MarkdownBlock]] = [:]
     @State private var lastParse = Date.distantPast
     @State private var parseTask: Task<Void, Never>?
-    /// The thoughts, rendered the same way and on the same throttle.
-    @State private var reasoningBlocks: [MarkdownBlock] = []
-    @State private var lastReasoningParse = Date.distantPast
-    @State private var reasoningTask: Task<Void, Never>?
     /// Whether this row is playing the effect, and whether it already has.
     /// The reply animates at the moment it FINISHES: the model queues the id
     /// in its stream's defer, and the row watches for that change. A row
@@ -1346,6 +1346,8 @@ struct MessageRow: View {
     private var isUser: Bool { message.role == .user }
     private var displayText: String { message.text.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var displayReasoning: String { message.reasoning.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var blocks: [MarkdownBlock] { parsed[displayText] ?? [] }
+    private var reasoningBlocks: [MarkdownBlock] { parsed[displayReasoning] ?? [] }
 
     /// Who spoke, for the label and for VoiceOver.
     private var speaker: String {
@@ -1412,7 +1414,7 @@ struct MessageRow: View {
             // the row was off screen: the effect's moment has passed, so the
             // id goes without playing and no later row can fire on it.
             if model.effectsToPlay.contains(message.id) { model.effectStarted(message.id) }
-            if blocks.isEmpty { blocks = MarkdownBlocks.parse(displayText); lastParse = Date() }
+            if blocks.isEmpty { parseNow() }
         }
         // The reply finishing is the queueing of its id; that change, and only
         // that change, plays the effect, once.
@@ -1462,40 +1464,37 @@ struct MessageRow: View {
         }
     }
 
-    /// The thoughts' twin of scheduleParse.
-    private func scheduleReasoningParse() {
-        let wait = 0.25 - Date().timeIntervalSince(lastReasoningParse)
-        reasoningTask?.cancel()
-        if wait <= 0 {
-            reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
-            lastReasoningParse = Date()
-            return
-        }
-        reasoningTask = Task {
-            try? await Task.sleep(for: .seconds(wait))
-            guard !Task.isCancelled else { return }
-            reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
-            lastReasoningParse = Date()
-        }
-    }
-
     /// Parse now if the last parse is older than a quarter of a second, else
-    /// once at that deadline — four parses a second at most; a finished
-    /// reply's text never changes again.
+    /// once at that deadline — four parses a second at most, for the reply
+    /// and the thoughts together; a finished reply's text never changes
+    /// again. The Thoughts row is on this scheduler too: one pending parse
+    /// for the row, so neither pane can be left behind by the other.
     private func scheduleParse() {
         let wait = 0.25 - Date().timeIntervalSince(lastParse)
         parseTask?.cancel()
         if wait <= 0 {
-            blocks = MarkdownBlocks.parse(displayText)
-            lastParse = Date()
+            parseNow()
             return
         }
         parseTask = Task {
             try? await Task.sleep(for: .seconds(wait))
             guard !Task.isCancelled else { return }
-            blocks = MarkdownBlocks.parse(displayText)
-            lastParse = Date()
+            parseNow()
         }
+    }
+
+    /// The row's one parse pass: whichever of the two texts is shown and has
+    /// changed is parsed, the other keeps the blocks it already has.
+    private func parseNow() {
+        var next: [String: [MarkdownBlock]] = [:]
+        if !displayText.isEmpty {
+            next[displayText] = parsed[displayText] ?? MarkdownBlocks.parse(displayText)
+        }
+        if !displayReasoning.isEmpty {
+            next[displayReasoning] = parsed[displayReasoning] ?? MarkdownBlocks.parse(displayReasoning)
+        }
+        parsed = next
+        lastParse = Date()
     }
 
     @ViewBuilder private func styled(_ s: AttributedString, animate: Bool) -> some View {
@@ -1526,12 +1525,9 @@ struct MessageRow: View {
                 .contentShape(Rectangle())
                 .onTapGesture { withAnimation { showReasoning = false } }
                 .onAppear {
-                    if reasoningBlocks.isEmpty {
-                        reasoningBlocks = MarkdownBlocks.parse(displayReasoning)
-                        lastReasoningParse = Date()
-                    }
+                    if reasoningBlocks.isEmpty { parseNow() }
                 }
-                .onChange(of: displayReasoning) { _, _ in scheduleReasoningParse() }
+                .onChange(of: displayReasoning) { _, _ in scheduleParse() }
         } label: {
             Label {
                 Text(displayText.isEmpty ? "Thinking…" : "Thoughts").font(.caption)

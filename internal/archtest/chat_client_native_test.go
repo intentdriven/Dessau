@@ -327,13 +327,14 @@ func TestChatClientEffectKeepsTheReplySelectable(t *testing.T) {
 // TestChatClientReplyReparseStaysWithinItsBudget holds the streaming reply's
 // re-parse budget (iss-2609181116218893): the spec allows at most four parses
 // a second, so the debounce waits at least a quarter of a second — for the
-// reply and for the thoughts, which are parsed the same way.
+// reply and for the thoughts, which are parsed the same way, on the one
+// debounce they share (TestChatClientThoughtsShareTheReplyScheduler).
 func TestChatClientReplyReparseStaysWithinItsBudget(t *testing.T) {
 	root := repoRootDir(t)
 	src := clientSources(t, root)["GropiusChat.swift"]
 	found := regexp.MustCompile(`([0-9.]+) - Date\(\)\.timeIntervalSince\(last[A-Za-z]*Parse\)`).FindAllStringSubmatch(src, -1)
-	if len(found) < 2 {
-		t.Fatalf("found %d re-parse debounce(s); the reply and the thoughts each have one", len(found))
+	if len(found) == 0 {
+		t.Fatal("no re-parse debounce; a streaming reply is parsed on every chunk that arrives")
 	}
 	for _, m := range found {
 		wait, err := strconv.ParseFloat(m[1], 64)
