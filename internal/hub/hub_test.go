@@ -850,3 +850,76 @@ func TestFilesNamesAnUnparseableNextPageAsUnparseable(t *testing.T) {
 		t.Errorf("err = %v, want it not to be reported as cross-origin", err)
 	}
 }
+
+// Every path in this package that puts a repo id into a URL must escape it the
+// same way. It escaped on the RepoInfo path and interpolated raw on the tree
+// and resolve paths, so a repo id carrying a URL-significant character reached
+// a different Hub endpoint than the caller named: a '#' turned the rest of the
+// path into a fragment that is never sent at all.
+func TestEveryPathEscapesTheRepoIDTheSameWay(t *testing.T) {
+	const repoID = "org/repo#1"
+
+	var sawInfo, sawTree, sawResolve string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/tree/main") {
+			sawTree = r.URL.Path
+			fmt.Fprint(w, `[{"type":"file","path":"model.safetensors","size":4,"oid":"a"}]`)
+			return
+		}
+		sawInfo = r.URL.Path
+		fmt.Fprint(w, `{"id":"org/repo#1","tags":["mlx"]}`)
+	})
+	mux.HandleFunc("/org/repo#1/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
+		sawResolve = r.URL.Path
+		w.Write([]byte("abcd"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	if _, err := c.RepoInfo(context.Background(), repoID); err != nil {
+		t.Fatalf("RepoInfo: %v", err)
+	}
+	if _, err := c.Files(context.Background(), repoID, ""); err != nil {
+		t.Fatalf("Files: %v", err)
+	}
+	if err := c.Download(context.Background(), DownloadRequest{RepoID: repoID, Dest: t.TempDir()}); err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+
+	if want := "/api/models/org/repo#1"; sawInfo != want {
+		t.Errorf("RepoInfo asked for %q, want %q", sawInfo, want)
+	}
+	if want := "/api/models/org/repo#1/tree/main"; sawTree != want {
+		t.Errorf("the tree listing asked for %q, want %q", sawTree, want)
+	}
+	if want := "/org/repo#1/resolve/main/model.safetensors"; sawResolve != want {
+		t.Errorf("the file download asked for %q, want %q", sawResolve, want)
+	}
+	if got := c.ResolveURL(repoID, "main", "model.safetensors"); !strings.Contains(got, "org/repo%231/resolve") {
+		t.Errorf("ResolveURL = %q, want the repo id percent-escaped", got)
+	}
+}
+
+// A '.' or '..' is not a path element but an instruction about the path, and
+// url.PathEscape leaves it alone, so escaping cannot make a repo id carrying
+// one name the endpoint the caller asked for. No Hub repo id has such a
+// segment, so every request path refuses it instead.
+func TestARepoIDWithADotSegmentIsRefused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("a request was made for %q; the repo id should have been refused first", r.URL.Path)
+		fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	for _, id := range []string{"org/../../evil", "./org/repo", "org/repo/.."} {
+		if _, err := c.RepoInfo(context.Background(), id); err == nil {
+			t.Errorf("RepoInfo accepted repo id %q", id)
+		}
+		if _, err := c.Files(context.Background(), id, ""); err == nil {
+			t.Errorf("Files accepted repo id %q", id)
+		}
+	}
+}

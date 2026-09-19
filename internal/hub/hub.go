@@ -332,7 +332,7 @@ func (c *Client) Search(ctx context.Context, q SearchQuery) ([]Model, error) {
 		v.Set("direction", "-1")
 	}
 	// full=false keeps the payload small; we only need summary fields here.
-	u := c.baseURL() + "/api/models?" + v.Encode()
+	u := c.hubURL(segment("api"), segment("models")) + "?" + v.Encode()
 
 	req, err := c.newRequest(ctx, http.MethodGet, u)
 	if err != nil {
@@ -367,10 +367,10 @@ func (c *Client) Search(ctx context.Context, q SearchQuery) ([]Model, error) {
 // which is the same state as a repo the Hub does not tag; it never means the
 // model is unusable.
 func (c *Client) RepoInfo(ctx context.Context, repoID string) (Model, error) {
-	if repoID == "" {
-		return Model{}, errors.New("repo info: repoID is required")
+	if err := checkRepoID(repoID); err != nil {
+		return Model{}, fmt.Errorf("repo info: %w", err)
 	}
-	u := c.baseURL() + "/api/models/" + escapePathSegments(repoID)
+	u := c.hubURL(segment("api"), segment("models"), repoPath(repoID))
 	req, err := c.newRequest(ctx, http.MethodGet, u)
 	if err != nil {
 		return Model{}, err
@@ -415,11 +415,14 @@ func (c *Client) Files(ctx context.Context, repoID, revision string) ([]File, er
 // lists and fetches a repo under one token rather than picking up a new one
 // between the listing and the files it names.
 func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]File, error) {
+	if err := checkRepoID(repoID); err != nil {
+		return nil, fmt.Errorf("list files: %w", err)
+	}
 	if revision == "" {
 		revision = "main"
 	}
-	u := fmt.Sprintf("%s/api/models/%s/tree/%s?recursive=true",
-		c.baseURL(), repoID, url.PathEscape(revision))
+	u := c.hubURL(segment("api"), segment("models"), repoPath(repoID),
+		segment("tree"), segment(revision)) + "?recursive=true"
 
 	var entries []File
 	for page := 0; u != ""; page++ {
@@ -568,15 +571,76 @@ func (c *Client) RepoSize(ctx context.Context, repoID string) (int64, error) {
 
 // ResolveURL is the direct-download URL for one file in a repo.
 //
-// The revision and each file-path segment are escaped: a file named e.g.
-// "weights#2.safetensors" would otherwise have everything after '#' parsed as a
-// URL fragment, producing a wrong request that 404s and aborts the download.
+// The repo id, the revision and each file-path segment are escaped, through
+// the same hubURL every other request path here goes through: a file named
+// e.g. "weights#2.safetensors" would otherwise have everything after '#'
+// parsed as a URL fragment, producing a wrong request that 404s and aborts the
+// download.
 func (c *Client) ResolveURL(repoID, revision, file string) string {
 	if revision == "" {
 		revision = "main"
 	}
-	return fmt.Sprintf("%s/%s/resolve/%s/%s",
-		c.baseURL(), repoID, url.PathEscape(revision), escapePathSegments(file))
+	return c.hubURL(repoPath(repoID), segment("resolve"), segment(revision), repoPath(file))
+}
+
+// urlPart is one value on its way into a Hub URL path, together with how it
+// must be escaped.
+type urlPart struct {
+	value string
+	// isPath marks a value that is a path by nature — a repo id ("org/name"),
+	// a repo-relative file path — whose '/' are separators and stay
+	// separators. It is unset for a value that must occupy exactly one path
+	// element, such as a revision, where an unescaped '/' would silently name
+	// a deeper endpoint than the caller asked for.
+	isPath bool
+}
+
+// segment is a value that must occupy exactly one path element.
+func segment(v string) urlPart { return urlPart{value: v} }
+
+// repoPath is a value that is itself a '/'-separated path.
+func repoPath(v string) urlPart { return urlPart{value: v, isPath: true} }
+
+// hubURL is the one place in this package where a URL under the Hub's base is
+// built, so that every value reaching a Hub path is escaped the same way,
+// exactly once. Escaping one path and interpolating another raw is how a repo
+// id carrying '?' or '#' reached a different endpoint than the caller named.
+// A caller that needs a query string appends it to the result; no
+// caller-supplied value belongs in one.
+func (c *Client) hubURL(parts ...urlPart) string {
+	segs := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p.value == "" {
+			continue
+		}
+		if p.isPath {
+			segs = append(segs, escapePathSegments(p.value))
+			continue
+		}
+		segs = append(segs, url.PathEscape(p.value))
+	}
+	return c.baseURL() + "/" + strings.Join(segs, "/")
+}
+
+// checkRepoID refuses a repo id that is not a plain Hub path.
+//
+// Escaping is what keeps a '?' or a '#' inside the path element it was written
+// in. A "." or a ".." is a different thing: not an element at all but an
+// instruction about the path, which url.PathEscape leaves alone and which
+// net/http sends on verbatim for the server to resolve — so "org/../../evil"
+// would reach an endpoint the caller never named. No repo on the Hub has such
+// a segment, so it is refused once, at the edge, on every path that takes a
+// repo id.
+func checkRepoID(repoID string) error {
+	if repoID == "" {
+		return errors.New("repoID is required")
+	}
+	for _, s := range strings.Split(repoID, "/") {
+		if s == "." || s == ".." {
+			return fmt.Errorf("refusing repo id %q: %q is not a path element", repoID, s)
+		}
+	}
+	return nil
 }
 
 // escapePathSegments percent-escapes each '/'-separated segment while keeping the
