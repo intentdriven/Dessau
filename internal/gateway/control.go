@@ -290,6 +290,12 @@ type State struct {
 	Resident []runtime.Resident  `json:"resident"`
 	Setup    runtime.SetupStatus `json:"setup"`
 	Config   config.Config       `json:"config"`
+	// Defaults are the figures the server resolves an unset setting to. The
+	// Settings pane states some of them before a save — a blank field is the
+	// default, and a hint about what a blank field would do has to name it —
+	// and a panel told them cannot state a figure the server has stopped
+	// using (iss-2609190029273153).
+	Defaults Defaults `json:"defaults"`
 	// Pinned is the protected set the pool is enforcing, which is what the
 	// panel marks its cards and ticks its boxes from. Read from the pool rather
 	// than from Config below for the reason /v1/models does: the pool is what
@@ -395,6 +401,23 @@ type Machine struct {
 	FreeDisk int64 `json:"free_disk"`
 }
 
+// Defaults is what a setting left unset resolves to, in the server's own
+// figures rather than in the panel's copy of them.
+//
+// Small on purpose. This snapshot is re-encoded on every event and every
+// couple of seconds, so a default earns a place here only while the panel has
+// to say what it is before anything is saved; everything else the panel needs
+// about an unset setting it can read off Config.
+type Defaults struct {
+	// EvictionGraceSec and EvictionMaxWaitSec are the pair the Settings pane
+	// warns about as it is typed: a maximum wait below the grace disables the
+	// rule that stops one client starving another, and the panel compares the
+	// figures that would be in force — which, for a field left blank, are
+	// these.
+	EvictionGraceSec   int `json:"eviction_grace_sec"`
+	EvictionMaxWaitSec int `json:"eviction_max_wait_sec"`
+}
+
 // snapshot builds the state the UI renders.
 //
 // Both /api/state and the /api/events stream go through here. They used to build
@@ -405,10 +428,14 @@ func (c *Control) snapshot() State {
 	cfg := c.App.Config()
 	residency := c.App.Pool.Residency()
 	st := State{
-		Models:     c.App.Registry.List(),
-		Resident:   residency.Models,
-		Setup:      c.App.Provisioner.Status(),
-		Config:     redactConfig(cfg),
+		Models:   c.App.Registry.List(),
+		Resident: residency.Models,
+		Setup:    c.App.Provisioner.Status(),
+		Config:   redactConfig(cfg),
+		Defaults: Defaults{
+			EvictionGraceSec:   config.DefaultEvictionGraceSec,
+			EvictionMaxWaitSec: config.DefaultEvictionMaxWaitSec,
+		},
 		Pinned:     c.App.Pool.Pinned(),
 		Waiting:    c.App.Pool.Waiting(),
 		Endpoints:  Endpoints(cfg, c.App.Bind()),
