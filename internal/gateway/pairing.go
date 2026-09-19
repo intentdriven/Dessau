@@ -331,7 +331,7 @@ func shortFingerprint(spki string) string {
 // checks too, in VerifyConnection, but every handshake-level hook is per
 // connection: a keep-alive or an HTTP/2 stream outlives it for as long as the
 // client keeps the socket open, which a chat client does because it streams.
-func pairedOnly(reg *pairing.Registry, next http.Handler, log *slog.Logger) http.Handler {
+func pairedOnly(reg *pairing.Registry, next http.Handler, log *slog.Logger, refusals *logEvery) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.TLS == nil {
 			writeError(w, http.StatusForbidden, "this port serves paired clients over TLS")
@@ -344,9 +344,27 @@ func pairedOnly(reg *pairing.Registry, next http.Handler, log *slog.Logger) http
 		}
 		client, paired := reg.Sight(spki)
 		if !paired {
+			// The operator's third pairing line, and the only one an operator
+			// is ever WAITING for: having revoked somebody, what they want to
+			// see is that client being turned away. It is written at the level
+			// the server ships at for that reason, and rate-limited because the
+			// refused client sets the rate — it holds a certificate and a
+			// connection it already had, and it retries. The key space is the
+			// set of keys the handshake admitted, so it is bounded by who has
+			// been paired rather than by who can send a request.
+			if log != nil && refusals.allow("unpaired:"+spki) {
+				log.Info("refused a request from a client this server has not paired",
+					"fingerprint", shortFingerprint(spki))
+			}
 			writeError(w, http.StatusForbidden, pairing.ErrNotPaired.Error())
 			return
 		}
+		// Debug, and deliberately: this is a PER-REQUEST line, and every other
+		// per-request line this gateway writes is Debug for the same reason —
+		// a server answering a chat client writes one on every token-bearing
+		// request, which at the sparse level would be the whole log. What the
+		// operator needs at the shipped level is the pairing EVENTS, which are
+		// the three Info lines above and below (iss-2609190200097326).
 		if log != nil {
 			log.Debug("paired request", "client", client.Name, "fingerprint", shortFingerprint(spki),
 				"method", r.Method, "path", r.URL.Path)

@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -8,7 +9,9 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/json"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -18,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/Gropius/internal/app"
 	"github.com/intentdriven/Gropius/internal/config"
 	"github.com/intentdriven/Gropius/internal/pairing"
 )
@@ -119,7 +123,7 @@ func TestARevokedClientIsRefusedOnItsNextRequestOverAConnectionItAlreadyHad(t *t
 	})
 	var srv *pairedServer
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pairedOnly(reg, mux, nil).ServeHTTP(w, r)
+		pairedOnly(reg, mux, nil, nil).ServeHTTP(w, r)
 	})
 	srv = newPairedServer(t, handler)
 	reg = srv.registry
@@ -163,7 +167,7 @@ func TestASelfSignedLeafCarryingAPairedNameIsRefused(t *testing.T) {
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "served") })
 	var srv *pairedServer
 	srv = newPairedServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pairedOnly(reg, mux, nil).ServeHTTP(w, r)
+		pairedOnly(reg, mux, nil, nil).ServeHTTP(w, r)
 	}))
 	reg = srv.registry
 	srv.pair(t, newClientKey(t), "Bob's iPad")
@@ -391,5 +395,106 @@ func TestThePairingEndpointRefusesABodyOverItsLimit(t *testing.T) {
 	}
 	if got := len(a.Config().Clients); got != 1 {
 		t.Errorf("an ordinary pairing left %d clients paired, want one", got)
+	}
+}
+
+// The three lines a pairing writes, at the level the server ships at
+// (iss-2609190200097326).
+//
+// The operator's only account of who may connect is the panel and this log. A
+// line written below the shipped level is a line that does not exist for them,
+// and a line that carried the client's whole key fingerprint would put the one
+// value the panel comparison rests on into a file that gets copied into bug
+// reports. So: every pairing event is written at the shipped level, names the
+// client by the name it chose where there is one to trust, and carries the
+// short fingerprint and never the whole of it.
+func TestEveryPairingEventIsLoggedAtTheShippedLevelByNameAndNeverByKey(t *testing.T) {
+	var logged bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{
+		Level: config.Default().SlogLevel(),
+	}))
+
+	paths := config.NewPaths(t.TempDir())
+	a, err := app.New(app.Options{Paths: paths, Config: config.Default()})
+	if err != nil {
+		t.Fatalf("app.New: %v", err)
+	}
+	t.Cleanup(func() { a.Close() })
+	id, err := pairing.LoadIdentity(filepath.Join(t.TempDir(), "server-key.pem"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := pairing.NewRegistry(a.Config)
+	ctrl := &Control{App: a, Identity: id, Clients: reg, Log: log}
+	mux := http.NewServeMux()
+	ctrl.Routes(mux)
+	mux.Handle("/pair", ctrl.PairHandler())
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	const name = "Bob's iPad"
+	k := newClientKey(t)
+	resp := postJSON(t, srv, "/pair", `{"name":"`+name+`","public_key":"`+
+		base64.StdEncoding.EncodeToString(k.spki)+`"}`)
+	var answer pairAnswer
+	if err := json.NewDecoder(resp.Body).Decode(&answer); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	revoked := postJSON(t, srv, "/api/clients/revoke", `{"fingerprint":"`+k.fingerprint()+`"}`)
+	if revoked.StatusCode != http.StatusOK {
+		t.Fatalf("the revocation answered %d", revoked.StatusCode)
+	}
+	revoked.Body.Close()
+
+	// The client does not know yet. It still holds the certificate and the
+	// connection it already had, and its next request is the one that is
+	// refused — which is exactly the event an operator who has just revoked
+	// somebody is watching for.
+	der, err := base64.StdEncoding.DecodeString(answer.Leaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := pairedOnly(reg, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("a revoked client was served")
+	}), log, nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{leaf}}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("a revoked client's request answered %d, want 403", w.Code)
+	}
+
+	lines := map[string]string{}
+	for _, line := range strings.Split(logged.String(), "\n") {
+		for _, msg := range []string{"client paired", "client revoked", "refused a request"} {
+			if strings.Contains(line, `msg="`+msg) || strings.Contains(line, "msg="+msg) {
+				lines[msg] = line
+			}
+		}
+	}
+	for _, msg := range []string{"client paired", "client revoked", "refused a request"} {
+		if lines[msg] == "" {
+			t.Fatalf("nothing at the shipped level says %q; the whole log is:\n%s", msg, logged.String())
+		}
+	}
+	for _, msg := range []string{"client paired", "client revoked"} {
+		if !strings.Contains(lines[msg], name) {
+			t.Errorf("%q does not name the client: %s", msg, lines[msg])
+		}
+	}
+	for msg, line := range lines {
+		if !strings.Contains(line, shortFingerprint(k.fingerprint())) {
+			t.Errorf("%q carries no fingerprint, so nothing tells two clients of one name apart: %s", msg, line)
+		}
+		if strings.Contains(line, k.fingerprint()) {
+			t.Errorf("%q carries the client's whole key fingerprint: %s", msg, line)
+		}
 	}
 }

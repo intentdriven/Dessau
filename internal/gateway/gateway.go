@@ -143,7 +143,7 @@ func (g *Gateway) Handler() http.Handler {
 // must not move for an unpaired client, so the plain path is left exactly as it
 // was and the new admission is a wrapper the plain listener never reaches.
 func (g *Gateway) TLSHandler(reg *pairing.Registry) http.Handler {
-	return pairedOnly(reg, g.routes(), g.log)
+	return pairedOnly(reg, g.routes(), g.log, g.refusalLog)
 }
 
 // routes is the OpenAI-compatible surface, before any admission rule.
