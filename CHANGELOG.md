@@ -51,6 +51,15 @@ GitHub release notes.
   older turns make way for it, and a message too long for the window on its own
   is not sent at all — the chat says so in one sentence and points at a server,
   instead of a failed turn and a framework error.
+- **The chat client's header is one thin toolbar, whatever the chat shows.**
+  The title was drawn large on a chat that fitted the window and collapsed as
+  a long reply scrolled, so the header had two heights; the toolbar's
+  scroll-edge effect was a soft blur that reached well past the bar and washed
+  out the reply being read; and the transcript was anchored to the foot of the
+  window, which opened an empty band between the toolbar and the first bubble
+  on a fresh conversation. The title is now pinned inline on the Mac and the
+  iPad, the scroll-edge effect ends at the toolbar, and a chat shorter than
+  the window starts under it. A long chat still opens at its newest message.
 - **The pinned-models figure is worked out from the batching Gropius is
   actually running with.** Batched requests (decode concurrency) reaches the
   model servers only when Gropius starts, and the control panel was charging
