@@ -13,6 +13,28 @@ import (
 	"github.com/intentdriven/Gropius/internal/config"
 )
 
+// The snapshot carries the figures an unset interval resolves to.
+//
+// The Settings pane warns, as the pair is typed, that a maximum wait below the
+// grace disables the rule that stops one client starving another — and a blank
+// field is the default, so the panel cannot state that rule without knowing
+// what the defaults are. Sent rather than written into the panel, which is
+// where the two figures used to live as a second copy of two Go constants
+// (iss-2609190029273153).
+func TestStateCarriesTheFiguresAnUnsetIntervalResolvesTo(t *testing.T) {
+	_, srv := newBudgetControl(t, config.Default(), 128*gb, nil)
+
+	d := stateOf(t, srv).Defaults
+	if d.EvictionGraceSec != config.DefaultEvictionGraceSec {
+		t.Errorf("defaults.eviction_grace_sec = %d, want the server's own default %d",
+			d.EvictionGraceSec, config.DefaultEvictionGraceSec)
+	}
+	if d.EvictionMaxWaitSec != config.DefaultEvictionMaxWaitSec {
+		t.Errorf("defaults.eviction_max_wait_sec = %d, want the server's own default %d",
+			d.EvictionMaxWaitSec, config.DefaultEvictionMaxWaitSec)
+	}
+}
+
 // Grace is applied to the running pool at the moment it is saved, so the panel
 // must not tell the operator to restart for it.
 func TestSavingTheEvictionGraceNeedsNoRestart(t *testing.T) {

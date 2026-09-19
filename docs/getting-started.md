@@ -49,6 +49,12 @@ clears, you are ready.
 2. Search for something small to start — try `SmolLM` or `Qwen3-0.6B`.
 3. Click **Download**. Progress appears under **My Models**.
 
+The search asks the `mlx-community` organisation, where most MLX conversions
+live. A model published under another account is reachable two ways: type its
+repository id in full — `alice/Bonsai-27B-mlx-4bit` — and it is offered
+whatever account owns it, or prefix the search with `author:alice` to search
+that account instead.
+
 Good first models (small, fast, download in under a minute):
 
 | Model | Size | Notes |

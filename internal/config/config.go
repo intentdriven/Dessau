@@ -526,6 +526,13 @@ type Config struct {
 	// the app exits with no panel and no recovery but editing the file.
 	BindMode string `json:"bind_mode"`
 	Port     int    `json:"port"`
+	// TLSPort is the second port, where paired clients speak to this server
+	// over TLS and prove themselves with a key of their own
+	// (adr-2609182357322050). Zero — the default, and what every configuration
+	// written before this field carries — means the port beside Port. A
+	// negative value means no TLS listener, which is what a port this Mac
+	// cannot serve is narrowed to at load.
+	TLSPort int `json:"tls_port,omitempty"`
 
 	// APIKey, when non-empty, requires "Authorization: Bearer <key>" on /v1
 	// requests. Empty (the default) means the LAN endpoint is open.
@@ -697,6 +704,14 @@ type Config struct {
 	// files (iss-2609062213413447). A new per-model setting is a field on
 	// ModelSettings, and internal/archtest holds the count at one.
 	Models map[string]ModelSettings `json:"models,omitempty"`
+	// Clients is the paired set, keyed by each client's key fingerprint
+	// (adr-2609182357322050). It is a setting in this file and reached from the
+	// panel's own Clients pane, but it is NOT part of the settings form's round
+	// trip: a settings save can neither add, alter nor remove a client.
+	// Pairing and revoking are routes of their own, which is what keeps the
+	// loopback-only settings endpoint from being a second, credential-free way
+	// to write who may connect.
+	Clients map[string]Client `json:"clients,omitempty"`
 }
 
 // ModelSettings are the settings of a single model: everything Gropius does
@@ -1101,6 +1116,15 @@ func (c Config) Clone() Config {
 	// operator cleared back into a rule they never set, and so reinstating the
 	// shipped default at the next save of any unrelated setting.
 	out.ChatRule = c.ChatRule.Clone()
+	// The paired set is the list of who may connect. A shared map would land a
+	// posted body in it before Validate had looked at it, and leave it there
+	// when the save was refused.
+	if c.Clients != nil {
+		out.Clients = make(map[string]Client, len(c.Clients))
+		for k, v := range c.Clients {
+			out.Clients[k] = v
+		}
+	}
 	return out
 }
 
@@ -1418,6 +1442,20 @@ func (c Config) Validate() error {
 	}
 	if len(c.Preload) > MaxPreload {
 		return fmt.Errorf("preload names %d models, more than the %d this holds", len(c.Preload), MaxPreload)
+	}
+	// A TLS port this Mac cannot listen on. Refused here and REPAIRED at load
+	// (sanitizeTLSPort), which is the same two-sided treatment log_level gets:
+	// a hand-edited file is narrowed rather than locked out, and a save that
+	// actually carries the value is told while the operator is there to read
+	// it. NoTLSListener is the one value below 1 that means something.
+	if c.TLSPort != NoTLSListener && (c.TLSPort < 0 || c.TLSPort > 65535) {
+		return fmt.Errorf("tls_port %d is not a port; use 0 for the port beside \"port\", or %d for no TLS listener", c.TLSPort, NoTLSListener)
+	}
+	if c.TLSPort == c.Port {
+		return fmt.Errorf("tls_port %d is the port this server already answers on; use 0 for the port beside it, or %d for no TLS listener", c.TLSPort, NoTLSListener)
+	}
+	if err := c.validateClients(); err != nil {
+		return err
 	}
 	if err := c.validateModels(); err != nil {
 		return err
@@ -1785,6 +1823,7 @@ func Load(path string) (Config, Notices, error) {
 	n.Ignored = append(n.Ignored, cfg.sanitizeSampling()...)
 	n.Ignored = append(n.Ignored, cfg.sanitizeModels()...)
 	n.Ignored = append(n.Ignored, cfg.sanitizePreload()...)
+	n.Ignored = append(n.Ignored, cfg.sanitizeClients()...)
 	// Repaired: the setting IS in force, in a changed form. Telling an
 	// operator to set it again would send them looking for a value that is
 	// working — and for the API key it would be worse than that, because the
@@ -1796,6 +1835,7 @@ func Load(path string) (Config, Notices, error) {
 	n.Repaired = append(n.Repaired, cfg.sanitizeAPIKey()...)
 	n.Repaired = append(n.Repaired, cfg.sanitizeLogLevel()...)
 	n.Repaired = append(n.Repaired, cfg.sanitizeChatRule()...)
+	n.Repaired = append(n.Repaired, cfg.sanitizeTLSPort()...)
 	if err := cfg.Validate(); err != nil {
 		return Default(), Notices{}, &InvalidError{Path: path, Err: err, Parsed: cfg, Notices: n}
 	}
