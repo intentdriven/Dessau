@@ -9,6 +9,12 @@ found_during: "the adversarial security review adr-2609181004167097 obliges befo
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/bridge/discord/answer.go"
+resolution: "A conversation has two locks: answering, held for the whole generation, and mu, held for as long as it takes to copy a slice. A slash command takes only the second. TestASlashCommandIsAnsweredWhileTheChannelIsBusy holds it against Discord's three-second deadline."
+impact: fix
 ---
 
 internal/bridge/discord/answer.go holds the conversation's mutex for the whole of a generation, and runCommand's /model and /reset take the same mutex through modelOf and reset. A slash command run in a channel that is being answered therefore blocks for the whole generation — minutes, against Discord's three-second interaction deadline — so the command reports a failure to the person who ran it, the reply is posted into a token that has expired, and with only two answer workers the blocked command occupies one of them. The turns and the model need a short lock of their own, separate from the lock that says a channel is being answered.
+
+## Grounds
+
+- pursued: we expect the fix to hold because a test watched to fail covers it; wrong if the same class of defect appears at a seam this change did not touch

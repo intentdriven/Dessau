@@ -151,3 +151,8 @@ Alice's Mac sleeping.
 ## Grounds
 
 - pursued: we expect a Discord bot to bring Alice's models to people who would never install a client, and to be the phone client this project does not have — wrong if nobody but Alice ever messages it, or if the round trip through Discord is too slow or lossy to feel like chat
+
+## Audit Notes
+
+<!-- abcd-review: OWED receipt=rcp-91c0608082bd -->
+Fidelity review OWED (receipt rcp-91c0608082bd).
