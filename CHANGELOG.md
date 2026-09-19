@@ -29,6 +29,12 @@ GitHub release notes.
   client's. A client's own hold is never soft, a pinned model is never taken,
   and a run that will not let go costs the client the refusal it would have had
   anyway.
+- **The chat client's message field shows the focus ring again.** Drawing the
+  composer's capsule cost it the ring a bordered field shows for itself, so the
+  field gave no sign of holding the keyboard. The capsule now draws that
+  indication itself, in the system's own focus colour and at the thickness the
+  system strokes, and it stays hidden wherever the system's focus-effect
+  preference says focus is not to be shown.
 ### Changed
 
 - **The chat client is installed by the same swap that installs the server.**

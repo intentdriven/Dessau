@@ -377,3 +377,43 @@ func TestChatClientComposerFieldHasMessagesProportions(t *testing.T) {
 		t.Error("the send button's circle is not matched to the field's height")
 	}
 }
+
+// TestChatClientComposerShowsTheSystemsFocusRing holds iss-2609190034161350:
+// the drawn capsule says when the field has keyboard focus. A plain field
+// draws no focus effect, so the capsule that replaced the bordered field has
+// to show the indication itself — in the system's own focus colour and at the
+// thickness the system strokes, never a ring of the client's own invention,
+// and only while the environment allows a focus effect, which is how the
+// system's focus-ring preference reaches a view that draws its own.
+func TestChatClientComposerShowsTheSystemsFocusRing(t *testing.T) {
+	root := repoRootDir(t)
+	src, ok := clientSources(t, root)["Composer.swift"]
+	if !ok {
+		t.Fatal("client/GropiusChat/Composer.swift is missing; the composer's focus ring has no home")
+	}
+	for _, want := range []struct{ fragment, why string }{
+		{"@FocusState", "the capsule holds no focus state, so it cannot know the field has keyboard focus"},
+		{".focused($", "the field is never bound to the focus state"},
+		{`@Environment(\.isFocusEffectEnabled)`, "the ring ignores the system's focus-effect preference"},
+		{"keyboardFocusIndicatorColor", "the ring is not drawn in the system's focus colour"},
+		{"#if os(macOS)", "the macOS focus colour is not behind a platform guard, so the iPad build has nowhere to differ"},
+		{".strokeBorder(", "nothing strokes a ring around the capsule"},
+	} {
+		if !strings.Contains(src, want.fragment) {
+			t.Errorf("Composer.swift does not carry %s: %s", want.fragment, want.why)
+		}
+	}
+	// The thickness is named, and it is the one the system strokes on a
+	// bordered field rather than a hairline or a halo.
+	found := regexp.MustCompile(`static let focusRingWidth: CGFloat = ([0-9.]+)`).FindStringSubmatch(src)
+	if found == nil {
+		t.Fatal("Composer.swift declares no ComposerMetrics.focusRingWidth; the ring's thickness is an unnamed number")
+	}
+	width, err := strconv.ParseFloat(found[1], 64)
+	if err != nil {
+		t.Fatalf("ComposerMetrics.focusRingWidth is not a number: %v", err)
+	}
+	if width < 2 || width > 4 {
+		t.Errorf("ComposerMetrics.focusRingWidth is %v; the system strokes a ring between 2 and 4 points on a bordered field", width)
+	}
+}
