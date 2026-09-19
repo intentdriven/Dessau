@@ -1089,10 +1089,11 @@ function renderBindOptions(select, host) {
 
 // renderBridgeState says what the Discord bridge is doing, under the switch.
 //
-// Four states and nothing else: off, connecting, connected since a moment, or
-// stopped with the reason Discord gave. The reason is the server's own
-// sentence about a credential or a configuration and never carries the token,
-// which the panel is never sent in the first place.
+// Four states and nothing else: off, connecting, connected, or stopped with
+// the reason Discord gave, each with the moment the bridge last connected
+// where there is one. The reason is the server's own sentence about a
+// credential or a configuration and never carries the token, which the panel
+// is never sent in the first place.
 function renderBridgeState() {
   const el = $('discordState');
   if (!el) return;
