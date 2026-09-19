@@ -108,6 +108,23 @@ func InstalledRoot() (string, error) {
 	return userSupportDir()
 }
 
+// AccountHome is this account's own directory, asked for without a data root
+// in hand: ~/Library/Application Support/Gropius, which is what accountDir
+// answers under a shared root and what the root itself IS under a per-user
+// install.
+//
+// It exists for the swap (internal/lifecycle), which needs somewhere only this
+// account can unlink an entry from while a retired application bundle waits to
+// be put back, and which has no root to derive it from. It deliberately does
+// not honour GROPIUS_ROOT: the property wanted here is the one macOS gives
+// ~/Library and no environment variable can, so a root named from the
+// environment would silently answer with a directory that may not have it.
+//
+// It stays here rather than being spelled out again at the caller for the
+// reason accountDir gives: one rule for where this account's own directory is,
+// so no caller can come to disagree with the rest of the layout about it.
+func AccountHome() (string, error) { return userSupportDir() }
+
 // IsSharedRoot reports whether a root is the machine-wide shared directory,
 // where the models belong to every account on the Mac and this account's own
 // state lives somewhere else entirely (see accountDir).

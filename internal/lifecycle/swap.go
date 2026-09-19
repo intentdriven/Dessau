@@ -1,10 +1,16 @@
 package lifecycle
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"syscall"
+
+	"github.com/intentdriven/Gropius/internal/config"
 )
 
 // The staged swap, in Go, because the shell cannot express it.
@@ -23,18 +29,53 @@ import (
 // one is renamed in, and the set-aside copy is removed only once the new one is
 // in place.
 //
-// So no failure path leaves the Mac with no application, and that sentence is
-// only true because of the last rule below: where the new bundle did not go in
-// AND the set-aside one could not be put back, the staging directory holding it
-// is NOT cleaned up, and the failure says where the only remaining copy is. An
-// earlier version removed it and destroyed the installation on a path it
-// claimed to protect — rename(2) refuses a non-empty directory, so anything
-// that creates one at the destination between the two renames is enough to
-// reach it.
+// WHAT THIS GUARANTEES, AND AGAINST WHOM.
+//
+// Against everything that is not another account on this Mac — a failing
+// rename, a full disk, a permission revoked between two calls, a process
+// killed part way through — no path leaves the Mac with no application. That
+// sentence rests on the last rule below: where the new bundle did not go in
+// AND the set-aside one could not be put back, the directory holding the
+// set-aside copy is NOT cleaned up, and the failure says where the only
+// remaining copy is. An earlier version removed it and destroyed the
+// installation on a path it claimed to protect — rename(2) refuses a non-empty
+// directory, so anything that creates one at the destination between the two
+// renames is enough to reach it.
+//
+// The wait that rule opens is unbounded: it ends when a person moves the copy
+// back. So WHERE the copy waits is what decides who can take it away, and a
+// directory entry is removed by write permission on the PARENT, not by the
+// mode of the entry itself. /Applications is drwxrwxr-x root:admin with no
+// sticky bit, so while the copy waited there, any other admin account on the
+// Mac could delete it and leave no application at all — 0700 on the staging
+// directory governs what is inside it, never who may unlink it
+// (iss-2609111755330533). The set-aside copy therefore waits in THIS ACCOUNT'S
+// OWN directory (config.AccountHome, under ~/Library, which macOS creates
+// 0700), and the new bundle alone is staged in the destination directory.
+//
+// Putting the copy back has to be a rename, and rename(2) does not cross
+// filesystems. Where this account's own directory and the destination are on
+// different volumes — or where that directory cannot be used, because it is
+// not a directory or something else can write to it — the copy is staged in
+// the destination directory as before and a warning says so. That is a loud
+// degrade to the earlier exposure, never a silent one.
+//
+// THE ONE RESIDUAL. An admin account on this Mac that has been compromised is
+// not held off by any of this: it can write /Applications directly, so it
+// needs no window and no swap. What the account's own home removes is the
+// window this file used to open for it. It does not remove the actor, and root
+// is outside all of it.
 
 // stagingPrefix names a staging directory. It is a dot name so it does not
 // appear in a Finder listing of the destination while the swap runs.
 const stagingPrefix = ".gropius-incoming-"
+
+// retiredPrefix names the directory the set-aside bundle waits in, inside this
+// account's own directory. A name of its own rather than stagingPrefix: the
+// two directories hold opposite things — one the copy that can be thrown away,
+// one the copy that must not be — and a person looking at either wants to know
+// which they have.
+const retiredPrefix = ".gropius-retired-"
 
 // renameFunc is os.Rename, handed in so a test can fail one call of it. The
 // failure that produced the defect is an ordinary one — a full disk, a locked
@@ -52,6 +93,112 @@ type renameFunc func(oldpath, newpath string) error
 // to act on the directory.
 func stagingDir(dir string) (string, error) { return os.MkdirTemp(dir, stagingPrefix) }
 
+// setAsideDir is the directory the retired bundle is set aside in: one of this
+// account's own, reported as own=true, or the staging directory in the
+// destination as a fallback.
+//
+// The fallback is announced every time it is taken, because it is the earlier
+// exposure — a copy waiting where a co-resident admin account can unlink it —
+// and a degrade nobody is told about is one nobody acts on.
+func setAsideDir(destDir, staging string) (dir string, own bool) {
+	home, err := accountSwapHome(destDir)
+	if err == nil {
+		if dir, err = os.MkdirTemp(home, retiredPrefix); err == nil {
+			return dir, true
+		}
+	}
+	// Redacted the way every other line an operator may paste in public is:
+	// which directory could not be used is the point, whose account it belongs
+	// to is not (see redact).
+	account, _ := os.UserHomeDir()
+	slog.Warn("the retired copy of the application is being staged in the destination directory rather than in "+
+		"this account's own, so another administrator account on this Mac could remove it if it has to wait there",
+		"destination", redact(destDir, account), "reason", redact(err.Error(), account))
+	return staging, false
+}
+
+// accountSwapHome is this account's own directory, checked for the one
+// property the set-aside copy is put there for and for the one the restore
+// needs.
+//
+// The property: an entry inside it can be unlinked only by this account,
+// because ~/Library is 0700 and nothing but this account (or root, which is
+// outside all of this) can write a component of the path. The check is of the
+// leaf, and it is the same check config.EnsureDirs makes for the same
+// directory — a home that something else can write to has lost the property,
+// and is refused rather than used as though it still had it.
+//
+// The restore needs the directory to be on the destination's filesystem:
+// putting the copy back is rename(2), which does not cross one. Comparing the
+// device number answers that before the copy is moved anywhere, so a wrong
+// answer costs a warning rather than an application.
+func accountSwapHome(destDir string) (string, error) {
+	home, err := config.AccountHome()
+	if err != nil {
+		return "", err
+	}
+	// Lstat FIRST, and Lstat rather than Stat: a symbolic link standing where
+	// this directory should be is not this directory, whoever planted it — and
+	// creating the directory before looking would create it through the link,
+	// somewhere nobody asked for, before the refusal.
+	//
+	// Ordinarily it is already there: a swap that retires a bundle is a swap
+	// over an installation, and an installation has this directory. Created
+	// closed where it is not, which is the mode config.EnsureDirs holds the
+	// same directory to.
+	fi, err := os.Lstat(home)
+	if errors.Is(err, fs.ErrNotExist) {
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			return "", err
+		}
+		fi, err = os.Lstat(home)
+	}
+	if err != nil {
+		return "", err
+	}
+	if !fi.IsDir() {
+		return "", fmt.Errorf("%s is not a directory", home)
+	}
+	if perm := fi.Mode().Perm(); perm&0o022 != 0 {
+		return "", fmt.Errorf("%s is mode %04o, so it is not this account's alone", home, perm)
+	}
+	// Owned by this account, and not only closed to everyone else. The mode
+	// bits are not the whole story on macOS: a directory another account owns
+	// can read 0700 in a listing and still grant this one write through an
+	// ACL, and a copy waiting in a directory its owner can unlink is the
+	// exposure this whole home was chosen to remove.
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || st.Uid != uint32(os.Getuid()) {
+		return "", fmt.Errorf("%s is not owned by this account", home)
+	}
+	if !sameVolume(home, destDir) {
+		return "", fmt.Errorf("%s and %s are on different filesystems, and putting the bundle back is a rename",
+			home, destDir)
+	}
+	return home, nil
+}
+
+// sameVolume reports whether two existing directories are on one filesystem.
+//
+// It is a variable so a test can answer it without a second volume: the
+// fallback it guards is a path that a machine with one volume — every Mac this
+// ships to, ordinarily — can otherwise never reach.
+var sameVolume = func(a, b string) bool {
+	fa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	fb, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	sa, ok := fa.Sys().(*syscall.Stat_t)
+	sb, ok2 := fb.Sys().(*syscall.Stat_t)
+	if !ok || !ok2 {
+		return false
+	}
+	return sa.Dev == sb.Dev
+}
+
 // PlaceBundle installs the bundle at src as dest, replacing whatever is there.
 func PlaceBundle(src, dest string) error { return placeBundle(src, dest, os.Rename) }
 
@@ -62,19 +209,32 @@ func placeBundle(src, dest string, rename renameFunc) error {
 		return fmt.Errorf("prepare %s: %w", destDir, err)
 	}
 
-	// Stage INSIDE the destination directory, so the rename that puts the
-	// bundle in place is within one filesystem and cannot fail part way
-	// through. A copy is what can run out of space, and it runs first.
+	// Stage the NEW bundle inside the destination directory, so the rename
+	// that puts it in place is within one filesystem and cannot fail part way
+	// through. A copy is what can run out of space, and it runs first. This
+	// directory is the one that can be thrown away: every failure below either
+	// puts the installed bundle back or says where it is, and neither answer
+	// is in here.
 	staging, err := stagingDir(destDir)
 	if err != nil {
 		return fmt.Errorf("stage the new bundle in %s: %w", destDir, err)
 	}
-	// Cleared only where the staging directory may safely go: while it holds
-	// the only copy of the application, it stays.
+	// Where the set-aside copy waits, decided when there is one to set aside
+	// and not before: a swap with nothing at the destination retires nothing,
+	// and must not warn about where it would have put it.
+	aside, own := "", false
+	// keep is cleared only where the set-aside copy may safely go: while it is
+	// the only copy of the application, the directory holding it stays. The
+	// staging directory in the destination never holds the only copy of
+	// anything once the two homes are separate, so it goes on every path —
+	// except under the fallback, where it IS the set-aside directory.
 	keep := false
 	defer func() {
-		if !keep {
+		if own || !keep {
 			os.RemoveAll(staging)
+		}
+		if own && !keep {
+			os.RemoveAll(aside)
 		}
 	}()
 
@@ -89,7 +249,8 @@ func placeBundle(src, dest string, rename renameFunc) error {
 	// absent and leave the rename below to fail.
 	retired := ""
 	if _, err := os.Lstat(dest); err == nil {
-		retired = filepath.Join(staging, filepath.Base(dest)+".retired")
+		aside, own = setAsideDir(destDir, staging)
+		retired = filepath.Join(aside, filepath.Base(dest)+".retired")
 		if err := rename(dest, retired); err != nil {
 			return fmt.Errorf("set the installed bundle aside: %w (it is untouched)", err)
 		}
@@ -106,9 +267,9 @@ func placeBundle(src, dest string, rename renameFunc) error {
 	// filesystem's business rather than this file's (macOS answers EEXIST for
 	// an empty directory and ENOTDIR for a symbolic link; POSIX permits
 	// replacing an empty directory, and Linux does). The installed bundle stays
-	// where it was set aside, the staging directory that holds it is kept, and
-	// the failure names both it and what appeared, because a person now has two
-	// things to look at and one of them is their application.
+	// where it was set aside, the directory holding it is kept, and the failure
+	// names both it and what appeared, because a person now has two things to
+	// look at and one of them is their application.
 	if fi, err := os.Lstat(dest); err == nil {
 		keep = retired != ""
 		return keptWhen(keep, retired, fmt.Errorf(
@@ -123,7 +284,8 @@ func placeBundle(src, dest string, rename renameFunc) error {
 	}
 
 	// And only now is the set-aside copy removed, by the deferred RemoveAll of
-	// the staging directory it sits in.
+	// the directory it sits in — in this account's own directory, so a swap
+	// that succeeds leaves nothing of itself anywhere.
 	return nil
 }
 

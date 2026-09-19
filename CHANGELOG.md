@@ -11,6 +11,16 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A half-finished upgrade leaves the application where only your account can
+  reach it.** Where an upgrade cannot put the previous bundle back, that copy
+  is the only one there is and it waits until you move it — and it waited in
+  the applications folder, which every administrator account on this Mac can
+  delete an entry from. It now waits in your account's own Application Support
+  folder, and the command still says where it is. Where that folder is on
+  another volume, the copy is staged as before and a warning says so.
+
 ## [0.7.1] - 2026-09-18
 
 ### Fixed

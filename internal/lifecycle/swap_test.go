@@ -1,7 +1,9 @@
 package lifecycle
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -66,6 +68,7 @@ func TestSwapInstallsIntoAnEmptyDestination(t *testing.T) {
 // old binary.
 func TestSwapReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 	dir := t.TempDir()
+	acct := swapHome(t, dir)
 	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
 	dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
 
@@ -79,6 +82,7 @@ func TestSwapReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 		t.Error("the new bundle was nested inside the installed one, which is what `mv` does and what this replaces")
 	}
 	assertNoStagingLeft(t, filepath.Dir(dest))
+	assertNoSetAsideLeft(t, acct)
 }
 
 // A destination that is a SYMLINK is replaced rather than followed. `mv`
@@ -87,6 +91,7 @@ func TestSwapReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 // chooses.
 func TestSwapReplacesASymlinkRatherThanFollowingIt(t *testing.T) {
 	dir := t.TempDir()
+	acct := swapHome(t, dir)
 	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
 	elsewhere := bundleAt(t, filepath.Join(dir, "elsewhere", "Gropius.app"), "somebody else's")
 
@@ -116,6 +121,7 @@ func TestSwapReplacesASymlinkRatherThanFollowingIt(t *testing.T) {
 		t.Errorf("what the symlink pointed at now holds %q — the swap followed the link", got)
 	}
 	assertNoStagingLeft(t, apps)
+	assertNoSetAsideLeft(t, acct)
 }
 
 // The failure that produced the defect: the rename that puts the new bundle in
@@ -123,6 +129,7 @@ func TestSwapReplacesASymlinkRatherThanFollowingIt(t *testing.T) {
 // that was working.
 func TestSwapLeavesTheInstalledBundleWhenTheSecondRenameFails(t *testing.T) {
 	dir := t.TempDir()
+	acct := swapHome(t, dir)
 	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
 	dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
 
@@ -150,6 +157,7 @@ func TestSwapLeavesTheInstalledBundleWhenTheSecondRenameFails(t *testing.T) {
 		t.Errorf("the destination holds %q; a failed swap must leave the installed bundle where it was", got)
 	}
 	assertNoStagingLeft(t, filepath.Dir(dest))
+	assertNoSetAsideLeft(t, acct)
 }
 
 // The failure the file's own claim rests on: the new bundle does not go in AND
@@ -162,6 +170,7 @@ func TestSwapLeavesTheInstalledBundleWhenTheSecondRenameFails(t *testing.T) {
 // would delete the last copy of the application.
 func TestSwapKeepsTheSetAsideBundleWhenItCannotBePutBack(t *testing.T) {
 	dir := t.TempDir()
+	acct := swapHome(t, dir)
 	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
 	dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
 
@@ -183,7 +192,7 @@ func TestSwapKeepsTheSetAsideBundleWhenItCannotBePutBack(t *testing.T) {
 
 	// The set-aside bundle is the only copy left, so it must still exist and
 	// the message must say where.
-	retired := findRetired(t, filepath.Dir(dest))
+	retired := findRetired(t, acct)
 	if retired == "" {
 		t.Fatal("the swap deleted the set-aside bundle after failing to put it back — the Mac is left with no application")
 	}
@@ -214,6 +223,7 @@ func TestSwapKeepsTheSetAsideBundleWhenItCannotBePutBack(t *testing.T) {
 // swap failure as a kept one would send a person to a directory that is gone.
 func TestOnlyTheSwapThatKeepsTheOnlyCopySaysSo(t *testing.T) {
 	dir := t.TempDir()
+	acct := swapHome(t, dir)
 	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
 	dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
 
@@ -240,10 +250,12 @@ func TestOnlyTheSwapThatKeepsTheOnlyCopySaysSo(t *testing.T) {
 	if got := markerAt(t, dest); got != "old" {
 		t.Errorf("the destination holds %q, want the installed bundle put back", got)
 	}
+	assertNoSetAsideLeft(t, acct)
 }
 
-// findRetired returns the set-aside bundle left inside a staging directory, or
-// an empty string when there is none.
+// findRetired returns the set-aside bundle left inside dir, or an empty string
+// when there is none. Either kind of directory holds one: this account's own
+// ordinarily, the destination's staging directory under the fallback.
 func findRetired(t *testing.T, dir string) string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -251,7 +263,7 @@ func findRetired(t *testing.T, dir string) string {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), stagingPrefix) {
+		if !strings.HasPrefix(e.Name(), retiredPrefix) && !strings.HasPrefix(e.Name(), stagingPrefix) {
 			continue
 		}
 		inner, err := os.ReadDir(filepath.Join(dir, e.Name()))
@@ -334,6 +346,7 @@ func TestSwapRefusesToClobberWhatAppearedAtTheDestination(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
+			acct := swapHome(t, dir)
 			src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
 			dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
 
@@ -370,7 +383,7 @@ func TestSwapRefusesToClobberWhatAppearedAtTheDestination(t *testing.T) {
 			}
 			tc.check(t, dest)
 
-			retired := findRetired(t, filepath.Dir(dest))
+			retired := findRetired(t, acct)
 			if retired == "" {
 				t.Fatal("the set-aside bundle is gone; it is the only copy of the application there is")
 			}
@@ -420,6 +433,19 @@ func TestTheStagingNameIsUnguessable(t *testing.T) {
 	}
 }
 
+// assertNoSetAsideLeft fails when a set-aside copy survived a swap that had
+// somewhere to put the installed bundle back — this account's own directory is
+// not a place a half-finished swap may leave an application bundle lying in.
+func assertNoSetAsideLeft(t *testing.T, acct string) {
+	t.Helper()
+	if _, err := os.Stat(acct); os.IsNotExist(err) {
+		return
+	}
+	if left := findRetired(t, acct); left != "" {
+		t.Errorf("the swap left the set-aside bundle at %s", left)
+	}
+}
+
 // assertNoStagingLeft fails when a staging directory survived the swap. The
 // half-copied bundle inside one is the size of the application, and a
 // destination littered with them is what a failed upgrade would otherwise
@@ -435,4 +461,217 @@ func assertNoStagingLeft(t *testing.T, dir string) {
 			t.Errorf("the swap left %s behind in %s", e.Name(), dir)
 		}
 	}
+}
+
+// The set-aside copy waits in THIS ACCOUNT'S OWN directory, not in the
+// directory it was installed in (iss-2609111755330533).
+//
+// A directory entry is removed by write permission on its PARENT, and
+// /Applications is drwxrwxr-x root:admin with no sticky bit. So while the
+// retired bundle waits in a staging directory there — and the wait is
+// unbounded, because it ends when a person moves it back — any other admin
+// account on the Mac can delete it, and then there is no application at all.
+// 0700 on the staging directory does not help: its mode governs what is inside
+// it, not who may unlink it.
+//
+// This account's own directory is under ~/Library, which macOS creates 0700,
+// so the same actor cannot reach the copy while it waits.
+func TestTheSetAsideBundleWaitsInThisAccountsOwnDirectory(t *testing.T) {
+	dir := t.TempDir()
+	acct := swapHome(t, dir)
+	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
+	dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
+
+	// Call 1 sets the installed bundle aside, call 2 fails to move the new one
+	// in, and call 3 — the restore — fails too. The set-aside copy is then the
+	// only one there is.
+	calls := 0
+	rename := func(oldpath, newpath string) error {
+		calls++
+		if calls >= 2 {
+			return errors.New("no space left on device")
+		}
+		return os.Rename(oldpath, newpath)
+	}
+
+	err := placeBundle(src, dest, rename)
+	if err == nil {
+		t.Fatal("placeBundle reported success although nothing moved into place")
+	}
+	var kept *keptStagingError
+	if !errors.As(err, &kept) {
+		t.Fatalf("the failure does not say IN A VALUE where the only remaining copy is: %v", err)
+	}
+	if inside(kept.Path, filepath.Dir(dest)) {
+		t.Errorf("the only copy of the application waits at %q, inside %s — a directory every admin account on "+
+			"this Mac can delete an entry from, for as long as the wait lasts", kept.Path, filepath.Dir(dest))
+	}
+	if !inside(kept.Path, acct) {
+		t.Errorf("the only copy of the application waits at %q, which is not under this account's own directory %s",
+			kept.Path, acct)
+	}
+	if got := markerAt(t, kept.Path); got != "old" {
+		t.Errorf("what was set aside holds %q, want the installed bundle", got)
+	}
+	if !strings.Contains(err.Error(), kept.Path) {
+		t.Errorf("the failure %q does not say where the only remaining copy of the application is", err)
+	}
+	// And nothing of this swap is left in the applications directory.
+	assertNoStagingLeft(t, filepath.Dir(dest))
+}
+
+// swapHome points this account's own directory at a temporary one and returns
+// it, so no test ever sets a bundle aside in the real Application Support.
+func swapHome(t *testing.T, dir string) string {
+	t.Helper()
+	home := filepath.Join(dir, "home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	return filepath.Join(home, "Library", "Application Support", "Gropius")
+}
+
+// inside reports whether path sits under dir.
+func inside(path, dir string) bool {
+	return strings.HasPrefix(filepath.Clean(path)+string(os.PathSeparator),
+		filepath.Clean(dir)+string(os.PathSeparator))
+}
+
+// Where this account's own directory cannot hold the set-aside copy, the copy
+// is staged in the destination directory as it used to be — and the swap SAYS
+// SO. That is the earlier exposure, so it is a degrade nobody is allowed to
+// take quietly.
+//
+// Three ways it cannot hold the copy, and the first is the ordinary one: the
+// restore is a rename, rename(2) does not cross filesystems, and a destination
+// on another volume is a bundle that could never be put back from here. The
+// other two are a home that has lost the property it was chosen for.
+func TestAHomeThatCannotHoldTheSetAsideCopyFallsBackAndSaysSo(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		prepare func(t *testing.T, acct string)
+		reason  string
+	}{
+		{
+			name:    "a destination on another volume",
+			prepare: func(t *testing.T, _ string) { answerSameVolume(t, false) },
+			reason:  "different filesystems",
+		},
+		{
+			name: "a symbolic link where the directory should be",
+			prepare: func(t *testing.T, acct string) {
+				if err := os.MkdirAll(filepath.Dir(acct), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				elsewhere := filepath.Join(t.TempDir(), "elsewhere")
+				if err := os.MkdirAll(elsewhere, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(elsewhere, acct); err != nil {
+					t.Fatal(err)
+				}
+			},
+			reason: "is not a directory",
+		},
+		{
+			name: "a directory something else can write to",
+			prepare: func(t *testing.T, acct string) {
+				if err := os.MkdirAll(acct, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(acct, 0o777); err != nil {
+					t.Fatal(err)
+				}
+			},
+			reason: "not this account's alone",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			acct := swapHome(t, dir)
+			logged := captureLog(t)
+			tc.prepare(t, acct)
+
+			src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
+			dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
+
+			// The path where the set-aside copy is the only one left, so the
+			// fallback has to be as safe as what it falls back from.
+			calls := 0
+			rename := func(oldpath, newpath string) error {
+				calls++
+				if calls >= 2 {
+					return errors.New("no space left on device")
+				}
+				return os.Rename(oldpath, newpath)
+			}
+
+			err := placeBundle(src, dest, rename)
+			if err == nil {
+				t.Fatal("placeBundle reported success although nothing moved into place")
+			}
+			retired := findRetired(t, filepath.Dir(dest))
+			if retired == "" {
+				t.Fatal("the set-aside bundle is gone; it is the only copy of the application there is")
+			}
+			if got := markerAt(t, retired); got != "old" {
+				t.Errorf("what was set aside holds %q, want the installed bundle", got)
+			}
+			var kept *keptStagingError
+			if !errors.As(err, &kept) || kept.Path != retired {
+				t.Errorf("the failure does not say in a value where the only remaining copy is: %v", err)
+			}
+
+			// And the warning, which is the whole difference between this and
+			// a silent degrade: what was done, and why it had to be.
+			line := logged.String()
+			if !strings.Contains(line, "another administrator account") {
+				t.Errorf("nothing said the copy is waiting where another account can remove it:\n%s", line)
+			}
+			if !strings.Contains(line, tc.reason) {
+				t.Errorf("the warning does not say why this account's own directory could not be used (%q):\n%s",
+					tc.reason, line)
+			}
+		})
+	}
+}
+
+// And a swap that sets nothing aside says nothing: a first install has no
+// retired copy to find a home for, and a warning about where it would have put
+// one is a warning about nothing.
+func TestASwapThatRetiresNothingWarnsAboutNothing(t *testing.T) {
+	dir := t.TempDir()
+	swapHome(t, dir)
+	logged := captureLog(t)
+	answerSameVolume(t, false) // the fallback would fire if it were consulted
+
+	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
+	dest := filepath.Join(dir, "Applications", "Gropius.app")
+
+	if err := placeBundle(src, dest, os.Rename); err != nil {
+		t.Fatalf("placeBundle: %v", err)
+	}
+	if got := logged.String(); got != "" {
+		t.Errorf("an install over an empty destination warned about the copy it never made:\n%s", got)
+	}
+}
+
+// answerSameVolume stands a fixed answer in place of the device comparison, so
+// the cross-volume fallback can be exercised on a Mac with one volume.
+func answerSameVolume(t *testing.T, answer bool) {
+	t.Helper()
+	previous := sameVolume
+	sameVolume = func(string, string) bool { return answer }
+	t.Cleanup(func() { sameVolume = previous })
+}
+
+// captureLog collects what the swap logs for the length of one test.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &buf
 }

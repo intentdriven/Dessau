@@ -25,9 +25,11 @@ From there the binary does the work, in this order:
 
 1. **Places the application.** `/Applications` when your account can write
    there, `~/Applications` when it cannot. The move is staged: the installed
-   bundle is set aside, the new one is put in its place, and the set-aside copy
-   goes only once the new one is there. No failure leaves this Mac without an
-   application.
+   bundle is set aside in your own account's folder, the new one is put in its
+   place, and the set-aside copy goes only once the new one is there. No
+   failure leaves this Mac without an application — and where the set-aside
+   copy cannot be put back, it waits where only your account can remove it and
+   the command says where to find it.
 2. **Asks once for the firewall grant**, through the system authorisation
    panel, with the reason on the panel.
 3. **Installs the private Python and MLX runtime**, in the foreground, naming
