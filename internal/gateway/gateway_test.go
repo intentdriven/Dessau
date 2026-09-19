@@ -157,6 +157,8 @@ var gatewayRequests = []gatewayRequest{
 		body: `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`},
 	{name: "a completion under the loopback exemption", method: "POST", path: "/v1/chat/completions",
 		body: `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`},
+	{name: "a completion with a wrong key", method: "POST", path: "/v1/chat/completions", key: "wrong",
+		body: `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`},
 	{name: "the models list from off this Mac with no key", method: "GET", path: "/v1/models",
 		host: "gropius.example:11535"},
 	{name: "the models list from off this Mac with a wrong key", method: "GET", path: "/v1/models",

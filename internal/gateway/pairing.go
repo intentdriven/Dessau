@@ -245,6 +245,11 @@ func (c *Control) handleRevoke(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Fingerprint string `json:"fingerprint"`
 	}
+	// Deliberately NOT readPairRequest's bound-and-refuse. This route is behind
+	// loopbackOnly, so a caller that reaches it is a local process that could
+	// edit config.json directly, and the prefix-decode readPairRequest refuses
+	// buys such a caller nothing. Copy this pattern onto anything the network
+	// can reach and it is iss-2609190200099532 again.
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxPairBodyBytes)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "that is not a revocation this server reads")
 		return
@@ -350,8 +355,13 @@ func pairedOnly(reg *pairing.Registry, next http.Handler, log *slog.Logger, refu
 			// the server ships at for that reason, and rate-limited because the
 			// refused client sets the rate — it holds a certificate and a
 			// connection it already had, and it retries. The key space is the
-			// set of keys the handshake admitted, so it is bounded by who has
-			// been paired rather than by who can send a request.
+			// set of keys the HANDSHAKE admitted, which is bounded by who has
+			// been paired rather than by who can send a request — and that
+			// bound is enforced in another package, by VerifyConnection in
+			// internal/pairing/registry.go. Relax that check to a plain
+			// RequireAnyClientCert and every peer on the network becomes a
+			// fresh key here, which logEvery does not limit at all
+			// (iss-2609190225574067).
 			if log != nil && refusals.allow("unpaired:"+spki) {
 				log.Info("refused a request from a client this server has not paired",
 					"fingerprint", shortFingerprint(spki))
@@ -364,7 +374,7 @@ func pairedOnly(reg *pairing.Registry, next http.Handler, log *slog.Logger, refu
 		// a server answering a chat client writes one on every token-bearing
 		// request, which at the sparse level would be the whole log. What the
 		// operator needs at the shipped level is the pairing EVENTS, which are
-		// the three Info lines above and below (iss-2609190200097326).
+		// the three Info lines this file writes (iss-2609190200097326).
 		if log != nil {
 			log.Debug("paired request", "client", client.Name, "fingerprint", shortFingerprint(spki),
 				"method", r.Method, "path", r.URL.Path)
