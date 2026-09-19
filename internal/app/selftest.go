@@ -32,8 +32,15 @@ func (s selfTestServer) Ready() []string {
 	return ids
 }
 
+// Acquire is the pool's ordinary Acquire with two tags on the context: the
+// self-test's identity in the queue for memory, and the run's own way of being
+// told to let go. The second is what makes the hold a soft one — a client
+// whose load needs the memory takes the model and the pool cancels the run,
+// rather than the client being refused and the run finding out from the
+// refusal count.
 func (s selfTestServer) Acquire(ctx context.Context, repoID string) (selftest.Upstream, func(), error) {
-	up, release, err := s.a.Pool.Acquire(runtime.WithSource(ctx, selfTestSource), repoID)
+	poolCtx := runtime.WithSoftHold(runtime.WithSource(ctx, selfTestSource), selftest.YieldFrom(ctx))
+	up, release, err := s.a.Pool.Acquire(poolCtx, repoID)
 	if err != nil {
 		return selftest.Upstream{}, nil, err
 	}

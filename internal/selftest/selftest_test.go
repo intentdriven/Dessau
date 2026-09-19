@@ -50,6 +50,18 @@ type fakeServer struct {
 	refusals uint64
 	// maxInFlight is the most acquisitions held on any model at once.
 	maxInFlight int
+	// yield is the last hold's way of being told to let go (YieldFrom), which
+	// the real adapter hands to the pool as a soft hold; calling it is the
+	// pool preempting the run.
+	yield func()
+}
+
+// lastYield is how the pool would tell the run to let go of the model, or nil
+// before the run has taken a hold.
+func (s *fakeServer) lastYield() func() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.yield
 }
 
 func newFakeServer(t *testing.T, models ...string) *fakeServer {
@@ -81,6 +93,7 @@ func (s *fakeServer) Ready() []string {
 
 func (s *fakeServer) Acquire(ctx context.Context, id string) (Upstream, func(), error) {
 	s.mu.Lock()
+	s.yield = YieldFrom(ctx)
 	// acquired records loads — a model brought in — not every hold: the
 	// parallel test takes further holds on a model already resident.
 	if !s.resident[id] {
@@ -899,6 +912,33 @@ func TestAClientRefusedRoomYieldsTheRun(t *testing.T) {
 	}
 	if _, _, inFlight := srv.snapshot(); inFlight["org/a"] != 0 {
 		t.Error("the model is still held after yielding to a refused client")
+	}
+}
+
+// The pool may take the run's model back instead of refusing a client, and
+// when it does it cancels the hold. The run treats that as the yield it
+// already has: recorded as yielded, model released (iss-2609100526194406).
+func TestThePoolTakingTheHoldBackYieldsTheRun(t *testing.T) {
+	srv := newFakeServer(t, "org/a")
+	srv.fakes["org/a"].ChunkDelay = 20 * time.Millisecond
+	srv.fakes["org/a"].Reply = strings.Repeat("word ", 50)
+	r := fastRunner(t, srv, t.TempDir())
+	r.SetEnabled(true)
+	waitFor(t, "a run to take a hold the pool can ask for back",
+		func() bool { return srv.lastYield() != nil })
+
+	arrived := time.Now()
+	srv.lastYield()()
+
+	waitFor(t, "the yielded run", func() bool { return len(runsIn(t, r)) >= 1 })
+	if took := time.Since(arrived); took > 500*time.Millisecond {
+		t.Errorf("the run took %v to let go after the pool asked", took)
+	}
+	if run := runsIn(t, r)[0]; run.Outcome != OutcomeYielded {
+		t.Errorf("outcome = %q, want %q", run.Outcome, OutcomeYielded)
+	}
+	if _, _, inFlight := srv.snapshot(); inFlight["org/a"] != 0 {
+		t.Error("the model is still held after the pool asked for it back")
 	}
 }
 
