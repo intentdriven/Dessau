@@ -498,3 +498,54 @@ func TestEveryPairingEventIsLoggedAtTheShippedLevelByNameAndNeverByKey(t *testin
 		}
 	}
 }
+
+// pairedOnly's refusal line is bounded because the HANDSHAKE bounds it, and
+// this is where the two packages are tied together (iss-2609190225574067).
+//
+// The line is keyed on a fingerprint the client presented, which is a string
+// the client chose — the one thing logEvery's own comment says a caller must
+// never key on. It is safe here for exactly one reason: internal/pairing's
+// VerifyConnection refuses a key this server has not paired before there is a
+// request to refuse, so the key space is the paired set and not the network.
+// internal/pairing/tlsconfig_test.go holds that check; this holds the
+// consequence, which is that an unpaired client writes no line at all.
+func TestAnUnpairedClientIsTurnedAwayBeforeThereIsARequestToLog(t *testing.T) {
+	var logged bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	var reg *pairing.Registry
+	srv := newPairedServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pairedOnly(reg, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			t.Error("an unpaired client was served")
+		}), log, newLogEvery(time.Minute)).ServeHTTP(w, r)
+	}))
+	reg = srv.registry
+	srv.pair(t, newClientKey(t), "Bob's iPad") // somebody is paired; the caller below is not
+
+	// An unpaired key under a certificate it signed itself, which is all an
+	// attacker on this network can produce.
+	stranger := newClientKey(t)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "Carol's laptop"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &stranger.priv.PublicKey, stranger.priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hc := srv.client(tls.Certificate{Certificate: [][]byte{der}, PrivateKey: stranger.priv})
+	resp, err := hc.Get("https://" + srv.tlsAddr + "/v1/models")
+	if err == nil {
+		resp.Body.Close()
+		t.Fatalf("an unpaired client completed a handshake and was answered %d: "+
+			"the refusal has moved to the request path, and its log key is a string "+
+			"any peer on the network may choose", resp.StatusCode)
+	}
+	if strings.Contains(logged.String(), "refused a request from a client this server has not paired") {
+		t.Error("an unpaired client wrote a refusal line: it reached the request path, " +
+			"which is the unbounded log key iss-2609190225574067 records")
+	}
+}
