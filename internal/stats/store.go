@@ -20,6 +20,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/intentdriven/Gropius/internal/applog"
 )
 
 // The durable store: the records the recorder makes, kept on this Mac so that
@@ -1164,12 +1166,12 @@ func listStoreFiles(root *os.Root) ([]storeFile, error) {
 	return out, nil
 }
 
-// fileFlags is how every store file is opened: created if absent, append-only,
-// owner-only, following no symbolic link and blocking on nothing. It is the
-// discipline internal/runtime/launcher.go uses for a model server's log, for
-// the same reason — a predictable name is a name someone else can get to
-// first.
-const fileFlags = os.O_CREATE | os.O_WRONLY | os.O_APPEND | syscall.O_NONBLOCK | syscall.O_NOFOLLOW
+// Every store file is opened through applog.OpenIn: created if absent,
+// append-only, owner-only, following no symbolic link, blocking on nothing,
+// and refusing a handle that turns out not to be one of this account's own
+// regular files. That discipline is one primitive rather than a copy per
+// writer (iss-2609091714393599); what is the store's own is everything above
+// it — the UTC-day names, the counter, the fold and the two retention bounds.
 
 // open opens the file to append to: the newest one if it has room, a new one
 // otherwise.
@@ -1200,18 +1202,9 @@ func (w *storeWriter) open(fresh bool) error {
 		w.cur = 0
 		w.day, w.n = dayNum, next
 	}
-	f, err := w.root.OpenFile(name, fileFlags, 0o600)
+	f, _, err := applog.OpenIn(w.root, name, applog.AppendFlags, applog.FilePerm)
 	if err != nil {
 		return err
-	}
-	info, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		f.Close()
-		return fmt.Errorf("%s is not a regular file", name)
 	}
 	if len(w.files) == 0 || w.files[len(w.files)-1].name != name {
 		// Recorded only once the file is really open: a failed open must not
@@ -1836,18 +1829,14 @@ func readRawLines(root *os.Root, name string) ([][]byte, error) {
 // handle — not on the name, which could be swapped in between — makes it
 // refuse. A refusal wedges retention honestly; a hang says nothing at all.
 func openStoreFileForReading(root *os.Root, name string) (*os.File, error) {
-	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	// Perm 0 : a read is held to the regular-file check and the two flags, and
+	// not to the mode. The mode check is what stops a writer appending to a
+	// file it did not make; refusing to READ a file under one of these names
+	// would make a mode nothing can set here the difference between a
+	// dashboard and an empty one.
+	f, _, err := applog.OpenIn(root, name, applog.ReadFlags, 0)
 	if err != nil {
 		return nil, err
-	}
-	info, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		f.Close()
-		return nil, fmt.Errorf("%s is not a regular file", name)
 	}
 	return f, nil
 }
