@@ -2,6 +2,7 @@ package discord
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 )
@@ -114,13 +115,13 @@ func (e *editor) write(ctx context.Context, force bool) bool {
 		msg, limit, err = e.rest.createMessage(ctx, e.channelID, e.pending, e.replyTo)
 		if err == nil && !validID(msg.ID) {
 			// The id of the message to edit comes back over the network and
-			// goes straight into the next call's path (iss-2609190057562775).
-			// Without one there is nothing to edit; the answer continues in
-			// new messages rather than editing something that is not a
-			// message.
-			e.messageID, e.sent = "", ""
-			e.nextEdit = e.now().Add(minEditInterval)
-			return true
+			// goes straight into the next call's path
+			// (iss-2609190057562775). Discord always answers with one, so an
+			// id that is not a snowflake means this is not Discord answering
+			// — and carrying on would post the whole answer again, growing,
+			// once per throttle interval. The answer stops here.
+			e.err = errors.New("discord answered a created message with an id that is not a snowflake")
+			return false
 		}
 		if err == nil {
 			e.messageID = msg.ID
