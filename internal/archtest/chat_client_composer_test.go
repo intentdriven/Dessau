@@ -225,8 +225,10 @@ func TestChatClientSidebarIsSearchable(t *testing.T) {
 	if !strings.Contains(src, `.searchable(text: $query`) {
 		t.Error("the sidebar carries no searchable field")
 	}
-	if !regexp.MustCompile(`title\.localizedCaseInsensitiveContains\(q\)`).MatchString(src) ||
-		!regexp.MustCompile(`messages\.contains \{ \$0\.text\.localizedCaseInsensitiveContains\(q\) \}`).MatchString(src) {
+	// What the filter reads; HOW it matches is
+	// TestChatClientSidebarSearchesEveryWord's, next to the check that runs it.
+	if !regexp.MustCompile(`title: c\.title`).MatchString(src) ||
+		!regexp.MustCompile(`messages: c\.messages\.map\(\\\.text\)`).MatchString(src) {
 		t.Error("the search does not filter on both the title and the messages")
 	}
 }
