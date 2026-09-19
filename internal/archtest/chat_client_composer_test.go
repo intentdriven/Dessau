@@ -2,6 +2,7 @@ package archtest_test
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -105,8 +106,12 @@ func TestChatClientAsksForTheKeyWhereTheServerIsPicked(t *testing.T) {
 func TestChatClientTextSizeScalesTheWholeWindow(t *testing.T) {
 	root := repoRootDir(t)
 	src := clientSources(t, root)["GropiusChat.swift"]
-	if !regexp.MustCompile(`enum TextSize: String, CaseIterable \{\s*case smaller, standard, larger, extraLarge, huge\s*\}?`).MatchString(src) {
-		t.Error("client/GropiusChat/GropiusChat.swift declares no TextSize with the five steps")
+	if !strings.Contains(src, "enum TextSize: String, CaseIterable {") {
+		t.Fatal("client/GropiusChat/GropiusChat.swift declares no TextSize enum over all of its cases")
+	}
+	steps := []string{"smaller", "standard", "larger", "extraLarge", "huge"}
+	if got := enumCases(t, src, "TextSize"); !slices.Equal(got, steps) {
+		t.Errorf("TextSize declares the cases %v; the setting is the five steps %v, and nothing else", got, steps)
 	}
 	window, settings := sceneRoots(t, src)
 	if !strings.Contains(window, ".dynamicTypeSize(") {
@@ -130,8 +135,12 @@ func TestChatClientTextSizeScalesTheWholeWindow(t *testing.T) {
 func TestChatClientAppearanceFollowsOneSetting(t *testing.T) {
 	root := repoRootDir(t)
 	src := clientSources(t, root)["GropiusChat.swift"]
-	if !regexp.MustCompile(`enum Appearance: String, CaseIterable \{\s*case system, light, dark`).MatchString(src) {
-		t.Error("client/GropiusChat/GropiusChat.swift declares no Appearance with the three choices")
+	if !strings.Contains(src, "enum Appearance: String, CaseIterable {") {
+		t.Fatal("client/GropiusChat/GropiusChat.swift declares no Appearance enum over all of its cases")
+	}
+	choices := []string{"system", "light", "dark"}
+	if got := enumCases(t, src, "Appearance"); !slices.Equal(got, choices) {
+		t.Errorf("Appearance declares the cases %v; the choice is %v, and nothing else", got, choices)
 	}
 	window, settings := sceneRoots(t, src)
 	if !strings.Contains(window, ".preferredColorScheme(") {
@@ -174,9 +183,33 @@ func TestChatClientThoughtsRenderMarkdown(t *testing.T) {
 func TestChatClientSidebarShowsCards(t *testing.T) {
 	root := repoRootDir(t)
 	src := clientSources(t, root)["GropiusChat.swift"]
-	for _, want := range []string{`struct ConversationCard: View`, `.listStyle(.sidebar)`, `ConversationCard(conversation:`, `createdAt`, `exchange`, `word`} {
+	for _, want := range []string{`.listStyle(.sidebar)`, `ConversationCard(conversation:`} {
 		if !strings.Contains(src, want) {
 			t.Errorf("the sidebar lacks %q", want)
+		}
+	}
+	// The promise is about what the CARD draws, so the scan is the card's
+	// own body: a substring found anywhere in the file says nothing about
+	// the view the sidebar puts in each row (iss-2609181213198794).
+	card := swiftBlock(t, src, "struct ConversationCard: View {")
+	for _, want := range []struct{ fragment, promise string }{
+		{`Image(systemName: icon)`, "the icon for who answered last"},
+		{`Text(title)`, "the conversation's title"},
+		{`Text(summary)`, "the summary of exchanges and words"},
+	} {
+		if !strings.Contains(card, want.fragment) {
+			t.Errorf("ConversationCard does not draw %s; its body carries no %q", want.promise, want.fragment)
+		}
+	}
+	// The date is the one the conversation started, drawn as a day, a month
+	// and a year. Matching `createdAt` against the whole file would pass on
+	// the model's own field while the card drew some other date, or none.
+	if !regexp.MustCompile(`Text\(conversation\.createdAt, format: \.dateTime\.day\(\)\.month\(\)\.year\(\)\)`).MatchString(card) {
+		t.Error("ConversationCard does not draw conversation.createdAt as a day, month and year; the date a row shows is the date its chat started")
+	}
+	for _, want := range []string{"exchange", "word"} {
+		if !strings.Contains(card, want) {
+			t.Errorf("ConversationCard's summary counts no %ss", want)
 		}
 	}
 }
@@ -197,17 +230,63 @@ func TestChatClientSidebarIsSearchable(t *testing.T) {
 }
 
 // sceneRoots cuts the client's App body into its two scene bodies: the
-// WindowGroup's, up to the commands that follow it, and the Settings scene's.
-// A setting read "at each scene's root" is a promise about those two places
-// (iss-2609181200251755); counting a modifier anywhere in the file would let
-// two of them on one inner view stand in for both roots having lost theirs.
+// content the WindowGroup is given and the content the Settings scene is
+// given, each read to ITS own closing brace. A setting read "at each scene's
+// root" is a promise about those two places (iss-2609181200251755,
+// iss-2609181124291823); counting a modifier anywhere in the file, or reading
+// the Settings scene as everything that follows it, would let a modifier on
+// some inner view further down stand in for a root that lost its own.
 func sceneRoots(t *testing.T, src string) (window, settings string) {
 	t.Helper()
-	open := strings.Index(src, "WindowGroup(")
-	commands := strings.Index(src, ".commands {")
-	sceneStart := strings.Index(src, "Settings {")
-	if open < 0 || commands < 0 || sceneStart < 0 || open > commands || commands > sceneStart {
-		t.Fatal("client/GropiusChat/GropiusChat.swift does not declare a WindowGroup, its commands and a Settings scene in that order")
+	scene := swiftBlock(t, src, "var body: some Scene {")
+	return swiftBlock(t, scene, "WindowGroup("), swiftBlock(t, scene, "Settings {")
+}
+
+// swiftBlock is the brace-delimited body that opens at the first "{" at or
+// after marker, matched by the package's own `balanced` scan so the block
+// ends at the brace that closes it rather than at the first line that looks
+// like one. The marker must name one place: a second occurrence is an
+// architectural change this scan should be reread for, not silently pick the
+// first of.
+func swiftBlock(t *testing.T, src, marker string) string {
+	t.Helper()
+	switch n := strings.Count(src, marker); {
+	case n == 0:
+		t.Fatalf("client/GropiusChat/GropiusChat.swift carries no %q", marker)
+	case n > 1:
+		t.Fatalf("%q appears %d times; this scan reads one block and cannot say which", marker, n)
 	}
-	return src[open:commands], src[sceneStart:]
+	at := strings.Index(src, marker)
+	open := strings.Index(src[at:], "{")
+	if open < 0 {
+		t.Fatalf("%q opens no block", marker)
+	}
+	body, end := balanced(src, at+open, '{', '}')
+	if end == len(src) && !strings.HasSuffix(src, "}") {
+		t.Fatalf("the block opened by %q is never closed", marker)
+	}
+	return body
+}
+
+// enumCases is the case names a Swift enum declares, read from the whole of
+// its body rather than from its first case line: a case added on a following
+// line belongs to the set just as much, and a regexp anchored to the first
+// line would not see it (iss-2609181124291823). The `case .x:` lines of the
+// switches inside the enum's computed properties carry a leading dot and end
+// in a colon, so they are not read as declarations.
+func enumCases(t *testing.T, src, name string) []string {
+	t.Helper()
+	var out []string
+	for _, line := range strings.Split(swiftBlock(t, src, "enum "+name+": "), "\n") {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "case ")
+		if !ok || strings.HasPrefix(rest, ".") || strings.Contains(rest, ":") {
+			continue
+		}
+		for _, one := range strings.Split(rest, ",") {
+			if one, _, _ = strings.Cut(one, "="); strings.TrimSpace(one) != "" {
+				out = append(out, strings.TrimSpace(one))
+			}
+		}
+	}
+	return out
 }

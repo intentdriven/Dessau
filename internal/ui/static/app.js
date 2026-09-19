@@ -176,6 +176,7 @@ function render() {
   renderSetup();
   renderModels();
   renderConnect();
+  renderClients();
   renderPosture();
   renderSettings();
   // Independent of renderSettings, which returns early while the form is
@@ -237,10 +238,16 @@ function renderSetup() {
 // the save with an error the operator has to decode.
 //
 // Blank means the default, which is what the server reads it as, so the
-// comparison is on the resolved figures.
-function graceWaitHint(graceValue, maxWaitValue) {
-  const grace = parseInt(graceValue, 10) || 120;
-  const maxWait = parseInt(maxWaitValue, 10) || 300;
+// comparison is on the resolved figures — and the defaults are the server's
+// own, off the snapshot, rather than two Go constants copied into this file.
+// A panel that has not been told them says nothing: a rule stated in figures
+// the panel made up is worse than no hint at all. internal/ui/grace_test.go
+// holds what this returns to config.validateGrace over the same pair.
+function graceWaitHint(graceValue, maxWaitValue, defaults) {
+  const d = defaults || {};
+  const grace = parseInt(graceValue, 10) || d.eviction_grace_sec || 0;
+  const maxWait = parseInt(maxWaitValue, 10) || d.eviction_max_wait_sec || 0;
+  if (!grace || !maxWait) return '';
   if (maxWait >= grace) return '';
   return `A maximum wait of ${maxWait} s is shorter than the ${grace} s protection, `
     + 'which would refuse a waiting request before its own wait could override that '
@@ -248,7 +255,8 @@ function graceWaitHint(graceValue, maxWaitValue) {
 }
 
 function updateGraceHint() {
-  const hint = graceWaitHint($('setGraceSec').value, $('setGraceWait').value);
+  const hint = graceWaitHint($('setGraceSec').value, $('setGraceWait').value,
+    state && state.defaults);
   $('graceHint').textContent = hint;
   $('graceHint').hidden = hint === '';
 }
@@ -547,6 +555,71 @@ function endpointOf(e) {
 function endpointLine(ep) {
   const mark = ep.network ? `<span class="pill">${escapeHtml(ep.network)}</span>` : '';
   return `<span>${escapeHtml(ep.url)}</span>${mark}`;
+}
+
+// ── clients ──────────────────────────────────────────────
+// Every chat client paired with this server (adr-2609182357322050). The name is
+// chosen by whoever paired, and under first-come pairing that is anything on
+// the network — so every field of a row is set with textContent and none of it
+// is ever interpolated into markup. The panel is loopback-only and asks for no
+// credential, so a name that ran as script would be running same-origin on the
+// whole settings API.
+
+// clientPaired is when a client paired, in the reader's own locale.
+function clientPaired(at) {
+  return at ? new Date(at * 1000).toLocaleString() : 'unknown';
+}
+
+// clientSeen is when this server last heard from a client.
+//
+// The sighting is held in memory rather than in the settings file — writing it
+// would fsync config.json once per request — so a server that has just started
+// has heard from nobody, and says that rather than showing a time nobody
+// recorded.
+function clientSeen(at) {
+  return at ? new Date(at * 1000).toLocaleString() : 'not since this server started';
+}
+
+function renderClients() {
+  const fp = $('serverFingerprint');
+  fp.textContent = state.server_fingerprint
+    || 'This server has no certificate of its own, so no client can pair.';
+
+  const box = $('clients');
+  box.innerHTML = '';
+  const clients = state.clients || [];
+  if (!clients.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = 'No chat client has paired with this server.';
+    box.appendChild(p);
+    return;
+  }
+  clients.forEach((c) => {
+    const row = document.createElement('div');
+    row.className = 'endpoint';
+    const name = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = c.name;
+    const detail = document.createElement('div');
+    detail.className = 'info';
+    // Two clients may choose one name — that is precisely what an impostor
+    // does — so the fingerprint is shown in full beside it, and it is the
+    // fingerprint that Revoke acts on.
+    detail.textContent = `${c.spki} · paired ${clientPaired(c.paired_at)}`
+      + ` · last seen ${clientSeen(c.last_seen)}`;
+    name.appendChild(strong);
+    name.appendChild(detail);
+    row.appendChild(name);
+    row.append(confirmBtn('Revoke', 'Revoke?', 'ghost', () => {
+      api('/api/clients/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint: c.spki }),
+      }).catch(alertErr);
+    }));
+    box.appendChild(row);
+  });
 }
 
 function renderConnect() {
@@ -994,6 +1067,7 @@ function renderSettings() {
   $('bindNotice').hidden = notice === '';
   $('setHost').value = bindSelectValue(c);
   $('setPort').value = c.port;
+  $('setTLSPort').value = c.tls_port || 0;
   $('setKey').value  = c.api_key || '';
   // The stored value, not what is being advertised right now: this is the
   // control, and the decision the running server took at start is on the
@@ -1211,7 +1285,11 @@ function budgetHint(machine) {
     parts.push(`The models in memory use ${size(resident)} of it.`);
   }
   if (m.warn_above && budget > m.warn_above) {
-    parts.push('macOS and everything else running share this memory, and a model\'s charge is worked out from its configuration rather than measured on this Mac.');
+    // The second half is the server's own sentence, unescaped and unsplit so
+    // that internal/ui/budget_test.go can hold it to app.BudgetChargeNote —
+    // the server says the same thing when such a budget is saved.
+    parts.push('macOS and everything else running share this memory, and '
+      + "a model's charge is worked out from its configuration rather than measured on this Mac.");
   }
   return parts.join(' ');
 }
@@ -1618,6 +1696,7 @@ $('settingsForm').addEventListener('submit', async (e) => {
     // whichever one the operator chose.
     ...bindSelectBody($('setHost').value, state.config.host),
     port:               parseInt($('setPort').value, 10),
+    tls_port:           parseInt($('setTLSPort').value, 10),
     advertise:          $('setAdvertise').checked,
     api_key:            $('setKey').value,
     idle_timeout_sec:   parseInt($('setIdle').value, 10) || 0,

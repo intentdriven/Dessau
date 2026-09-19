@@ -72,3 +72,19 @@ func ReadRegularInfo(path string, max int64) ([]byte, os.FileInfo, error) {
 	}
 	return b, info, nil
 }
+
+// PrivateToThisAccount is privateToThisAccount, for the one other file Gropius
+// keeps that a co-tenant account must not be able to substitute: the server's
+// TLS private key (internal/pairing). The rule is the settings file's, stated
+// once and applied twice, rather than a second copy of the same three checks
+// drifting from this one.
+func PrivateToThisAccount(info os.FileInfo) error { return privateToThisAccount(info) }
+
+// WriteSecretFile writes b to path the way config.json is written: a
+// random-named temp file in the target directory opened with O_EXCL, mode 0600,
+// flushed before the rename so a power loss cannot leave a truncated secret.
+//
+// It exists so the server's TLS private key is written by the same code the
+// settings file is, and not by a second os.WriteFile that a co-tenant account
+// could have pre-created a symlink for.
+func WriteSecretFile(path string, b []byte) error { return writeSettingsFile(path, b) }
