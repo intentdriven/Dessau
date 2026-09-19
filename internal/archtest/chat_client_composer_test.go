@@ -114,17 +114,29 @@ func TestChatClientTextSizeScalesTheWholeWindow(t *testing.T) {
 		t.Errorf("TextSize declares the cases %v; the setting is the five steps %v, and nothing else", got, steps)
 	}
 	window, settings := sceneRoots(t, src)
-	if !strings.Contains(window, ".dynamicTypeSize(") {
-		t.Error("the window's root does not apply the Dynamic Type size; the whole window follows one setting")
+	if !strings.Contains(window, ".dynamicTypeSize(ifSet:") {
+		t.Error("the window's root does not apply the Dynamic Type size when one is set; the whole window follows one setting")
 	}
-	if !strings.Contains(settings, ".dynamicTypeSize(") {
-		t.Error("the Settings scene's root does not apply the Dynamic Type size; Settings is its own scene and inherits nothing")
+	if !strings.Contains(settings, ".dynamicTypeSize(ifSet:") {
+		t.Error("the Settings scene's root does not apply the Dynamic Type size when one is set; Settings is its own scene and inherits nothing")
+	}
+	// The default step is the absence of a preference, not a pin on .large:
+	// the shape Appearance's System case has, so a Mac whose own text size is
+	// not large keeps it (iss-2609181124294352).
+	enum := swiftBlock(t, src, "enum TextSize: String, CaseIterable {")
+	if !strings.Contains(enum, "var dynamicType: DynamicTypeSize? {") {
+		t.Error("TextSize.dynamicType is not optional; the default step cannot express the absence of a preference")
+	}
+	if !regexp.MustCompile(`case \.standard: return nil`).MatchString(enum) {
+		t.Error("TextSize's standard step pins a Dynamic Type size; the default step applies no override at all")
 	}
 	if !strings.Contains(src, `@AppStorage("textSize")`) {
 		t.Error("the text size is not stored")
 	}
-	if !strings.Contains(src, `Picker("Text size"`) {
-		t.Error("Settings offers no text-size picker")
+	// The spec gives the text size its own Settings section
+	// (iss-2609181124294842); the picker lives in it, not in Appearance's.
+	if !strings.Contains(swiftBlock(t, src, `Section("Text") {`), `Picker("Text size"`) {
+		t.Error("Settings' Text section does not hold the text-size picker")
 	}
 }
 
