@@ -906,7 +906,7 @@ func TestAnAnswerDeliveredInFullIsNotCancelledByAClientHangingUp(t *testing.T) {
 			record: stats.Record{Model: "org/a", Class: stats.ClassOK, FirstTokenMS: stats.NoFirstToken}}
 		obs.relayed(relayOutcome{usage: &usageCounts{Prompt: 11, Completion: 22}})
 
-		obs.finish(gone)
+		obs.finish(gone.Context())
 
 		got := onlyRecord(t, rec)
 		if got.Class != stats.ClassOK {
@@ -924,7 +924,7 @@ func TestAnAnswerDeliveredInFullIsNotCancelledByAClientHangingUp(t *testing.T) {
 			record: stats.Record{Model: "org/a", Class: stats.ClassOK, FirstTokenMS: stats.NoFirstToken}}
 		obs.relayed(relayOutcome{clientGone: true})
 
-		obs.finish(gone)
+		obs.finish(gone.Context())
 
 		if got := onlyRecord(t, rec).Class; got != stats.ClassCancelled {
 			t.Errorf("a client that went away mid-answer is recorded as %q, want %q", got, stats.ClassCancelled)
@@ -937,7 +937,7 @@ func TestAnAnswerDeliveredInFullIsNotCancelledByAClientHangingUp(t *testing.T) {
 		obs := &observation{rec: rec, started: time.Now(),
 			record: stats.Record{Model: "org/a", Class: stats.ClassOK, FirstTokenMS: stats.NoFirstToken}}
 
-		obs.finish(gone)
+		obs.finish(gone.Context())
 
 		if got := onlyRecord(t, rec).Class; got != stats.ClassCancelled {
 			t.Errorf("a request that never reached the relay is recorded as %q, want %q — the context is all there is to go on",
@@ -980,7 +980,7 @@ func TestAFailureAfterTheTerminalEventDoesNotTakeTheAnswerAway(t *testing.T) {
 		obs := &observation{rec: rec, started: time.Now(),
 			record: stats.Record{Model: "org/a", Class: stats.ClassOK, FirstTokenMS: stats.NoFirstToken}}
 		obs.relayed(out)
-		obs.finish(gone)
+		obs.finish(gone.Context())
 		return onlyRecord(t, rec)
 	}
 

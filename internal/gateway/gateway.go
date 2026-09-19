@@ -547,7 +547,7 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	cfg := g.cfg()
 	obs := g.observe(cfg.Statistics, started)
-	defer obs.finish(r)
+	defer obs.finish(r.Context())
 
 	rc := http.NewResponseController(w)
 	_ = rc.SetReadDeadline(time.Now().Add(bodyReadTimeout))
