@@ -36,7 +36,7 @@ import (
 
 // installCalls and uninstallCalls record what the fakes were asked to do, so a
 // test can assert a verb was dispatched without anything happening.
-var installCalls, uninstallCalls, updateCalls []string
+var installCalls, uninstallCalls, updateCalls, placeCalls []string
 
 // fakeVerbEnv is the environment every verb in this test binary runs in: a
 // temporary root that no part of this account's installation shares.
@@ -58,6 +58,14 @@ func TestMain(m *testing.M) {
 	verbEnvFor = fakeVerbEnv
 	lifecycleVerbs["install"] = func(_ lifecycle.Env, args []string) int {
 		installCalls = append(installCalls, strings.Join(args, " "))
+		return lifecycle.ExitOK
+	}
+	// place writes wherever its two arguments name, which in this binary is
+	// whatever a test happens to pass it. The fake is here for the same reason
+	// as the others: the default in a test binary is the one that acts on
+	// nothing.
+	lifecycleVerbs["place"] = func(_ lifecycle.Env, args []string) int {
+		placeCalls = append(placeCalls, strings.Join(args, " "))
 		return lifecycle.ExitOK
 	}
 	lifecycleVerbs["uninstall"] = func(_ lifecycle.Env, args []string) int {
@@ -169,6 +177,8 @@ func liveVerb(verb string) func(lifecycle.Env, []string) int {
 		return lifecycle.RunUninstall
 	case "update":
 		return lifecycle.RunUpdate
+	case "place":
+		return lifecycle.RunPlace
 	}
 	return nil
 }
@@ -204,7 +214,7 @@ func TestConfigShowIsDispatchedAndWritesNothing(t *testing.T) {
 // writingVerbs is every verb that acts on this Mac. A verb added to
 // lifecycleVerbs and not to this list is one the guard above stops covering,
 // so the list is checked against the table rather than kept by hand.
-var writingVerbs = []string{"install", "uninstall", "update"}
+var writingVerbs = []string{"install", "place", "uninstall", "update"}
 
 // The guard's own coverage: every verb this build carries is either a reading
 // verb, which a test may dispatch freely, or on the writing list above, which

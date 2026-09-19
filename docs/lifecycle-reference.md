@@ -24,6 +24,7 @@ by its full path.
 | `gropius doctor` | The expensive checks, each labelled with how much its answer is worth. | `0` or `1` |
 | `gropius config show` | The settings in force, read from the settings file the way the server reads it. Reads only; the API key and the HuggingFace token are shown as `********` and never as their values. | `0` |
 | `gropius install` | Places the application, grants it through the firewall, provisions the MLX runtime, links the command. Repairs what is missing. | `0` or `1` |
+| `gropius place` | Puts an application bundle into a directory with the staged swap: stages inside the destination under an unguessable name, sets the installed bundle aside, renames the new one in, and removes the set-aside copy only once the new one is there. Refuses a destination directory that is a symbolic link, replaces rather than follows a symbolic link at the bundle's own name, and never nests inside a bundle that is already there. The bootstrap calls it to place the chat client, which carries no binary of its own. | `0` or `1` |
 | `gropius uninstall` | Removes what this installation put on the Mac. Leaves the downloaded models. | `0` or `1` |
 | `gropius update` | Fetches the current release, verifies it against the checksums published beside it, places it with the staged swap, re-makes the firewall grant, and reports the version installed and the version this Mac is serving as two separate facts. | `0` or `1` |
 
@@ -40,6 +41,8 @@ no server is started. A first argument beginning with `-` is a server flag, so
 | `gropius config` | `--json` | Writes the machine-readable form, which is the contract: an object of settings keyed by the name `config.json` gives each one. |
 | `gropius install` | `--bundle` | Takes a path: the verified bundle to place. The bootstrap passes it; a person repairing an installation does not. |
 | `gropius install` | `--place-only` | Places the bundle and stops: no firewall grant, no provisioning, no launch. This is what the release gate runs, where there is no console to answer an authorisation panel. |
+| `gropius place` | `--bundle` | Takes a path: the application bundle to place. |
+| `gropius place` | `--into` | Takes a path: the directory the bundle belongs in. It must already be there, and it must be a directory rather than a symbolic link. |
 | `gropius uninstall` | `--purge` | Removes the downloaded models as well. |
 | `gropius uninstall` | `--yes` | Answers the confirmation `--purge` would otherwise need a terminal for. |
 
