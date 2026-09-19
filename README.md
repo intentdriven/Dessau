@@ -234,6 +234,16 @@ downloaded model's name and nothing about what this Mac is doing with them —
 though it can still time a request to find out. Keeping activity private from
 the network means setting the key, not leaving the fields off.
 
+A chat client can instead **pair** with the server, which gives it a key of its
+own: it is made on the device, never leaves it, and replaces the API key for
+that client. Paired clients use a second port, and the control panel lists each
+one with its fingerprint, when it paired and when it was last heard from, with
+a button to revoke it. Anything on your network can pair, and reading that list
+is how you find out that something did — [what pairing is
+worth](docs/pairing-explained.md) says what this protects against and what it
+does not, and [how to pair a client](docs/pairing.md) says how. Unpaired
+clients keep the ordinary port and the shared key, unchanged.
+
 The server's request log records the method, path, status and duration of a
 request, and never the client's network address.
 

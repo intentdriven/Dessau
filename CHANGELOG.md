@@ -11,6 +11,24 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **A chat client pairs with the server once, and from then on proves itself
+  with a key of its own.** The client makes a keypair on the device it is on,
+  the server signs it a certificate, and paired requests travel over a second
+  port with that key instead of the shared API key, which a paired client is
+  never asked for. The control panel gains a **Clients** pane listing every
+  paired client with the name it chose, its key fingerprint, when it paired and
+  when it was last heard from, and a button to revoke it — enforced on that
+  client's next request, including on a connection it already had open. The
+  server's own fingerprint is shown on that pane and travels in the Bonjour
+  announcement, so it can be compared against what a client shows: anything on
+  the network can pair with a Gropius server, and reading the list is how an
+  operator finds out that something did. Unpaired OpenAI clients keep the
+  ordinary port and the shared key, unchanged. `impact: additive`
+  ([how to pair a client](docs/pairing.md), [what pairing is
+  worth](docs/pairing-explained.md)).
+
 ## [0.7.1] - 2026-09-18
 
 ### Fixed
