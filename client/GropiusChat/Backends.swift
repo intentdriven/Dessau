@@ -135,7 +135,7 @@ struct BuiltInBackend: ChatBackend {
 
         var reserve = max(512, model.contextSize / 4)
         for attempt in 0..<2 {
-            let entries = try await Self.trimmed(prior, model: model, budget: model.contextSize - reserve)
+            let entries = try await Self.trimmed(prior, prompt: last.text, model: model, reserve: reserve)
             let session = LanguageModelSession(model: model, transcript: Transcript(entries: entries))
             do {
                 let stream = session.streamResponse(to: last.text)
@@ -161,13 +161,30 @@ struct BuiltInBackend: ChatBackend {
         }
     }
 
-    /// The instructions plus the most recent turns that fit the budget, oldest
-    /// dropped first, so the model sees what the person sees minus the start.
-    static func trimmed(_ history: [Message], model: SystemLanguageModel, budget: Int) async throws -> [Transcript.Entry] {
+    /// What the transcript says when the message just typed is longer than the
+    /// window can hold on its own. Nothing is sent: there is no history to
+    /// drop that would make room for it.
+    static let promptTooLong =
+        "That message is too long for the \(deviceNoun)'s own model to read in one go — shorten it, or pick a server from the model picker."
+
+    /// The instructions plus the most recent turns that fit beside the new
+    /// prompt, oldest dropped first, so the model sees what the person sees
+    /// minus the start. The new prompt is budgeted with the prior turns rather
+    /// than after them; when it does not fit on its own, this throws the
+    /// client's own sentence and the turn is never sent.
+    static func trimmed(_ history: [Message], prompt: String, model: SystemLanguageModel, reserve: Int) async throws -> [Transcript.Entry] {
         let instructions = Transcript.Entry.instructions(
             Transcript.Instructions(segments: [.text(Transcript.TextSegment(content: Self.instructions))],
                                     toolDefinitions: []))
-        var used = try await model.tokenCount(for: [instructions])
+        let promptEntry = Transcript.Entry.prompt(
+            Transcript.Prompt(segments: [.text(Transcript.TextSegment(content: prompt))]))
+        var budget = ContextBudget(
+            window: model.contextSize,
+            reserve: reserve,
+            instructions: try await model.tokenCount(for: [instructions]),
+            prompt: try await model.tokenCount(for: [promptEntry]))
+        guard budget.fits else { throw BackendMessage(text: Self.promptTooLong) }
+
         var kept: [Transcript.Entry] = []
         for m in history.reversed() where !m.text.isEmpty {
             let entry: Transcript.Entry
@@ -178,8 +195,7 @@ struct BuiltInBackend: ChatBackend {
                 entry = .response(Transcript.Response(assetIDs: [], segments: [.text(Transcript.TextSegment(content: m.text))]))
             }
             let cost = try await model.tokenCount(for: [entry])
-            if used + cost > budget { break }
-            used += cost
+            if !budget.take(cost) { break }
             kept.append(entry)
         }
         // A transcript must not start with a response; drop a leading one.
