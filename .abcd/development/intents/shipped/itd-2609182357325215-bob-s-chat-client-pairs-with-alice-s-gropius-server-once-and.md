@@ -251,7 +251,8 @@ Security, which would make the client's half unbuildable as designed.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-fc75998d7eb2 -->
+Fidelity review OWED (receipt rcp-fc75998d7eb2).
 
 ## Grounds
 
