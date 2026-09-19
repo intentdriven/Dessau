@@ -51,6 +51,7 @@
   <button class="tab" data-tab="search">Find Models</button>
   <button class="tab" data-tab="stats">Statistics</button>
   <button class="tab" data-tab="connect">Connect</button>
+  <button class="tab" data-tab="clients">Clients</button>
   <button class="tab" data-tab="posture">Posture</button>
   <button class="tab" data-tab="settings">Settings</button>
 </nav>
@@ -236,6 +237,29 @@
   <pre id="pyExample" class="code"></pre>
 </section>
 
+<!-- ── Clients ───────────────────────────────────────────── -->
+<!-- Every chat client paired with this server (adr-2609182357322050). A pane of
+     its own rather than a block in Settings: the paired set is never written by
+     a settings save, and drawing it beside the settings form would invite one.
+     Every row is built with textContent, never innerHTML: the name is chosen by
+     whoever paired, and under first-come pairing that is anything on the
+     network. -->
+<section id="tab-clients" class="panel">
+  <h2>Chat clients paired with this server</h2>
+  <p class="hint">A paired client proves itself with a key of its own and never sends
+    the API key. Anything on your network that reaches this server can pair itself, so
+    this list is where you find out that something did — revoke anything you do not
+    recognise.</p>
+
+  <h3>This server's key</h3>
+  <p class="hint">Compare this with the fingerprint your chat client shows. If the two
+    differ, the client is talking to something else.</p>
+  <pre id="serverFingerprint" class="code"></pre>
+
+  <h3>Paired clients</h3>
+  <div id="clients"></div>
+</section>
+
 <!-- ── Posture ───────────────────────────────────────────── -->
 <!-- One page that says what is on (itd-2609081718534201). Every line is
      derived from the state snapshot and from no other source, in postureLines; the
@@ -274,6 +298,14 @@
       <span>Port</span>
       <input id="setPort" type="number" min="1" max="65535">
     </label>
+    <label>
+      <span>Port for paired clients</span>
+      <input id="setTLSPort" type="number" min="-1" max="65535">
+    </label>
+    <p class="hint">A second port, where a paired chat client proves itself with a key of
+      its own instead of the API key. Leave it at 0 for the port just above this one, or
+      set it to -1 to serve no paired clients at all. The Clients tab lists what has
+      paired.</p>
     <fieldset class="group">
       <legend>Announce on the network</legend>
       <label class="switch">

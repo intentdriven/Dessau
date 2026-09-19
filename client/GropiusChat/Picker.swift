@@ -75,8 +75,24 @@ struct ModelPickerView: View {
     /// The server the client is already pointed at, when the browse has not
     /// (yet) listed it: its models are offered under its address.
     @ViewBuilder private var storedServer: some View {
-        DisclosureGroup(model.serverHost) {
+        DisclosureGroup {
             modelRows
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.serverHost)
+                    if model.pairedHere {
+                        Text("Paired — this client proves itself with a key of its own.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } icon: {
+                // The lock is the PAIRING, and it means nothing else. The lock
+                // on a discovered row above means that server wants an API key,
+                // which is a different claim about a different thing, so this
+                // one is a different glyph.
+                Image(systemName: model.pairedHere ? "lock.shield.fill" : "network")
+            }
         }
     }
 

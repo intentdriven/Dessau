@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,6 +24,7 @@ import (
 	"github.com/intentdriven/Gropius/internal/config"
 	"github.com/intentdriven/Gropius/internal/hub"
 	"github.com/intentdriven/Gropius/internal/netshape"
+	"github.com/intentdriven/Gropius/internal/pairing"
 	"github.com/intentdriven/Gropius/internal/registry"
 	"github.com/intentdriven/Gropius/internal/runtime"
 	"github.com/intentdriven/Gropius/internal/selftest"
@@ -45,6 +47,18 @@ type Control struct {
 	// the lifecycle verbs can say which version is serving. Set once before
 	// serving and never written again.
 	Version string
+
+	// Identity is this server's own TLS key and leaf. Nil when the server has
+	// no TLS listener, in which case pairing is refused rather than half done.
+	Identity *pairing.Identity
+	// Clients is the paired set with this run's sightings. Nil when there is no
+	// TLS listener; the pane then shows the clients the settings hold and says
+	// nothing has been heard from.
+	Clients *pairing.Registry
+	// Log is where pairing and revocation are recorded. A client is named by
+	// the name it chose, with the first eight characters of its fingerprint
+	// beside it, and never by its key.
+	Log *slog.Logger
 
 	// Notices is what config.Load had to change about config.json to make it
 	// usable: settings put into force in a changed form (a trimmed API key, a
@@ -134,6 +148,7 @@ func (c *Control) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/models/adopt", c.handleAdopt)
 	mux.HandleFunc("GET /api/events", c.handleEvents)
 	mux.HandleFunc("GET /api/instance", c.handleInstance)
+	mux.HandleFunc("POST /api/clients/revoke", c.handleRevoke)
 	if c.UI != nil {
 		mux.Handle("/", c.UI)
 	}
@@ -319,8 +334,21 @@ type State struct {
 	// Bind is which bind mode is in force and what it selected. Settings reads
 	// it to show the third choice, to name the address that choice would take,
 	// and to say when the mode is on and not running.
-	Bind     BindState `json:"bind"`
-	Hostname string    `json:"hostname"`
+	Bind BindState `json:"bind"`
+	// Clients is every chat client paired with this server, in fingerprint
+	// order, with this run's sightings folded in. The Clients pane is drawn
+	// from here rather than from the settings form, which is never served
+	// them (see redactConfig).
+	Clients []PairedClient `json:"clients"`
+	// ServerFingerprint is the pin of this server's own key, shown on the
+	// Clients pane so it can be compared with what a client shows. That
+	// comparison is the only check there is on a pairing nobody approved.
+	// Empty when this server has no TLS listener.
+	ServerFingerprint string `json:"server_fingerprint,omitempty"`
+	// TLSPort is the port paired clients speak to, or zero when there is no
+	// TLS listener.
+	TLSPort  int    `json:"tls_port,omitempty"`
+	Hostname string `json:"hostname"`
 	// Version is the build this server is, as the binary reports it about
 	// itself. It is what makes `gropius update`'s report truthful: the version
 	// just installed and the version still being served are two facts, and
@@ -444,6 +472,11 @@ func (c *Control) snapshot() State {
 		Version:    c.Version,
 		IdleJobs:   c.App.SelfTest.Status(),
 		ProbeQueue: c.App.Probe.Queued(),
+		Clients:    pairedClients(cfg, c.Clients),
+	}
+	if c.Identity != nil {
+		st.ServerFingerprint = c.Identity.Fingerprint()
+		st.TLSPort = cfg.EffectiveTLSPort()
 	}
 	st.Bind.Port = c.App.BindPort()
 	st.Bind.Advertising = c.App.Advertising()
@@ -771,6 +804,14 @@ func redactConfig(c config.Config) config.Config {
 	if c.HFToken != "" {
 		c.HFToken = "********"
 	}
+	// The paired set is not served to the settings form at all, and that is
+	// not redaction — a fingerprint is a hash of a public key and has nothing
+	// in it to keep. It is that a COLLECTION cannot round-trip through the
+	// placeholder a string uses: the form would be served rows, post them back,
+	// and every pairing would be destroyed or replaced by a matchable
+	// "********". The Clients pane reads them from the state snapshot instead,
+	// where they are shown in full, and revoking is a route of its own.
+	c.Clients = nil
 	// The chat rule is resolved rather than reported raw. The panel serves the
 	// stored settings into its form and the form posts them back, so an unset
 	// rule — the state of every install until someone saves — would reach the
@@ -1466,6 +1507,13 @@ func (c *Control) applySettings(raw []byte) (map[string]any, error) {
 	}
 	// The UI is served the redacted placeholder; echoing it back must not
 	// overwrite the real secret with literal asterisks.
+	// The paired set is never the settings form's to write, whatever the body
+	// says. The control plane is loopback-only and asks for no credential, so a
+	// settings body that could reach this map would let any other account on
+	// this Mac pair itself — with a pairing time of its choosing — and undo
+	// every revocation the operator had made. Pairing and revoking are routes
+	// of their own, which take this same lock.
+	incoming.Clients = current.Clone().Clients
 	if incoming.APIKey == redacted {
 		incoming.APIKey = current.APIKey
 	}
@@ -1489,6 +1537,11 @@ func (c *Control) applySettings(raw []byte) (map[string]any, error) {
 	// advertise:false was told "saved" while the advert went on answering the
 	// network, with nothing saying the stored value had not reached anything.
 	restart := incoming.Port != current.Port ||
+		// The TLS listeners are acquired once, at launch, from the
+		// configuration as it was then. A saved port that changes nothing
+		// until the next start and does not say so is the silence
+		// iss-2609091751184914 recorded for advertise.
+		incoming.TLSPort != current.TLSPort ||
 		incoming.Host != current.Host ||
 		incoming.BindMode != current.BindMode ||
 		incoming.Advertise != current.Advertise ||

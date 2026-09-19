@@ -89,7 +89,25 @@ type Advertiser struct {
 	// that trusts the hint sends no token to a now-protected server (401) or keeps
 	// sending a stale one.
 	AuthRequired func() bool
-	Log          *slog.Logger
+	// Fingerprint is the pin of this server's own key, published so a client
+	// can tell which server it is looking at and notice a key that changed.
+	//
+	// It is NOT what a client pins, and the difference matters: mDNS is
+	// unauthenticated multicast, so anything on the link can answer with a
+	// record of its own and a pin taken from one pins whatever the loudest
+	// answer said. What a client pins is the certificate presented at a TLS
+	// handshake it made itself; this value is for display and for comparison
+	// (adr-2609182357322050, decision 2).
+	//
+	// A callback, like AuthRequired, and for the same reason: a stale value is
+	// one a client compares against and refuses. Empty, or nil, means this
+	// server has no TLS listener and the key is left out of the record
+	// entirely rather than advertised as nothing.
+	Fingerprint func() string
+	// TLSPort is the port paired clients speak to. Zero, or nil, means there is
+	// none and the key is left out.
+	TLSPort func() int
+	Log     *slog.Logger
 
 	// announce registers the service. nil means the real dnssd path; tests
 	// substitute a fake so the lifecycle can be driven without a socket.
@@ -117,13 +135,23 @@ func (a *Advertiser) txtRecord() map[string]string {
 	if a.Models != nil {
 		models = a.Models()
 	}
-	return map[string]string{
+	txt := map[string]string{
 		"txtvers": "1",
 		"api":     "openai",
 		"path":    "/v1",
 		"auth":    auth,
 		"models":  strconv.Itoa(models),
 	}
+	// Both or neither: a fingerprint with no port is a key nothing can be
+	// reached on, and a port with no fingerprint is an invitation to connect to
+	// a server a client cannot recognise afterwards.
+	if a.Fingerprint != nil && a.TLSPort != nil {
+		if fp, port := a.Fingerprint(), a.TLSPort(); fp != "" && port > 0 {
+			txt["spki"] = fp
+			txt["tlsport"] = strconv.Itoa(port)
+		}
+	}
+	return txt
 }
 
 // Start begins advertising. It returns immediately; the responder runs in the
