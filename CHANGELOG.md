@@ -60,7 +60,10 @@ GitHub release notes.
 - **The chat client's messages name the device you are holding.** The
   built-in model's error sentences spelled the Mac out whatever they were
   running on, so the iPad build named a device that was not there; they now
-  use the same device noun as the rest of the client.
+  use the same device noun as the rest of the client, as does the model
+  picker's filter help — the promise that the device's own model is always
+  offered. The server's address help still says Mac, because the machine at
+  that address is one.
 
 ## [0.7.1] - 2026-09-18
 

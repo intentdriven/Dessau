@@ -1629,7 +1629,7 @@ struct SettingsView: View {
             Section("Models to offer") {
                 TextField("Pipeline tags", text: $model.chatPipelineTags, prompt: Text("text-generation, image-text-to-text"))
                 TextField("Required tags", text: $model.chatRequiredTags, prompt: Text("conversational"))
-                Text("The picker offers a server's models carrying these HuggingFace words — a pipeline tag from the first list, and every tag in the second. Every model stays reachable over the API by name. Clear a field to stop testing it. The Mac's own model is always offered.")
+                Text("The picker offers a server's models carrying these HuggingFace words — a pipeline tag from the first list, and every tag in the second. Every model stays reachable over the API by name. Clear a field to stop testing it. The \(BuiltInBackend.deviceNoun)'s own model is always offered.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Appearance") {
