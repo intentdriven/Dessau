@@ -237,10 +237,16 @@ function renderSetup() {
 // the save with an error the operator has to decode.
 //
 // Blank means the default, which is what the server reads it as, so the
-// comparison is on the resolved figures.
-function graceWaitHint(graceValue, maxWaitValue) {
-  const grace = parseInt(graceValue, 10) || 120;
-  const maxWait = parseInt(maxWaitValue, 10) || 300;
+// comparison is on the resolved figures — and the defaults are the server's
+// own, off the snapshot, rather than two Go constants copied into this file.
+// A panel that has not been told them says nothing: a rule stated in figures
+// the panel made up is worse than no hint at all. internal/ui/grace_test.go
+// holds what this returns to config.validateGrace over the same pair.
+function graceWaitHint(graceValue, maxWaitValue, defaults) {
+  const d = defaults || {};
+  const grace = parseInt(graceValue, 10) || d.eviction_grace_sec || 0;
+  const maxWait = parseInt(maxWaitValue, 10) || d.eviction_max_wait_sec || 0;
+  if (!grace || !maxWait) return '';
   if (maxWait >= grace) return '';
   return `A maximum wait of ${maxWait} s is shorter than the ${grace} s protection, `
     + 'which would refuse a waiting request before its own wait could override that '
@@ -248,7 +254,8 @@ function graceWaitHint(graceValue, maxWaitValue) {
 }
 
 function updateGraceHint() {
-  const hint = graceWaitHint($('setGraceSec').value, $('setGraceWait').value);
+  const hint = graceWaitHint($('setGraceSec').value, $('setGraceWait').value,
+    state && state.defaults);
   $('graceHint').textContent = hint;
   $('graceHint').hidden = hint === '';
 }
@@ -1214,7 +1221,11 @@ function budgetHint(machine) {
     parts.push(`The models in memory use ${size(resident)} of it.`);
   }
   if (m.warn_above && budget > m.warn_above) {
-    parts.push('macOS and everything else running share this memory, and a model\'s charge is worked out from its configuration rather than measured on this Mac.');
+    // The second half is the server's own sentence, unescaped and unsplit so
+    // that internal/ui/budget_test.go can hold it to app.BudgetChargeNote —
+    // the server says the same thing when such a budget is saved.
+    parts.push('macOS and everything else running share this memory, and '
+      + "a model's charge is worked out from its configuration rather than measured on this Mac.");
   }
   return parts.join(' ');
 }
