@@ -34,6 +34,16 @@ GitHub release notes.
   replaces rather than follows a symbolic link at the bundle's own name, never
   nests inside a bundle that is already there, and keeps the installed copy
   until the new one is in place.
+- **The installer refuses a release archive that carries a symbolic link.**
+  `install.sh` unpacks the archive it has verified and then executes a binary
+  four path components deep inside it — once for the server, and again for the
+  placer the client half runs. It tested only the last of those four components
+  for a symbolic link, and `ditto` restores a link at any of them, so a link at
+  the bundle, at `Contents` or at `MacOS` would send that execution outside the
+  directory the checksum covers. Both halves now scan the whole unpacked tree
+  before anything is read or run, and refuse the archive over a symbolic link
+  anywhere in it: the bundles this project publishes carry none.
+
 ### Added
 
 - **A chat client pairs with the server once, and from then on proves itself
