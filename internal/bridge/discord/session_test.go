@@ -486,3 +486,51 @@ func TestADroppedSessionSaysSoAtOnceAndKeepsTheLastConnectedMoment(t *testing.T)
 			since, connectedAt)
 	}
 }
+
+// held is how many channels the bridge is keeping a conversation for, or -1
+// when it holds no store at all.
+func held(b *Bridge) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.convos == nil {
+		return -1
+	}
+	b.convos.mu.Lock()
+	defer b.convos.mu.Unlock()
+	return len(b.convos.byID)
+}
+
+// A bridge Discord stops carries nothing of what was said to it.
+//
+// The switch is not the only way the bridge stops: a token revoked or
+// regenerated, intents changed in the portal, or a READY too large to read
+// end the run loop for good, with the reason on the panel. The conversations
+// have to go on that path too — the goroutine is gone, no session exists, and
+// what would be left is every stranger's message text held for the life of
+// the process, with nothing the operator can do about it from Settings
+// (iss-2609190312064731).
+func TestAFatalStopForgetsEveryChannelsConversation(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, _ := recording(t, f, "an answer")
+	connected(t, f, b)
+	f.message("a stranger's message", false, false)
+	answered(t, f, b)
+	if held(b) != 1 {
+		t.Fatalf("the bridge holds %d conversations, want the one channel that was answered", held(b))
+	}
+
+	// 4004: Discord refusing the token, which is not weather.
+	f.refuse(4004)
+	if _, reason := waitState(t, b, StateStopped); reason == "" {
+		t.Fatal("the bridge stopped with no reason on the panel")
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if held(b) == -1 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Errorf("Discord stopped the bridge and it is still holding %d channels' conversations", held(b))
+}

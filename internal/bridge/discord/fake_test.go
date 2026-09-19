@@ -198,6 +198,19 @@ func (f *fakeDiscord) drop() {
 	}
 }
 
+// refuse closes the live connection with a close code, which is how Discord
+// refuses a session that is already running: a token revoked or regenerated
+// while the bridge is connected.
+func (f *fakeDiscord) refuse(code websocket.StatusCode) {
+	f.mu.Lock()
+	conn := f.conn
+	f.conn = nil
+	f.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close(code, "refused")
+	}
+}
+
 // message sends a MESSAGE_CREATE. A guild id makes it a channel message; a
 // mention makes it one for us.
 func (f *fakeDiscord) message(text string, guild bool, mentionsUs bool) {

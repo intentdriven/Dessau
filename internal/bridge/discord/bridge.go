@@ -18,7 +18,8 @@
 //
 // Nothing of a conversation is written to disk. A channel's history lives in
 // memory for as long as the bridge is running — across a dropped session and
-// the resume that follows it — and goes when the bridge stops.
+// the resume that follows it — and goes the moment it stops running, whether
+// that is the switch, the app closing, or Discord refusing the credentials.
 package discord
 
 import (
@@ -135,9 +136,10 @@ type Bridge struct {
 	// and the bridge resumes by itself; a conversation held on the session
 	// would make every one of those a silent `/reset` that also forgot the
 	// model the channel chose. The bound itd-2609180959397172 asks for is the
-	// SWITCH: the store is made when the bridge starts and dropped when it
-	// stops, so nothing of a conversation outlives the bridge being on — and
-	// nothing of it is ever written to disk either way.
+	// bridge RUNNING: its life is exactly the life of the goroutine below,
+	// which is made with it and drops it as it ends — the switch, a token
+	// change, the app closing, and Discord refusing the credentials alike.
+	// Nothing of a conversation is ever written to disk either way.
 	convos *conversations
 }
 
@@ -230,7 +232,18 @@ func (b *Bridge) Apply(on bool, token string) {
 	b.mu.Unlock()
 
 	go func() {
+		// The conversations go with this goroutine, WHICHEVER WAY IT ENDS
+		// (iss-2609190312064731): the switch, a token change, the app
+		// closing, or Discord refusing the credentials and stopping the loop
+		// for good. The fatal path returns without ever reaching stopLocked,
+		// so a store dropped there alone outlived the bridge on exactly the
+		// stop an operator cannot undo from Settings.
+		//
+		// Registered BEFORE the close, so it runs after it: whoever is
+		// waiting on done goes on to build the next store, and this must not
+		// be able to drop that one.
 		defer close(done)
+		defer b.dropConversations()
 		b.run(ctx, token)
 	}()
 }
@@ -254,10 +267,6 @@ func (b *Bridge) Close() error {
 func (b *Bridge) stopLocked() {
 	cancel, done := b.cancel, b.done
 	b.cancel, b.done = nil, nil
-	// The conversations go with the session's goroutine: this is the one
-	// place the bridge stops, so it is the one place the promise that a
-	// conversation does not outlive the bridge is kept.
-	b.convos = nil
 	if cancel == nil {
 		return
 	}
@@ -280,6 +289,15 @@ func (b *Bridge) State() (state string, since time.Time, reason string) {
 	return b.state, b.since, b.reason
 }
 
+// dropConversations forgets every channel's conversation. It runs as the
+// bridge's goroutine ends, which is the one moment that covers every way the
+// bridge stops running.
+func (b *Bridge) dropConversations() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.convos = nil
+}
+
 // conversations is the store this bridge's sessions share. A session asks for
 // it once, at the moment it is built, and holds the pointer for as long as it
 // runs; the store itself outlives every one of them and goes when the bridge
@@ -288,10 +306,18 @@ func (b *Bridge) conversations() *conversations {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.convos == nil {
-		// Only reachable by a session being built as the bridge is stopping.
-		// It is given a store of its own, which is thrown away with it: a
-		// stopped bridge holds no conversation, and a message already in
-		// flight is answered without a history rather than on a nil map.
+		// Unreachable as the code stands: the store is made before the
+		// goroutine that opens a session, and dropped only as that goroutine
+		// ends. It SAYS SO rather than absorbing it in silence
+		// (iss-2609190312312041), because a later change that dropped the
+		// store under a live session would otherwise leave that session
+		// writing a history nobody owns, with nothing in the log and no test
+		// the wiser. The session is given a store of its own and thrown away
+		// with it, which is the safe direction: a stopped bridge holds no
+		// conversation, and a message in flight is answered without a history
+		// rather than on a nil map.
+		b.log.Info("the Discord bridge answered without a conversation store; this is a bug in its lifetime",
+			"bridge", bridgeName)
 		return newConversations()
 	}
 	return b.convos
