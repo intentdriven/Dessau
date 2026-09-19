@@ -49,6 +49,16 @@ GitHub release notes.
   given way, and the same mistake cut short the concurrent test of a run that
   got past the load. The loop now claims its place before it asks for it, so a
   measurement gives way to a real request and to nothing else.
+- **The chat client's bubble colours follow the appearance.** The model's
+  bubble defaulted to a grey that is the same in Light and in Dark, and a
+  colour chosen in Settings was drawn as the one value it was stored as, so a
+  bubble that read in the appearance it was picked in could be lost in the
+  other. The defaults are now the system's own — your accent colour and the
+  system's secondary fill — which follow Light and Dark by themselves; a
+  picked colour keeps its hue and its saturation and is drawn a shade apart
+  from the window it sits on when it would otherwise be lost in it; and the
+  message on a bubble is the system's label colour, read in the appearance
+  the bubble it sits on reads as, rather than a fixed white.
 
 ## [0.7.1] - 2026-09-18
 

@@ -60,7 +60,8 @@ func TestChatClientThoughtsToggleOnAClickAnywhere(t *testing.T) {
 
 // TestChatClientDrawsMessagesAsBubbles holds the transcript's bubbles
 // (iss-2609181055156852): the person's in the system's accent colour and the
-// model's in grey by default, both changeable in Settings. The bubble is the
+// model's in the system's secondary fill by default, both changeable in
+// Settings. The bubble is the
 // no-styling rule's second named exception, kept in its own file so the
 // exception is one file wide.
 func TestChatClientDrawsMessagesAsBubbles(t *testing.T) {
@@ -70,7 +71,7 @@ func TestChatClientDrawsMessagesAsBubbles(t *testing.T) {
 	if !ok {
 		t.Fatal("client/GropiusChat/Bubbles.swift is missing; the transcript's bubbles have no home")
 	}
-	for _, want := range []string{`Color.accentColor`, `Color.gray`, `@AppStorage("bubbleColorUser")`, `@AppStorage("bubbleColorModel")`} {
+	for _, want := range []string{`Color.accentColor`, `Color.secondary`, `@AppStorage("bubbleColorUser")`, `@AppStorage("bubbleColorModel")`} {
 		if !strings.Contains(bubbles, want) {
 			t.Errorf("client/GropiusChat/Bubbles.swift does not carry %s", want)
 		}

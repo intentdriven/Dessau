@@ -63,7 +63,12 @@ Apple Silicon `dist/GropiusChat.app`.
 
 Settings also offers the appearance (Light, Dark or System), the text size
 — five steps, the system's own, and the whole window follows — and the
-colour of each speaker's bubble.
+colour of each speaker's bubble. The bubbles start in colours the system
+supplies — your accent colour for your messages, the system's secondary fill
+for the model's — which follow Light and Dark by themselves. A colour you pick
+is kept as you picked it and drawn so that it stays apart from the window in
+either appearance, with the message on it in whichever of the system's label
+colours reads on that bubble.
 
 Replies render their markdown — emphasis, code, lists, headings, block quotes,
 code blocks, links — and a reply's context menu offers **Copy**, which copies
