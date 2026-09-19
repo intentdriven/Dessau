@@ -5,11 +5,11 @@ go 1.25.6
 require (
 	fyne.io/systray v1.12.2
 	github.com/brutella/dnssd v1.2.14
+	github.com/coder/websocket v1.8.15
 	golang.org/x/sys v0.21.0
 )
 
 require (
-	github.com/coder/websocket v1.8.15 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/miekg/dns v1.1.61 // indirect
 	github.com/vishvananda/netlink v1.2.1-beta.2 // indirect

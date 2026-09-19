@@ -77,12 +77,13 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 	}
 	if msg != "" {
 		obs.failed(stats.ClassClientError)
-		// This one is not about the Mac: it says the conversation is too long
-		// for the window, which is the one refusal the person on the other end
-		// can act on. It still travels as the generic text, because relaying
-		// it would relay "raise this model's served context in Settings" — an
-		// instruction to the operator — to a stranger.
-		return &AskError{detail: msg, public: genericRefusal}
+		// The one refusal whoever asked can act on, so it travels as a
+		// sentence of this package's own rather than as the generic text
+		// (iss-2609190106563320). Not the operator's text, which says to
+		// raise this model's served context in Settings — that is an
+		// instruction to the operator, and the person on the other end is a
+		// stranger who cannot follow it and should not be told to.
+		return &AskError{detail: msg, class: "too_large", public: tooLongRefusal}
 	}
 
 	up, release, err := g.pool.Acquire(ctx, model)
@@ -96,7 +97,30 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 		if errors.As(err, &noRoom) {
 			obs.waited(runtime.AcquireStats{QueueWait: noRoom.Waited})
 		}
-		return &AskError{detail: err.Error(), public: genericRefusal}
+		// The pool's own text is not handed back, and that is the same rule
+		// handleCompletions follows for an unentitled client
+		// (iss-2609190106273104). A LaunchError's text is the child process's
+		// verbatim and carries absolute local paths under the serving
+		// account's home directory; the other refusals name the resident
+		// memory budget in bytes, which says roughly how much memory this Mac
+		// has. The caller of Ask is relaying to somebody else's platform, so
+		// what it gets is the CLASS — a fixed word — and the operator keeps
+		// the text, here, at the level they asked for it at and no more often
+		// than they would have got it over HTTP.
+		var launchErr *runtime.LaunchError
+		if errors.As(err, &launchErr) {
+			g.log.Error("model launch failed", "model", model)
+			g.log.Debug("model launch failed", "model", model, "err", err)
+			return &AskError{detail: "the model could not be started", class: refusalClass(err), public: genericRefusal}
+		}
+		if g.refusalLog.allow(model) {
+			class := refusalClass(err)
+			g.log.Info("refused an in-process request, and told the caller only that it could not be served",
+				"model", model, "class", class)
+			g.log.Debug("refused an in-process request, and told the caller only that it could not be served",
+				"model", model, "class", class, "err", err)
+		}
+		return &AskError{detail: "this model cannot be served right now", class: refusalClass(err), public: genericRefusal}
 	}
 	defer release()
 	obs.waited(up.Waits)
@@ -179,6 +203,11 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 	return nil
 }
 
+// tooLongRefusal is what whoever asked is told when the conversation is
+// larger than the window this model is served at. It names no figure: the
+// window is a setting on this Mac.
+const tooLongRefusal = "that conversation is too long for this model"
+
 // AskRequest is one completion asked for inside this process.
 type AskRequest struct {
 	// Model is the name to serve, resolved exactly as a network client's is:
@@ -210,9 +239,24 @@ type AskRequest struct {
 type AskError struct {
 	detail string
 	public string
+	class  string
 }
 
 func (e *AskError) Error() string { return e.detail }
+
+// Class is a fixed word naming what kind of refusal this was, for a caller
+// that wants to record one without recording the text.
+//
+// It exists because the text of a refusal is not a caller's to repeat — not to
+// a platform, and not into a log line a stranger can cause at the rate they can
+// send messages (iss-2609190106273104). A class is a closed set of this
+// package's own words, so it is bounded and it says nothing about this Mac.
+func (e *AskError) Class() string {
+	if e.class == "" {
+		return "refused"
+	}
+	return e.class
+}
 
 // Public is what may be relayed off this Mac.
 func (e *AskError) Public() string {

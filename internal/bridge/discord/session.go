@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"net"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,9 +51,17 @@ const intents = 1<<9 | 1<<12
 // servers and the frames arrive before anything of this package looks at them,
 // so the ceiling is the library's rather than this code's to enforce: without
 // it a hostile or broken peer can make the process allocate without bound.
-// A READY payload for a bot in many guilds is the largest legitimate message
-// and is comfortably inside a megabyte.
-const readLimit = 1 << 20
+// A READY payload is the largest legitimate message, and for a bot in many
+// guilds a megabyte is not enough for it — so the limit is four, and Identify
+// asks for a small large_threshold besides, which is what bounds what READY
+// carries. Exceeding it closes the connection, and that is not weather: see
+// the fatal case in outcome (iss-2609190106555510).
+const readLimit = 4 << 20
+
+// largeThreshold is how many members a guild must have before Discord leaves
+// its offline members out of READY. Discord's own minimum, and the smallest
+// READY it will send.
+const largeThreshold = 50
 
 // resumeState is what a dropped session needs to be picked up again rather
 // than started afresh: Discord's own id for it, the URL it said to resume at,
@@ -67,6 +77,16 @@ type resumeState struct {
 	sessionID string
 	resumeURL string
 	seq       int64
+	// botID and appID are who Discord said we are. They arrive in READY and
+	// NOT in RESUMED, so they have to outlive the connection that learned
+	// them: without that, the first resume left the bot's own id empty, every
+	// mention check answered false, and the bridge went on answering direct
+	// messages while silently ignoring every mention in every channel — with
+	// nothing in the log and the panel reading connected
+	// (iss-2609190106402401). A resume is the ordinary path after a Wi-Fi
+	// blip or a lid close, so that was the steady state rather than an edge.
+	botID string
+	appID string
 }
 
 func (r *resumeState) canResume() bool { return r.sessionID != "" && r.resumeURL != "" }
@@ -88,10 +108,29 @@ func (r *resumeState) sequence() int64 {
 // clear forgets the session, so the next attempt identifies afresh. It is a
 // method rather than an assignment of a fresh value because the mutex above
 // makes resumeState a type that is not copied.
+//
+// The identity is kept. It is a fact about the bot rather than about the
+// session, it does not change between connections under one token, and
+// keeping it means a fresh Identify that has not yet had its READY still
+// knows which mentions are its own.
 func (r *resumeState) clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.sessionID, r.resumeURL, r.seq = "", "", 0
+}
+
+// identify records who Discord said we are.
+func (r *resumeState) identify(botID, appID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.botID, r.appID = botID, appID
+}
+
+// who is the bot's own user id and its application id.
+func (r *resumeState) who() (botID, appID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.botID, r.appID
 }
 
 // sessionOutcome is how one gateway session ended.
@@ -159,12 +198,6 @@ type session struct {
 	resume *resumeState
 	rest   *rest
 	convos *conversations
-
-	// botID and appID come from READY: the first decides whether a message
-	// mentions us, the second is what application commands are registered
-	// against.
-	botID string
-	appID string
 
 	// acked is cleared when a heartbeat is sent and set when Discord
 	// acknowledges it. A heartbeat sent into an unacknowledged one means the
@@ -259,13 +292,7 @@ func (s *session) run(ctx context.Context, resuming bool) sessionOutcome {
 	if err := json.Unmarshal(hello.Data, &helloData); err != nil || helloData.HeartbeatInterval <= 0 {
 		return s.outcome(resuming, false, errors.New("the gateway's Hello carried no heartbeat interval"))
 	}
-	interval := time.Duration(helloData.HeartbeatInterval) * time.Millisecond
-	if interval > maxHeartbeatInterval {
-		// Discord's own figure is about 41 seconds. A peer naming an hour
-		// would have the bridge sit silent until Discord dropped it, so the
-		// figure is believed only within a range.
-		interval = maxHeartbeatInterval
-	}
+	interval := heartbeatInterval(helloData.HeartbeatInterval)
 
 	if resuming {
 		err = s.send(ctx, opResume, map[string]any{
@@ -273,8 +300,9 @@ func (s *session) run(ctx context.Context, resuming bool) sessionOutcome {
 		})
 	} else {
 		err = s.send(ctx, opIdentify, map[string]any{
-			"token":   s.token,
-			"intents": intents,
+			"token":           s.token,
+			"intents":         intents,
+			"large_threshold": largeThreshold,
 			"properties": map[string]string{
 				"os": "macOS", "browser": "Gropius", "device": "Gropius",
 			},
@@ -293,8 +321,33 @@ func (s *session) run(ctx context.Context, resuming bool) sessionOutcome {
 	return s.readLoop(ctx, resuming)
 }
 
-// maxHeartbeatInterval bounds the figure Hello names; see its use above.
-const maxHeartbeatInterval = 5 * time.Minute
+// The range the figure in Hello is believed within. Discord's own is about 41
+// seconds.
+const (
+	minHeartbeatIntervalMS = 1_000
+	maxHeartbeatIntervalMS = 5 * 60 * 1_000
+)
+
+// heartbeatInterval turns the milliseconds Hello named into the interval the
+// bridge beats on, bounded at both ends.
+//
+// BOUNDED AS THE INTEGER IT ARRIVES AS, before it becomes a duration
+// (iss-2609190105084881). The figure comes off the network, and multiplying a
+// large one by time.Millisecond overflows int64 nanoseconds into a NEGATIVE
+// duration — which a ceiling check alone waves through, and which then
+// reaches the jitter's Int64N and panics, taking the process down from a
+// goroutine the operator never started. The floor is the other half: a Hello
+// naming one millisecond passes every check and has the heartbeat goroutine
+// spin on the connection.
+func heartbeatInterval(ms int64) time.Duration {
+	switch {
+	case ms < minHeartbeatIntervalMS:
+		ms = minHeartbeatIntervalMS
+	case ms > maxHeartbeatIntervalMS:
+		ms = maxHeartbeatIntervalMS
+	}
+	return time.Duration(ms) * time.Millisecond
+}
 
 func (s *session) readLoop(ctx context.Context, resuming bool) sessionOutcome {
 	connected := false
@@ -351,14 +404,14 @@ func (s *session) dispatch(ctx context.Context, f frame) bool {
 		if json.Unmarshal(f.Data, &ready) != nil {
 			return false
 		}
-		s.botID, s.appID = ready.User.ID, ready.Application.ID
+		s.resume.identify(ready.User.ID, ready.Application.ID)
 		s.resume.sessionID = ready.SessionID
 		s.resume.resumeURL = resumeURL(ready.ResumeGatewayURL, s.bridge.opts.GatewayURL)
 		s.bridge.setState(StateConnected, "")
 		s.bridge.log.Info("the Discord bridge connected", "bridge", bridgeName)
 		// Registered once per start, as the spec has it: a bulk overwrite is
 		// idempotent, so a restart replaces the pair rather than adding to it.
-		if s.appID != "" {
+		if _, appID := s.resume.who(); appID != "" {
 			s.submit(func() { s.registerCommands(ctx) })
 		}
 		return true
@@ -388,16 +441,53 @@ func (s *session) dispatch(ctx context.Context, f frame) bool {
 // configured, and is already no more plaintext than what they asked for.
 // Anything else is discarded and the next attempt identifies afresh.
 func resumeURL(raw, base string) string {
+	got, err := url.Parse(raw)
+	if err != nil || got.Host == "" {
+		return ""
+	}
+	want, err := url.Parse(base)
+	if err != nil {
+		return ""
+	}
 	switch {
-	case strings.HasPrefix(raw, "wss://"):
-	case strings.HasPrefix(raw, "ws://") && strings.HasPrefix(base, "ws://"):
+	case got.Scheme == "wss":
+	case got.Scheme == "ws" && want.Scheme == "ws":
 	default:
 		return ""
 	}
-	if strings.Contains(raw, "?") {
+	// AND IT MAY NOT NAME ANOTHER HOST. This is the one field in the protocol
+	// that redirects the credential: the next attempt dials what it names and
+	// sends a Resume carrying the bot token (iss-2609190106410918). The peer
+	// that would have to supply it is the gateway this bridge verified on the
+	// way in, which makes this hardening rather than a hole — and it costs a
+	// comparison.
+	if !sameHost(got.Host, want.Host) {
+		return ""
+	}
+	if got.RawQuery != "" {
 		return raw
 	}
 	return raw + "/?v=10&encoding=json"
+}
+
+// sameHost reports whether a resume may go to this host: the one the bridge
+// was pointed at, or a host under Discord's own domains — which is what
+// Discord's own resume URLs name, and what the default gateway is a host of.
+func sameHost(got, want string) bool {
+	if strings.EqualFold(got, want) {
+		return true
+	}
+	name := got
+	if h, _, err := net.SplitHostPort(got); err == nil {
+		name = h
+	}
+	name = strings.ToLower(strings.TrimSuffix(name, "."))
+	for _, domain := range []string{"discord.gg", "discord.com", "discordapp.com"} {
+		if name == domain || strings.HasSuffix(name, "."+domain) {
+			return true
+		}
+	}
+	return false
 }
 
 // outcome names how a session ended, reading the WebSocket close code for the
@@ -418,6 +508,12 @@ func (s *session) outcome(resumable, connected bool, err error) sessionOutcome {
 		return sessionOutcome{fatal: "Discord refused the intents this bridge asks for — check the bot's settings in Discord's developer portal"}
 	case 4010, 4011, 4012, 4013:
 		return sessionOutcome{fatal: fmt.Sprintf("Discord refused the connection (close code %d)", websocket.CloseStatus(err))}
+	case websocket.StatusMessageTooBig:
+		// Retrying cannot help: the next READY is the same size and the limit
+		// is this build's. It stops, with something on the panel, rather than
+		// reconnecting forever with one Debug line to show for it
+		// (iss-2609190106555510).
+		return sessionOutcome{fatal: "Discord sent more than this bridge will read in one message — the bot is in too many servers for this build"}
 	case 4007, 4009:
 		// The sequence or the session is stale: reconnect, but afresh.
 		return sessionOutcome{resumable: false, connected: connected, err: err}

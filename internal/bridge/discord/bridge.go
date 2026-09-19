@@ -25,6 +25,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -169,6 +170,12 @@ func New(opts Options) *Bridge {
 // bridge changes. A save that did not touch either setting is a no-op, which
 // is what keeps an unrelated save from dropping a live session.
 func (b *Bridge) Apply(on bool, token string) {
+	// Trimmed on the way in (iss-2609190106563320). A token copied from a
+	// browser or a terminal usually carries a trailing newline, and Discord
+	// refuses it with 4004 — which puts "paste a fresh one" on the panel,
+	// advice that fails again for the same invisible reason. A bot token has
+	// no leading or trailing space in it, so there is nothing to lose.
+	token = strings.TrimSpace(token)
 	b.applyMu.Lock()
 	defer b.applyMu.Unlock()
 	b.mu.Lock()

@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/Gropius/internal/config"
 	"github.com/intentdriven/Gropius/internal/mlxtest"
 	"github.com/intentdriven/Gropius/internal/registry"
+	"github.com/intentdriven/Gropius/internal/runtime"
 	"github.com/intentdriven/Gropius/internal/stats"
 )
 
@@ -183,8 +185,19 @@ func TestAskRefusesAConversationOverTheServedWindow(t *testing.T) {
 		t.Fatal("a conversation far over the window was served")
 	}
 	var askErr *AskError
-	if !errors.As(err, &askErr) || askErr.Public() != genericRefusal {
-		t.Errorf("the refusal that travels is %v", err)
+	if !errors.As(err, &askErr) {
+		t.Fatalf("Ask returned %T", err)
+	}
+	// The one refusal whoever asked can act on travels as a sentence of its
+	// own — and still names no figure, because the window is a setting on
+	// this Mac (iss-2609190106563320).
+	if askErr.Public() != tooLongRefusal {
+		t.Errorf("the text that travels is %q, want the too-long sentence", askErr.Public())
+	}
+	for _, leak := range []string{"Settings", "65,536", "served context"} {
+		if strings.Contains(askErr.Public(), leak) {
+			t.Errorf("the text that travels carries %q, which describes this Mac", leak)
+		}
 	}
 	if !strings.Contains(askErr.Error(), "more than the") {
 		t.Errorf("the operator's text is %q, want the size refusal", askErr.Error())
@@ -222,4 +235,65 @@ func payload2text(payload []byte) string {
 		return ""
 	}
 	return ev.Choices[0].Delta.Content
+}
+
+// A pool refusal's text is the operator's and never the caller's.
+//
+// The texts name the resident memory budget in bytes, and a LaunchError's is
+// the child process's verbatim with absolute local paths in it. An in-process
+// caller is relaying to somebody else's platform and can drive a refusal at
+// the rate it can be sent messages, so it is handed a fixed class and the
+// operator keeps the text — the same rule handleCompletions follows for an
+// unentitled network client (iss-2609190106273104).
+func TestAskHandsBackAClassAndKeepsThePoolsTextForTheOperator(t *testing.T) {
+	const modelPath = "/models/" + testModelID
+	models := &stubModels{models: []registry.Model{{
+		RepoID: testModelID, Path: modelPath, State: registry.StateReady, ContextLength: 131072,
+	}}}
+	rec := stats.New(stats.Options{})
+	rec.SetEnabled(true)
+	cfg := config.Default()
+	cfg.Statistics = true
+
+	var logged strings.Builder
+	g := New(Options{
+		Config: cfg,
+		Pool: &refusingPool{err: &runtime.LaunchError{
+			Err: errors.New("/Users/someone/Library/Application Support/Gropius/venv/bin/python: no such file"),
+		}},
+		Models: models,
+		Stats:  rec,
+		Log:    slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	})
+
+	err := g.Ask(context.Background(), AskRequest{
+		Model: testModelID, Body: askBody(t, "hi"), Source: stats.SourceBridge,
+	})
+	var askErr *AskError
+	if !errors.As(err, &askErr) {
+		t.Fatalf("Ask returned %T", err)
+	}
+	if strings.Contains(askErr.Error(), "/Users/") {
+		t.Errorf("the caller was handed a local filesystem path: %q", askErr.Error())
+	}
+	if askErr.Public() != genericRefusal {
+		t.Errorf("the text that travels is %q", askErr.Public())
+	}
+	if askErr.Class() == "" {
+		t.Error("the caller was given no class to record the refusal by")
+	}
+	// And the operator keeps what the caller no longer gets.
+	if !strings.Contains(logged.String(), "/Users/") {
+		t.Errorf("the operator's log does not carry the reason:\n%s", logged.String())
+	}
+}
+
+// refusingPool is a pool that refuses every acquisition with one error.
+type refusingPool struct {
+	stubPool
+	err error
+}
+
+func (p *refusingPool) Acquire(ctx context.Context, repoID string) (*runtime.Upstream, func(), error) {
+	return nil, nil, p.err
 }

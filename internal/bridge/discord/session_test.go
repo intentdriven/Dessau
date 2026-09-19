@@ -3,6 +3,7 @@ package discord
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"strings"
 	"testing"
@@ -206,13 +207,127 @@ func TestAResumeMayNotDowngradeTheTransport(t *testing.T) {
 		raw, base, want string
 	}{
 		{"wss://gateway.discord.gg", "wss://gateway.discord.gg/?v=10", "wss://gateway.discord.gg/?v=10&encoding=json"},
+		// Discord's own resume URLs are hosts under its domains.
+		{"wss://gateway-us-east1-b.discord.gg", "wss://gateway.discord.gg/?v=10", "wss://gateway-us-east1-b.discord.gg/?v=10&encoding=json"},
+		// A downgrade, refused.
 		{"ws://attacker.example", "wss://gateway.discord.gg/?v=10", ""},
 		{"http://attacker.example", "wss://gateway.discord.gg/?v=10", ""},
 		{"", "wss://gateway.discord.gg/?v=10", ""},
+		// And a redirection, which is the one field that moves the credential
+		// (iss-2609190106410918).
+		{"wss://attacker.example", "wss://gateway.discord.gg/?v=10", ""},
+		{"wss://discord.gg.attacker.example", "wss://gateway.discord.gg/?v=10", ""},
+		{"wss://attacker.example/?host=discord.gg", "wss://gateway.discord.gg/?v=10", ""},
+		// The configured host itself is always allowed, which is what a test
+		// or a local proxy relies on.
 		{"ws://127.0.0.1:1", "ws://127.0.0.1:1/?v=10", "ws://127.0.0.1:1/?v=10&encoding=json"},
+		{"ws://127.0.0.1:2", "ws://127.0.0.1:1/?v=10", ""},
 	} {
 		if got := resumeURL(tc.raw, tc.base); got != tc.want {
 			t.Errorf("resumeURL(%q, %q) = %q, want %q", tc.raw, tc.base, got, tc.want)
 		}
+	}
+}
+
+// The heartbeat interval named in Hello arrives over the network, and it is
+// bounded as the integer it arrives as.
+//
+// A figure large enough to overflow int64 nanoseconds becomes a NEGATIVE
+// duration, which a ceiling check alone waves through and which then panics
+// in the jitter's Int64N — one crafted frame taking the whole process down
+// (iss-2609190105084881). A figure of one millisecond is the other half: it
+// passes every check and spins the heartbeat goroutine.
+func TestTheHeartbeatIntervalIsBoundedAtBothEnds(t *testing.T) {
+	for _, ms := range []int64{
+		math.MaxInt64, math.MaxInt64 / 1000, 1 << 40, 1e13,
+		-1, 0, 1, 40, 45_000, 1 << 62,
+	} {
+		got := heartbeatInterval(ms)
+		if got < minHeartbeatIntervalMS*time.Millisecond {
+			t.Errorf("heartbeatInterval(%d) = %s, which is under the floor — a figure off the "+
+				"network became one this process would spin or panic on", ms, got)
+		}
+		if got > maxHeartbeatIntervalMS*time.Millisecond {
+			t.Errorf("heartbeatInterval(%d) = %s, which is over the ceiling", ms, got)
+		}
+	}
+	if got := heartbeatInterval(45_000); got != 45*time.Second {
+		t.Errorf("a figure inside the range came out as %s", got)
+	}
+}
+
+// And the whole way through: a gateway whose Hello names an overflowing
+// interval is survived rather than crashed on.
+func TestAHostileHelloDoesNotTakeTheProcessDown(t *testing.T) {
+	f := newFakeDiscord(t)
+	f.heartbeatMS = math.MaxInt64
+	b := answering(t, f)
+	b.Apply(true, "a-token")
+	f.waitFrame(opIdentify)
+	waitState(t, b, StateConnected)
+}
+
+// A mention is still answered after the session has resumed.
+//
+// Discord sends READY on an Identify and RESUMED on a resume, and only READY
+// carries the bot's own user id — so an identity held on the connection is
+// lost the first time a Wi-Fi blip or a lid close makes the bridge resume,
+// and every mention check answers false from then on. The bridge goes on
+// answering direct messages and silently ignores every mention in every
+// channel, with nothing in the log and the panel reading connected
+// (iss-2609190106402401).
+func TestAMentionIsStillAnsweredAfterAResume(t *testing.T) {
+	f := newFakeDiscord(t)
+	b := answering(t, f, "an answer")
+	b.Apply(true, "a-token")
+	f.waitFrame(opIdentify)
+	waitState(t, b, StateConnected)
+	f.waitCall(http.MethodPut, "/commands")
+	f.drainCalls()
+
+	// Answered before the drop.
+	f.message("what do you think", true, true)
+	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+
+	f.drop()
+	f.waitFrame(opResume)
+	waitState(t, b, StateConnected)
+	f.drainCalls()
+
+	// And after it. This is the assertion the bug was hiding behind: the
+	// direct-message path never needed the id, so the suite was green.
+	f.message("and now", true, true)
+	call := f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+	if got, _ := call.Body["content"].(string); got != "an answer" {
+		t.Errorf("after a resume a mention was answered with %q", got)
+	}
+}
+
+// A token pasted with a newline on it is the ordinary result of copying one
+// from a browser or a terminal. It is trimmed rather than sent as it stands
+// and refused with a message that will fail again for the same invisible
+// reason (iss-2609190106563320).
+func TestAPastedTokenIsTrimmed(t *testing.T) {
+	f := newFakeDiscord(t)
+	b := answering(t, f)
+	b.Apply(true, "  a-token\n")
+
+	fr := f.waitFrame(opIdentify)
+	var d struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(fr.Data, &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.Token != "a-token" {
+		t.Errorf("Identify carried %q, want the token without the whitespace around it", d.Token)
+	}
+
+	// And a token that is only whitespace is no token at all, so nothing is
+	// opened and the panel says why.
+	b2 := answering(t, newFakeDiscord(t))
+	b2.Apply(true, "   \n\t ")
+	if _, reason := waitState(t, b2, StateStopped); reason == "" {
+		t.Error("a token of nothing but whitespace produced no reason on the panel")
 	}
 }

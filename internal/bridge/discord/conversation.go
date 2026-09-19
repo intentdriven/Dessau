@@ -39,11 +39,16 @@ const (
 
 // conversation is one channel's history and the model answering it.
 //
-// The mutex serialises answering, so two messages in the same channel are
-// answered in the order they arrived rather than interleaved — which with a
-// streamed answer being edited into a placeholder is the difference between a
-// conversation and two half-written ones.
+// TWO LOCKS, AND THEY ARE NOT THE SAME ONE. `answering` says a channel has an
+// answer in flight and is held for the whole of a generation, which is
+// minutes; `mu` guards the turns and the model and is held for as long as it
+// takes to copy a slice. A slash command takes the second and never the
+// first, so `/model` and `/reset` are answered inside Discord's three seconds
+// in a channel whose answer is still being written — and they do not occupy
+// one of the two workers waiting to be (iss-2609190106414499).
 type conversation struct {
+	answering sync.Mutex
+
 	mu    sync.Mutex
 	model string
 	turns []turn

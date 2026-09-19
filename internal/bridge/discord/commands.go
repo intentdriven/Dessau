@@ -54,12 +54,13 @@ func (s *session) registerCommands(ctx context.Context) {
 	// nothing: an id of "../../channels/X" would make an authenticated call,
 	// as the bot, against an endpoint nothing here meant to reach
 	// (iss-2609190057562775).
-	if !validID(s.appID) {
+	_, appID := s.resume.who()
+	if !validID(appID) {
 		s.bridge.log.Info("the gateway named an application id that is not a number; no slash commands were registered",
 			"bridge", bridgeName)
 		return
 	}
-	if err := s.rest.overwriteCommands(ctx, s.appID, commandDefinitions()); err != nil {
+	if err := s.rest.overwriteCommands(ctx, appID, commandDefinitions()); err != nil {
 		s.bridge.log.Info("could not register the bridge's slash commands",
 			"bridge", bridgeName, "err", err)
 	}

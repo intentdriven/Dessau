@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -398,6 +400,110 @@ func TestABusyChannelDoesNotStopEveryOtherConversation(t *testing.T) {
 	call := f.waitCall(http.MethodPost, "/channels/666666666666666666/messages")
 	if got, _ := call.Body["content"].(string); got != "an answer" {
 		t.Errorf("another channel was answered with %q while one channel was busy", got)
+	}
+	close(hold)
+}
+
+// An interaction token is a fifteen-minute credential that lets its holder
+// post and edit messages as the bot, without the bot token. It is in the path
+// of one REST call, and no error or log line the bridge writes may carry it
+// (iss-2609190106273150).
+func TestAnInteractionTokenNeverReachesAnErrorOrTheLog(t *testing.T) {
+	const secretToken = "ephemeral-credential-0123456789"
+	var buf lockedBuffer
+
+	// A REST server that refuses everything, so every call produces the error
+	// that would carry the path.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	r := newREST(srv.URL, "a-bot-token", srv.Client(), log)
+	err := r.respondToInteraction(context.Background(), "800000000000000001", secretToken, "hello")
+	if err == nil {
+		t.Fatal("a refused interaction produced no error")
+	}
+	if strings.Contains(err.Error(), secretToken) {
+		t.Errorf("the error carries the interaction token: %v", err)
+	}
+	if !strings.Contains(err.Error(), "{token}") {
+		t.Errorf("the error does not name the endpoint by its template: %v", err)
+	}
+	log.Debug("could not answer a slash command", "bridge", bridgeName, "err", err)
+	if strings.Contains(buf.String(), secretToken) {
+		t.Errorf("the log carries the interaction token:\n%s", buf.String())
+	}
+	if strings.Contains(buf.String(), "a-bot-token") {
+		t.Errorf("the log carries the bot token:\n%s", buf.String())
+	}
+}
+
+// A refusal is recorded by its class and never by its text.
+//
+// The gateway's refusal texts describe this Mac, and a stranger on Discord can
+// drive a refusal at the rate they can send messages — so the text would be a
+// description of this Mac that a stranger can write into a file
+// (iss-2609190106273104).
+func TestARefusedBridgedRequestIsLoggedByClassAndNotByItsText(t *testing.T) {
+	f := newFakeDiscord(t)
+	var buf lockedBuffer
+	opts := f.options(time.Now)
+	opts.Log = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	opts.Ask = func(ctx context.Context, req gateway.AskRequest) error {
+		// What the gateway hands a caller for a pool refusal: a fixed class
+		// and a text of its own, with the describing text kept behind.
+		return errors.New("every model that fits the 25165824000-byte budget is serving")
+	}
+	b := New(opts)
+	t.Cleanup(func() { _ = b.Close() })
+	connected(t, f, b)
+
+	f.message("hello", false, false)
+	f.waitCall(http.MethodPost, "/messages")
+	time.Sleep(quiet)
+
+	written := buf.String()
+	if !strings.Contains(written, "refused a bridged request") {
+		t.Fatalf("the refusal was not recorded:\n%s", written)
+	}
+	if strings.Contains(written, "25165824000") || strings.Contains(written, "budget") {
+		t.Errorf("the log carries the gateway's own refusal text, which describes this Mac:\n%s", written)
+	}
+}
+
+// A slash command is answered inside Discord's three seconds in a channel
+// whose answer is still being written.
+//
+// Discord gives a bot three seconds to answer an interaction. An answer runs
+// for minutes, so a command that waited on the same lock would miss the
+// deadline, post into a token that had expired, and occupy one of the two
+// workers while it did (iss-2609190106414499).
+func TestASlashCommandIsAnsweredWhileTheChannelIsBusy(t *testing.T) {
+	f := newFakeDiscord(t)
+	opts := f.options(time.Now)
+	hold := make(chan struct{})
+	opts.Ask = func(ctx context.Context, req gateway.AskRequest) error {
+		<-hold
+		return nil
+	}
+	b := New(opts)
+	t.Cleanup(func() { _ = b.Close() })
+	connected(t, f, b)
+
+	f.message("a long question", false, false)
+	f.waitCall(http.MethodPost, "/typing")
+
+	started := time.Now()
+	f.command(commandReset, nil)
+	call := f.waitCall(http.MethodPost, "/interactions/")
+	if took := time.Since(started); took > 3*time.Second {
+		t.Errorf("/reset took %s in a busy channel; Discord's deadline is three seconds", took)
+	}
+	data, _ := call.Body["data"].(map[string]any)
+	if text, _ := data["content"].(string); !strings.Contains(text, "cleared") {
+		t.Errorf("/reset answered %q", text)
 	}
 	close(hold)
 }

@@ -62,35 +62,61 @@ type rateLimit struct {
 // Once, not in a loop: the caller's throttle is what keeps this from happening
 // in the first place, and a retry loop on a shared bucket is how a client gets
 // itself banned.
-func (r *rest) do(ctx context.Context, method, path string, body any, out any) (rateLimit, error) {
-	limit, status, raw, err := r.call(ctx, method, path, body)
+func (r *rest) do(ctx context.Context, call apiCall, body any, out any) (rateLimit, error) {
+	limit, status, raw, err := r.send(ctx, call, body)
 	if err != nil {
 		return limit, err
 	}
 	if status == http.StatusTooManyRequests {
 		wait := retryAfter(raw)
 		if wait <= 0 || wait > maxRetryAfter {
-			return limit, fmt.Errorf("discord rate-limited %s %s", method, path)
+			return limit, fmt.Errorf("discord rate-limited %s", call)
 		}
 		select {
 		case <-ctx.Done():
 			return limit, ctx.Err()
 		case <-time.After(wait):
 		}
-		limit, status, raw, err = r.call(ctx, method, path, body)
+		limit, status, raw, err = r.send(ctx, call, body)
 		if err != nil {
 			return limit, err
 		}
 	}
 	if status >= 300 {
-		return limit, fmt.Errorf("discord answered %d to %s %s", status, method, path)
+		return limit, fmt.Errorf("discord answered %d to %s", status, call)
 	}
 	if out != nil && len(raw) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {
-			return limit, fmt.Errorf("discord's answer to %s %s could not be read: %w", method, path, err)
+			return limit, fmt.Errorf("discord's answer to %s could not be read: %w", call, err)
 		}
 	}
 	return limit, nil
+}
+
+// apiCall is one endpoint: the path that is called, and the name it is
+// reported under.
+//
+// THE TWO ARE NOT THE SAME STRING, and that is the whole of why this type
+// exists. One of the paths this bridge builds carries an interaction token —
+// a fifteen-minute credential that lets its holder post and edit messages AS
+// THE BOT, without the bot token — and every error below quotes the endpoint
+// it failed on. An error built from the path put that credential into the
+// operator's log on the first failed slash command (iss-2609190106273150).
+// The name is a template: it says which endpoint, and names the fields
+// instead of their values.
+type apiCall struct {
+	method string
+	path   string
+	name   string
+}
+
+// String is what an error and a log line say about this call.
+func (c apiCall) String() string { return c.method + " " + c.name }
+
+// endpoint builds a call whose path is safe to report as it stands, which is
+// every path in this file but one.
+func endpoint(method, path string) apiCall {
+	return apiCall{method: method, path: path, name: path}
 }
 
 // maxRetryAfter bounds how long a 429 may park a call. Beyond it the call
@@ -98,7 +124,7 @@ func (r *rest) do(ctx context.Context, method, path string, body any, out any) (
 // holding a worker for as long as the other end names.
 const maxRetryAfter = 30 * time.Second
 
-func (r *rest) call(ctx context.Context, method, path string, body any) (rateLimit, int, []byte, error) {
+func (r *rest) send(ctx context.Context, call apiCall, body any) (rateLimit, int, []byte, error) {
 	var buf io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -109,7 +135,7 @@ func (r *rest) call(ctx context.Context, method, path string, body any) (rateLim
 	}
 	ctx, cancel := context.WithTimeout(ctx, restTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, r.base+path, buf)
+	req, err := http.NewRequestWithContext(ctx, call.method, r.base+call.path, buf)
 	if err != nil {
 		return rateLimit{}, 0, nil, err
 	}
@@ -122,9 +148,11 @@ func (r *rest) call(ctx context.Context, method, path string, body any) (rateLim
 	}
 	resp, err := r.client.Do(req)
 	if err != nil {
-		// Wrapped without the URL's query, and the URL never carries the
-		// token, so nothing here can leak it.
-		return rateLimit{}, 0, nil, fmt.Errorf("calling discord %s %s: %w", method, path, redactURLError(err))
+		// Reported by the call's NAME, never its path: the path of one of
+		// them carries an interaction token (iss-2609190106273150). The
+		// transport's own error is unwrapped out of the *url.Error for the
+		// same reason — that type quotes the whole request line.
+		return rateLimit{}, 0, nil, fmt.Errorf("calling discord %s: %w", call, redactURLError(err))
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxRESTBody))
@@ -204,7 +232,7 @@ func (r *rest) createMessage(ctx context.Context, channelID, text, replyTo strin
 		body["message_reference"] = map[string]any{"message_id": replyTo, "fail_if_not_exists": false}
 	}
 	var out message
-	limit, err := r.do(ctx, http.MethodPost, "/channels/"+channelID+"/messages", body, &out)
+	limit, err := r.do(ctx, endpoint(http.MethodPost, "/channels/"+channelID+"/messages"), body, &out)
 	return out, limit, err
 }
 
@@ -214,12 +242,12 @@ func (r *rest) editMessage(ctx context.Context, channelID, messageID, text strin
 		"content":          text,
 		"allowed_mentions": map[string]any{"parse": []string{}},
 	}
-	return r.do(ctx, http.MethodPatch, "/channels/"+channelID+"/messages/"+messageID, body, nil)
+	return r.do(ctx, endpoint(http.MethodPatch, "/channels/"+channelID+"/messages/"+messageID), body, nil)
 }
 
 // typing shows the bot as typing in a channel for about ten seconds.
 func (r *rest) typing(ctx context.Context, channelID string) error {
-	_, err := r.do(ctx, http.MethodPost, "/channels/"+channelID+"/typing", struct{}{}, nil)
+	_, err := r.do(ctx, endpoint(http.MethodPost, "/channels/"+channelID+"/typing"), struct{}{}, nil)
 	return err
 }
 
@@ -239,11 +267,16 @@ func (r *rest) respondToInteraction(ctx context.Context, id, token, text string)
 			"allowed_mentions": map[string]any{"parse": []string{}},
 		},
 	}
-	// The token is Discord's own opaque string rather than a snowflake, so it
-	// is escaped rather than validated: it is the one value in a path here
-	// that cannot be held to a shape (iss-2609190057562775).
-	_, err := r.do(ctx, http.MethodPost,
-		"/interactions/"+id+"/"+url.PathEscape(token)+"/callback", body, nil)
+	// The one call whose path may not be reported. The token is Discord's own
+	// opaque string rather than a snowflake, so it is escaped rather than
+	// validated (iss-2609190057562775) — and it is a credential, so the name
+	// this call is reported under carries the field rather than its value
+	// (iss-2609190106273150).
+	_, err := r.do(ctx, apiCall{
+		method: http.MethodPost,
+		path:   "/interactions/" + id + "/" + url.PathEscape(token) + "/callback",
+		name:   "/interactions/{id}/{token}/callback",
+	}, body, nil)
 	return err
 }
 
@@ -254,6 +287,6 @@ func (r *rest) respondToInteraction(ctx context.Context, id, token, text string)
 // running it once per start cannot accumulate duplicates, and a command
 // removed from this list is removed from Discord by the next start.
 func (r *rest) overwriteCommands(ctx context.Context, appID string, commands []any) error {
-	_, err := r.do(ctx, http.MethodPut, "/applications/"+appID+"/commands", commands, nil)
+	_, err := r.do(ctx, endpoint(http.MethodPut, "/applications/"+appID+"/commands"), commands, nil)
 	return err
 }

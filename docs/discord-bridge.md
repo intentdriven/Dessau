@@ -95,6 +95,9 @@ field.
 - The bridge holds a limited number of conversations and answers a small number
   of requests at once. A very busy channel has messages dropped rather than
   queued, and the log says so.
-- If Gropius cannot serve a request, the bot says so in one short sentence. The
-  detailed reason — which model, how much memory, what to change — stays in
-  your log, because it describes your Mac.
+- If Gropius cannot serve a request, the bot says so in one short sentence:
+  that it cannot serve the model right now, or that the conversation is too
+  long for it. The detailed reason — which model, how much memory, what to
+  change — stays in your log, because it describes your Mac.
+- The bot token is trimmed of any whitespace around it, so a token pasted with
+  a line break still works.

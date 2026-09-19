@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // messageLimit is Discord's ceiling on one message, in characters. An answer
@@ -47,7 +48,9 @@ type editor struct {
 	// says. They differ between the moment a token arrives and the moment the
 	// throttle lets the edit go.
 	pending string
-	sent    string
+	// pendingRunes is len([]rune(pending)), carried rather than recomputed.
+	pendingRunes int
+	sent         string
 	// nextEdit is the earliest the next edit may go out.
 	nextEdit time.Time
 	// err is the first failure. The answer carries on being generated — the
@@ -68,9 +71,14 @@ func (e *editor) add(ctx context.Context, delta string) {
 		return
 	}
 	e.pending += delta
-	for len([]rune(e.pending)) > messageLimit {
+	e.pendingRunes += utf8.RuneCountInString(delta)
+	// Counted as it grows rather than re-measured. A 2,000-token answer
+	// arrives token by token, so re-materialising the whole of it as runes on
+	// every delta is quadratic in the length of the answer
+	// (iss-2609190106563320).
+	for e.pendingRunes > messageLimit {
 		head, tail := cutAtParagraph(e.pending)
-		e.pending = head
+		e.pending, e.pendingRunes = head, utf8.RuneCountInString(head)
 		// The finished message is written in full before the next one starts,
 		// whatever the throttle says: it will never change again, and leaving
 		// it short while a second message appeared below it would show the
@@ -79,6 +87,7 @@ func (e *editor) add(ctx context.Context, delta string) {
 			return
 		}
 		e.messageID, e.sent, e.pending = "", "", tail
+		e.pendingRunes = utf8.RuneCountInString(tail)
 		e.nextEdit = time.Time{}
 	}
 	e.write(ctx, false)

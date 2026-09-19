@@ -60,7 +60,8 @@ func (s *session) onMessage(ctx context.Context, data json.RawMessage) {
 	}
 	// Never answer a bot, and never answer ourselves: two bots that answer
 	// each other are a loop that runs until somebody notices.
-	if msg.Author.Bot || msg.Author.ID == "" || msg.Author.ID == s.botID {
+	botID, _ := s.resume.who()
+	if msg.Author.Bot || msg.Author.ID == "" || msg.Author.ID == botID {
 		return
 	}
 	if !validID(msg.ChannelID) || !validID(msg.Author.ID) {
@@ -70,7 +71,7 @@ func (s *session) onMessage(ctx context.Context, data json.RawMessage) {
 		return
 	}
 	direct := msg.GuildID == ""
-	if !direct && !s.mentionsUs(msg) {
+	if !direct && !mentions(msg, botID) {
 		return
 	}
 	text := headRunes(msg.Content, maxMessageRunes)
@@ -87,13 +88,18 @@ func (s *session) onMessage(ctx context.Context, data json.RawMessage) {
 	}
 }
 
-// mentionsUs reports whether Discord itself resolved a mention of this bot.
-func (s *session) mentionsUs(msg incoming) bool {
-	if s.botID == "" {
+// mentions reports whether Discord itself resolved a mention of this bot.
+//
+// An empty botID answers false, which is the safe direction — a bot that does
+// not know its own id must not answer everything — and is exactly why the id
+// has to survive a resume (iss-2609190106402401): READY carries it and
+// RESUMED does not.
+func mentions(msg incoming, botID string) bool {
+	if botID == "" {
 		return false
 	}
 	for _, m := range msg.Mentions {
-		if m.ID == s.botID {
+		if m.ID == botID {
 			return true
 		}
 	}
@@ -140,30 +146,27 @@ func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, 
 	// other channel or direct message would be answered until the first
 	// answer finished. Anyone who can reach the bot may talk to it, which
 	// makes that something one person can cause by pressing send twice.
-	if !conv.mu.TryLock() {
+	if !conv.answering.TryLock() {
 		s.say(ctx, msg.ChannelID, msg.ID, stillAnswering)
 		return
 	}
-	defer conv.mu.Unlock()
+	defer conv.answering.Unlock()
 
-	model := conv.model
+	model := conv.modelOf()
 	if model == "" {
 		model = s.defaultModel()
-		conv.model = model
+		conv.setModel(model)
 	}
 	if model == "" {
 		s.say(ctx, msg.ChannelID, msg.ID, "This server has no chat model to answer with yet.")
 		return
 	}
 
-	// The turn is appended under the same lock the answer holds, so the
-	// history a second message sees already has this one in it.
-	conv.turns = append(conv.turns, turn{Role: roleUser, Content: text})
-	if len(conv.turns) > maxTurns {
-		conv.turns = append([]turn(nil), conv.turns[len(conv.turns)-maxTurns:]...)
-	}
-
-	body, err := buildRequest(model, conv.turns, s.bridge.opts.ServedContext(model))
+	// Appended and read back under the short lock, not held across the
+	// generation: what this channel is about to be asked is decided here, and
+	// then the lock is somebody else's to take (iss-2609190106414499).
+	conv.append(turn{Role: roleUser, Content: text})
+	body, err := buildRequest(model, conv.history(), s.bridge.opts.ServedContext(model))
 	if err != nil {
 		s.say(ctx, msg.ChannelID, msg.ID, genericProblem)
 		return
@@ -196,12 +199,17 @@ func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, 
 	stopTyping()
 
 	if askErr != nil {
-		// The detailed reason is the operator's; what travels is the generic
-		// one, because the informative texts describe this Mac and the person
-		// on the other end is a stranger (itd-2609180959397172).
+		// The CLASS, not the text (iss-2609190106273104). The gateway's
+		// refusal texts describe this Mac — a launch failure carries the
+		// child process's own paths, and the pool's refusals name the memory
+		// budget in bytes — and a stranger on Discord can drive a refusal at
+		// the rate they can send messages, so the text would be a
+		// description of this Mac a stranger could write into a file. The
+		// gateway logs it there, once, at the level the operator asked for;
+		// here only the fixed word travels.
 		s.bridge.log.Info("refused a bridged request",
 			"bridge", bridgeName, "channel", numericID(msg.ChannelID),
-			"user", numericID(msg.Author.ID), "model", model, "reason", askErr.Error())
+			"user", numericID(msg.Author.ID), "model", model, "reason", refusalClass(askErr))
 		if !ed.wrote() {
 			s.say(ctx, msg.ChannelID, msg.ID, publicRefusal(askErr))
 			return
@@ -212,7 +220,7 @@ func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, 
 			"bridge", bridgeName, "channel", numericID(msg.ChannelID), "err", err)
 	}
 	if answer != "" {
-		conv.turns = append(conv.turns, turn{Role: roleAssistant, Content: answer})
+		conv.append(turn{Role: roleAssistant, Content: answer})
 	} else if askErr == nil {
 		s.say(ctx, msg.ChannelID, msg.ID, "The model answered with nothing.")
 	}
@@ -246,6 +254,17 @@ func publicRefusal(err error) string {
 		return askErr.Public()
 	}
 	return genericProblem
+}
+
+// refusalClass is the fixed word a refusal is recorded under. It is the
+// gateway's own class where there is one, so the log's vocabulary is the
+// gateway's rather than a second one kept in step by hand.
+func refusalClass(err error) string {
+	var askErr *gateway.AskError
+	if errors.As(err, &askErr) {
+		return askErr.Class()
+	}
+	return "error"
 }
 
 // say posts one message, best effort. It is used for the refusals and the
