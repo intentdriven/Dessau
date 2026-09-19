@@ -227,7 +227,7 @@ func TestTheGracePlaceholdersAreFilledFromTheServersDefaults(t *testing.T) {
 	doc := evalPanelDOM(t, fmt.Sprintf("renderDefaults(%s);",
 		fmt.Sprintf(`{"eviction_grace_sec":%d,"eviction_max_wait_sec":%d}`,
 			config.DefaultEvictionGraceSec, config.DefaultEvictionMaxWaitSec)),
-		"renderDefaults", "blankIsSentence")
+		"renderDefaults", "blankIsSentence", "intervalWords")
 	for _, tc := range []struct{ id, want string }{
 		{"setGraceSec", strconv.Itoa(config.DefaultEvictionGraceSec)},
 		{"setGraceWait", strconv.Itoa(config.DefaultEvictionMaxWaitSec)},
@@ -239,7 +239,7 @@ func TestTheGracePlaceholdersAreFilledFromTheServersDefaults(t *testing.T) {
 
 	// Told nothing, it offers nothing: an empty placeholder is a field with no
 	// claim about what blank means, which beats a figure the panel chose.
-	blank := evalPanelDOM(t, "renderDefaults(undefined);", "renderDefaults", "blankIsSentence")
+	blank := evalPanelDOM(t, "renderDefaults(undefined);", "renderDefaults", "blankIsSentence", "intervalWords")
 	for _, id := range []string{"setGraceSec", "setGraceWait"} {
 		if got, _ := blank[id]["placeholder"].(string); got != "" {
 			t.Errorf("%s's placeholder is %q for a snapshot carrying no defaults, want it blank", id, got)
