@@ -309,7 +309,7 @@ func TestAStagedBundleWhoseProgramIsASymbolicLinkIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := checkStagedBundle(bundle)
+	err := checkStagedBundle(dir)
 	if err == nil {
 		t.Fatal("a bundle carrying a symbolic link where its program belongs was accepted")
 	}
@@ -325,7 +325,7 @@ func TestAStagedBundleWhoseProgramIsASymbolicLinkIsRefused(t *testing.T) {
 	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkStagedBundle(bundle); err != nil {
+	if err := checkStagedBundle(dir); err != nil {
 		t.Errorf("an ordinary bundle was refused: %v", err)
 	}
 }
@@ -361,7 +361,7 @@ func TestAStagedBundleWithASymbolicLinkAboveItsProgramIsRefused(t *testing.T) {
 	if fi, err := os.Lstat(filepath.Join(bundle, binaryInBundle)); err != nil || !fi.Mode().IsRegular() {
 		t.Fatalf("this test is not set up the way it claims: %v", err)
 	}
-	if err := checkStagedBundle(bundle); err == nil {
+	if err := checkStagedBundle(dir); err == nil {
 		t.Error("a bundle whose Contents is a symbolic link was accepted; the exec would leave the verified directory")
 	}
 }
@@ -445,4 +445,39 @@ func writeFakeProgram(t *testing.T, body string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// And a link AT the bundle name is refused, which is the component os.OpenRoot
+// would follow if the root were opened on the bundle rather than a level above
+// it. The archive chooses this name as freely as it chooses the ones below.
+func TestAStagedBundleThatIsItselfASymbolicLinkIsRefused(t *testing.T) {
+	dir := t.TempDir()
+
+	// A real, entirely ordinary bundle somewhere else. This is what the link
+	// would resolve to, and it would pass every question asked below it.
+	elsewhere := filepath.Join(dir, "elsewhere", bundleName)
+	if err := os.MkdirAll(filepath.Join(elsewhere, "Contents", "MacOS"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, binaryInBundle), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	extracted := filepath.Join(dir, "extract")
+	if err := os.MkdirAll(extracted, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(extracted, bundleName)); err != nil {
+		t.Fatal(err)
+	}
+
+	err := checkStagedBundle(extracted)
+	if err == nil {
+		t.Fatal("an extraction whose bundle is a symbolic link was accepted; the exec would leave the verified directory")
+	}
+	// Named, because "a symbolic link somewhere below" is what a root opened
+	// on the bundle itself would have said about a perfectly reachable program.
+	if !strings.Contains(err.Error(), "symbolic link where "+bundleName) {
+		t.Errorf("the refusal does not say what it found: %v", err)
+	}
 }

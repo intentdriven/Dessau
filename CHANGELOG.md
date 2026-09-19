@@ -67,6 +67,15 @@ GitHub release notes.
   directory the checksum covers. Both halves now scan the whole unpacked tree
   before anything is read or run, and refuse the archive over a symbolic link
   anywhere in it: the bundles this project publishes carry none.
+- **`gropius update` refuses a release whose bundle is a symbolic link.** The
+  verb unpacks the archive it has verified and then runs the staged build's own
+  version verb, to report the version it is installing. The check in front of
+  that execution was made on the bundle itself, which meant every path
+  component inside the bundle was tested but the bundle's own name was
+  followed — so a link there would have run a program outside the directory the
+  checksums cover. The check is now made on the unpacked directory and reaches
+  the bundle through it, so the bundle's name is tested like every component
+  below it, and the refusal comes before anything is run.
 
 - **A statistics file Gropius did not write is left alone.** Every bounded file
   Gropius keeps on this Mac — its own log, the request statistics store and the
