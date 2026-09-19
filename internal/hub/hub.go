@@ -445,16 +445,12 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 			resp.Body.Close()
 			return nil, fmt.Errorf("decode file tree for %s: %w", repoID, err)
 		}
-		next := nextPageURL(resp.Header.Get("Link"))
+		link := resp.Header.Get("Link")
 		resp.Body.Close()
 
-		// The Link header is attacker-influenced (it comes from the Hub response).
-		// newTokenRequest attaches the bearer token to whatever URL we pass, so a
-		// "rel=next" pointing at another host would leak the HuggingFace token off
-		// to it. This is a fresh request rather than a redirect, so refuseOffOrigin
-		// never sees it: the same sameOrigin rule is applied here instead.
-		if next != "" && !sameOrigin(c.baseURL(), next) {
-			return nil, fmt.Errorf("file tree for %s returned a cross-origin next page (%s) — refusing to follow it: %w", repoID, next, ErrCrossOrigin)
+		next, err := c.nextPage(u, link)
+		if err != nil {
+			return nil, fmt.Errorf("file tree for %s %w", repoID, err)
 		}
 
 		entries = append(entries, pageEntries...)
@@ -477,6 +473,44 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 		out = append(out, e)
 	}
 	return out, nil
+}
+
+// nextPage is the rel="next" URL of the page fetched from pageURL, or "" when
+// there is no next page.
+//
+// The Link header is attacker-influenced (it comes from the Hub response).
+// newTokenRequest attaches the bearer token to whatever URL we pass, so a
+// "rel=next" pointing at another host would leak the HuggingFace token off to
+// it. This is a fresh request rather than a redirect, so refuseOffOrigin never
+// sees it: the same sameOrigin rule is applied here instead.
+//
+// The reference is resolved against the page that carried it before that rule
+// runs. RFC 8288 permits a relative URI-reference, and the Hub's paging URLs
+// are absolute only by current practice; unresolved, a relative next page has
+// no host, which the origin rule can only read as a different origin — so the
+// listing would stop at page one and the error would name a same-origin path
+// as cross-origin. Resolution cannot widen the rule: whatever a reference
+// resolves to is checked, and a protocol-relative one that lands on another
+// host is refused exactly as an absolute one is. A value that will not parse
+// is called unparseable, which is what it is.
+func (c *Client) nextPage(pageURL, link string) (string, error) {
+	raw := nextPageURL(link)
+	if raw == "" {
+		return "", nil
+	}
+	ref, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("returned an unparseable next page (%s): %w", raw, err)
+	}
+	base, err := url.Parse(pageURL)
+	if err != nil {
+		return "", fmt.Errorf("was fetched from an unparseable URL (%s): %w", pageURL, err)
+	}
+	next := base.ResolveReference(ref).String()
+	if !sameOrigin(c.baseURL(), next) {
+		return "", fmt.Errorf("returned a cross-origin next page (%s) — refusing to follow it: %w", next, ErrCrossOrigin)
+	}
+	return next, nil
 }
 
 // ErrCrossOrigin is what every request path in this package refuses with when

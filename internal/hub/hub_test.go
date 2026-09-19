@@ -770,3 +770,83 @@ func (originlessTransport) RoundTrip(*http.Request) (*http.Response, error) {
 		Body:       io.NopCloser(strings.NewReader(`[{"id":"evil/model","tags":["mlx"]}]`)),
 	}, nil
 }
+
+// RFC 8288 lets a Link header carry a relative URI-reference, and the Hub's
+// paging URLs are absolute only by current practice. A relative next page is
+// the Hub's own: it must be resolved against the page that carried it and
+// followed, not refused — and certainly not refused as "cross-origin", which
+// names a same-origin path as off-origin and sends a debugger the wrong way.
+func TestFilesFollowsARelativeNextPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "" {
+			w.Header().Set("Link", `</api/models/org/repo/tree/main?recursive=true&cursor=p2>; rel="next"`)
+			fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+			return
+		}
+		fmt.Fprint(w, `[{"type":"file","path":"b.safetensors","size":2,"oid":"b"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	files, err := c.Files(context.Background(), "org/repo", "")
+	if err != nil {
+		t.Fatalf("Files refused a relative next page: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("got %d files, want 2 across both pages", len(files))
+	}
+}
+
+// Resolving a relative next page must not weaken the origin rule: a
+// protocol-relative reference resolves to another host and is still refused,
+// with the token never sent to it.
+func TestFilesRefusesAProtocolRelativeNextPage(t *testing.T) {
+	var leaked bool
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			leaked = true
+		}
+		fmt.Fprint(w, `[]`)
+	}))
+	defer evil.Close()
+	evilHost := strings.TrimPrefix(evil.URL, "http://")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", "<//"+evilHost+"/api/models/org/repo/tree/main?cursor=p2>; rel=\"next\"")
+		fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	c.SetToken("secret-hf-token")
+	_, err := c.Files(context.Background(), "org/repo", "")
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+	if leaked {
+		t.Fatal("TOKEN LEAK: the bearer token was sent to the host a protocol-relative next page named")
+	}
+}
+
+// A next page that will not parse at all is neither followed nor described as
+// cross-origin: it is unparseable, and saying so is what points a debugger at
+// the Link header rather than at the origin rule.
+func TestFilesNamesAnUnparseableNextPageAsUnparseable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", `<::not-a-url>; rel="next"`)
+		fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	_, err := c.Files(context.Background(), "org/repo", "")
+	if err == nil {
+		t.Fatal("Files accepted an unparseable next page")
+	}
+	if !strings.Contains(err.Error(), "unparseable") {
+		t.Errorf("err = %v, want it to say the next page is unparseable", err)
+	}
+	if errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want it not to be reported as cross-origin", err)
+	}
+}
