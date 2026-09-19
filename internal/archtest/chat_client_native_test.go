@@ -368,3 +368,32 @@ func TestChatClientBubbleTextReadsOnItsBubble(t *testing.T) {
 		t.Error("a chosen bubble colour has no way back to the default")
 	}
 }
+
+// TestChatClientBubbleColoursFollowTheAppearance holds the bubble colours to
+// the chosen appearance (iss-2609181124295668). The defaults are semantic
+// system colours, which resolve themselves in Light and Dark; a colour the
+// person picks is a fixed value, so it is drawn through a path with a face
+// per appearance; and no fixed white is left as the person's bubble text.
+func TestChatClientBubbleColoursFollowTheAppearance(t *testing.T) {
+	root := repoRootDir(t)
+	bubbles := clientSources(t, root)["Bubbles.swift"]
+	for _, want := range []string{"Color.accentColor", "Color.secondary"} {
+		if !strings.Contains(bubbles, want) {
+			t.Errorf("the bubble defaults do not name the semantic system colour %s; "+
+				"a default that is not the system's cannot follow Light and Dark", want)
+		}
+	}
+	if strings.Contains(bubbles, "Color.gray") {
+		t.Error("the model's bubble defaults to Color.gray, which is the same grey in Light and in Dark")
+	}
+	if strings.Contains(bubbles, "Color.white") {
+		t.Error("client/GropiusChat/Bubbles.swift still draws a fixed Color.white; " +
+			"the bubble's text has to be the system's label colour, read in the appearance the fill reads as")
+	}
+	for _, want := range []string{"dynamicProvider:", "userInterfaceStyle", `.environment(\.colorScheme`} {
+		if !strings.Contains(bubbles, want) {
+			t.Errorf("client/GropiusChat/Bubbles.swift does not carry %q; a picked colour is drawn "+
+				"as its stored value whatever the appearance", want)
+		}
+	}
+}

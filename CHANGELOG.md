@@ -177,6 +177,16 @@ GitHub release notes.
   built-in model's error sentences spelled the Mac out whatever they were
   running on, so the iPad build named a device that was not there; they now
   use the same device noun as the rest of the client.
+- **The chat client's bubble colours follow the appearance.** The model's
+  bubble defaulted to a grey that is the same in Light and in Dark, and a
+  colour chosen in Settings was drawn as the one value it was stored as, so a
+  bubble that read in the appearance it was picked in could be lost in the
+  other. The defaults are now the system's own — your accent colour and the
+  system's secondary fill — which follow Light and Dark by themselves; a
+  picked colour keeps its hue and its saturation and is drawn a shade apart
+  from the window it sits on when it would otherwise be lost in it; and the
+  message on a bubble is the system's label colour, read in the appearance
+  the bubble it sits on reads as, rather than a fixed white.
 - **A sidebar search finds every word, wherever it falls.** The chat client
   matched the whole query as one literal piece of text, so a search for two
   words found only the chats that carried them side by side, in the order they
