@@ -397,3 +397,43 @@ func TestTheMachineObjectsSpellTheBudgetOneWay(t *testing.T) {
 		t.Errorf("search measured against %v, want the budget in force %d", budget, a.Pool.MemoryBudget())
 	}
 }
+
+// The machine block is the figures in force, and the decode concurrency is one
+// of them. It is a pool option read once when the pool is built, exactly like
+// the budget beside it, and the charge a model costs that budget is worked out
+// once per sequence its server may decode at once. Publishing only
+// config.decode_concurrency left the snapshot carrying a budget that is in
+// force beside a concurrency that may not be, so any fit arithmetic done from
+// it — the panel's own pinned-charge line among it — disagreed with the pool
+// for as long as a save was waiting for a restart (iss-2609190021445846).
+func TestStateReportsTheDecodeConcurrencyInForce(t *testing.T) {
+	cfg := config.Default()
+	cfg.DecodeConcurrency = 2
+	a, srv := newBudgetControl(t, cfg, 128*gb, nil)
+
+	if got, want := stateOf(t, srv).Machine.DecodeConcurrency, a.Pool.DecodeConcurrency(); got != want {
+		t.Fatalf("machine.decode_concurrency = %d, want the pool's %d", got, want)
+	}
+
+	// A save the pool cannot pick up: decode concurrency reaches it only when
+	// the pool is built, which is why /api/settings answers this one with
+	// restart=true.
+	body := `{"host":"127.0.0.1","port":11535,"api_key":"","decode_concurrency":8,"idle_timeout_sec":0}`
+	resp := postJSON(t, srv, "/api/settings", body)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	st := stateOf(t, srv)
+	if got := st.Config.DecodeConcurrency; got != 8 {
+		t.Fatalf("config.decode_concurrency = %d, want the 8 just saved", got)
+	}
+	if got, want := st.Machine.DecodeConcurrency, a.Pool.DecodeConcurrency(); got != want {
+		t.Errorf("machine.decode_concurrency = %d, want the pool's %d", got, want)
+	}
+	if st.Machine.DecodeConcurrency == st.Config.DecodeConcurrency {
+		t.Errorf("machine.decode_concurrency = %d matches the figure just saved; the snapshot is republishing the saved value rather than the one in force",
+			st.Machine.DecodeConcurrency)
+	}
+}
