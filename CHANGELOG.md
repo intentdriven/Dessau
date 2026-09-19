@@ -241,6 +241,11 @@ GitHub release notes.
   exactly the one that could be left waiting. The wait for the output now ends
   a second after the listing does, and a reading that could not be taken is no
   reading, which is what the panel already shows for one.
+- **An oversized pairing request is refused rather than half-read.** The
+  pairing endpoint takes no credential, so the body it accepts is bounded — but
+  the bound stopped the reading and not the acceptance, and a request whose
+  opening bytes were a well-formed pairing paired whatever followed them. A body
+  over the limit is now answered `413` and nothing is written.
 
 ## [0.7.1] - 2026-09-18
 

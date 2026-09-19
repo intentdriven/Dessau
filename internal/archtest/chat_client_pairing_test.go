@@ -327,3 +327,34 @@ func TestTheEnclaveFallbackIsTakenOnlyForTheMissingEntitlement(t *testing.T) {
 			"be made is thrown away at the one place it would be shown")
 	}
 }
+
+// The limits page carries the limits adr-2609182357322050 accepted, and a
+// limit missing from it is a reader who believes pairing covers something it
+// does not (iss-2609190200113554).
+//
+// The compromised-Mac item is the one that was half-written: the page named
+// the device holding the client key and not the Mac running the server, which
+// keeps the server's own key, the paired set and the shared API key. Held as
+// the four limits rather than as a form of words, so the page can be rewritten
+// and still be held.
+func TestTheLimitsPageNamesEveryLimitPairingHas(t *testing.T) {
+	page := readDoc(t, "pairing-explained.md")
+
+	if _, _, ok := strings.Cut(page, "## What it does not solve"); !ok {
+		t.Fatal("docs/pairing-explained.md no longer states what pairing does not solve")
+	}
+	for _, limit := range []struct {
+		what    string
+		phrases []string
+	}{
+		{"first-come pairing", []string{"network can pair", "Clients"}},
+		{"trust on first use", []string{"first connection", "fingerprint"}},
+		{"the plain port is still there", []string{"ordinary port", "API key"}},
+		{"a compromised client device", []string{"keychain", "controls the device"}},
+		{"a compromised server Mac", []string{"Mac running your server", "Neither end is protected"}},
+	} {
+		if !containsAll(page, limit.phrases...) {
+			t.Errorf("docs/pairing-explained.md does not tell the reader about %s", limit.what)
+		}
+	}
+}

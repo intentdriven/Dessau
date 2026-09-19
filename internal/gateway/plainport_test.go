@@ -21,25 +21,6 @@ import (
 // paired and against the same server with two paired, and compared on status,
 // on every header the gateway sets, and on the body.
 func TestThePlainPortDoesNotMoveWhenAClientPairs(t *testing.T) {
-	fixtures := []struct {
-		name   string
-		method string
-		path   string
-		key    string
-		body   string
-	}{
-		{"the models list", "GET", "/v1/models", "", ""},
-		{"the models list with the key", "GET", "/v1/models", "secret", ""},
-		{"the models list with a wrong key", "GET", "/v1/models", "wrong", ""},
-		{"health", "GET", "/health", "", ""},
-		{"health with the key", "GET", "/health", "secret", ""},
-		{"a completion with no key", "POST", "/v1/chat/completions", "",
-			`{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`},
-		{"a completion with a wrong key", "POST", "/v1/chat/completions", "wrong",
-			`{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`},
-		{"a route that is not there", "GET", "/v1/nope", "secret", ""},
-	}
-
 	spki := strings.Repeat("A", 43) + "="
 	other := strings.Repeat("B", 43) + "="
 	withNone := config.Default()
@@ -50,9 +31,11 @@ func TestThePlainPortDoesNotMoveWhenAClientPairs(t *testing.T) {
 		other: {Name: "Bob's Mac", SPKI: other, PairedAt: time.Now().Unix()},
 	}
 
-	for _, f := range fixtures {
-		off := replayAgainst(t, withNone, f.method, f.path, f.key, f.body)
-		on := replayAgainst(t, withSome, f.method, f.path, f.key, f.body)
+	seen := map[int]bool{}
+	for _, f := range gatewayRequests {
+		off := replayAgainst(t, withNone, f)
+		on := replayAgainst(t, withSome, f)
+		seen[off.code] = true
 		if off.code != on.code {
 			t.Errorf("%s: status %d with nobody paired, %d with two paired", f.name, off.code, on.code)
 		}
@@ -63,6 +46,23 @@ func TestThePlainPortDoesNotMoveWhenAClientPairs(t *testing.T) {
 			t.Errorf("%s: the body moved\n nobody paired: %q\n two paired:    %q", f.name, off.body, on.body)
 		}
 	}
+
+	// A replay that only ever saw one status would pass whatever the gateway
+	// did to the others, so the fixtures are held to reaching an answered
+	// request and a refused one before the comparison above counts for
+	// anything.
+	if !seen[http.StatusOK] {
+		t.Error("no fixture was answered; the replay holds nothing about the path a real client takes")
+	}
+	refused := false
+	for code := range seen {
+		if code >= 400 {
+			refused = true
+		}
+	}
+	if !refused {
+		t.Error("no fixture was refused; the replay holds nothing about what the API key still keeps out")
+	}
 }
 
 type replayed struct {
@@ -72,23 +72,30 @@ type replayed struct {
 }
 
 // replayAgainst sends one fixture at a gateway built on cfg and records
-// everything a client would see. Date is dropped, being a clock reading and not
-// a behaviour.
-func replayAgainst(t *testing.T, cfg config.Config, method, path, key, body string) replayed {
+// everything a client would see.
+//
+// Only Date is dropped, and only because it is a clock reading rather than a
+// behaviour. Content-Length is NOT dropped: it is the length of the answer, so
+// dropping it would let the body change size under a comparison that claimed to
+// hold it (iss-2609190200112161).
+func replayAgainst(t *testing.T, cfg config.Config, f gatewayRequest) replayed {
 	t.Helper()
 	srv, _, _ := newTestGateway(t, cfg)
 	var reader io.Reader
-	if body != "" {
-		reader = strings.NewReader(body)
+	if f.body != "" {
+		reader = strings.NewReader(f.body)
 	}
-	req, err := http.NewRequest(method, srv.URL+path, reader)
+	req, err := http.NewRequest(f.method, srv.URL+f.path, reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
+	if f.key != "" {
+		req.Header.Set("Authorization", "Bearer "+f.key)
 	}
-	if body != "" {
+	if f.host != "" {
+		req.Host = f.host
+	}
+	if f.body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := srv.Client().Do(req)
@@ -102,7 +109,7 @@ func replayAgainst(t *testing.T, cfg config.Config, method, path, key, body stri
 	}
 	var names []string
 	for k := range resp.Header {
-		if k == "Date" || k == "Content-Length" {
+		if k == "Date" {
 			continue
 		}
 		names = append(names, k+": "+strings.Join(resp.Header.Values(k), ","))

@@ -75,7 +75,11 @@ func (c *Control) PairHandler() http.Handler {
 		// operator makes, for as long as it stayed open (iss-2609190110110353).
 		req, err := readPairRequest(r)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			status := http.StatusBadRequest
+			if errors.Is(err, errPairBodyTooLarge) {
+				status = http.StatusRequestEntityTooLarge
+			}
+			writeError(w, status, err.Error())
 			return
 		}
 		// The same lock the settings handler takes, in the same order
@@ -141,12 +145,32 @@ func readPairRequest(r *http.Request) (pairRequest, error) {
 	if r.Header.Get("Origin") != "" {
 		return pairRequest{}, errors.New("pairing is not something a web page may ask for")
 	}
+	// One byte past the bound, so that reaching it is a fact about the REQUEST
+	// and not about how much this server felt like reading. A streaming decoder
+	// over a LimitReader stops at the first complete JSON value, so a body whose
+	// opening bytes are a well-formed pairing and whose remainder is anything at
+	// all decoded and paired — the read was bounded, the acceptance was not
+	// (iss-2609190200099532). Unmarshal over the whole body also refuses trailing
+	// content INSIDE the bound, which is the same fault at a smaller size.
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxPairBodyBytes+1))
+	if err != nil {
+		return pairRequest{}, errors.New("the pairing request could not be read")
+	}
+	if len(body) > maxPairBodyBytes {
+		return pairRequest{}, errPairBodyTooLarge
+	}
 	var req pairRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxPairBodyBytes)).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		return pairRequest{}, errors.New("the pairing request is not JSON this server reads")
 	}
 	return req, nil
 }
+
+// errPairBodyTooLarge is the one refusal from readPairRequest that is not a
+// 400: the caller is told the size is the problem, because a client that is
+// told "not JSON" about a body that is perfectly good JSON has nothing to act
+// on.
+var errPairBodyTooLarge = errors.New("the pairing request is larger than this server accepts")
 
 // pairInto validates a pairing request and writes it into cfg, returning the
 // answer for the caller to send once the save has succeeded.
@@ -221,6 +245,11 @@ func (c *Control) handleRevoke(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Fingerprint string `json:"fingerprint"`
 	}
+	// Deliberately NOT readPairRequest's bound-and-refuse. This route is behind
+	// loopbackOnly, so a caller that reaches it is a local process that could
+	// edit config.json directly, and the prefix-decode readPairRequest refuses
+	// buys such a caller nothing. Copy this pattern onto anything the network
+	// can reach and it is iss-2609190200099532 again.
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxPairBodyBytes)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "that is not a revocation this server reads")
 		return
@@ -307,7 +336,7 @@ func shortFingerprint(spki string) string {
 // checks too, in VerifyConnection, but every handshake-level hook is per
 // connection: a keep-alive or an HTTP/2 stream outlives it for as long as the
 // client keeps the socket open, which a chat client does because it streams.
-func pairedOnly(reg *pairing.Registry, next http.Handler, log *slog.Logger) http.Handler {
+func pairedOnly(reg *pairing.Registry, next http.Handler, log *slog.Logger, refusals *logEvery) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.TLS == nil {
 			writeError(w, http.StatusForbidden, "this port serves paired clients over TLS")
@@ -320,9 +349,32 @@ func pairedOnly(reg *pairing.Registry, next http.Handler, log *slog.Logger) http
 		}
 		client, paired := reg.Sight(spki)
 		if !paired {
+			// The operator's third pairing line, and the only one an operator
+			// is ever WAITING for: having revoked somebody, what they want to
+			// see is that client being turned away. It is written at the level
+			// the server ships at for that reason, and rate-limited because the
+			// refused client sets the rate — it holds a certificate and a
+			// connection it already had, and it retries. The key space is the
+			// set of keys the HANDSHAKE admitted, which is bounded by who has
+			// been paired rather than by who can send a request — and that
+			// bound is enforced in another package, by VerifyConnection in
+			// internal/pairing/registry.go. Relax that check to a plain
+			// RequireAnyClientCert and every peer on the network becomes a
+			// fresh key here, which logEvery does not limit at all
+			// (iss-2609190225574067).
+			if log != nil && refusals.allow("unpaired:"+spki) {
+				log.Info("refused a request from a client this server has not paired",
+					"fingerprint", shortFingerprint(spki))
+			}
 			writeError(w, http.StatusForbidden, pairing.ErrNotPaired.Error())
 			return
 		}
+		// Debug, and deliberately: this is a PER-REQUEST line, and every other
+		// per-request line this gateway writes is Debug for the same reason —
+		// a server answering a chat client writes one on every token-bearing
+		// request, which at the sparse level would be the whole log. What the
+		// operator needs at the shipped level is the pairing EVENTS, which are
+		// the three Info lines this file writes (iss-2609190200097326).
 		if log != nil {
 			log.Debug("paired request", "client", client.Name, "fingerprint", shortFingerprint(spki),
 				"method", r.Method, "path", r.URL.Path)
