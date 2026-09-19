@@ -49,6 +49,14 @@ GitHub release notes.
   given way, and the same mistake cut short the concurrent test of a run that
   got past the load. The loop now claims its place before it asks for it, so a
   measurement gives way to a real request and to nothing else.
+- **A sidebar search finds every word, wherever it falls.** The chat client
+  matched the whole query as one literal piece of text, so a search for two
+  words found only the chats that carried them side by side, in the order they
+  were typed — a chat whose title held one word and whose answers held the
+  other was hidden. The query is now split into its words and a chat is listed
+  when every word is somewhere in its title or its messages, in any order and
+  any distance apart. The match ignores accents as well as case, the way search
+  does elsewhere on the Mac. `impact: fix`
 
 ## [0.7.1] - 2026-09-18
 
