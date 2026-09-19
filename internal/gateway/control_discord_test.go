@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -104,12 +105,12 @@ func TestARefusalDoesNotSayWhetherAGuessedDiscordTokenWasRight(t *testing.T) {
 			wrong, right)
 	}
 	// What it does say is what the caller itself sent.
-	if !contains(wrong, "discord_token") || !contains(wrong, "port") {
+	if !slices.Contains(wrong, "discord_token") || !slices.Contains(wrong, "port") {
 		t.Errorf("the refusal named %v, want both fields the caller posted", wrong)
 	}
 	// A caller that posted the placeholder asked to change nothing.
 	quiet := changedSettings(before, after, []byte(`{"discord_token":"`+redacted+`","port":12345}`))
-	if contains(quiet, "discord_token") {
+	if slices.Contains(quiet, "discord_token") {
 		t.Errorf("the refusal named the token for a caller that posted the placeholder: %v", quiet)
 	}
 }
