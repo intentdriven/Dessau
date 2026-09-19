@@ -20,6 +20,15 @@ GitHub release notes.
   and both measurements scale with the text size chosen in Settings, so the
   field grows with the words instead of the words outgrowing the field. The
   send button keeps its circle, now matched to the field's height.
+- **A request whose model needs the memory the self-test is holding now takes
+  it, instead of being refused once.** A self-test run held its model the way
+  any request does, so a client whose own load needed that memory was told the
+  machine was full, and only its retry — after the run noticed the refusal and
+  let go — found the room. The run's hold is now a soft one: the pool asks the
+  run to let go, the run does, and the model it was holding is unloaded for the
+  client's. A client's own hold is never soft, a pinned model is never taken,
+  and a run that will not let go costs the client the refusal it would have had
+  anyway.
 ### Changed
 
 - **The chat client is installed by the same swap that installs the server.**

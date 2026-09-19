@@ -16,11 +16,13 @@
 // campaign decided the memory budget and the served window from, measured on
 // this Mac rather than on somebody else's (itd-2609100457007827).
 //
-// A real request always wins. The pool has no preemption, so the self-test
-// yields by watching the pool while a request of its own is in flight and
-// cancelling that request the moment anyone else's appears; the run is
-// recorded as yielded and the model is released. Nothing in a result is a
-// prompt or an answer: the prompts are the constants in request.go, and the
+// A real request always wins, and it wins two ways. The loop watches the pool
+// while a request of its own is in flight and cancels that request the moment
+// anyone else's appears; and the hold it takes on the model is a soft one, so
+// a client whose own load needs that memory takes the model rather than being
+// refused, and the pool cancels the run to get it (YieldFrom). Either way the
+// run is recorded as yielded and the model is released. Nothing in a result is
+// a prompt or an answer: the prompts are the constants in request.go, and the
 // file holds counts and durations (adr-2609061503319212).
 package selftest
 
@@ -47,7 +49,10 @@ type Server interface {
 	// Ready lists the models that can be loaded, by repo id.
 	Ready() []string
 	// Acquire loads the model if it is not resident and holds it until the
-	// release function is called, exactly as a request does.
+	// release function is called, exactly as a request does — except that the
+	// hold is a soft one: ctx carries the run's way of being told to let go
+	// (YieldFrom), which the implementation hands to the pool, so a client
+	// that needs the memory takes the model instead of being refused.
 	Acquire(ctx context.Context, repoID string) (Upstream, func(), error)
 	// Activity is what the pool is doing right now.
 	Activity() Activity
@@ -78,9 +83,12 @@ type Activity struct {
 	Waiting     int
 	Downloading int
 	// Refusals is how many loads the pool has refused for want of room, ever
-	// (runtime.Pool.Refusals). With eviction grace off a client refused room
-	// waits nowhere the self-test can see, so the count moving during a run
-	// is what says a client wanted the memory the run is holding.
+	// (runtime.Pool.Refusals). A client refused room waits nowhere the
+	// self-test can see, so the count moving during a run is what says one
+	// wanted memory. It is the second signal rather than the first: a client
+	// that needs the memory this run is holding takes it, and the pool asks
+	// the run to let go. This is what is left — a client refused over a model
+	// the run is not holding, or one the run would not give up in time.
 	Refusals uint64
 }
 
@@ -754,13 +762,20 @@ type watch struct {
 
 // startWatch begins watching for a client on behalf of a run on model. The
 // caller stops it with stop, which returns once the watcher is gone.
+//
+// The context it hands the run carries the run's own way of being told to let
+// go, so that every hold the run takes under it is a soft one the pool may ask
+// for back (WithYield). That is the other half of the same promise the watcher
+// keeps: the watcher sees a client that is already being served, and the yield
+// answers one that cannot be served until this run lets go.
 func (r *Runner) startWatch(ctx context.Context, model string, parks bool) *watch {
 	runCtx, cancel := context.WithCancel(ctx)
-	w := &watch{ctx: runCtx, cancel: cancel, done: make(chan struct{}),
+	w := &watch{cancel: cancel, done: make(chan struct{}),
 		// A parking holder is taken to be loading until it says otherwise:
 		// its load is the first thing it does, and the pool's waiter count may
 		// be its own for as long as that lasts.
 		held: hold{model: model, refusals: r.opts.Server.Activity().Refusals, parks: parks, loading: parks}}
+	w.ctx = WithYield(runCtx, w.preempt)
 	go func() {
 		defer close(w.done)
 		poll := time.NewTicker(r.opts.Poll)
@@ -784,6 +799,17 @@ func (r *Runner) startWatch(ctx context.Context, model string, parks bool) *watc
 		}
 	}()
 	return w
+}
+
+// preempt is what the pool calls to take the run's model back: the run ends
+// the way it ends for a client the watcher spotted, which is a yield and not a
+// failure. It is called from the pool, on a goroutine of the pool's own, and
+// may be called more than once.
+func (w *watch) preempt() {
+	w.mu.Lock()
+	w.yielded = true
+	w.mu.Unlock()
+	w.cancel()
 }
 
 // setHold is what a job reports through Session.Hold: n requests of its own in
@@ -867,4 +893,28 @@ func (r *Runner) runTest(ctx context.Context, up Upstream, spec testSpec) (Test,
 		return Test{}, err
 	}
 	return aggregate(spec.Name, results, time.Since(wall)), nil
+}
+
+// yieldKey types the context value carrying a run's way of being told to let
+// go of the model it is holding.
+type yieldKey struct{}
+
+// WithYield marks ctx as a run's: every hold taken under it is one the pool
+// may ask for back, and yield is how it asks.
+//
+// The value travels in the context rather than in Acquire's signature because
+// the self-test must not import the pool — it is tested against a fake one —
+// and because every hold a run takes, including a job's (Session.Ctx) and the
+// extra places the parallel test takes, is the same run's and yields the same
+// way.
+func WithYield(ctx context.Context, yield func()) context.Context {
+	return context.WithValue(ctx, yieldKey{}, yield)
+}
+
+// YieldFrom returns the yield carried by ctx, or nil for a context that is not
+// a run's. The app's adapter hands it to the pool as a soft hold
+// (runtime.WithSoftHold); a nil one is an ordinary hold.
+func YieldFrom(ctx context.Context) func() {
+	y, _ := ctx.Value(yieldKey{}).(func())
+	return y
 }

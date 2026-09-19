@@ -71,11 +71,11 @@ A request from anyone ends the run at once, during a load as much as during
 a test: the self-test's own request or load is cancelled, the run is recorded
 as yielded, and the model is the client's. A request for a model already in
 memory waits a moment for that cancellation and for nothing else. A request
-whose model would need the memory the run is holding is refused once, the
-way any request is refused when nothing can be freed, and the run ends at
-that refusal, so the client's retry finds the room. Removing a model that is
-under test is refused until the run ends, as removing a model that is
-serving is.
+whose model needs the memory the run is holding takes it: the run is asked to
+let go, it does, and the model it was holding is unloaded for the client's —
+so the client waits for the run to stop rather than being refused. Removing a
+model that is under test is refused until the run ends, as removing a model
+that is serving is.
 
 A run touches the model the way a request does, so when
 [request statistics](request-statistics.md) are on, the self-test's loads and
