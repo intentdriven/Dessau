@@ -261,6 +261,16 @@ GitHub release notes.
   the bound stopped the reading and not the acceptance, and a request whose
   opening bytes were a well-formed pairing paired whatever followed them. A body
   over the limit is now answered `413` and nothing is written.
+- **A request that stalls halfway through is let go of.** Both listeners bound
+  how long a peer may take over the headers, and the endpoints bound how large
+  a body they will accept, but nothing bounded how long a body was allowed to
+  take to arrive: a caller that sent headers and then trickled — or stopped —
+  held a connection and a goroutine for as long as it kept the socket open, on
+  a pairing endpoint that asks for no credential. The whole request now has
+  thirty seconds to arrive on either listener — the bound the completions
+  endpoint already put on its own body, now covering every other route as well.
+  Answers are untouched: a completion still streams for as long as the model
+  takes.
 
 ## [0.7.1] - 2026-09-18
 

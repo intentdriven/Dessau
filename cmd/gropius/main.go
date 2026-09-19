@@ -417,22 +417,13 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 			// plain: a client that has not paired has no certificate, and the
 			// TLS listener refuses a handshake without one.
 			mux.Handle("/pair", ctrl.PairHandler())
-			tlsSrv = &http.Server{
-				Handler:           withLogging(g.TLSHandler(reg), log),
-				ReadHeaderTimeout: 15 * time.Second,
-				IdleTimeout:       120 * time.Second,
-			}
+			tlsSrv = listenerServer(withLogging(g.TLSHandler(reg), log), requestReadTimeout)
 		}
 	}
 
 	mux.Handle("/", ctrl.Handler())
 
-	srv := &http.Server{
-		Handler: withLogging(mux, log),
-		// Generation legitimately takes minutes, so there is no write timeout.
-		ReadHeaderTimeout: 15 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
+	srv := listenerServer(withLogging(mux, log), requestReadTimeout)
 
 	for _, ln := range lns {
 		log.Info("serving", "addr", ln.Addr().String(), "ui", panelURL(cfg))
