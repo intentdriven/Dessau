@@ -30,6 +30,7 @@ var promptContentReaders = map[string]string{
 	"internal/mlxtest/fake.go":        "the fake mlx server tests relay to, which answers requests rather than making them",
 	"internal/selftest/request.go":    "builds the self-test's own requests from two constants in that file; reads nothing from a client (itd-2609100457007827)",
 	"internal/contextprobe/probe.go":  "builds the context probe's own requests from filler it generates; reads nothing from a client, and keeps nothing of the answer but the server's count of the prompt (itd-2609091301112705)",
+	"internal/bridge/discord/":        "the Discord bridge, admitted by name under adr-2609181004167097 condition 4: a bridge is by its nature a reader of the message it relays, because building the request IS the relaying. It is the second such reader beside the merge. What it may do with what it reads is unchanged — no prompt reaches a log line, a record or the disk, which TestTheBridgeWritesNoMessageContent holds separately",
 }
 
 // chatMessageFields are the ways a chat message's fields get named in Go: the
@@ -60,6 +61,7 @@ var generatedContentReaders = map[string]string{
 	"internal/gateway/gateway.go":  "the relay: it reads whether an event carries a choice, to tell a chunk of the answer from the counts-only event and to time the first token — never what is inside one",
 	"internal/mlxtest/fake.go":     "the fake mlx server tests relay to, which produces the answers rather than reading them",
 	"internal/selftest/request.go": "times the first chunk of the self-test's own answer and counts the chunks; keeps nothing of what they say (itd-2609100457007827)",
+	"internal/bridge/discord/":     "the Discord bridge, the other half of the same admission: it reads the generated text out of each streamed event because posting it into the Discord message IS the bridging (adr-2609181004167097 condition 4). Nothing of the answer is logged, recorded or kept",
 }
 
 // completionFields are the ways a completion's fields get named in Go.
@@ -126,7 +128,7 @@ func TestOnlyTheMergeReadsPromptContent(t *testing.T) {
 				if !strings.Contains(src, field) {
 					continue
 				}
-				if _, allowed := boundary.readers[filepath.ToSlash(rel)]; allowed {
+				if admitted(boundary.readers, filepath.ToSlash(rel)) {
 					break
 				}
 				t.Errorf("%s names %s, so it reads or writes %s. adr-2609061610102325 draws that "+
@@ -138,6 +140,28 @@ func TestOnlyTheMergeReadsPromptContent(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+// admitted reports whether a file is on a readers' list: by its own path, or
+// by a package the list names with a trailing slash.
+//
+// The package form exists because a reader can be a whole package rather than
+// a file. adr-2609181004167097 admits the Discord bridge — the package — by
+// name, and splitting that one reason across the four files that happen to
+// spell a field name today would make the reason harder to find and would go
+// stale the next time the package is rearranged. A package is a bigger grant
+// than a file and is spelled differently for that reason: the trailing slash
+// is what a reviewer sees.
+func admitted(readers map[string]string, rel string) bool {
+	if _, ok := readers[rel]; ok {
+		return true
+	}
+	for prefix := range readers {
+		if strings.HasSuffix(prefix, "/") && strings.HasPrefix(rel, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // conversationBoundaries is both sides of the same boundary, scanned in one
@@ -167,8 +191,17 @@ func TestPromptContentReadersAllExist(t *testing.T) {
 	}
 	for _, boundary := range conversationBoundaries {
 		for rel, why := range boundary.readers {
-			if _, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(rel))); err != nil {
+			info, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(rel)))
+			if err != nil {
 				t.Errorf("%s lists %s (%s), which is not in the tree", boundary.list, rel, why)
+				continue
+			}
+			// A package entry has to be a package and a file entry a file, or
+			// the grant is wider or narrower than it reads.
+			if strings.HasSuffix(rel, "/") != info.IsDir() {
+				t.Errorf("%s lists %s (%s), and what is in the tree is not that kind of thing — "+
+					"a trailing slash admits a whole package, without one it admits one file",
+					boundary.list, rel, why)
 			}
 		}
 	}

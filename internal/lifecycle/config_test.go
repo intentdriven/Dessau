@@ -37,6 +37,8 @@ func sampleSettings() config.Config {
 	c := config.Default()
 	c.APIKey = "bh_not-a-real-key-0123456789"
 	c.HFToken = "hf_not-a-real-token-0123456789"
+	c.DiscordBridge = true
+	c.DiscordToken = "not-a-real-bot-token-0123456789"
 	c.UpstreamHeaderTimeoutSec = 45
 	c.Preload = []string{"mlx-community/Qwen3-8B-4bit"}
 	temp := 0.7

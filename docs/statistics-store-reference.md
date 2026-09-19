@@ -77,6 +77,7 @@ no answer, no key, no client address (see
 | `model` | Which of your models served it, as its repo id. A request refused before it named a model you have is recorded with no model at all; the name the client asked for is never kept. |
 | `at` | When the request arrived, in whole UTC seconds. |
 | `class` | How it ended: `ok`, `client_error`, `upstream_status`, `busy`, `refused`, `launch_failed`, `not_ready`, `unreachable`, `cancelled` or `gateway_error`. |
+| `source` | How the request reached this Mac: `http` for one that arrived over the OpenAI-compatible API, `bridge` for one a [bridge](discord-bridge.md) carried in. A fixed class of Gropius's own, never anything a platform supplied. |
 | `streamed` | Whether the client asked for the answer a chunk at a time. |
 | `prompt_tokens`, `completion_tokens` | The model server's own count of what went in and what came out. Only an answered request carries them. |
 | `first_token_ms` | How long the model took to produce the first chunk of a streamed answer, measured from the request arriving to that chunk reaching Gropius. `-1` when there was no streamed chunk at all. |

@@ -183,6 +183,10 @@ function render() {
   // being edited: the list of models to choose from is live state, not a
   // value the user is in the middle of typing.
   refreshOverrideModels();
+  // And for the same reason: what the bridge is doing is a fact about the
+  // server, not a field. Somebody who has just pasted a token is exactly the
+  // person waiting to see it connect.
+  renderBridgeState();
 }
 
 function renderWarnings() {
@@ -1055,6 +1059,33 @@ function renderBindOptions(select, host) {
   select.appendChild(opt);
 }
 
+// renderBridgeState says what the Discord bridge is doing, under the switch.
+//
+// Four states and nothing else: off, connecting, connected since a moment, or
+// stopped with the reason Discord gave. The reason is the server's own
+// sentence about a credential or a configuration and never carries the token,
+// which the panel is never sent in the first place.
+function renderBridgeState() {
+  const el = $('discordState');
+  if (!el) return;
+  const b = state.bridge || {};
+  switch (b.state) {
+    case 'connected':
+      el.textContent = b.since
+        ? `Connected since ${new Date(b.since * 1000).toLocaleString()}.`
+        : 'Connected.';
+      break;
+    case 'connecting':
+      el.textContent = 'Connecting to Discord\u2026';
+      break;
+    case 'stopped':
+      el.textContent = b.reason ? `Stopped: ${b.reason}` : 'Stopped.';
+      break;
+    default:
+      el.textContent = 'The bridge is off.';
+  }
+}
+
 function renderSettings() {
   // Don't stomp on what the user is typing while live updates arrive.
   if (settingsTouched) return;
@@ -1085,6 +1116,8 @@ function renderSettings() {
   $('setBudget').value = budgetFieldValue(state.machine);
   updateBudgetHint();
   $('setHF').value   = c.hf_token || '';
+  $('setDiscordBridge').checked = !!c.discord_bridge;
+  $('setDiscordToken').value = c.discord_token || '';
   $('setGrace').checked = !!c.eviction_grace;
   // Blank rather than zero for an unset interval: blank is how this form says
   // "the default", and the placeholder gives the figure that stands for.
@@ -1736,6 +1769,8 @@ $('settingsForm').addEventListener('submit', async (e) => {
     idle_timeout_sec:   parseInt($('setIdle').value, 10) || 0,
     decode_concurrency: parseInt($('setConc').value, 10) || 1,
     hf_token:           $('setHF').value,
+    discord_bridge:     $('setDiscordBridge').checked,
+    discord_token:      $('setDiscordToken').value,
     max_resident_bytes: budgetBytes($('setBudget').value),
     eviction_grace:        $('setGrace').checked,
     // Zero is what the server reads as "the default", which is what a cleared

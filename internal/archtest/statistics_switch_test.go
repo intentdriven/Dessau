@@ -29,6 +29,7 @@ var statisticsSwitchReaders = map[string]string{
 	"internal/config/config.go":     "declares the switch and reads it from the settings file",
 	"internal/gateway/gateway.go":   "reads it per request to decide whether to record",
 	"internal/gateway/observe.go":   "takes it as an argument from the line above",
+	"internal/gateway/ask.go":       "reads it per in-process request for the same reason gateway.go does, through the same observe()",
 	"internal/app/app.go":           "applies it to the recorder when settings are read or saved",
 	"internal/ui/static/app.js":     "draws the switch and the Statistics view",
 	"internal/ui/static/index.html": "holds the switch and the view",

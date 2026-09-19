@@ -64,6 +64,27 @@ GitHub release notes.
   and where its fields are written down.
 ### Added
 
+- **Answer Discord direct messages and mentions with a model on this Mac.**
+  `impact: additive`. Off unless you turn it on. Paste a Discord bot token in
+  Settings, switch the bridge on, and a direct message to that bot — or a
+  mention of it in a channel it has been invited to — is answered by one of
+  your models: the bot shows typing, a placeholder reply appears and fills in
+  as the answer is written, a long answer continues in a second message cut at
+  a paragraph, and each channel or direct message keeps its own conversation in
+  memory. `/model` shows or sets the model answering a channel and `/reset`
+  clears its conversation. The egress: **messages to the bot and the model's
+  answers pass through Discord and are kept under Discord's terms**, stated
+  beside the switch and on the docs page. Gropius connects out to Discord —
+  no port is opened, the bind address and every inbound surface are untouched,
+  and switching the bridge off closes the connection. A message in a channel
+  that does not mention the bot is never read, so the privileged
+  message-content intent is never requested. The bot token is a secret on
+  every surface the API key is, and a save is never refused over it. A bridged
+  request is recorded like any other with one new fixed field, its `source`;
+  the log line carries the channel and user identifiers as plain numbers and
+  no part of a message or an answer
+  ([how to](docs/discord-bridge.md), decided in
+  [an architecture decision](.abcd/development/decisions/adrs/2609181004167097-an-opt-in-bridge-may-carry-a-conversation-off-the-mac-to-a-t.md)).
 - **A chat client pairs with the server once, and from then on proves itself
   with a key of its own.** The client makes a keypair on the device it is on,
   the server signs it a certificate, and paired requests travel over a second

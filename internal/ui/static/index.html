@@ -580,6 +580,33 @@
     </fieldset>
 
     <fieldset class="group">
+      <legend>Discord bridge</legend>
+      <label class="switch">
+        <input id="setDiscordBridge" type="checkbox">
+        <span>Answer Discord direct messages and mentions with a model on this Mac</span>
+      </label>
+      <p class="hint">Off unless you turn it on. While it is on, <strong>messages to the bot
+        and the model&rsquo;s answers pass through Discord and are kept under Discord&rsquo;s
+        terms</strong> &mdash; which is what this switch trades for reaching your models from
+        a phone. Gropius connects out to Discord; no port on this Mac is opened to the
+        internet, the bind address above is untouched, and switching the bridge off closes
+        the connection. Anyone who can reach the bot may talk to it, so where you invite it
+        is what decides who can. A direct message to the bot, or a message that mentions it
+        in a channel it has been invited to, is answered by a model here; a message that does
+        not mention it is never read. In any channel, <code>/model</code> shows or sets the
+        model answering there and <code>/reset</code> clears that channel&rsquo;s
+        conversation. The
+        <a href="https://github.com/intentdriven/Gropius/blob/main/docs/discord-bridge.md">Discord
+        bridge page</a> says how to make the bot and what leaves this Mac.</p>
+      <label>
+        <span>Discord bot token</span>
+        <input id="setDiscordToken" type="password" autocomplete="off" spellcheck="false"
+               placeholder="no token — the bridge cannot connect without one">
+      </label>
+      <p id="discordState" class="hint"></p>
+    </fieldset>
+
+    <fieldset class="group">
       <legend>Merge system messages</legend>
       <p class="hint">Some models refuse a conversation whose instructions are not all at
         the top, so an assistant that repeats its instructions mid-conversation gets an

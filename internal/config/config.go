@@ -585,6 +585,27 @@ type Config struct {
 	// HFToken authenticates against gated HuggingFace repos.
 	HFToken string `json:"hf_token"`
 
+	// DiscordBridge switches the Discord bridge on. Off until the operator
+	// turns it on, which is adr-2609181004167097 condition 1: nothing of a
+	// conversation leaves this Mac until they have pasted a token and thrown
+	// this switch. Off closes the connection.
+	DiscordBridge bool `json:"discord_bridge"`
+
+	// DiscordToken is the bot token the bridge identifies with — a bearer
+	// credential, and the third secret this file holds. It is redacted
+	// wherever the API key is, round-tripped through the panel's placeholder,
+	// and never compared against a posted value (adr-2609181004167097
+	// condition 3, the three obligations itd-2609081259493890 established for
+	// the key).
+	//
+	// NOTHING HERE REFUSES A SAVE. A token that is absent, malformed or
+	// rejected by Discord is the bridge's problem and the bridge's alone to
+	// report: Validate says nothing about it, so an operator saving an
+	// unrelated setting is never turned away over a credential they did not
+	// touch. What the bridge will not accept it says on the panel, as its own
+	// state.
+	DiscordToken string `json:"discord_token"`
+
 	// Preload lists repo ids to load into memory at startup, so the first request
 	// after a restart is not a multi-minute cold start. Loaded sequentially and
 	// best-effort — an invalid or too-large entry is logged and skipped, never

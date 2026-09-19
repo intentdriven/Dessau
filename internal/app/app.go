@@ -124,6 +124,10 @@ type App struct {
 	// download is on its way in.
 	dlWG sync.WaitGroup
 
+	// bridge is the Discord bridge, wired after the gateway exists and nil in
+	// every build and every test that carries none. See bridge.go.
+	bridge bridges
+
 	// measureDir sums a model directory's bytes. New sets it to dirSize and
 	// nothing else changes it in a running app; it is a seam because where
 	// this walk happens is the property, not an implementation detail. It has
@@ -496,6 +500,12 @@ func (a *App) SetConfig(c config.Config) error {
 	// concurrency, a served window — so every measurement is judged again.
 	a.applyIdleJobs(c)
 	a.refreshStaleness()
+	// The bridge applies live too, and after the settings are in force: on
+	// with a token opens the connection, off closes it, and a changed token
+	// re-identifies. It is never refused — a token Discord will not accept is
+	// the bridge's state to report, not a reason to turn a save away
+	// (itd-2609180959397172).
+	a.applyBridge(c)
 
 	// Behind the hub's own lock: download goroutines read the token to build
 	// every request they issue, and a download already running keeps the token
@@ -1738,7 +1748,12 @@ func (a *App) Close() error {
 	// The self-test before the pool: a run in progress holds a model, and the
 	// pool's close would otherwise wait on a release that is on its way.
 	a.SelfTest.Close()
-	err := a.Pool.Close()
+	// The bridge before the pool: it holds an outbound connection and may
+	// have an answer in flight against a model the pool is about to stop.
+	err := a.closeBridge()
+	if perr := a.Pool.Close(); err == nil {
+		err = perr
+	}
 	if cerr := a.StatsStore.Close(); err == nil {
 		err = cerr
 	}
