@@ -12,14 +12,17 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/intentdriven/Gropius/internal/applog"
 )
 
 // A results file is JSON Lines, one Run a line, appended to until it would
-// pass its cap and then started again: a single bounded file, no rotation.
-// The repository already has two size-rotating writers (internal/stats and
-// internal/applog) and iss-2609091714393599 is about there being two; this
-// is deliberately not a third. Thousands of runs fit under the default cap,
-// which is more days of a model-a-day cycle than a result stays interesting.
+// pass its cap and then started again: a single bounded file, no history.
+// It is written by internal/applog's Rotator — the repository's one
+// size-rotating file writer — configured to keep one file, which is what
+// "started again" is. Thousands of runs fit under the default cap, which is
+// more days of a model-a-day cycle than a result stays interesting, so
+// numbered predecessors would be room spent on runs nobody reads.
 const (
 	// DefaultMaxBytes is the cap on the results file.
 	DefaultMaxBytes int64 = 4 << 20
@@ -119,31 +122,23 @@ func jsonFields(v any) []string {
 	return out
 }
 
-// file is the bounded writer.
+// file is the bounded writer: the results file's own policy — where it lives,
+// what a failure costs — over internal/applog's Rotator, which is the writing.
 type file struct {
 	path     string
 	maxBytes int64
 	log      *slog.Logger
 	mu       sync.Mutex
+	// w is opened on the first result rather than when the Runner is built:
+	// New opens nothing and cannot fail, and a directory that is not safe to
+	// write must not be the difference between a self-test and none. A failed
+	// open leaves this nil and the next result tries again.
+	w *applog.Rotator
 }
 
-// filePerm is the mode the file carries: this account's own, like the log and
-// the statistics store. Its directory is created 0700 for the same reason.
-const filePerm os.FileMode = 0o600
-
-// The opens never follow a link and never block: on a shared Mac the
-// directory's parent is this account's own, but a planted link or a FIFO in
-// the wrong place must be refused rather than followed or waited on — the
-// writer runs on the settings path, and a hang there is a hang of every
-// save (the same reasoning as internal/stats and internal/applog).
-const (
-	fileFlags = os.O_CREATE | os.O_WRONLY | os.O_APPEND | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
-	readFlags = os.O_RDONLY | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
-)
-
-// write appends one run, starting the file again first if the line would
-// take it past the cap. A write that fails is logged and dropped: a result
-// is not worth stopping the loop for, and the next run will try again.
+// write appends one run, starting the file again first if the line would take
+// it past the cap. A write that fails is logged and dropped: a result is not
+// worth stopping the loop for, and the next run will try again.
 func (f *file) write(run Run) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -153,28 +148,70 @@ func (f *file) write(run Run) {
 		return
 	}
 	line = append(line, '\n')
-	if err := ensureDir(filepath.Dir(f.path)); err != nil {
-		f.log.Warn("self-test: the results directory is not safe to write; the result is dropped")
-		f.log.Debug("self-test: results directory refused", "err", err)
-		return
-	}
-	h, err := openRegular(f.path, fileFlags, filePerm)
+	w, err := f.writerLocked()
 	if err != nil {
 		f.log.Warn("self-test: could not open the results file; the result is dropped")
 		f.log.Debug("self-test: results file refused", "err", err)
 		return
 	}
-	defer h.Close()
-	if st, err := h.Stat(); err == nil && st.Size()+int64(len(line)) > f.maxBytes {
-		if err := h.Truncate(0); err != nil {
-			f.log.Warn("self-test: could not start the results file again", "err", err)
-			return
-		}
-		f.log.Info("self-test: the results file reached its cap and was started again", "cap_bytes", f.maxBytes)
-	}
-	if _, err := h.Write(line); err != nil {
+	if _, err := w.Write(line); err != nil {
+		// A Rotator that could not rotate refuses every later write, so the
+		// handle is dropped and the next result opens the file again — the
+		// same answer the statistics store gives a write it could not make.
+		f.closeLocked()
 		f.log.Warn("self-test: could not write a result", "err", err)
 	}
+}
+
+// writerLocked returns the open writer, opening it the first time.
+//
+// The directory is this package's to check and not the Rotator's: its parent
+// is the account's own directory, so a single Mkdir is enough and nothing
+// above it is walked, and what keeps the parent honest is its ownership rather
+// than its mode. The file itself is the Rotator's, under the discipline every
+// bounded file Gropius writes is held to.
+func (f *file) writerLocked() (*applog.Rotator, error) {
+	if f.w != nil {
+		return f.w, nil
+	}
+	dir := filepath.Dir(f.path)
+	if err := ensureDir(dir); err != nil {
+		return nil, err
+	}
+	w, err := applog.OpenRotator(applog.RotateOptions{
+		Dir:      dir,
+		Name:     filepath.Base(f.path),
+		MaxBytes: f.maxBytes,
+		// One file and no history: see the note at the top of this file.
+		Keep: 1,
+		Rotated: func() {
+			f.log.Info("self-test: the results file reached its cap and was started again", "cap_bytes", f.maxBytes)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	f.w = w
+	return w, nil
+}
+
+// close releases the file and its directory handle. A write afterwards opens
+// them again, so closing a Runner that is switched on again later costs
+// nothing.
+func (f *file) close() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closeLocked()
+}
+
+func (f *file) closeLocked() {
+	if f.w == nil {
+		return
+	}
+	if err := f.w.Close(); err != nil {
+		f.log.Debug("self-test: closing the results file", "err", err)
+	}
+	f.w = nil
 }
 
 // ReadResults reads every run in a results file, oldest first. A file that
@@ -182,7 +219,7 @@ func (f *file) write(run Run) {
 // the file is started again at its cap and a reader that refused the whole
 // file over one line would show nothing.
 func ReadResults(path string) ([]Run, error) {
-	h, err := openRegular(path, readFlags, 0)
+	h, err := openRegular(path, applog.ReadFlags, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -239,6 +276,13 @@ func ensureDir(dir string) error {
 // openRegular opens a path and refuses anything but a regular file: a FIFO
 // opened non-blocking answers at once, and a device or a socket answers with
 // something that is not a file of ours.
+//
+// It is the reading half only. A result is written through applog.OpenIn on a
+// handle to the directory; a read is handed an absolute path by a caller that
+// has no such handle, and it is held to the flags and the regular-file check
+// rather than to the mode — refusing to READ a file under this name would make
+// a mode nothing here can set the difference between a panel with figures on
+// it and an empty one.
 func openRegular(path string, flags int, perm os.FileMode) (*os.File, error) {
 	h, err := os.OpenFile(path, flags, perm)
 	if err != nil {
