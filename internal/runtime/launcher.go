@@ -385,7 +385,7 @@ func (p *execProcess) Footprint() int64 {
 	// stall. A listing that does not answer in time is no reading.
 	ctx, cancel := context.WithTimeout(context.Background(), footprintTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "/usr/bin/top", "-l", "1", "-stats", "mem", "-pid", strconv.Itoa(p.cmd.Process.Pid)).Output()
+	out, err := sampleProcess(ctx, "/usr/bin/top", "-l", "1", "-stats", "mem", "-pid", strconv.Itoa(p.cmd.Process.Pid))
 	if err != nil {
 		return 0
 	}
@@ -395,6 +395,23 @@ func (p *execProcess) Footprint() int64 {
 	default:
 	}
 	return parseTopMem(string(out))
+}
+
+// sampleProcess runs one process listing under ctx and returns what it
+// printed. It is the whole of Footprint's boundedness, and it takes two bounds
+// rather than one because a context is only half of it: the context kills the
+// listing, but Wait goes on waiting for the listing's output pipe to close,
+// and the pipe is not this process's to close. A listing wedged in the kernel
+// — which is the state a Mac under memory pressure puts one in, and the state
+// this reader exists to survive — does not die when it is signalled, so its
+// pipe stays open and the caller stays parked for as long as that lasts. The
+// pool's close waits on this reader, so an unbounded wait here is a Gropius
+// that will not quit. WaitDelay is the second bound: it gives up on the output
+// rather than on the answer, and an abandoned listing is simply no reading.
+func sampleProcess(ctx context.Context, name string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = footprintWaitDelay
+	return cmd.Output()
 }
 
 // parseTopMem reads the last figure top printed: a count with a K, M or G
@@ -427,8 +444,12 @@ func parseTopMem(out string) int64 {
 	return n * unit
 }
 
-// footprintTimeout bounds one process listing.
-const footprintTimeout = 3 * time.Second
+// footprintTimeout bounds one process listing, and footprintWaitDelay bounds
+// the wait for its output once the listing has been given up on.
+const (
+	footprintTimeout   = 3 * time.Second
+	footprintWaitDelay = time.Second
+)
 
 func (p *execProcess) Pid() int { return p.cmd.Process.Pid }
 
