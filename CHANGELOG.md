@@ -11,6 +11,18 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The chat client's header is one thin toolbar, whatever the chat shows.**
+  The title was drawn large on a chat that fitted the window and collapsed as
+  a long reply scrolled, so the header had two heights; the toolbar's
+  scroll-edge effect was a soft blur that reached well past the bar and washed
+  out the reply being read; and the transcript was anchored to the foot of the
+  window, which opened an empty band between the toolbar and the first bubble
+  on a fresh conversation. The title is now pinned inline on the Mac and the
+  iPad, the scroll-edge effect ends at the toolbar, and a chat shorter than
+  the window starts under it. A long chat still opens at its newest message.
+
 ## [0.7.1] - 2026-09-18
 
 ### Fixed

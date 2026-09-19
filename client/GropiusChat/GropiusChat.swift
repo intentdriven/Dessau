@@ -919,6 +919,10 @@ struct Sidebar: View {
         .listStyle(.sidebar)
         .searchable(text: $query, placement: .sidebar, prompt: "Search")
         .navigationTitle("Chats")
+        // One thin toolbar, as Messages has: left automatic, the title is
+        // drawn large and collapses as the list scrolls, which gives the
+        // header two heights.
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem {
                 Button { selection = model.newChat() } label: { Image(systemName: "square.and.pencil") }
@@ -993,6 +997,10 @@ struct ChatDetail: View {
             composer
         }
         .navigationTitle("Gropius Chat")
+        // The header is one fixed height whatever the state
+        // (iss-2609190004097595): the title never switches between a large
+        // form and a collapsed one, so the transcript never moves under it.
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem {
                 Button {
@@ -1001,11 +1009,17 @@ struct ChatDetail: View {
                     Label {
                         Text(model.answerer.displayName)
                     } icon: {
-                        if model.connecting {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: model.answerer == .builtIn ? "apple.intelligence" : "network")
+                        // One size across both states: a spinner and a symbol
+                        // do not measure the same, and a toolbar item that
+                        // changes height takes the header's height with it.
+                        Group {
+                            if model.connecting {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: model.answerer == .builtIn ? "apple.intelligence" : "network")
+                            }
                         }
+                        .frame(width: 16, height: 16)
                     }
                     .labelStyle(.titleAndIcon)
                 }
@@ -1055,7 +1069,19 @@ struct ChatDetail: View {
                 .padding(.horizontal, 28)
                 .padding(.vertical, 12)
             }
-            .defaultScrollAnchor(.bottom)
+            // A conversation opens at its newest message — and only that.
+            // The roleless form of this modifier anchors the ALIGNMENT role
+            // as well, which pins a conversation shorter than the window to
+            // the window's foot and opens an empty band under the toolbar.
+            // The roles do not compose across two of these modifiers — a
+            // second one replaces the first — so this is the one; the scroll
+            // to the newest message while a reply streams is explicit below.
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            // The scroll-edge effect belongs to the toolbar, not to the
+            // transcript: the hard style ends at the bar, where the automatic
+            // one is a soft blur that reaches well down the window and washes
+            // out the reply being read.
+            .scrollEdgeEffectStyle(.hard, for: .top)
             // A link a model wrote opens only as a web address: a served reply
             // is not trusted to hand the Mac a file, shortcut or settings URL.
             .environment(\.openURL, OpenURLAction { url in
