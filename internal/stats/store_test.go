@@ -1195,10 +1195,21 @@ func TestTheHorizonIsAppliedWithoutAnyRotation(t *testing.T) {
 		}
 	})
 
+	// The clock this subtest gives the store starts where its record does, so
+	// the horizon does not yet reach the record and the pruner running every
+	// 5ms cannot take the file away before the guard below has seen it. The
+	// horizon is then applied by moving the clock, which is the thing the
+	// subtest is about. Reading the directory straight after the flush and
+	// hoping the pruner had not got there yet was a race the machine lost
+	// under load, with "nothing was written" for a file that had been written
+	// and swept (iss-2609190056083748).
 	t.Run("while it is running", func(t *testing.T) {
-		s, dir := newTestStore(t, StoreOptions{Months: 1, Now: clock, PruneEvery: 5 * time.Millisecond})
+		wrote := now.AddDate(-2, 0, 0)
+		var moving testClock
+		moving.set(wrote)
+		s, dir := newTestStore(t, StoreOptions{Months: 1, Now: moving.now, PruneEvery: 5 * time.Millisecond})
 		on(t, s)
-		if err := s.AppendRequest(Record{Model: "org/a", At: now.AddDate(-2, 0, 0).Unix(), Class: ClassOK}); err != nil {
+		if err := s.AppendRequest(Record{Model: "org/a", At: wrote.Unix(), Class: ClassOK}); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.Flush(); err != nil {
@@ -1207,6 +1218,9 @@ func TestTheHorizonIsAppliedWithoutAnyRotation(t *testing.T) {
 		if len(recordFiles(t, dir)) == 0 {
 			t.Fatal("nothing was written, so this test proves nothing")
 		}
+		// Two years pass with the store running and nothing else happening to
+		// it: no record, no rotation, no restart.
+		moving.set(now)
 		deadline := time.Now().Add(5 * time.Second)
 		for {
 			if len(recordFiles(t, dir)) == 0 {
