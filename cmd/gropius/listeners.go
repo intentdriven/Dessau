@@ -33,10 +33,20 @@ import (
 // net/http rather than an accident: the moment the body is read to the end,
 // net/http starts its background read on the connection and CLEARS the read
 // deadline to do it. A handler that has read its request — which the gateway
-// does, in one io.ReadAll — then streams for as long as it likes. The tests in
-// listeners_test.go hold that, because a deadline still armed while a handler
-// worked would put that background read into a timeout, and a background read
-// that errors cancels the request context that the generation runs under.
+// does, in one io.ReadAll, and which a bodiless request such as the control
+// panel's event stream has done before it starts — then streams for as long as
+// it likes. The tests in listeners_test.go hold that, because a deadline still
+// armed while a handler worked would put that background read into a timeout,
+// and a background read that errors cancels the request context that the
+// generation runs under.
+//
+// The one shape this WOULD bite is a handler that reads part of its body,
+// answers for longer than the bound, and then reads the rest: the body has not
+// hit EOF, so nothing has cleared the deadline, and the second read fails on a
+// clock that started before the answer did. No route does that — every one of
+// them takes its body in a single read up front — and a route that wanted to
+// would have to lift the deadline itself, the way internal/gateway already
+// lifts its own before a generation starts.
 const (
 	headerReadTimeout  = 15 * time.Second
 	idleTimeout        = 120 * time.Second

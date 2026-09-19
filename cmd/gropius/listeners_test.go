@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -57,6 +60,14 @@ func TestAStalledRequestBodyIsCutOffWithinTheBound(t *testing.T) {
 	case err := <-read:
 		if err == nil {
 			t.Fatal("the handler read a whole body out of a client that never sent one")
+		}
+		// The deadline and not some other refusal: os.ErrDeadlineExceeded is
+		// the branch internal/gateway answers 408 on, and an error of another
+		// kind would have it answering 400 for a client that merely ran out of
+		// time.
+		if !errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Errorf("the stalled body ended in %v, want a deadline: the connection is being "+
+				"dropped for some other reason and the client is told the wrong thing", err)
 		}
 	case <-time.After(20 * bound):
 		t.Fatalf("a client that sent headers and then stalled was still holding a goroutine %s later: "+
@@ -148,5 +159,60 @@ func TestARequestWithNoBodyStreamsPastTheReadBound(t *testing.T) {
 	}
 	if string(body) != "served" {
 		t.Errorf("the answer arrived as %q, want %q", body, "served")
+	}
+}
+
+// Both listeners are built through listenerServer, and the bound has a value.
+//
+// listenerServer is a constructor a test can call with any figure it likes,
+// which makes every test above true of a server this process might never
+// build. Reverting either call site in main.go to an http.Server literal —
+// which is where it was — leaves the build, the vet and the whole suite green
+// while the control is gone (iss-2609190254372265). So the wiring is held
+// here, in the shape cmd/gropius/tlsbind_test.go already uses for the branch
+// that mounts pairing.
+func TestBothListenersAreBuiltThroughListenerServer(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(src)
+	for _, want := range []string{
+		"srv := listenerServer(withLogging(mux, log), requestReadTimeout)",
+		"tlsSrv = listenerServer(withLogging(g.TLSHandler(reg), log), requestReadTimeout)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("main.go no longer builds a listener through listenerServer: %q is gone, "+
+				"so the bounds are whatever that call site now writes", want)
+		}
+	}
+	// An http.Server literal in main.go is how the bounds drifted apart in the
+	// first place: two literals, and a bound added to one of them.
+	if strings.Contains(body, "&http.Server{") {
+		t.Error("main.go builds an http.Server by hand again, so a bound put on one listener " +
+			"is no longer a bound on the other")
+	}
+}
+
+// The bounds themselves, on the server listenerServer actually returns. The
+// read bound is set and the write bound is not, and neither of those is a
+// detail: one of them is the fix and the other would cut a generation off.
+func TestTheListenerBoundsAreTheOnesThisServerMeansToHave(t *testing.T) {
+	if requestReadTimeout != 30*time.Second {
+		t.Errorf("the request read bound is %s, want 30s — the figure internal/gateway already "+
+			"puts on the completions body", requestReadTimeout)
+	}
+	srv := listenerServer(http.NotFoundHandler(), requestReadTimeout)
+	if srv.ReadTimeout != requestReadTimeout {
+		t.Errorf("the listener's ReadTimeout is %s, want %s: a request body is bounded in bytes "+
+			"and not in time again", srv.ReadTimeout, requestReadTimeout)
+	}
+	if srv.ReadHeaderTimeout != headerReadTimeout || srv.IdleTimeout != idleTimeout {
+		t.Errorf("the listener's header and idle bounds are %s and %s, want %s and %s",
+			srv.ReadHeaderTimeout, srv.IdleTimeout, headerReadTimeout, idleTimeout)
+	}
+	if srv.WriteTimeout != 0 {
+		t.Errorf("the listener has a WriteTimeout of %s: a completion streams for as long as the "+
+			"model answers for, and that is a bound on how long a model may think", srv.WriteTimeout)
 	}
 }

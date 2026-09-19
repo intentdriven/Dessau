@@ -18,6 +18,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -513,13 +514,19 @@ func TestAnUnpairedClientIsTurnedAwayBeforeThereIsARequestToLog(t *testing.T) {
 	var logged bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	var reg *pairing.Registry
+	// The registry only exists once the server is up, and the handler runs on
+	// the server's goroutine — so it is published through an atomic rather
+	// than a plain variable, and what the inner handler records is a count the
+	// test goroutine reads. A t.Error from a request goroutine in a test that
+	// expects no request is a report about the wrong thing.
+	var reg atomic.Pointer[pairing.Registry]
+	var served atomic.Int64
 	srv := newPairedServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pairedOnly(reg, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-			t.Error("an unpaired client was served")
+		pairedOnly(reg.Load(), http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			served.Add(1)
 		}), log, newLogEvery(time.Minute)).ServeHTTP(w, r)
 	}))
-	reg = srv.registry
+	reg.Store(srv.registry)
 	srv.pair(t, newClientKey(t), "Bob's iPad") // somebody is paired; the caller below is not
 
 	// An unpaired key under a certificate it signed itself, which is all an
@@ -543,6 +550,9 @@ func TestAnUnpairedClientIsTurnedAwayBeforeThereIsARequestToLog(t *testing.T) {
 		t.Fatalf("an unpaired client completed a handshake and was answered %d: "+
 			"the refusal has moved to the request path, and its log key is a string "+
 			"any peer on the network may choose", resp.StatusCode)
+	}
+	if n := served.Load(); n != 0 {
+		t.Errorf("an unpaired client was served %d time(s)", n)
 	}
 	if strings.Contains(logged.String(), "refused a request from a client this server has not paired") {
 		t.Error("an unpaired client wrote a refusal line: it reached the request path, " +
