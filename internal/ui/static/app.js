@@ -1076,6 +1076,9 @@ function renderSettings() {
   $('setAdvertise').checked = !!c.advertise;
   $('setIdle').value = c.idle_timeout_sec;
   $('setConc').value = c.decode_concurrency;
+  // The stored value in the box, and the notice beneath it for the window in
+  // which that is not what the pool is running with.
+  updateConcurrencyNotice();
   // From the machine object, not from the stored setting: what is enforced is
   // what the pool holds, and the stored setting is blank while the default is
   // in force.
@@ -1320,6 +1323,33 @@ function updateBudgetHint() {
   line.className = shown.over_budget || (shown.warn_above && shown.budget > shown.warn_above) ? 'msg err' : 'hint';
 }
 
+// concurrencyNotice says when the batched-requests figure in the box is not
+// the one Gropius is running with. The decode concurrency is a pool option,
+// read once when the pool is built, so a save only reaches it at the next
+// start — and until then the memory a model is charged, which is worked out
+// once per sequence, follows the figure in force and not the one on screen.
+// Nothing said so, and the pinned-charge line silently used the saved figure
+// (iss-2609190021445846).
+//
+// Empty while the two agree, and while either is unknown: a notice about a
+// difference nobody can see would be worse than none.
+function concurrencyNotice(machine, config) {
+  const inForce = (machine && machine.decode_concurrency) || 0;
+  const saved = (config && config.decode_concurrency) || 0;
+  if (!inForce || !saved || inForce === saved) return '';
+  return `Gropius is batching ${inForce} request${inForce === 1 ? '' : 's'} at a time. `
+    + `The saved figure of ${saved} takes effect at the next start, and the memory a `
+    + `pinned model is charged below is worked out from the ${inForce} in force.`;
+}
+
+function updateConcurrencyNotice() {
+  const line = $('concHint');
+  if (!line) return;
+  const text = concurrencyNotice(state.machine, state.config);
+  line.textContent = text;
+  line.hidden = text === '';
+}
+
 // updatePinBudget writes the line beside the boxes: what the ticked models
 // cost, and what that leaves for everything else.
 function updatePinBudget() {
@@ -1327,9 +1357,13 @@ function updatePinBudget() {
   if (!line) return;
   const budget = (state.machine && state.machine.budget) || 0;
   // The decode concurrency is part of the charge: each sequence a server may
-  // run at once holds its own cache, so the panel reads the figure the pool is
-  // running with rather than assuming one.
-  const sequences = (state.config && state.config.decode_concurrency) || 0;
+  // run at once holds its own cache. Both figures come from the machine block,
+  // which is what the pool is running with — not from state.config, whose
+  // decode concurrency is the saved value and does not reach the pool until a
+  // restart. Mixing the two gave a charge the pool would not agree with for as
+  // long as a save was waiting for one (iss-2609190021445846); concurrencyNotice
+  // says so beside the field.
+  const sequences = (state.machine && state.machine.decode_concurrency) || 0;
   const charge = pinnedCharge(state.models || [], checkedPinModels(), state.config, sequences);
   if (!budget) {
     line.textContent = charge ? `Pinned models use about ${size(charge)}.` : '';
