@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,39 @@ func answering(t *testing.T, f *fakeDiscord, pieces ...string) *Bridge {
 	b := New(opts)
 	t.Cleanup(func() { _ = b.Close() })
 	return b
+}
+
+// recording is answering with the requests kept: the completion path records
+// the body it was handed before streaming the answer back, so a test can say
+// which model answered a message and what history was sent with it.
+func recording(t *testing.T, f *fakeDiscord, pieces ...string) (*Bridge, func() []request) {
+	t.Helper()
+	var mu sync.Mutex
+	var asked []request
+	opts := f.options(time.Now)
+	opts.Ask = func(ctx context.Context, req gateway.AskRequest) error {
+		var body request
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return err
+		}
+		mu.Lock()
+		asked = append(asked, body)
+		mu.Unlock()
+		for _, p := range pieces {
+			payload, _ := json.Marshal(map[string]any{
+				"choices": []any{map[string]any{"delta": map[string]any{"content": p}}},
+			})
+			req.OnEvent(payload)
+		}
+		return nil
+	}
+	b := New(opts)
+	t.Cleanup(func() { _ = b.Close() })
+	return b, func() []request {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]request(nil), asked...)
+	}
 }
 
 // The bridge is off until the switch is thrown, which is condition 1 of
@@ -329,5 +363,85 @@ func TestAPastedTokenIsTrimmed(t *testing.T) {
 	b2.Apply(true, "   \n\t ")
 	if _, reason := waitState(t, b2, StateStopped); reason == "" {
 		t.Error("a token of nothing but whitespace produced no reason on the panel")
+	}
+}
+
+// A channel's conversation and the model it is on survive a reconnect.
+//
+// The bridge resumes by itself after the Mac sleeps (ac-10 of
+// itd-2609180959397172), and the intent's scope condition says a conversation
+// is gone when the BRIDGE STOPS — not when the socket does. Holding the
+// conversations on the session made every drop a silent `/reset` that also
+// forgot the model Bob had chosen, with nothing said in the channel
+// (iss-2609190241509478).
+func TestAChannelKeepsItsConversationAndModelAcrossAReconnect(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, asked := recording(t, f, "an answer")
+	connected(t, f, b)
+
+	// Bob puts the channel on the second model and asks something.
+	f.command(commandModel, map[string]string{"name": secondModel})
+	f.waitCall(http.MethodPost, "/interactions/")
+	f.message("first question", false, false)
+	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+
+	// The socket drops and the session is resumed, which is the sleeping
+	// Mac's own path.
+	f.drop()
+	f.waitFrame(opResume)
+	waitState(t, b, StateConnected)
+	f.drainCalls()
+
+	f.message("second question", false, false)
+	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+
+	got := asked()
+	if len(got) != 2 {
+		t.Fatalf("the gateway was asked %d times, want once before the reconnect and once after", len(got))
+	}
+	if got[1].Model != secondModel {
+		t.Errorf("after the reconnect the channel was answered by %q, want the model `/model` chose (%q)",
+			got[1].Model, secondModel)
+	}
+	if len(got[1].Messages) < 2 || got[1].Messages[0].Content != "first question" {
+		t.Errorf("after the reconnect the request carried %v, want the channel's history in front of the new message",
+			got[1].Messages)
+	}
+	if last := got[1].Messages[len(got[1].Messages)-1]; last.Content != "second question" {
+		t.Errorf("the newest turn was %q, want the message that was just sent", last.Content)
+	}
+}
+
+// And it goes when the bridge stops, which is the bound the intent actually
+// asks for: nothing of a conversation outlives the switch.
+func TestStoppingTheBridgeForgetsEveryChannelsConversation(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, asked := recording(t, f, "an answer")
+	connected(t, f, b)
+
+	f.command(commandModel, map[string]string{"name": secondModel})
+	f.waitCall(http.MethodPost, "/interactions/")
+	f.message("first question", false, false)
+	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+
+	b.Apply(false, "")
+	if state, _, _ := b.State(); state != StateOff {
+		t.Fatalf("state = %q, want %q", state, StateOff)
+	}
+	connected(t, f, b)
+
+	f.message("after the restart", false, false)
+	f.waitCall(http.MethodPost, "/channels/"+channelID+"/messages")
+
+	got := asked()
+	if len(got) != 2 {
+		t.Fatalf("the gateway was asked %d times, want once before the switch and once after", len(got))
+	}
+	if got[1].Model != firstModel {
+		t.Errorf("after a stop and a start the channel was answered by %q, want the server default (%q)",
+			got[1].Model, firstModel)
+	}
+	if len(got[1].Messages) != 1 || got[1].Messages[0].Content != "after the restart" {
+		t.Errorf("after a stop and a start the request carried %v, want the new message alone", got[1].Messages)
 	}
 }

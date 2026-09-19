@@ -265,7 +265,7 @@ func TestTheSlashCommandsAnswerTheChannel(t *testing.T) {
 	f.command(commandModel, nil)
 	call = f.waitCall(http.MethodPost, "/interactions/")
 	data, _ = call.Body["data"].(map[string]any)
-	if text, _ := data["content"].(string); !strings.Contains(text, "mlx-community/Qwen3-8B-4bit") {
+	if text, _ := data["content"].(string); !strings.Contains(text, firstModel) {
 		t.Errorf("/model with no argument answered %q, want the channel's model", text)
 	}
 

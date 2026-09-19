@@ -67,7 +67,9 @@ prints the API key.
 - A reply appears as a placeholder and fills in as the model writes. A long
   answer is cut at a paragraph and continues in a second message.
 - Each channel and each direct message is its own conversation, held in memory
-  while the bridge runs. Nothing of a message is written to disk.
+  for as long as the bridge is on. A connection that drops and comes back keeps
+  it; switching the bridge off forgets it. Nothing of a message is written to
+  disk.
 
 Two commands work in any channel and in a direct message:
 

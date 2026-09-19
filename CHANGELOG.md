@@ -261,6 +261,14 @@ GitHub release notes.
   the bound stopped the reading and not the acceptance, and a request whose
   opening bytes were a well-formed pairing paired whatever followed them. A body
   over the limit is now answered `413` and nothing is written.
+- **A Discord channel keeps its conversation and its model when the bridge
+  reconnects.** The bridge resumes by itself after the Wi-Fi blinks or the Mac
+  sleeps, and every one of those reconnections used to be a silent `/reset`:
+  the channel's history was gone and it was back on the server's default model,
+  with nothing said in the channel. A conversation now belongs to the bridge
+  rather than to the connection, so it survives a reconnection and still goes —
+  as it always has, and still without ever reaching disk — when the bridge is
+  switched off.
 
 ## [0.7.1] - 2026-09-18
 

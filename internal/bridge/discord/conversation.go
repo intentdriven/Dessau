@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// maxChannels is how many conversations one session holds. Anyone who can
+// maxChannels is how many conversations one bridge holds. Anyone who can
 // reach the bot may talk to it (itd-2609180959397172), so the number of
 // channels is a stranger's to choose: without a bound this map is a way to
 // grow the process one direct message at a time. The least recently used
@@ -54,7 +54,7 @@ type conversation struct {
 	turns []turn
 }
 
-// conversations is every channel the session has seen, bounded.
+// conversations is every channel the bridge has seen while on, bounded.
 type conversations struct {
 	mu    sync.Mutex
 	byID  map[string]*conversation

@@ -17,7 +17,8 @@
 // the sizes and the timing.
 //
 // Nothing of a conversation is written to disk. A channel's history lives in
-// memory for as long as the bridge is running and goes when it stops.
+// memory for as long as the bridge is running — across a dropped session and
+// the resume that follows it — and goes when the bridge stops.
 package discord
 
 import (
@@ -123,6 +124,17 @@ type Bridge struct {
 	since   time.Time
 	reason  string
 	closing bool
+	// convos is every channel this bridge has seen while it has been on.
+	//
+	// IT BELONGS TO THE BRIDGE AND NOT TO THE CONNECTION (iss-2609190241509478).
+	// A gateway session drops whenever the Wi-Fi blinks or the lid closes,
+	// and the bridge resumes by itself; a conversation held on the session
+	// would make every one of those a silent `/reset` that also forgot the
+	// model the channel chose. The bound itd-2609180959397172 asks for is the
+	// SWITCH: the store is made when the bridge starts and dropped when it
+	// stops, so nothing of a conversation outlives the bridge being on — and
+	// nothing of it is ever written to disk either way.
+	convos *conversations
 }
 
 // New builds a Bridge. It connects to nothing: the bridge is off until Apply
@@ -206,6 +218,7 @@ func (b *Bridge) Apply(on bool, token string) {
 	}
 	b.stopLocked()
 	b.on, b.token = true, token
+	b.convos = newConversations()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	b.cancel, b.done = cancel, done
@@ -237,6 +250,10 @@ func (b *Bridge) Close() error {
 func (b *Bridge) stopLocked() {
 	cancel, done := b.cancel, b.done
 	b.cancel, b.done = nil, nil
+	// The conversations go with the session's goroutine: this is the one
+	// place the bridge stops, so it is the one place the promise that a
+	// conversation does not outlive the bridge is kept.
+	b.convos = nil
 	if cancel == nil {
 		return
 	}
@@ -256,6 +273,23 @@ func (b *Bridge) State() (state string, since time.Time, reason string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.state, b.since, b.reason
+}
+
+// conversations is the store this bridge's sessions share. A session asks for
+// it once, at the moment it is built, and holds the pointer for as long as it
+// runs; the store itself outlives every one of them and goes when the bridge
+// stops.
+func (b *Bridge) conversations() *conversations {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.convos == nil {
+		// Only reachable by a session being built as the bridge is stopping.
+		// It is given a store of its own, which is thrown away with it: a
+		// stopped bridge holds no conversation, and a message already in
+		// flight is answered without a history rather than on a nil map.
+		return newConversations()
+	}
+	return b.convos
 }
 
 func (b *Bridge) setState(state, reason string) {

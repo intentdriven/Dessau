@@ -173,7 +173,7 @@ func (b *Bridge) runSession(ctx context.Context, token string, resume *resumeSta
 		token:  token,
 		resume: resume,
 		rest:   newREST(b.opts.APIBase, token, b.opts.HTTPClient, b.log),
-		convos: newConversations(),
+		convos: b.conversations(),
 	}
 	defer s.stopWork()
 	return s.run(ctx, resuming)
@@ -183,14 +183,12 @@ func (b *Bridge) runSession(ctx context.Context, token string, resume *resumeSta
 // bridge in "connecting" forever with nothing to say about it.
 const dialTimeout = 30 * time.Second
 
-// session is one live gateway connection and everything that belongs to it:
-// the conversations, the workers answering them, and the identifiers Discord
-// told us about ourselves.
+// session is one live gateway connection and the workers answering on it.
 //
-// It is built per connection and thrown away with it. A conversation therefore
-// survives a resumed session only as long as the session object does — which
-// is the bound itd-2609180959397172 asks for from the other direction: nothing
-// of a message outlives the bridge.
+// It is built per connection and thrown away with it. The conversations are
+// NOT: they are the bridge's, borrowed here, so a channel keeps its history
+// and its model across a drop and the resume that follows. What ends them is
+// the bridge stopping, which is the bound itd-2609180959397172 asks for.
 type session struct {
 	bridge *Bridge
 	conn   *websocket.Conn
