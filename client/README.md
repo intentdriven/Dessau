@@ -88,8 +88,10 @@ spinner a slow answer shows. Thinking models stream their reasoning; a
 
 The sidebar shows each conversation as a card — who answered, the title,
 the date and how many exchanges and words it holds — with a search bar above
-it that filters by title and message text. **New Chat** (Cmd-N) starts one; the
-**Chat** menu carries every action with its shortcut. Each window remembers
+it that filters by title and message text. Type several words and the list
+keeps the chats that hold every one of them, in any order and anywhere in the
+conversation; case and accents do not matter. **New Chat** (Cmd-N) starts one;
+the **Chat** menu carries every action with its shortcut. Each window remembers
 which chat it shows and comes back after a relaunch, the way macOS restores
 windows. Delete a chat by swiping or right-clicking it. Everything is saved
 to `~/Library/Application Support/GropiusChat/conversations.json` and restored
