@@ -34,6 +34,12 @@ Apple Silicon `dist/GropiusChat.app`.
    on; if the Mac cannot answer — Apple Intelligence off, the model still
    downloading, an unsupported language — the empty chat says which, and what
    would fix it, and offers a server instead.
+
+   The device's own model holds a small context window. A long conversation
+   keeps going: the client sends the instructions and the most recent turns
+   that fit alongside the message you just typed. A single message too long for
+   the window is a different matter — it is not sent at all, and the chat says
+   so and points at a server.
 2. To use a Gropius server, click the picker. Under **Servers on your network**
    it lists every Gropius server it can find while the picker is open: each row
    names the server, says whether it needs an API key, and how many models it

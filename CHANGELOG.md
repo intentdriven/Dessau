@@ -43,6 +43,14 @@ GitHub release notes.
 
 ### Fixed
 
+- **The chat client counts the message you just typed against the device's own
+  model's context window.** The trim shared the window out between the client's
+  instructions and the conversation so far, and then sent the new message on
+  top of a full window; a long message overflowed and was left to a single
+  retry to absorb. The new message is now budgeted with the prior turns, so the
+  older turns make way for it, and a message too long for the window on its own
+  is not sent at all — the chat says so in one sentence and points at a server,
+  instead of a failed turn and a framework error.
 - **The pinned-models figure is worked out from the batching Gropius is
   actually running with.** Batched requests (decode concurrency) reaches the
   model servers only when Gropius starts, and the control panel was charging
