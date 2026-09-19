@@ -215,6 +215,21 @@ GitHub release notes.
   included — is sent to the other address. Fetching the files themselves still
   follows the Hub's own redirect to its content store, where each weights file
   is checked against the hash the Hub stated for it.
+- **A download takes no more disk than the repository said it would, and every
+  request asks HuggingFace for exactly the model named.** A file was written
+  out in full before its length was compared with the size the repository
+  listed, so a repository that declared ten bytes and then sent tens of
+  megabytes had every one of them written — for as many files as were being
+  fetched at the time. A download is now held to the smaller of the length the
+  response declares and the size the repository listed, and stops at that
+  boundary rather than after it; a body that ends short of it is refused too,
+  and neither is left behind for a later run to mistake for progress. Every
+  HuggingFace address is also built one way now: the repository name was
+  escaped into the address on one request and put in raw on another, so a name
+  carrying a `#` or a `?` reached a different page than the one asked for. And
+  a file listing that runs to a second page follows it even when HuggingFace
+  gives the address of that page relative to the first, instead of stopping
+  there and reporting the Hub's own address as another server's.
 - **A sidebar search finds every word, wherever it falls.** The chat client
   matched the whole query as one literal piece of text, so a search for two
   words found only the chats that carried them side by side, in the order they

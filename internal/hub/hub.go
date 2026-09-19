@@ -332,7 +332,11 @@ func (c *Client) Search(ctx context.Context, q SearchQuery) ([]Model, error) {
 		v.Set("direction", "-1")
 	}
 	// full=false keeps the payload small; we only need summary fields here.
-	u := c.baseURL() + "/api/models?" + v.Encode()
+	base, err := c.hubURL(segment("api"), segment("models"))
+	if err != nil {
+		return nil, err
+	}
+	u := base + "?" + v.Encode()
 
 	req, err := c.newRequest(ctx, http.MethodGet, u)
 	if err != nil {
@@ -367,10 +371,10 @@ func (c *Client) Search(ctx context.Context, q SearchQuery) ([]Model, error) {
 // which is the same state as a repo the Hub does not tag; it never means the
 // model is unusable.
 func (c *Client) RepoInfo(ctx context.Context, repoID string) (Model, error) {
-	if repoID == "" {
-		return Model{}, errors.New("repo info: repoID is required")
+	u, err := c.hubURL(segment("api"), segment("models"), repoPath(repoID))
+	if err != nil {
+		return Model{}, fmt.Errorf("repo info for %q: %w", repoID, err)
 	}
-	u := c.baseURL() + "/api/models/" + escapePathSegments(repoID)
 	req, err := c.newRequest(ctx, http.MethodGet, u)
 	if err != nil {
 		return Model{}, err
@@ -418,8 +422,12 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 	if revision == "" {
 		revision = "main"
 	}
-	u := fmt.Sprintf("%s/api/models/%s/tree/%s?recursive=true",
-		c.baseURL(), repoID, url.PathEscape(revision))
+	base, err := c.hubURL(segment("api"), segment("models"), repoPath(repoID),
+		segment("tree"), segment(revision))
+	if err != nil {
+		return nil, fmt.Errorf("list files for %q: %w", repoID, err)
+	}
+	u := base + "?recursive=true"
 
 	var entries []File
 	for page := 0; u != ""; page++ {
@@ -445,16 +453,18 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 			resp.Body.Close()
 			return nil, fmt.Errorf("decode file tree for %s: %w", repoID, err)
 		}
-		next := nextPageURL(resp.Header.Get("Link"))
+		link := resp.Header.Get("Link")
+		// The page this Link came off is where the request ended up, not where
+		// it was sent: the Hub redirects a re-cased or renamed repo id to its
+		// canonical URL, and a relative next page has to be resolved against
+		// the canonical one. do guarantees resp.Request is set and that its
+		// URL is on the Hub's own origin.
+		pageURL := resp.Request.URL.String()
 		resp.Body.Close()
 
-		// The Link header is attacker-influenced (it comes from the Hub response).
-		// newTokenRequest attaches the bearer token to whatever URL we pass, so a
-		// "rel=next" pointing at another host would leak the HuggingFace token off
-		// to it. This is a fresh request rather than a redirect, so refuseOffOrigin
-		// never sees it: the same sameOrigin rule is applied here instead.
-		if next != "" && !sameOrigin(c.baseURL(), next) {
-			return nil, fmt.Errorf("file tree for %s returned a cross-origin next page (%s) — refusing to follow it: %w", repoID, next, ErrCrossOrigin)
+		next, err := c.nextPage(pageURL, link)
+		if err != nil {
+			return nil, fmt.Errorf("file tree for %s %w", repoID, err)
 		}
 
 		entries = append(entries, pageEntries...)
@@ -477,6 +487,62 @@ func (c *Client) files(ctx context.Context, repoID, revision, token string) ([]F
 		out = append(out, e)
 	}
 	return out, nil
+}
+
+// nextPage is the rel="next" URL of the page fetched from pageURL, or "" when
+// there is no next page.
+//
+// The Link header is attacker-influenced (it comes from the Hub response).
+// newTokenRequest attaches the bearer token to whatever URL we pass, so a
+// "rel=next" pointing at another host would leak the HuggingFace token off to
+// it. This is a fresh request rather than a redirect, so refuseOffOrigin never
+// sees it: the same sameOrigin rule is applied here instead.
+//
+// The reference is resolved against the page that carried it before that rule
+// runs. RFC 8288 permits a relative URI-reference, and the Hub's paging URLs
+// are absolute only by current practice; unresolved, a relative next page has
+// no host, which the origin rule can only read as a different origin — so the
+// listing would stop at page one and the error would name a same-origin path
+// as cross-origin. A value that will not parse is called unparseable, which is
+// what it is.
+//
+// Resolving is what makes the origin rule insufficient on its own. Before it,
+// only an absolute URL could be followed and anything else was refused for
+// want of a host; after it, any string that resolves lands somewhere on the
+// Hub's origin, and would be followed with the bearer token on it. So the
+// resolved reference must also be a continuation of THIS listing: the same
+// path, differing only in the query, which is how the Hub pages. That is what
+// keeps a "next page" from splicing another repo's tree into the one that was
+// asked for — the risk do names for a redirect, arriving by the one door do
+// does not watch — and what refuses a Link value that is not a URL at all but
+// resolves to a plausible path anyway.
+//
+// Userinfo is dropped, and so is any fragment. url.URL.Host excludes userinfo,
+// so it passes the origin check untouched, and net/http then turns it into an
+// Authorization header on a request we wrote none for.
+func (c *Client) nextPage(pageURL, link string) (string, error) {
+	raw := nextPageURL(link)
+	if raw == "" {
+		return "", nil
+	}
+	ref, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("returned an unparseable next page (%s): %w", raw, err)
+	}
+	base, err := url.Parse(pageURL)
+	if err != nil {
+		return "", fmt.Errorf("was fetched from an unparseable URL (%s): %w", pageURL, err)
+	}
+	next := base.ResolveReference(ref)
+	next.User = nil
+	next.Fragment, next.RawFragment = "", ""
+	if !sameOrigin(c.baseURL(), next.String()) {
+		return "", fmt.Errorf("returned a cross-origin next page (%s) — refusing to follow it: %w", next, ErrCrossOrigin)
+	}
+	if next.Path != base.Path {
+		return "", fmt.Errorf("returned a next page onto another listing (%s, not %s) — refusing to follow it", next.Path, base.Path)
+	}
+	return next.String(), nil
 }
 
 // ErrCrossOrigin is what every request path in this package refuses with when
@@ -532,17 +598,81 @@ func (c *Client) RepoSize(ctx context.Context, repoID string) (int64, error) {
 	return TotalSize(WantedFiles(files)), nil
 }
 
-// ResolveURL is the direct-download URL for one file in a repo.
+// ResolveURL is the direct-download URL for one file in a repo, or the reason
+// there is none.
 //
-// The revision and each file-path segment are escaped: a file named e.g.
-// "weights#2.safetensors" would otherwise have everything after '#' parsed as a
-// URL fragment, producing a wrong request that 404s and aborts the download.
-func (c *Client) ResolveURL(repoID, revision, file string) string {
+// The repo id, the revision and each file-path segment are checked and escaped
+// through the same hubURL every other request path here goes through: a file
+// named e.g. "weights#2.safetensors" would otherwise have everything after '#'
+// parsed as a URL fragment, producing a wrong request that 404s and aborts the
+// download. This is the path that most needs it — a file download deliberately
+// does not go through do, so nothing downstream asks where the answer came
+// from.
+func (c *Client) ResolveURL(repoID, revision, file string) (string, error) {
 	if revision == "" {
 		revision = "main"
 	}
-	return fmt.Sprintf("%s/%s/resolve/%s/%s",
-		c.baseURL(), repoID, url.PathEscape(revision), escapePathSegments(file))
+	return c.hubURL(repoPath(repoID), segment("resolve"), segment(revision), repoPath(file))
+}
+
+// urlPart is one value on its way into a Hub URL path, together with how it
+// must be escaped.
+type urlPart struct {
+	value string
+	// isPath marks a value that is a path by nature — a repo id ("org/name"),
+	// a repo-relative file path — whose '/' are separators and stay
+	// separators. It is unset for a value that must occupy exactly one path
+	// element, such as a revision, where an unescaped '/' would silently name
+	// a deeper endpoint than the caller asked for.
+	isPath bool
+}
+
+// segment is a value that must occupy exactly one path element.
+func segment(v string) urlPart { return urlPart{value: v} }
+
+// repoPath is a value that is itself a '/'-separated path.
+func repoPath(v string) urlPart { return urlPart{value: v, isPath: true} }
+
+// hubURL is the one place in this package where a URL under the Hub's base is
+// built, so that every value reaching a Hub path is checked and escaped the
+// same way, exactly once. Escaping one path and interpolating another raw is
+// how a repo id carrying '?' or '#' reached a different endpoint than the
+// caller named. A caller that needs a query string appends it to the result;
+// no caller-supplied value belongs in one.
+//
+// Escaping is what keeps a '?' or a '#' inside the element it was written in.
+// Two things it cannot do anything about, so they are refused here rather than
+// on whichever value someone remembered to check:
+//
+// A "." or a ".." is not an element at all but an instruction about the path.
+// url.PathEscape leaves it alone and net/http forwards it verbatim for the
+// server to resolve, so "org/../../evil" — or a revision of ".." — reaches an
+// endpoint the caller never named. Nothing on the Hub is named that.
+//
+// An empty value would simply drop an element, and a path one element shorter
+// is another valid endpoint, not an obviously broken URL.
+func (c *Client) hubURL(parts ...urlPart) (string, error) {
+	segs := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p.value == "" {
+			return "", errors.New("refusing to build a hub URL: a path element is empty")
+		}
+		elems := []string{p.value}
+		if p.isPath {
+			elems = strings.Split(p.value, "/")
+		}
+		for _, e := range elems {
+			if e == "." || e == ".." {
+				return "", fmt.Errorf("refusing to build a hub URL: %q in %q is not a path element", e, p.value)
+			}
+		}
+		if p.isPath {
+			segs = append(segs, escapePathSegments(p.value))
+			continue
+		}
+		segs = append(segs, url.PathEscape(p.value))
+	}
+	return c.baseURL() + "/" + strings.Join(segs, "/"), nil
 }
 
 // escapePathSegments percent-escapes each '/'-separated segment while keeping the
