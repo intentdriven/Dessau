@@ -270,6 +270,14 @@ GitHub release notes.
   page may, and may name at most a hundred thousand files; past either, it is
   refused the way an oversized answer already is. A genuinely sharded model is
   still followed to the end of its pages. `impact: fix`
+- **A pairing key the Secure Enclave cannot guard refuses the pairing instead
+  of quietly becoming a software key.** The chat client asks the Enclave for a
+  key and falls back to an ordinary Keychain key for one measured condition:
+  the entitlement an ad-hoc signature cannot carry. Building the access control
+  that guards the key was a second way out of that path, and it fell through to
+  the software key with nothing said and nothing logged — in the one place the
+  client reports a key as hardware-backed. A refusal there is now read for its
+  reason and shown to the person pairing.
 
 ## [0.7.1] - 2026-09-18
 
