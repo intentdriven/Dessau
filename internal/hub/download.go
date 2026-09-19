@@ -555,6 +555,11 @@ func validContentRange(h string, resumeAt, size int64) bool {
 // response body does not deliver exactly the number of bytes the Hub declared
 // for the file — its Content-Length, or the size the repo's own file tree
 // stated, whichever is smaller.
+//
+// ErrOversizedBody is the package's class for an answer larger than this
+// client will hold, so it is also what a file listing is refused with when its
+// pages together run past what one listing may cost (see maxTreeBytes and
+// maxTreeEntries in hub.go).
 var (
 	ErrOversizedBody = errors.New("the body is longer than the hub declared this file to be")
 	ErrShortBody     = errors.New("the body is shorter than the hub declared this file to be")
