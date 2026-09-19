@@ -121,3 +121,17 @@ func TestASaveThatNamesNeitherProbeSettingLeavesBothAlone(t *testing.T) {
 		t.Errorf("a save naming neither moved them: probe=%v threshold=%d", got.ContextProbe, got.IdleThresholdSec)
 	}
 }
+
+// The snapshot carries the figure an unset idle threshold resolves to, for the
+// same reason the grace pair is in there: the panel's idle-threshold field is
+// blank for the default, and the figure that stands for belongs to the server
+// rather than to a third copy of config.DefaultIdleThresholdSec written into
+// the panel's markup (iss-2609190146152463).
+func TestStateCarriesTheFigureAnUnsetIdleThresholdResolvesTo(t *testing.T) {
+	_, srv := newBudgetControl(t, config.Default(), 128*gb, nil)
+
+	if got := stateOf(t, srv).Defaults.IdleThresholdSec; got != config.DefaultIdleThresholdSec {
+		t.Errorf("defaults.idle_threshold_sec = %d, want the server's own default %d",
+			got, config.DefaultIdleThresholdSec)
+	}
+}

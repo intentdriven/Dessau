@@ -462,6 +462,13 @@ type Defaults struct {
 	// these.
 	EvictionGraceSec   int `json:"eviction_grace_sec"`
 	EvictionMaxWaitSec int `json:"eviction_max_wait_sec"`
+
+	// IdleThresholdSec is how long the last request must be in the past
+	// before this Mac counts as idle, for a panel whose field is blank. The
+	// Context probe pane states it twice — on the field and in the prose
+	// beside it — and both were the constant copied into the markup
+	// (iss-2609190146152463).
+	IdleThresholdSec int `json:"idle_threshold_sec"`
 }
 
 // snapshot builds the state the UI renders.
@@ -481,6 +488,7 @@ func (c *Control) snapshot() State {
 		Defaults: Defaults{
 			EvictionGraceSec:   config.DefaultEvictionGraceSec,
 			EvictionMaxWaitSec: config.DefaultEvictionMaxWaitSec,
+			IdleThresholdSec:   config.DefaultIdleThresholdSec,
 		},
 		Pinned:     c.App.Pool.Pinned(),
 		Waiting:    c.App.Pool.Waiting(),

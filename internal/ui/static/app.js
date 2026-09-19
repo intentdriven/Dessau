@@ -258,17 +258,32 @@ function graceWaitHint(graceValue, maxWaitValue, defaults) {
     + 'protection. Raise the maximum to at least the protection.';
 }
 
-// renderGraceDefaults says, on the fields themselves, what a blank interval
-// resolves to. A blank field is the default, so the form has to name the
+// blankIsSentence puts a default interval into the words that go beside a
+// field, in minutes where the figure is a whole number of them and in seconds
+// otherwise — rounding 90 seconds to "1.5 minutes" would state a figure the
+// server does not hold. Empty for a threshold the panel was not told, so the
+// sentence disappears rather than naming a figure nobody sent.
+function blankIsSentence(sec) {
+  if (!sec) return '';
+  if (sec % 60 !== 0) return ` Blank is ${sec} seconds.`;
+  const minutes = sec / 60;
+  return ` Blank is ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+}
+
+// renderDefaults says, on the settings fields themselves, what leaving one
+// blank resolves to. A blank field is the default, so the form has to name the
 // figure that stands for — and it is the server's, off the snapshot, rather
-// than two Go constants written into the markup a third time
-// (iss-2609190045306656). A panel that has not been told them offers no
-// figure, the same silence graceWaitHint keeps: a placeholder the panel made
-// up is worse than an empty one.
-function renderGraceDefaults(defaults) {
+// than Go constants written into the markup a second time
+// (iss-2609190045306656 for the grace pair, iss-2609190146152463 for the idle
+// threshold and the prose beside it). A panel that has not been told them
+// offers no figure, the same silence graceWaitHint keeps: a placeholder the
+// panel made up is worse than an empty one.
+function renderDefaults(defaults) {
   const d = defaults || {};
   $('setGraceSec').placeholder = d.eviction_grace_sec ? String(d.eviction_grace_sec) : '';
   $('setGraceWait').placeholder = d.eviction_max_wait_sec ? String(d.eviction_max_wait_sec) : '';
+  $('setIdleThreshold').placeholder = d.idle_threshold_sec ? String(d.idle_threshold_sec) : '';
+  $('idleThresholdDefault').textContent = blankIsSentence(d.idle_threshold_sec);
 }
 
 function updateGraceHint() {
@@ -1134,7 +1149,7 @@ function renderSettings() {
   $('setGrace').checked = !!c.eviction_grace;
   // Blank rather than zero for an unset interval: blank is how this form says
   // "the default", and the placeholder gives the figure that stands for.
-  renderGraceDefaults(state.defaults);
+  renderDefaults(state.defaults);
   $('setGraceSec').value = c.eviction_grace_sec || '';
   $('setGraceWait').value = c.eviction_max_wait_sec || '';
   updateGraceHint();

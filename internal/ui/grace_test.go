@@ -224,10 +224,10 @@ func TestTheGracePlaceholdersAreFilledFromTheServersDefaults(t *testing.T) {
 	}
 
 	// The renderer puts the snapshot's figures on the fields themselves.
-	doc := evalPanelDOM(t, fmt.Sprintf("renderGraceDefaults(%s);",
+	doc := evalPanelDOM(t, fmt.Sprintf("renderDefaults(%s);",
 		fmt.Sprintf(`{"eviction_grace_sec":%d,"eviction_max_wait_sec":%d}`,
 			config.DefaultEvictionGraceSec, config.DefaultEvictionMaxWaitSec)),
-		"renderGraceDefaults")
+		"renderDefaults", "blankIsSentence")
 	for _, tc := range []struct{ id, want string }{
 		{"setGraceSec", strconv.Itoa(config.DefaultEvictionGraceSec)},
 		{"setGraceWait", strconv.Itoa(config.DefaultEvictionMaxWaitSec)},
@@ -239,7 +239,7 @@ func TestTheGracePlaceholdersAreFilledFromTheServersDefaults(t *testing.T) {
 
 	// Told nothing, it offers nothing: an empty placeholder is a field with no
 	// claim about what blank means, which beats a figure the panel chose.
-	blank := evalPanelDOM(t, "renderGraceDefaults(undefined);", "renderGraceDefaults")
+	blank := evalPanelDOM(t, "renderDefaults(undefined);", "renderDefaults", "blankIsSentence")
 	for _, id := range []string{"setGraceSec", "setGraceWait"} {
 		if got, _ := blank[id]["placeholder"].(string); got != "" {
 			t.Errorf("%s's placeholder is %q for a snapshot carrying no defaults, want it blank", id, got)
@@ -248,8 +248,8 @@ func TestTheGracePlaceholdersAreFilledFromTheServersDefaults(t *testing.T) {
 
 	// And the settings renderer is what hands it the snapshot; a renderer
 	// nothing calls would leave the fields blank on a live panel.
-	if body := extractFunction(t, readPanelSource(t), "renderSettings"); !strings.Contains(body, "renderGraceDefaults(state.defaults)") {
-		t.Error("renderSettings no longer calls renderGraceDefaults(state.defaults), " +
+	if body := extractFunction(t, readPanelSource(t), "renderSettings"); !strings.Contains(body, "renderDefaults(state.defaults)") {
+		t.Error("renderSettings no longer calls renderDefaults(state.defaults), " +
 			"so the placeholders are never filled on a live panel")
 	}
 }

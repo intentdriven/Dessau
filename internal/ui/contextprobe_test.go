@@ -1,8 +1,13 @@
 package ui
 
 import (
+	"fmt"
 	"regexp"
+	"strconv"
+	"strings"
 	"testing"
+
+	"github.com/intentdriven/Gropius/internal/config"
 )
 
 // The probe's two settings are one setting each on three surfaces, and the
@@ -59,5 +64,55 @@ func TestTheResultSaysWhatBoundedIt(t *testing.T) {
 		if got := line(tt.expr); got != tt.want {
 			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
 		}
+	}
+}
+
+// The idle threshold is the same drift one fieldset down from the grace pair:
+// a blank field is the default, and the form said which figure that was twice
+// over — placeholder="300" on the field and "Blank is five minutes" in the
+// prose beside it, both of them config.DefaultIdleThresholdSec written out
+// again where nothing binds them to the server (iss-2609190146152463). Both
+// are rendered from the snapshot, so a Mac serving a different threshold says
+// so and a panel that has not been told the figure claims nothing.
+func TestTheIdleThresholdDefaultIsFilledFromTheServer(t *testing.T) {
+	page, err := assets.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := attr(fieldTag(t, string(page), "setIdleThreshold"), "placeholder"); got != "" {
+		t.Errorf("setIdleThreshold carries placeholder=%q in the markup — a figure nothing binds "+
+			"to the server, which is the copy this field is bound to the snapshot to be rid of", got)
+	}
+	if strings.Contains(string(page), "Blank is five minutes") {
+		t.Error("the prose beside the idle threshold still spells the default out in words; " +
+			"it is written from the snapshot's figure")
+	}
+
+	doc := evalPanelDOM(t, fmt.Sprintf("renderDefaults({\"idle_threshold_sec\":%d});",
+		config.DefaultIdleThresholdSec), "renderDefaults", "blankIsSentence")
+	if got, _ := doc["setIdleThreshold"]["placeholder"].(string); got != strconv.Itoa(config.DefaultIdleThresholdSec) {
+		t.Errorf("setIdleThreshold's placeholder is %q, want the server's default %d",
+			got, config.DefaultIdleThresholdSec)
+	}
+	said, _ := doc["idleThresholdDefault"]["textContent"].(string)
+	if !strings.Contains(said, "Blank is 5 minutes") {
+		t.Errorf("the prose beside the field reads %q, want it to say the default is 5 minutes", said)
+	}
+
+	// A threshold that is not a whole number of minutes is said in seconds
+	// rather than rounded into a figure the server does not hold.
+	odd := evalPanelDOM(t, `renderDefaults({"idle_threshold_sec":90});`, "renderDefaults", "blankIsSentence")
+	if said, _ := odd["idleThresholdDefault"]["textContent"].(string); !strings.Contains(said, "Blank is 90 seconds") {
+		t.Errorf("a 90-second threshold reads %q, want it said in seconds", said)
+	}
+
+	// Told nothing, it claims nothing: no placeholder and no sentence beats a
+	// figure the panel chose for itself.
+	blank := evalPanelDOM(t, "renderDefaults(undefined);", "renderDefaults", "blankIsSentence")
+	if got, _ := blank["setIdleThreshold"]["placeholder"].(string); got != "" {
+		t.Errorf("setIdleThreshold's placeholder is %q for a snapshot carrying no defaults, want it blank", got)
+	}
+	if got, _ := blank["idleThresholdDefault"]["textContent"].(string); got != "" {
+		t.Errorf("the prose beside the field reads %q for a snapshot carrying no defaults, want nothing", got)
 	}
 }
