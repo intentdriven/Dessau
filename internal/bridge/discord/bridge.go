@@ -251,9 +251,11 @@ func (b *Bridge) Apply(on bool, token string) {
 		// so a store dropped there alone outlived the bridge on exactly the
 		// stop an operator cannot undo from Settings.
 		//
-		// Registered BEFORE the close, so it runs after it: whoever is
-		// waiting on done goes on to build the next store, and this must not
-		// be able to drop that one.
+		// THE ORDER OF THESE TWO IS LOAD-BEARING. Defers run last-registered
+		// first, so the close below is registered first in order to run
+		// LAST — after the drop. Whoever is waiting on done goes straight on
+		// to build the next store, and a goroutine that dropped after closing
+		// could drop that one instead of its own.
 		defer close(done)
 		defer b.dropConversations()
 		b.run(ctx, token)

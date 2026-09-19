@@ -42,7 +42,18 @@ func answered(t *testing.T, f *fakeDiscord, b *Bridge) restCall {
 	if got, _ := call.Body["content"].(string); got == stillAnswering {
 		t.Fatalf("the bot replied %q: the channel was still answering the message before this one", got)
 	}
-	conv := b.conversations().get(channelID)
+	// Against the bridge's OWN store, or not at all: conversations() mints a
+	// throwaway when the bridge holds none, and waiting on a lock in a store
+	// nothing else can reach would synchronise on nothing and pass
+	// (iss-2609190312182409's second half). Every caller runs on a live
+	// bridge; this says so rather than trusting it.
+	b.mu.Lock()
+	store := b.convos
+	b.mu.Unlock()
+	if store == nil {
+		t.Fatal("the bridge holds no conversations: it is not running, and this wait would mean nothing")
+	}
+	conv := store.get(channelID)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if conv.answering.TryLock() {
