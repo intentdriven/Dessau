@@ -9,6 +9,12 @@ found_during: "fidelity audit of itd-2609182357325215"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/DECISIONS.md"
+resolution: "The correcting decision line of 2026-09-19 names the throwaway command-line client and moves the app's own live pairing to the owed list."
+impact: internal
 ---
 
 The shipping decision line for the pairing intent in .abcd/work/DECISIONS.md reads 'Driven end to end against the built server on one Mac: paired, pinned the fingerprint the handshake presented, answered over mutual TLS, survived a restart, revoked', which reads as though the shipping chat client drove it. The spec's Verification section says the client in that run was a throwaway Swift command-line program. The acceptance criterion asks for the check on Bob's Mac client, so which client drove the run is the whole weight of the evidence, and the decision line should say it.
+
+## Grounds
+
+- pursued: we expect the append-only ledger to carry the correction beside the claim; wrong if a reader takes the earlier line at face value
