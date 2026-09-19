@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"sort"
@@ -183,4 +184,35 @@ func applyOver(t *testing.T, stored config.Config, posted string) config.Config 
 		t.Fatalf("the save was refused: %d", resp.StatusCode)
 	}
 	return a.Config()
+}
+
+// The TLS listeners are acquired once, at launch, from the configuration as it
+// was then. A save that moves the port paired clients use therefore changes
+// nothing until the next start, and has to say so — the silence
+// iss-2609091751184914 recorded for advertise, in a second field
+// (iss-2609190103062546).
+func TestASaveThatChangesTheTLSPortAsksForARestart(t *testing.T) {
+	stored := config.Default()
+	stored.TLSPort = 11540
+
+	srv, _ := newTestControlApp(t, stored)
+	body := strings.Replace(uneditedFormBody(t, stored), `"tls_port":11540`, `"tls_port":11541`, 1)
+	if !strings.Contains(body, `"tls_port":11541`) {
+		t.Fatalf("the form body does not carry tls_port, so this test proves nothing: %s", body)
+	}
+	resp := postJSON(t, srv, "/api/settings", body)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	var answer struct {
+		Restart bool `json:"restart"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&answer); err != nil {
+		t.Fatal(err)
+	}
+	if !answer.Restart {
+		t.Error("a save that moved the port paired clients use reported restart=false; the listener is " +
+			"still on the old port and nothing said so")
+	}
 }

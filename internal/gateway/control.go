@@ -1510,6 +1510,11 @@ func (c *Control) applySettings(raw []byte) (map[string]any, error) {
 	// advertise:false was told "saved" while the advert went on answering the
 	// network, with nothing saying the stored value had not reached anything.
 	restart := incoming.Port != current.Port ||
+		// The TLS listeners are acquired once, at launch, from the
+		// configuration as it was then. A saved port that changes nothing
+		// until the next start and does not say so is the silence
+		// iss-2609091751184914 recorded for advertise.
+		incoming.TLSPort != current.TLSPort ||
 		incoming.Host != current.Host ||
 		incoming.BindMode != current.BindMode ||
 		incoming.Advertise != current.Advertise ||
