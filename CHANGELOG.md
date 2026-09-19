@@ -11,6 +11,18 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A model typed as a full repository id is found, whatever account owns it.**
+  The Find Models search asks the `mlx-community` organisation, so an MLX
+  conversion published under someone else's account was not offered even to a
+  person who knew its name to the letter. A query that is a well-formed
+  repository id is now also looked up exactly on HuggingFace and offered first
+  when the repo is there and is an MLX one; the organisation search still runs
+  alongside it. Both routes out of the default organisation — the typed id and
+  the `author:someone` prefix — are stated in the search box and in
+  [Getting started](docs/getting-started.md).
+
 ## [0.7.1] - 2026-09-18
 
 ### Fixed

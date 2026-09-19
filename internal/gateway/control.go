@@ -1079,10 +1079,12 @@ func searchAuthor(q string) (author, rest string) {
 }
 
 func (c *Control) handleSearch(w http.ResponseWriter, r *http.Request) {
-	author, q := searchAuthor(r.URL.Query().Get("q"))
+	typed := r.URL.Query().Get("q")
+	author, q := searchAuthor(typed)
 	limit := searchLimit(r.URL.Query().Get("limit"))
+	ctx := r.Context()
 
-	models, err := c.App.Hub.Search(r.Context(), hub.SearchQuery{
+	models, err := c.App.Hub.Search(ctx, hub.SearchQuery{
 		Search: q,
 		Author: author,
 		Limit:  limit,
@@ -1091,6 +1093,22 @@ func (c *Control) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
+	}
+
+	// A query typed as a full repository id is also looked up exactly, and the
+	// repo it names is offered first whatever account owns it. The search above
+	// asks one organisation, so a conversion published under somebody else's
+	// account is otherwise unfindable from the picker even when the person
+	// knows its name to the letter. One extra request, for a query that is a
+	// well-formed id and only then, and the result is folded into the list the
+	// rest of this handler already measures and caps.
+	if id, ok := exactRepoID(typed); ok {
+		if m, found := c.exactRepoMatch(ctx, id); found {
+			models = prependModel(m, models)
+			if len(models) > limit {
+				models = models[:limit]
+			}
+		}
 	}
 
 	// Mark what is already local so the UI can show "Downloaded" instead of a
@@ -1111,7 +1129,6 @@ func (c *Control) handleSearch(w http.ResponseWriter, r *http.Request) {
 	// The search payload carries no file sizes, so fetch each repo's download
 	// size concurrently (one tree request each, bounded).
 	sizes := make([]int64, len(models))
-	ctx := r.Context()
 	sem := make(chan struct{}, 8)
 	var wg sync.WaitGroup
 	for i, m := range models {
@@ -1761,4 +1778,59 @@ func (c *Control) handleAdopt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "adopted", "model": model})
+}
+
+// exactRepoID reads the search box's text as a repository id the operator has
+// typed in full, rather than as a term to search for. It reports the id only
+// when the text is a well-formed one: exactly one "/", both halves non-empty,
+// and nothing outside the characters HuggingFace itself allows.
+//
+// The check is config.ValidRepoID, the same gate the download path uses, and it
+// is a security boundary here for the same reason it is there: the text is
+// whatever the caller typed and it goes on to become a path segment in a URL
+// sent to the Hub. Anything that is not an id — a term with a space, a pasted
+// URL, a traversal — is not looked up at all; it stays a search term.
+func exactRepoID(q string) (string, bool) {
+	q = strings.TrimSpace(q)
+	if !config.ValidRepoID(q) {
+		return "", false
+	}
+	return q, true
+}
+
+// exactRepoMatch looks one repository id up on the Hub and returns what it says
+// the repo is, when the repo exists and is an MLX model.
+//
+// It never fails a search. A repo that is not there, a Hub that is unreachable
+// or rate-limiting, a model MLX cannot load: each returns false and the
+// author-scoped results stand alone. The exact lookup adds a result or it adds
+// nothing.
+func (c *Control) exactRepoMatch(ctx context.Context, id string) (hub.Model, bool) {
+	m, err := c.App.Hub.RepoInfo(ctx, id)
+	if err != nil || !m.IsMLX() {
+		return hub.Model{}, false
+	}
+	// The id that goes on is the validated one we asked for, never the one the
+	// response carries. An id from here reaches a download button, and from
+	// there a filesystem path; a response naming something else would put an
+	// unvalidated string on that route, and a rename is served under the name
+	// the person typed anyway.
+	m.ID = id
+	return m, true
+}
+
+// prependModel puts one model at the head of a result list, dropping the copy
+// the search already found so an exact hit inside the searched organisation is
+// offered once rather than twice.
+func prependModel(m hub.Model, models []hub.Model) []hub.Model {
+	out := make([]hub.Model, 0, len(models)+1)
+	out = append(out, m)
+	key := config.FoldRepoID(m.ID)
+	for _, other := range models {
+		if config.FoldRepoID(other.ID) == key {
+			continue
+		}
+		out = append(out, other)
+	}
+	return out
 }
