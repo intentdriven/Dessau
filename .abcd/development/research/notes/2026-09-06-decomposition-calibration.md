@@ -468,3 +468,18 @@ radius (one architecture test).
 Verdict proposed: FILE-AS-IS, three intents and one capture. Verdict adopted:
 the same. Grade: routing survived; reviews scaled to the blast radius (one
 architecture test each).
+
+## 2026-09-19 — per-client identity and encrypted interactions
+
+Proposal (the maintainer): each client instance records a unique hash/id to
+register with the server; each interaction is then encrypted via that hash.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| A client pairs once; Alice sees and revokes paired clients | capability | itd-2609182357325215, `builds_on` the trunk and the Gropius offer; refines the API-key intents |
+| Traffic encrypted | trust-boundary rule | adr-2609182357322050: TLS, pinned certificate, a keypair per client; plain HTTP kept for unpaired clients |
+| "Encrypted via the id" | unsound as asked | corrected at routing: an identifier is not a key |
+| Plain HTTP on the LAN | reversal, flagged | kept for unpaired OpenAI clients by the maintainer's choice |
+
+Verdict proposed: SPLIT (intent + ADR). Verdict adopted: SPLIT, plain HTTP
+kept. Grade: routing survived; the mechanism was corrected before filing.
