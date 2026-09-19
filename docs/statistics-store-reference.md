@@ -231,8 +231,11 @@ disk permanent. Settings counts those records separately, so a loss is never
 silent.
 
 Anything under one of these names that is not a plain file — a named pipe, a
-device, a folder — is refused rather than read. Gropius never waits on
-something in this folder to answer it.
+device, a folder — is refused rather than read. A plain file whose mode is not
+`0600` is refused too: Gropius creates every file here owner-only, so one that
+any other account could read is not a file it wrote, and it is left alone
+rather than appended to. Gropius never waits on something in this folder to
+answer it.
 
 A request record measures about 380 bytes, so 200 MB is roughly seven weeks
 of ten thousand requests a day; a footprint line every thirty seconds per
