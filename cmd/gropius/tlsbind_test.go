@@ -96,3 +96,34 @@ func TestTheCertificateCoversWhatTheBindAcquired(t *testing.T) {
 		t.Errorf("the wildcard reached the certificate's names: %q", got)
 	}
 }
+
+// Pairing exists only where a paired client has somewhere to go.
+//
+// An operator who turned the TLS port off, or whose port is held by something
+// else, must not still be running an unauthenticated endpoint that mints
+// certificates and writes their settings file for a port nothing is listening
+// on (iss-2609190110237996). The mounting is one branch in runServer, so this
+// holds the shape of that branch rather than the running server.
+func TestPairingIsNotOfferedWithoutAListenerToPairOnto(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(src)
+	mount := strings.Index(body, `mux.Handle("/pair"`)
+	if mount < 0 {
+		t.Fatal("the pairing route is no longer mounted at all")
+	}
+	acquire := strings.Index(body, "tlsLns = acquireTLSBind(")
+	if acquire < 0 {
+		t.Fatal("the TLS listeners are no longer acquired in runServer")
+	}
+	if acquire > mount {
+		t.Error("the pairing route is mounted before the TLS listeners are acquired, so it is offered " +
+			"whether or not there is anything to pair onto")
+	}
+	guard := strings.Index(body, "if len(tlsLns) > 0 {")
+	if guard < 0 || guard > mount {
+		t.Error("the pairing route is not guarded on a TLS listener having been acquired")
+	}
+}

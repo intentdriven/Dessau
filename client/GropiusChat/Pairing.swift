@@ -274,7 +274,16 @@ nonisolated final class PinningDelegate: NSObject, URLSessionDelegate, @unchecke
 
     /// The fingerprint the last handshake actually presented, so pairing can
     /// record it and the user can compare it with the panel.
+    ///
+    /// Read it with `takeLastPresented()` rather than here when it is about to
+    /// become a pin: this value is shared, and a stale reading of it is a
+    /// pairing for one server holding another's key.
     var lastPresentedSPKI: String? { lock.withLock { _lastPresentedSPKI } }
+
+    /// Forget whatever handshake was last seen. Called before a handshake whose
+    /// result is about to become a pin, so that a handshake which never happens
+    /// cannot be mistaken for one that did (iss-2609190110244227).
+    func forgetLastPresented() { lock.withLock { _lastPresentedSPKI = nil } }
 
     func urlSession(
         _ session: URLSession,

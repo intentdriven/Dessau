@@ -154,3 +154,39 @@ func TestTheDefaultTLSPortIsBesideThePlainOne(t *testing.T) {
 		t.Errorf("a chosen TLS port is %d, want 9999", got)
 	}
 }
+
+// Only the canonical spelling of a hash is a fingerprint. Sixteen distinct
+// 44-character strings decode to the same 32 bytes under the non-strict
+// decoder; a row filed under one of them can never match a key and is a row
+// nobody can explain (iss-2609190110241408).
+func TestOnlyACanonicalFingerprintIsAFingerprint(t *testing.T) {
+	canonical := strings.Repeat("A", 43) + "="
+	if err := ValidFingerprint(canonical); err != nil {
+		t.Fatalf("the canonical spelling was refused: %v", err)
+	}
+	// "B=" and "A=" differ only in the bits the padding discards.
+	for _, spelling := range []string{
+		strings.Repeat("A", 43) + "=", // canonical
+		strings.Repeat("A", 42) + "B=",
+		strings.Repeat("A", 42) + "C=",
+	} {
+		err := ValidFingerprint(spelling)
+		if spelling == canonical {
+			continue
+		}
+		if err == nil {
+			t.Errorf("%q was accepted as a fingerprint; it decodes to the same bytes as another spelling "+
+				"and could never match a key", spelling)
+		}
+	}
+}
+
+// A server on the last port has no port beside it, so there is no TLS listener
+// rather than one on a number that is not a port (iss-2609190110241408).
+func TestThereIsNoPortAfterTheLastOne(t *testing.T) {
+	c := Default()
+	c.Port = 65535
+	if got := c.EffectiveTLSPort(); got != 0 {
+		t.Errorf("a server on port 65535 offers paired clients port %d, which is not a port", got)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/Gropius/internal/config"
@@ -46,6 +47,9 @@ type pairAnswer struct {
 	// clientSPKI is the pairing's own fingerprint, for the log line. Unexported
 	// so it does not travel: the client computed it and does not need it back.
 	clientSPKI string
+	// unchanged says the stored row would be identical, so there is nothing to
+	// save. Unexported for the same reason.
+	unchanged bool
 }
 
 // PairHandler is POST /pair, and it is mounted on the PLAIN listener only.
@@ -63,16 +67,44 @@ func (c *Control) PairHandler() http.Handler {
 			writeError(w, http.StatusMethodNotAllowed, "pairing is a POST")
 			return
 		}
+		// Everything the request carries is read and checked BEFORE the lock is
+		// taken. The body arrives over a socket this server does not control,
+		// and the plain listener bounds the headers and not the body — so
+		// decoding under the lock let one connection that sent headers and then
+		// stalled wedge every future pairing and every settings save the
+		// operator makes, for as long as it stayed open (iss-2609190110110353).
+		req, err := readPairRequest(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		// The same lock the settings handler takes, in the same order
 		// (adr-2609091239058072, rule 1): pairing is a read of the settings in
-		// force, a change to a copy and a SetConfig, which is exactly the shape
+		// force, a change to a COPY and a SetConfig, which is exactly the shape
 		// that lock serialises. Taking it here is what stops a pairing and a
 		// save from losing each other's work.
 		c.settingsMu.Lock()
 		defer c.settingsMu.Unlock()
-		cfg := c.App.Config()
-		answer, ok := c.pairInto(&cfg, w, r)
+		// Clone, and the reason is not tidiness. App.Config() returns the
+		// configuration by value, and a struct copy SHARES its maps — so
+		// writing cfg.Clients wrote the running paired set, which the registry
+		// reads on every handshake and every request and the panel iterates on
+		// every poll. A Go map is not concurrency-safe and that is a fatal
+		// error rather than a race report, reachable from an endpoint nobody
+		// has to authenticate to (iss-2609190110117982). Cloning also keeps a
+		// pairing the save then refuses out of the live set, so a 500 here is
+		// not silent admission (iss-2609190110110994).
+		cfg := c.App.Config().Clone()
+		answer, ok := c.pairInto(&cfg, req, w)
 		if !ok {
+			return
+		}
+		if answer.unchanged {
+			// Nothing to write. Without this an unauthenticated endpoint is a
+			// remote fsync loop on the operator's settings file, since a client
+			// re-pairing under a key it already holds skips the ceiling too
+			// (iss-2609190110241925).
+			writeJSON(w, http.StatusOK, answer)
 			return
 		}
 		// The answer is written only once the pairing is stored. A client takes
@@ -91,6 +123,31 @@ func (c *Control) PairHandler() http.Handler {
 	})
 }
 
+// readPairRequest reads and shapes the request, and nothing else.
+//
+// Two guards here are about the CALLER rather than the content, and they are
+// what keeps this from being a form a web page can post. A POST carrying a
+// CORS-simple content type sends no preflight, so without them any page
+// somebody on this network visits could enrol a key of the attacker's choosing
+// — and the attacker would never need to read the answer, because what admits
+// a client is the key and they can sign their own certificate for it. That is
+// a wider window than adr-2609182357322050 accepted, which is hosts on the
+// network rather than every website anybody on it visits
+// (iss-2609190110118690).
+func readPairRequest(r *http.Request) (pairRequest, error) {
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		return pairRequest{}, errors.New(`pairing is posted as "application/json"`)
+	}
+	if r.Header.Get("Origin") != "" {
+		return pairRequest{}, errors.New("pairing is not something a web page may ask for")
+	}
+	var req pairRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxPairBodyBytes)).Decode(&req); err != nil {
+		return pairRequest{}, errors.New("the pairing request is not JSON this server reads")
+	}
+	return req, nil
+}
+
 // pairInto validates a pairing request and writes it into cfg, returning the
 // answer for the caller to send once the save has succeeded.
 //
@@ -98,12 +155,10 @@ func (c *Control) PairHandler() http.Handler {
 // answer depends on a save this function does not make. It is separate from
 // the saving so that everything it refuses is testable without a whole App
 // behind it, and so that nothing malformed ever reaches the settings file.
-func (c *Control) pairInto(cfg *config.Config, w http.ResponseWriter, r *http.Request) (pairAnswer, bool) {
-	var req pairRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxPairBodyBytes)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "the pairing request is not JSON this server reads")
-		return pairAnswer{}, false
-	}
+//
+// cfg must be a copy. Writing the running configuration's map is the fault
+// iss-2609190110117982 records.
+func (c *Control) pairInto(cfg *config.Config, req pairRequest, w http.ResponseWriter) (pairAnswer, bool) {
 	if err := config.ValidClientName(req.Name); err != nil {
 		writeError(w, http.StatusBadRequest, "that name is not one this server will record: "+err.Error())
 		return pairAnswer{}, false
@@ -139,13 +194,16 @@ func (c *Control) pairInto(cfg *config.Config, w http.ResponseWriter, r *http.Re
 		cfg.Clients = map[string]config.Client{}
 	}
 	pairedAt := time.Now().Unix()
+	unchanged := false
 	if was, already := cfg.Clients[fingerprint]; already {
 		// The same key pairing again is the same client, renamed or reinstalled
 		// — not a second one nobody can tell apart on the panel.
 		pairedAt = was.PairedAt
+		unchanged = was.Name == req.Name
 	}
 	cfg.Clients[fingerprint] = config.Client{Name: req.Name, SPKI: fingerprint, PairedAt: pairedAt}
 	return pairAnswer{
+		unchanged:   unchanged,
 		Leaf:        base64.StdEncoding.EncodeToString(leaf),
 		Fingerprint: c.Identity.Fingerprint(),
 		TLSPort:     cfg.EffectiveTLSPort(),
@@ -169,7 +227,10 @@ func (c *Control) handleRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 	c.settingsMu.Lock()
 	defer c.settingsMu.Unlock()
-	cfg := c.App.Config()
+	// Cloned for the reason PairHandler clones: App.Config() shares its maps
+	// with the running configuration, and deleting from it would delete from
+	// under the registry and the panel (iss-2609190110117982).
+	cfg := c.App.Config().Clone()
 	was, ok := cfg.Clients[req.Fingerprint]
 	if !ok {
 		writeError(w, http.StatusNotFound, "no client is paired under that fingerprint")

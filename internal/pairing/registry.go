@@ -94,6 +94,14 @@ var ErrNotPaired = errors.New("this client is not paired with this server")
 // this server from a key it recorded, and what is checked is that key. A
 // certificate's common name and serial are whatever the presenter chose, since
 // RequireAnyClientCert verifies nothing, so they are never what is looked up.
+//
+// Said the other way round, because it is the consequence and not the rule: a
+// client holding a paired key is admitted under a certificate IT signed, with
+// any name in it. The minted leaf is a convenience, not a credential — the
+// credential is the private key, proved by the handshake — so a key that ever
+// leaves the device it was made on is the whole of an identity, and revoking
+// it on the panel is the only thing that answers that. docs/pairing-explained.md
+// says so in the operator's own terms.
 func (r *Registry) TLSConfig(id *Identity) *tls.Config {
 	return &tls.Config{
 		Certificates:           []tls.Certificate{id.TLSCertificate()},

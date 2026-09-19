@@ -44,6 +44,16 @@ than you meant, pairing a client does not help — change the key.
 available to whoever controls the device. Pairing says which device is talking,
 never who is holding it.
 
+**The key is what is trusted, not the certificate.** Your server checks the key
+a client presents against the list on your panel, and looks at nothing else in
+the certificate — so a client holding a paired key is let in under a
+certificate it wrote itself, with whatever name it likes in it. That is how it
+should be: what proves a client is the key, and the certificate is only the
+wrapper the key travels in. What it means in practice is that a key is the
+whole of an identity here. If one ever escapes the device it was made on,
+revoking it on the panel is the only thing that helps, and nothing about the
+certificate would have slowed it down.
+
 **Your server is not a certificate authority.** It signs a certificate for each
 client it pairs, and nothing else trusts those certificates or should. There is
 no revocation list, no expiry to watch, and nothing to install anywhere: your

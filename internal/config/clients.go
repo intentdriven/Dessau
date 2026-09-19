@@ -69,6 +69,10 @@ func (c Config) EffectiveTLSPort() int {
 		return 0
 	}
 	if c.TLSPort == 0 {
+		// The port beside the plain one, unless there is no port beside it.
+		if c.Port >= 65535 {
+			return 0
+		}
 		return c.Port + 1
 	}
 	return c.TLSPort
@@ -105,7 +109,12 @@ func validFingerprint(s string) error {
 	if len(s) != fingerprintChars {
 		return fmt.Errorf("a key fingerprint is %d characters, this one is %d", fingerprintChars, len(s))
 	}
-	raw, err := base64.StdEncoding.DecodeString(s)
+	// Strict, so that only the canonical spelling of a hash is a fingerprint.
+	// Sixteen 44-character strings decode to the same 32 bytes under the
+	// non-strict decoder, and a hand-edited file could carry any of them: they
+	// would fail closed, never matching a key, but a row that can never match
+	// is a row nobody can explain (iss-2609190110241408).
+	raw, err := base64.StdEncoding.Strict().DecodeString(s)
 	if err != nil || len(raw) != 32 {
 		return fmt.Errorf("%q is not a base64 SHA-256 hash", s)
 	}

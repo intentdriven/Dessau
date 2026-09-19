@@ -400,17 +400,24 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 		log.Error("no certificate of this server's own, so no client can pair", "err", err)
 	} else {
 		reg := pairing.NewRegistry(a.Config)
-		ctrl.Identity, ctrl.Clients = identity, reg
-		// The pairing call is the one route on the plain listener that is not
-		// the gateway's and not the control plane's. It has to be plain: a
-		// client that has not paired has no certificate, and the TLS listener
-		// refuses a handshake without one.
-		mux.Handle("/pair", ctrl.PairHandler())
 		tlsLns = acquireTLSBind(plan, cfg, identity, reg, log)
-		tlsSrv = &http.Server{
-			Handler:           withLogging(g.TLSHandler(reg), log),
-			ReadHeaderTimeout: 15 * time.Second,
-			IdleTimeout:       120 * time.Second,
+		// Pairing exists only where a paired client has somewhere to go. An
+		// operator who set tls_port to -1, or whose TLS port is held by
+		// something else, would otherwise still be running an unauthenticated
+		// endpoint that mints certificates and writes their settings file for a
+		// port nothing is listening on (iss-2609190110237996).
+		if len(tlsLns) > 0 {
+			ctrl.Identity, ctrl.Clients = identity, reg
+			// The pairing call is the one route on the plain listener that is
+			// not the gateway's and not the control plane's. It has to be
+			// plain: a client that has not paired has no certificate, and the
+			// TLS listener refuses a handshake without one.
+			mux.Handle("/pair", ctrl.PairHandler())
+			tlsSrv = &http.Server{
+				Handler:           withLogging(g.TLSHandler(reg), log),
+				ReadHeaderTimeout: 15 * time.Second,
+				IdleTimeout:       120 * time.Second,
+			}
 		}
 	}
 

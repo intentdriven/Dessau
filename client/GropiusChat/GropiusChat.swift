@@ -527,8 +527,17 @@ final class AppModel: ObservableObject {
         // (iss-2609190100212365).
         let previous = pinning.pinnedSPKI
         pinning.pinnedSPKI = nil
-        _ = try? await session.data(from: probe)
-        guard let presented = pinning.lastPresentedSPKI else {
+        // And forget whatever handshake was last seen, or a probe that never
+        // completes one leaves the fingerprint of the PREVIOUS server standing
+        // — which would write a pairing for this server holding that one's key,
+        // and show it under "That server's key", which is the one human
+        // comparison the whole design rests on (iss-2609190110244227).
+        pinning.forgetLastPresented()
+        var reached = false
+        if let (_, response) = try? await session.data(from: probe) {
+            reached = (response as? HTTPURLResponse) != nil
+        }
+        guard reached, let presented = pinning.lastPresentedSPKI else {
             pinning.pinnedSPKI = previous
             PairingStore.removeLeaf(der)
             throw PairingError.noHandshake

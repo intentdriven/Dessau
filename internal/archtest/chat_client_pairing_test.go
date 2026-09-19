@@ -97,6 +97,18 @@ func TestTheClientAttemptsTheEnclaveAndFallsBack(t *testing.T) {
 func TestTheClientPinsWhatTheHandshakePresented(t *testing.T) {
 	src := clientSources(t, repoRootDir(t))
 	app := src["GropiusChat.swift"]
+	// The reading has to be of THIS handshake. The delegate's last-presented
+	// fingerprint is shared state, so a probe that never completes a handshake
+	// would otherwise leave the previous server's key standing and be pinned
+	// for this one (iss-2609190110244227).
+	if !strings.Contains(app, "pinning.forgetLastPresented()") {
+		t.Error("pairing does not clear the last handshake before the one it learns its pin from, so a " +
+			"probe that never connects pins whatever the previous connection presented")
+	}
+	if !strings.Contains(app, "guard reached,") {
+		t.Error("pairing does not require its probe to have reached the server, so a failed probe is " +
+			"indistinguishable from one that succeeded")
+	}
 	if !strings.Contains(app, "pinning.lastPresentedSPKI") {
 		t.Error("pairing does not record what the handshake presented, so the pin comes from somewhere it " +
 			"can be told rather than from somewhere it can be seen")

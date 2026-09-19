@@ -217,13 +217,16 @@ func TestThePairingEndpointRefusesWhatItCannotStore(t *testing.T) {
 	for what, body := range cases {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/pair", strings.NewReader(body))
-		ctrl.pairInto(&cfg, w, r)
-		if w.Code == http.StatusOK {
+		r.Header.Set("Content-Type", "application/json")
+		req, err := readPairRequest(r)
+		if err != nil {
+			continue // refused before it was even shaped, which is a refusal
+		}
+		if _, ok := ctrl.pairInto(&cfg, req, w); ok {
 			t.Errorf("the pairing endpoint accepted %s", what)
 		}
 		if len(cfg.Clients) != 0 {
 			t.Fatalf("%s was written to the paired set", what)
-			return
 		}
 	}
 }
@@ -245,7 +248,7 @@ func TestThePairingEndpointStopsAtTheCeiling(t *testing.T) {
 	k := newClientKey(t)
 	body := `{"name":"one too many","public_key":"` + base64.StdEncoding.EncodeToString(k.spki) + `"}`
 	w := httptest.NewRecorder()
-	_, _ = ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair", strings.NewReader(body)))
+	_, _ = ctrl.pairInto(&cfg, mustPairRequest(t, body), w)
 	if w.Code == http.StatusOK {
 		t.Error("the pairing endpoint paired a client over the ceiling")
 	}
@@ -269,8 +272,7 @@ func TestPairingTwiceWithOneKeyUpdatesTheSameClient(t *testing.T) {
 	}
 	for _, name := range []string{"Bob's iPad", "Bob's iPad Pro"} {
 		w := httptest.NewRecorder()
-		_, _ = ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair", strings.NewReader(body(name))))
-		if w.Code != http.StatusOK {
+		if _, ok := ctrl.pairInto(&cfg, mustPairRequest(t, body(name)), w); !ok {
 			t.Fatalf("pairing %q was refused: %d %s", name, w.Code, w.Body)
 		}
 	}
@@ -293,8 +295,7 @@ func TestPairingAnswersWithTheLeafAndTheServersFingerprint(t *testing.T) {
 	ctrl := &Control{Identity: id}
 	k := newClientKey(t)
 	w := httptest.NewRecorder()
-	answer, ok := ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair",
-		strings.NewReader(`{"name":"Bob","public_key":"`+base64.StdEncoding.EncodeToString(k.spki)+`"}`)))
+	answer, ok := ctrl.pairInto(&cfg, mustPairRequest(t, `{"name":"Bob","public_key":"`+base64.StdEncoding.EncodeToString(k.spki)+`"}`), w)
 	if !ok {
 		t.Fatalf("pairing was refused: %d %s", w.Code, w.Body)
 	}
@@ -331,8 +332,7 @@ func TestAPairingThatCouldNotBeSavedIsNotAnsweredWithACertificate(t *testing.T) 
 	ctrl := &Control{Identity: id}
 	k := newClientKey(t)
 	w := httptest.NewRecorder()
-	answer, ok := ctrl.pairInto(&cfg, w, httptest.NewRequest("POST", "/pair",
-		strings.NewReader(`{"name":"Bob","public_key":"`+base64.StdEncoding.EncodeToString(k.spki)+`"}`)))
+	answer, ok := ctrl.pairInto(&cfg, mustPairRequest(t, `{"name":"Bob","public_key":"`+base64.StdEncoding.EncodeToString(k.spki)+`"}`), w)
 	if !ok {
 		t.Fatalf("an ordinary pairing was refused: %d %s", w.Code, w.Body)
 	}
@@ -344,4 +344,18 @@ func TestAPairingThatCouldNotBeSavedIsNotAnsweredWithACertificate(t *testing.T) 
 	if w.Body.Len() != 0 {
 		t.Errorf("the validation step wrote a %d-byte answer before anything was saved: %s", w.Body.Len(), w.Body)
 	}
+}
+
+// mustPairRequest is a well-formed pairing request, so a test about what
+// pairInto does with the CONTENT does not have to restate what readPairRequest
+// checks about the caller.
+func mustPairRequest(t *testing.T, body string) pairRequest {
+	t.Helper()
+	r := httptest.NewRequest("POST", "/pair", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	req, err := readPairRequest(r)
+	if err != nil {
+		t.Fatalf("a well-formed request was refused before it was read: %v", err)
+	}
+	return req
 }
