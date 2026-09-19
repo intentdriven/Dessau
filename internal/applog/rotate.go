@@ -38,7 +38,8 @@ import (
 // self-test's results checks the one directory it makes, and the log creates
 // its own and falls back to stderr rather than refusing to start. Folding those
 // into one would either weaken the store's rule or make a log directory able to
-// stop the log. The caller checks its directory and hands this the handle.
+// stop the log. A caller with a rule of its own applies it before opening, and
+// what this holds is the file.
 
 // FilePerm is the mode every file these writers create carries: this account's
 // own record of what its own Mac did, and nobody else's business.
@@ -109,9 +110,10 @@ type RotateOptions struct {
 	Keep int
 	// Rotated, when set, is called after a file has been started again. It
 	// runs on the writing goroutine with the Rotator's lock held, so it must
-	// not write to this Rotator — the log is not allowed to call it for that
-	// reason, and the self-test uses it to say in the log that its results
-	// file reached its cap.
+	// not write to this Rotator: the log leaves it nil for that reason — a log
+	// line about the log rotating would rotate the log — and the self-test
+	// sets it to say in the log that its results file reached its cap, which
+	// is a different file and a different writer.
 	Rotated func()
 }
 
@@ -138,6 +140,9 @@ type Rotator struct {
 // OpenRotator opens the current file for appending, continuing it rather than
 // emptying it when it is already there.
 func OpenRotator(opts RotateOptions) (*Rotator, error) {
+	if opts.Name == "" {
+		return nil, errors.New("a rotating file needs a name")
+	}
 	if opts.MaxBytes <= 0 {
 		opts.MaxBytes = DefaultRotateBytes
 	}
