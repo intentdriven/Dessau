@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -586,4 +587,186 @@ func TestRepoInfoSurfacesHTTPError(t *testing.T) {
 	if !IsNotFound(err) {
 		t.Errorf("err = %v, want a recognizable 404", err)
 	}
+}
+
+// A redirect is the other way a host that is not the Hub can end up answering
+// for it: net/http follows up to ten of them, so without a rule the decoded
+// answer about what a repo is comes from wherever the last hop pointed. The
+// token is not the exposure here — net/http strips Authorization on a redirect
+// to another domain — the body is, and RepoInfo must refuse it the way Files
+// refuses a cross-origin next page.
+func TestRepoInfoRefusesARedirectOffTheHubsOrigin(t *testing.T) {
+	var reached bool
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		fmt.Fprint(w, `{"id":"org/repo","pipeline_tag":"text-generation","tags":["mlx"]}`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	m, err := c.RepoInfo(context.Background(), "org/repo")
+	if err == nil {
+		t.Fatalf("RepoInfo read a redirected answer (%+v); it must refuse", m)
+	}
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want the same class Files gives (ErrCrossOrigin)", err)
+	}
+	if m.PipelineTag != "" || len(m.Tags) != 0 {
+		t.Errorf("a refused answer still carried %q/%v", m.PipelineTag, m.Tags)
+	}
+	_ = reached // the other host may be reached; what must not happen is believing it.
+}
+
+// The same rule, from the other request path: whatever Files refuses a
+// cross-origin next page with is the class RepoInfo answers with too, so a
+// caller asks one question about both.
+func TestFilesRefusesACrossOriginNextPageWithTheSameClass(t *testing.T) {
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[]`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", "<"+evil.URL+"/api/models/org/repo/tree/main?cursor=p2>; rel=\"next\"")
+		fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	_, err := c.Files(context.Background(), "org/repo", "")
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// And Search, the third path that decodes what the Hub says.
+func TestSearchRefusesARedirectOffTheHubsOrigin(t *testing.T) {
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[{"id":"evil/model","tags":["mlx"]}]`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+"/api/models", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	models, err := c.Search(context.Background(), SearchQuery{Search: "qwen"})
+	if err == nil {
+		t.Fatalf("Search read a redirected answer (%v); it must refuse", models)
+	}
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// A redirect back onto the Hub's own origin is ordinary and stays followed —
+// the Hub redirects a re-cased or renamed repo id to its canonical one.
+func TestRepoInfoFollowsARedirectOnTheHubsOwnOrigin(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/org/canonical", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":"org/canonical","pipeline_tag":"text-generation"}`)
+	})
+	mux.HandleFunc("/api/models/ORG/Canonical", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/api/models/org/canonical", http.StatusMovedPermanently)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	m, err := c.RepoInfo(context.Background(), "ORG/Canonical")
+	if err != nil {
+		t.Fatalf("RepoInfo refused a same-origin redirect: %v", err)
+	}
+	if m.ID != "org/canonical" {
+		t.Errorf("ID = %q, want the canonical id the Hub redirected to", m.ID)
+	}
+}
+
+// Refusing the body after the fact is too late for the token. net/http keeps
+// the Authorization header on a redirect to the same hostname — a different
+// port, or a subdomain — so the rule has to be applied to the hop before it is
+// made, not to the answer after it arrives.
+func TestAnAPIRedirectOffTheHubsOriginIsRefusedBeforeTheTokenTravels(t *testing.T) {
+	var gotAuth string
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		fmt.Fprint(w, `{"id":"org/repo"}`)
+	}))
+	defer evil.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	c.SetToken("secret-hf-token")
+	if _, err := c.RepoInfo(context.Background(), "org/repo"); !errors.Is(err, ErrCrossOrigin) {
+		t.Fatalf("err = %v, want ErrCrossOrigin", err)
+	}
+	if gotAuth != "" {
+		t.Fatalf("TOKEN LEAK: the bearer token was sent to the redirect target (%q)", gotAuth)
+	}
+}
+
+// A hop off the Hub that comes back onto it is still a host that is not the
+// Hub choosing which Hub answer we decode: it can point a lookup of one repo
+// at another repo's authentic metadata. Checking only where the last hop
+// landed accepts that; checking each hop refuses it.
+func TestAnAPIDetourThroughAnotherHostIsRefused(t *testing.T) {
+	var srv *httptest.Server
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, srv.URL+"/api/models/attacker/lookalike", http.StatusFound)
+	}))
+	defer evil.Close()
+
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/models/org/wanted" {
+			http.Redirect(w, r, evil.URL+"/detour", http.StatusFound)
+			return
+		}
+		fmt.Fprint(w, `{"id":"attacker/lookalike","pipeline_tag":"text-generation"}`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	m, err := c.RepoInfo(context.Background(), "org/wanted")
+	if err == nil {
+		t.Fatalf("RepoInfo followed a detour through another host and answered %q", m.ID)
+	}
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// A transport that hands back a response with no record of what was requested
+// leaves the origin unknown, and an unknown origin is refused: a rule about
+// where an answer may come from cannot default to allowing it.
+func TestAnAnswerWithNoRecordedOriginIsRefused(t *testing.T) {
+	c := &Client{
+		BaseURL: "https://huggingface.co",
+		HTTP:    &http.Client{Transport: originlessTransport{}},
+	}
+	if _, err := c.Search(context.Background(), SearchQuery{Search: "qwen"}); !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+}
+
+// originlessTransport answers every request without setting Response.Request,
+// which is how the final URL goes missing.
+type originlessTransport struct{}
+
+func (originlessTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(`[{"id":"evil/model","tags":["mlx"]}]`)),
+	}, nil
 }

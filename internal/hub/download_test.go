@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -595,5 +597,81 @@ func TestDownloadKeepsPerUserDirsPrivate(t *testing.T) {
 		if fi.Mode()&0o020 != 0 {
 			t.Errorf("%s mode = %v, want no group-write in a per-user install", d, fi.Mode())
 		}
+	}
+}
+
+// The origin rule that governs the API paths deliberately stops short of the
+// file body: the real Hub answers a /resolve/ GET for an LFS object with a
+// redirect to its content CDN, on a different host, and a download that
+// refused that would fetch nothing at all. What anchors those bytes is not
+// their origin but the sha256 the Hub's own API stated for them, which is
+// verified here. The small files the repo stores in git are served from the
+// origin and carry no hash, which is the shape the hole is justified by; that
+// they would be accepted from the CDN too is iss-2609190151179403, not this
+// test's claim. This pins the exception so it is not "simplified" into a
+// blanket refusal.
+func TestDownloadFollowsTheHubsRedirectToItsContentCDN(t *testing.T) {
+	repo := standardRepo()
+	const lfsFile = "model.safetensors"
+
+	var cdnHits int32
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, ok := repo[strings.TrimPrefix(r.URL.Path, "/cdn/")]
+		if !ok {
+			http.Error(w, "no such object", http.StatusNotFound)
+			return
+		}
+		atomic.AddInt32(&cdnHits, 1)
+		w.Write(body)
+	}))
+	defer cdn.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/org/repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
+		var entries []File
+		for p, b := range repo {
+			e := File{Path: p, Size: int64(len(b))}
+			if p == lfsFile {
+				e.LFS = &struct {
+					OID  string `json:"oid"`
+					Size int64  `json:"size"`
+				}{OID: sha256Hex(b), Size: int64(len(b))}
+			}
+			entries = append(entries, e)
+		}
+		json.NewEncoder(w).Encode(entries)
+	})
+	mux.HandleFunc("/org/repo/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/org/repo/resolve/main/")
+		body, ok := repo[name]
+		if !ok {
+			http.Error(w, "no such file", http.StatusNotFound)
+			return
+		}
+		// Only the LFS object is handed off to the content CDN, the way the
+		// Hub does it; the git-stored files come straight from the origin.
+		if name == lfsFile {
+			http.Redirect(w, r, cdn.URL+"/cdn/"+name, http.StatusFound)
+			return
+		}
+		w.Write(body)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dest := t.TempDir()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+		t.Fatalf("Download refused the Hub's own redirect to its content CDN: %v", err)
+	}
+	if atomic.LoadInt32(&cdnHits) != 1 {
+		t.Fatalf("the CDN served %d files, want the one LFS object", cdnHits)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, lfsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, repo[lfsFile]) {
+		t.Error("the CDN-served weights did not land intact")
 	}
 }
