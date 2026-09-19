@@ -17,6 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func sha256Hex(b []byte) string {
@@ -851,3 +852,27 @@ func TestBoundedReader(t *testing.T) {
 		t.Errorf("a body running past the bound handed on %q, want only the %d bytes it was owed", got, 4)
 	}
 }
+
+// io.Reader permits a (0, nil) read, and the probe boundedReader does at the
+// boundary has no other way out. A reader that only ever says that must end
+// the read, not spin the goroutine that is moving bytes.
+func TestBoundedReaderDoesNotSpinOnAReaderThatMakesNoProgress(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		_, err := (&boundedReader{r: noProgressReader{}, left: 0}).Read(make([]byte, 8))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, io.ErrNoProgress) {
+			t.Errorf("err = %v, want io.ErrNoProgress", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("boundedReader spun on a reader that makes no progress")
+	}
+}
+
+// noProgressReader is the legal-but-useless reader: never an error, never a byte.
+type noProgressReader struct{}
+
+func (noProgressReader) Read([]byte) (int, error) { return 0, nil }

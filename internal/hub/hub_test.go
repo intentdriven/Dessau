@@ -302,7 +302,10 @@ func TestTokenIsSentAsBearer(t *testing.T) {
 
 func TestResolveURL(t *testing.T) {
 	c := &Client{BaseURL: "https://huggingface.co"}
-	got := c.ResolveURL("mlx-community/Qwen3-0.6B-4bit", "", "model.safetensors")
+	got, err := c.ResolveURL("mlx-community/Qwen3-0.6B-4bit", "", "model.safetensors")
+	if err != nil {
+		t.Fatalf("ResolveURL: %v", err)
+	}
 	want := "https://huggingface.co/mlx-community/Qwen3-0.6B-4bit/resolve/main/model.safetensors"
 	if got != want {
 		t.Errorf("ResolveURL = %q, want %q", got, want)
@@ -313,13 +316,19 @@ func TestResolveURL(t *testing.T) {
 // the rest into a fragment and the GET hits the wrong path.
 func TestResolveURLEscapesSpecialChars(t *testing.T) {
 	c := &Client{BaseURL: "https://huggingface.co"}
-	got := c.ResolveURL("org/repo", "main", "weights#2.safetensors")
+	got, err := c.ResolveURL("org/repo", "main", "weights#2.safetensors")
+	if err != nil {
+		t.Fatalf("ResolveURL: %v", err)
+	}
 	want := "https://huggingface.co/org/repo/resolve/main/weights%232.safetensors"
 	if got != want {
 		t.Errorf("ResolveURL = %q, want %q", got, want)
 	}
 	// Path separators must survive as separators, not be escaped.
-	nested := c.ResolveURL("org/repo", "main", "sub/dir/model.json")
+	nested, err := c.ResolveURL("org/repo", "main", "sub/dir/model.json")
+	if err != nil {
+		t.Fatalf("ResolveURL: %v", err)
+	}
 	if nested != "https://huggingface.co/org/repo/resolve/main/sub/dir/model.json" {
 		t.Errorf("nested path mangled: %q", nested)
 	}
@@ -897,7 +906,7 @@ func TestEveryPathEscapesTheRepoIDTheSameWay(t *testing.T) {
 	if want := "/org/repo#1/resolve/main/model.safetensors"; sawResolve != want {
 		t.Errorf("the file download asked for %q, want %q", sawResolve, want)
 	}
-	if got := c.ResolveURL(repoID, "main", "model.safetensors"); !strings.Contains(got, "org/repo%231/resolve") {
+	if got, _ := c.ResolveURL(repoID, "main", "model.safetensors"); !strings.Contains(got, "org/repo%231/resolve") {
 		t.Errorf("ResolveURL = %q, want the repo id percent-escaped", got)
 	}
 }
@@ -956,5 +965,113 @@ func TestARelativeNextPageResolvesAgainstThePageThatCarriedIt(t *testing.T) {
 	}
 	if len(files) != 2 {
 		t.Fatalf("got %d files, want 2 across both pages", len(files))
+	}
+}
+
+// A next page continues the listing it came from: same path, a different
+// cursor. Resolving a reference against the page that carried it means a
+// reference that is not really a URL at all now resolves to *something* on the
+// Hub's origin, so the origin rule alone no longer decides what gets followed
+// with the bearer token attached.
+func TestFilesRefusesANextPageThatIsNotAContinuationOfTheListing(t *testing.T) {
+	cases := []struct {
+		name string
+		link string
+	}{
+		// Another repo's tree, spliced into the one that was asked for.
+		{"another listing", `</api/models/other/repo/tree/main?cursor=p2>; rel="next"`},
+		// A Link header value that is not a URL. nextPageURL splits on ',',
+		// so what survives is a fragment of it that resolves against the page.
+		{"junk that resolves", `<data:text/plain;base64,AAAA>; rel="next"`},
+	}
+	for _, tc := range cases {
+		var secondRequest string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("cursor") != "" || !strings.HasSuffix(r.URL.Path, "/org/repo/tree/main") {
+				secondRequest = r.URL.String()
+				fmt.Fprint(w, `[{"type":"file","path":"b.safetensors","size":2,"oid":"b"}]`)
+				return
+			}
+			w.Header().Set("Link", tc.link)
+			fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+		}))
+
+		c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+		files, err := c.Files(context.Background(), "org/repo", "")
+		if err == nil {
+			t.Errorf("%s: Files followed it and returned %d files", tc.name, len(files))
+		}
+		if secondRequest != "" {
+			t.Errorf("%s: a second request was made for %q", tc.name, secondRequest)
+		}
+		srv.Close()
+	}
+}
+
+// Userinfo in a next page is not part of the origin — url.URL.Host excludes it
+// — so a next page can carry credentials past the origin check, and net/http
+// turns them into an Authorization header of its own on a request that had
+// none. It is dropped before the reference is used.
+func TestANextPageCarriesNoUserinfo(t *testing.T) {
+	var secondAuth string
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") != "" {
+			secondAuth = r.Header.Get("Authorization")
+			fmt.Fprint(w, `[{"type":"file","path":"b.safetensors","size":2,"oid":"b"}]`)
+			return
+		}
+		host := strings.TrimPrefix(srv.URL, "http://")
+		w.Header().Set("Link", "<http://attacker:hunter2@"+host+r.URL.Path+"?recursive=true&cursor=p2>; rel=\"next\"")
+		fmt.Fprint(w, `[{"type":"file","path":"a.safetensors","size":1,"oid":"a"}]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	files, err := c.Files(context.Background(), "org/repo", "")
+	if err != nil {
+		t.Fatalf("Files: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("got %d files, want 2 across both pages", len(files))
+	}
+	if secondAuth != "" {
+		t.Errorf("the next-page request carried %q; a next page must not be able to put a header on it", secondAuth)
+	}
+}
+
+// The rule that a "." or a ".." is not a path element belongs where the URL is
+// built, not on the one value that happened to be looked at. A revision goes
+// into the same path as the repo id, on the tree endpoint and on the resolve
+// endpoint — and the resolve endpoint is the one with no origin check at all,
+// because it must follow the Hub's redirect to its content store.
+func TestARevisionWithADotSegmentIsRefused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("a request was made for %q; the revision should have been refused first", r.URL.Path)
+		fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	for _, rev := range []string{"..", "."} {
+		if _, err := c.Files(context.Background(), "org/repo", rev); err == nil {
+			t.Errorf("Files accepted revision %q", rev)
+		}
+		if got, err := c.ResolveURL("org/repo", rev, "model.safetensors"); err == nil {
+			t.Errorf("ResolveURL accepted revision %q and built %q", rev, got)
+		}
+	}
+}
+
+// A missing value must not quietly produce a different, valid endpoint:
+// leaving a part out shortens the path by one element, which is the same
+// reshaping the escaping is there to prevent.
+func TestResolveURLRefusesAMissingPart(t *testing.T) {
+	c := &Client{BaseURL: "https://huggingface.co"}
+	if got, err := c.ResolveURL("", "main", "model.safetensors"); err == nil {
+		t.Errorf("ResolveURL built %q from an empty repo id", got)
+	}
+	if got, err := c.ResolveURL("org/repo", "main", ""); err == nil {
+		t.Errorf("ResolveURL built %q from an empty file path", got)
 	}
 }

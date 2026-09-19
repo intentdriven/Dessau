@@ -377,7 +377,10 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		}
 	}
 
-	u := c.ResolveURL(req.RepoID, req.Revision, f.Path)
+	u, err := c.ResolveURL(req.RepoID, req.Revision, f.Path)
+	if err != nil {
+		return err
+	}
 	httpReq, err := c.newTokenRequest(ctx, http.MethodGet, u, token)
 	if err != nil {
 		return err
@@ -468,7 +471,7 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 			// What is on disk is a prefix of a body the repo disowns, not a
 			// resume point for the file it claimed to be: keeping it would
 			// hand the next run a .part it cannot make sense of.
-			if err := discardPart(root, part, tr); err != nil {
+			if err := discardPart(root, part, f.Path, tr); err != nil {
 				return err
 			}
 			return fmt.Errorf("download %s: %w (%d bytes)", f.Path, ErrOversizedBody, bound)
@@ -484,7 +487,7 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		// will say the same thing again; appending the same short body onto
 		// this prefix is not a repair, so the .part goes, as it does for any
 		// other wrong length below.
-		if err := discardPart(root, part, tr); err != nil {
+		if err := discardPart(root, part, f.Path, tr); err != nil {
 			return err
 		}
 		return fmt.Errorf("download %s: %w (%d of %d bytes)", f.Path, ErrShortBody, written, bound)
@@ -605,12 +608,19 @@ type boundedReader struct {
 	left int64
 }
 
+// maxEmptyReads is how many (0, nil) reads in a row are tolerated before the
+// read is given up on, matching bufio's own limit.
+const maxEmptyReads = 100
+
 func (b *boundedReader) Read(p []byte) (int, error) {
 	if b.left <= 0 {
 		// Nothing more is owed. One further byte on the wire means the body is
-		// longer than it said; a clean end means it was exactly right.
+		// longer than it said; a clean end means it was exactly right. A
+		// reader is permitted to return (0, nil) and say nothing either way,
+		// so give up on one that only ever does rather than spin the
+		// goroutine that is moving bytes — bufio's own answer to this.
 		var probe [1]byte
-		for {
+		for i := 0; i < maxEmptyReads; i++ {
 			n, err := b.r.Read(probe[:])
 			if n > 0 {
 				return 0, ErrOversizedBody
@@ -619,6 +629,7 @@ func (b *boundedReader) Read(p []byte) (int, error) {
 				return 0, err // io.EOF included: the body ended where it should
 			}
 		}
+		return 0, io.ErrNoProgress
 	}
 	if int64(len(p)) > b.left {
 		p = p[:b.left]
@@ -631,8 +642,10 @@ func (b *boundedReader) Read(p []byte) (int, error) {
 // discardPart removes a .part and uncounts its bytes, for the failures where
 // what is on disk is not a resume point. Progress is adjusted from the file's
 // actual size rather than from what was meant to be written, so a partial
-// write cannot leave the tally out by the difference.
-func discardPart(root *os.Root, part string, tr *progressTracker) error {
+// write cannot leave the tally out by the difference, and the adjustment is
+// emitted: the last figure a caller was handed is otherwise the one from
+// before the bytes went away.
+func discardPart(root *os.Root, part, path string, tr *progressTracker) error {
 	fi, err := root.Stat(part)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -644,6 +657,7 @@ func discardPart(root *os.Root, part string, tr *progressTracker) error {
 		return err
 	}
 	tr.addCompleted(-fi.Size())
+	tr.emit(path)
 	return nil
 }
 
