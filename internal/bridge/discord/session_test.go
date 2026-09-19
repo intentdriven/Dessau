@@ -534,3 +534,38 @@ func TestAFatalStopForgetsEveryChannelsConversation(t *testing.T) {
 	}
 	t.Errorf("Discord stopped the bridge and it is still holding %d channels' conversations", held(b))
 }
+
+// A token the operator has just pasted is credited with no session it did not
+// have.
+//
+// The last-connected moment is a fact about the credential that connected. It
+// is kept across a drop, which is what the panel shows while the bridge
+// re-opens — but carrying it into a DIFFERENT token's states told the
+// operator that the token they had just pasted last connected at a moment it
+// did not exist, on exactly the diagnostic path the moment was added for
+// (iss-2609190312313645).
+func TestADifferentTokenStartsWithNoLastConnectedMoment(t *testing.T) {
+	f := newFakeDiscord(t)
+	b := answering(t, f)
+	connected(t, f, b)
+	if _, since, _ := b.State(); since.IsZero() {
+		t.Fatal("a connected bridge reported no moment it connected at")
+	}
+
+	b.Apply(true, "a-different-token")
+	if state, since, _ := b.State(); !since.IsZero() {
+		t.Errorf("a freshly pasted token is %s and reports last connecting at %v, want no moment at all",
+			state, since)
+	}
+
+	// And switching the bridge on with no token at all is the same: there is
+	// no credential to have connected.
+	b2 := answering(t, newFakeDiscord(t))
+	b2.Apply(true, "a-token")
+	waitState(t, b2, StateConnected)
+	b2.Apply(true, "")
+	waitState(t, b2, StateStopped)
+	if _, since, _ := b2.State(); !since.IsZero() {
+		t.Errorf("a bridge with the token taken away reports last connecting at %v", since)
+	}
+}

@@ -275,7 +275,8 @@ GitHub release notes.
   then dropped the moment from the card altogether while it re-opened. The
   bridge now reports a lost session the moment it is lost, and the card reads
   "last connected at …" whenever the bridge is not connected, which is the one
-  time a person is asking.
+  time a person is asking. A token you have just pasted is credited with no
+  moment until it connects.
 
 ## [0.7.1] - 2026-09-18
 

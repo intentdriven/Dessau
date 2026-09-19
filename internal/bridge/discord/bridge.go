@@ -122,10 +122,12 @@ type Bridge struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 	state  string
-	// since is the moment the bridge last connected. It is kept while the
-	// session is being re-opened, so the panel can say when it last connected
-	// rather than losing the fact on exactly the path the criterion is about,
-	// and it goes when the switch goes off.
+	// since is the moment the bridge last connected UNDER THE TOKEN IN FORCE.
+	// It is kept while the session is being re-opened, so the panel can say
+	// when it last connected rather than losing the fact on exactly the path
+	// the criterion is about; it goes when the switch goes off, and when the
+	// token changes, because a credential that has not connected has no
+	// moment to show.
 	since   time.Time
 	reason  string
 	closing bool
@@ -200,6 +202,16 @@ func (b *Bridge) Apply(on bool, token string) {
 	if b.closing {
 		b.mu.Unlock()
 		return
+	}
+	// The last-connected moment belongs to the credential that connected. A
+	// token the operator has just pasted has never connected, whatever the
+	// one before it did, and a panel that credited it with the old one's
+	// moment would be answering the operator's "did this work?" with a
+	// session that was somebody else's (iss-2609190312313645). Before the
+	// branches, so it covers the switch on under a new token, the token being
+	// changed under a running bridge, and the token being taken away.
+	if b.token != token {
+		b.since = time.Time{}
 	}
 	// The switch on with no token is not an error and never refuses the save
 	// (itd-2609180959397172): the bridge says so as its own state and nothing

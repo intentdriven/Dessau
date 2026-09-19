@@ -40,8 +40,9 @@ type BridgeState struct {
 	// session's moment while it is connected, and the previous one while it
 	// is re-opening or stopped. It is what answers "the panel shows when it
 	// last connected", which is asked of exactly the path where the bridge is
-	// NOT connected. It is absent only when the bridge has not connected
-	// since the switch was thrown.
+	// NOT connected. It is absent until the bridge has connected under the
+	// token now in force: a credential that has never connected is credited
+	// with no moment, whatever the one before it did.
 	Since int64 `json:"since,omitempty"`
 	// Reason is why the bridge stopped, absent when it has not.
 	Reason string `json:"reason,omitempty"`
