@@ -47,8 +47,9 @@ func TestChatClientCarriesNoStylingOfItsOwn(t *testing.T) {
 		".textFieldStyle(", "cornerRadius", ".clipShape(", "Color(nsColor:",
 	}
 	exempt := map[string]string{
-		"Effects.swift": "the text-effects renderer draws glyphs itself; that is its purpose",
-		"Bubbles.swift": "the transcript's speech bubbles are a filled shape by definition (iss-2609181055156852), drawn in the system's colours",
+		"Effects.swift":  "the text-effects renderer draws glyphs itself; that is its purpose",
+		"Bubbles.swift":  "the transcript's speech bubbles are a filled shape by definition (iss-2609181055156852), drawn in the system's colours",
+		"Composer.swift": "SwiftUI's bordered capsule offers no way to inset a field's text (iss-2609190004092322), so the composer's capsule is drawn in the system's own material, one file wide",
 	}
 	for name, src := range clientSources(t, root) {
 		if _, ok := exempt[name]; ok {

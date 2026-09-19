@@ -2,14 +2,16 @@ package archtest_test
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
 
 // TestChatClientComposerHasMessagesForm holds the composer to the form of
 // Messages' (iss-2609181045444147): a capsule text field and a round, filled
-// send button — both standard controls given standard shapes, never a drawn
-// background, so the no-styling rule still holds.
+// send button. The button is a standard control given the system's circle;
+// the field's capsule is drawn in Composer.swift, the no-styling rule's
+// third named exception (iss-2609190004092322).
 func TestChatClientComposerHasMessagesForm(t *testing.T) {
 	root := repoRootDir(t)
 	src := clientSources(t, root)["GropiusChat.swift"]
@@ -23,7 +25,7 @@ func TestChatClientComposerHasMessagesForm(t *testing.T) {
 	}
 	composer := src[start[0] : start[0]+end[0]]
 	for _, want := range []string{
-		`.textInputBorderShape(.capsule)`,
+		`.composerFieldCapsule()`,
 		`.buttonStyle(.borderedProminent)`,
 		`.buttonBorderShape(.circle)`,
 	} {
@@ -210,4 +212,75 @@ func sceneRoots(t *testing.T, src string) (window, settings string) {
 		t.Fatal("client/GropiusChat/GropiusChat.swift does not declare a WindowGroup, its commands and a Settings scene in that order")
 	}
 	return src[open:commands], src[sceneStart:]
+}
+
+// TestChatClientComposerFieldHasMessagesProportions holds
+// iss-2609190004092322: the composer's field is a capsule of the proportions
+// Messages and WhatsApp give theirs — tall enough to read as a field rather
+// than a slot, with its text inset from the capsule's curve instead of
+// starting against it. Both numbers are named and both are scaled metrics, so
+// the text-size setting grows the field and not only the glyphs inside it.
+//
+// SwiftUI's own bordered capsule offers no way to inset its text, so the
+// capsule is drawn in client/GropiusChat/Composer.swift, which is why that
+// file is a named exception to the no-styling rule.
+func TestChatClientComposerFieldHasMessagesProportions(t *testing.T) {
+	root := repoRootDir(t)
+	all := clientSources(t, root)
+	src, ok := all["Composer.swift"]
+	if !ok {
+		t.Fatal("client/GropiusChat/Composer.swift is missing; the composer's metrics have no home")
+	}
+	// Messages' field is about 34 to 36 points tall at the standard text
+	// size, with roughly 12 points before the first glyph.
+	for _, m := range []struct {
+		name string
+		low  float64
+		high float64
+	}{
+		{"fieldMinHeight", 34, 36},
+		{"textInset", 12, 16},
+	} {
+		found := regexp.MustCompile(`static let ` + m.name + `: CGFloat = ([0-9.]+)`).FindStringSubmatch(src)
+		if found == nil {
+			t.Errorf("Composer.swift declares no ComposerMetrics.%s; the field's shape is an unnamed number", m.name)
+			continue
+		}
+		got, err := strconv.ParseFloat(found[1], 64)
+		if err != nil {
+			t.Errorf("ComposerMetrics.%s is not a number: %v", m.name, err)
+			continue
+		}
+		if got < m.low || got > m.high {
+			t.Errorf("ComposerMetrics.%s is %v; Messages' composer sits between %v and %v", m.name, got, m.low, m.high)
+		}
+	}
+	// A constant the field reads at a fixed size would leave the field the
+	// same height while the text inside it grew.
+	if strings.Count(src, "@ScaledMetric(relativeTo: .body)") < 2 {
+		t.Error("Composer.swift does not read its metrics as scaled metrics; the text-size setting would grow the text and not the field")
+	}
+	for _, want := range []string{
+		`.frame(minHeight: minHeight)`,
+		`.padding(.horizontal, horizontal)`,
+		`.background(.quaternary, in: .capsule)`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("Composer.swift does not carry %s; the field is not a capsule of a pinned height with its text inset", want)
+		}
+	}
+
+	// The inset has to reach the text the person actually sees: the field
+	// carrying the placeholder is the view the capsule is applied to, not a
+	// wrapper beside it.
+	chat := all["GropiusChat.swift"]
+	field := regexp.MustCompile(`TextField\("Message…", text: \$draft, axis: \.vertical\)\n(\s+\.[^\n]*\n)*\s+\.composerFieldCapsule\(\)`)
+	if !field.MatchString(chat) {
+		t.Error("the placeholder field does not carry .composerFieldCapsule(); the inset applies to something other than the text the person reads")
+	}
+	// The send button keeps its circle, sized to the field so it is centred
+	// beside one line and stays at the foot of a field that has grown.
+	if !strings.Contains(chat, ".composerButtonCircle()") || !strings.Contains(src, "struct ComposerButtonCircle") {
+		t.Error("the send button's circle is not matched to the field's height")
+	}
 }

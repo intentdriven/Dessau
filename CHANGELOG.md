@@ -11,6 +11,16 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The chat client's message field has the proportions Messages and WhatsApp
+  give theirs.** The composer's capsule was 24 points tall with the placeholder
+  almost against its curve. It is now at least 34 points tall with a clear gap
+  before the first glyph, it still grows to eight lines as the message does,
+  and both measurements scale with the text size chosen in Settings, so the
+  field grows with the words instead of the words outgrowing the field. The
+  send button keeps its circle, now matched to the field's height.
+
 ## [0.7.1] - 2026-09-18
 
 ### Fixed
