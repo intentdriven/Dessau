@@ -802,13 +802,31 @@ enum TextSize: String, CaseIterable {
         }
     }
 
-    var dynamicType: DynamicTypeSize {
+    /// The Dynamic Type size this step pins, where the default step pins
+    /// nothing at all: like Appearance's System case it is the absence of a
+    /// preference, so a Mac whose own text size is not large keeps it rather
+    /// than being overridden by this client.
+    var dynamicType: DynamicTypeSize? {
         switch self {
         case .smaller: return .small
-        case .standard: return .large
+        case .standard: return nil
         case .larger: return .xLarge
         case .extraLarge: return .xxLarge
         case .huge: return .xxxLarge
+        }
+    }
+}
+
+extension View {
+    /// The chosen Dynamic Type size, or the view left untouched when no size
+    /// is chosen. SwiftUI's own `dynamicTypeSize(_:)` takes no optional the
+    /// way `preferredColorScheme(_:)` does, so "no preference" has to be the
+    /// modifier not being applied; the label keeps the two apart.
+    @ViewBuilder func dynamicTypeSize(ifSet size: DynamicTypeSize?) -> some View {
+        if let size {
+            dynamicTypeSize(size)
+        } else {
+            self
         }
     }
 }
@@ -857,8 +875,8 @@ struct GropiusChatApp: App {
     @State private var settingsShown = false
     #endif
 
-    private var dynamicType: DynamicTypeSize {
-        TextSize(rawValue: textSize)?.dynamicType ?? .large
+    private var dynamicType: DynamicTypeSize? {
+        TextSize(rawValue: textSize)?.dynamicType
     }
 
     private var colorScheme: ColorScheme? {
@@ -873,11 +891,11 @@ struct GropiusChatApp: App {
             #if os(macOS)
             RootView(model: model)
                 .frame(minWidth: 720, minHeight: 480)
-                .dynamicTypeSize(dynamicType)
+                .dynamicTypeSize(ifSet: dynamicType)
                 .preferredColorScheme(colorScheme)
             #else
             RootView(model: model, settingsShown: $settingsShown)
-                .dynamicTypeSize(dynamicType)
+                .dynamicTypeSize(ifSet: dynamicType)
                 .preferredColorScheme(colorScheme)
             #endif
         }
@@ -926,7 +944,7 @@ struct GropiusChatApp: App {
         #if os(macOS)
         Settings {
             SettingsView(model: model)
-                .dynamicTypeSize(dynamicType)
+                .dynamicTypeSize(ifSet: dynamicType)
                 .preferredColorScheme(colorScheme)
         }
         #endif
@@ -1671,12 +1689,14 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+            }
+            Section("Text") {
                 Picker("Text size", selection: $textSize) {
                     ForEach(TextSize.allCases, id: \.rawValue) { size in
                         Text(size.label).tag(size.rawValue)
                     }
                 }
-                Text("The whole window follows, at the system's own text sizes.")
+                Text("The whole window follows, at the system's own text sizes. Default is whatever this \(BuiltInBackend.deviceNoun) is already set to.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Bubbles") {

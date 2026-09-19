@@ -153,6 +153,13 @@ GitHub release notes.
   given way, and the same mistake cut short the concurrent test of a run that
   got past the load. The loop now claims its place before it asks for it, so a
   measurement gives way to a real request and to nothing else.
+- **The chat client's Default text size means no preference, not a size.** The
+  standard step pinned the system's large size on every window, so a Mac whose
+  own text size is set to something else was overridden by the client. Default
+  now applies no size at all — the shape the appearance setting's System case
+  already had — and the other four steps keep theirs. The picker moves out of
+  the combined Appearance section into its own **Text** section in Settings.
+  `impact: fix`
 - **A sidebar search finds every word, wherever it falls.** The chat client
   matched the whole query as one literal piece of text, so a search for two
   words found only the chats that carried them side by side, in the order they
