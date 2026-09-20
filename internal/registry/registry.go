@@ -89,6 +89,11 @@ type Model struct {
 	// switch went off, Dessau quit, the Mac slept — and wrote no figure, so
 	// the next start reports it rather than silently retrying.
 	ProbeIncomplete bool `json:"probe_incomplete,omitempty"`
+	// ToolCalling is what the tool-call probe found for this model on this
+	// Mac, or nil while it has not been asked. Like Measured it is a fact
+	// about these files: a re-download's Put carries none
+	// (itd-2609201445423499).
+	ToolCalling *ToolCalling `json:"tool_calling,omitempty"`
 }
 
 // MaxTags and MaxTagBytes bound the category. A repo's tags are typed by its
@@ -299,6 +304,11 @@ func Open(path string) (*Registry, error) {
 		// when any part of it is outside what the probe could have written.
 		if m.Measured != nil && !plausibleMeasurement(m.Measured) {
 			m.Measured = nil
+		}
+		// And the tool-call verdict, published on the models list under the
+		// same rule: cleared, not repaired.
+		if m.ToolCalling != nil && !plausibleToolCalling(m.ToolCalling) {
+			m.ToolCalling = nil
 		}
 		r.models[key(m.RepoID)] = m
 	}
