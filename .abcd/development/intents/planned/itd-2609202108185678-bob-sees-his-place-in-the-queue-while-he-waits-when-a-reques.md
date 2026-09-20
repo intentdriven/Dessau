@@ -89,7 +89,11 @@ Confirmed by the maintainer at the 2026-09-20 interview, every bullet walked and
 
 ## Open Questions
 
-_None recorded yet._
+- Whether the check-in answers an unpaired client on a keyless, LAN-exposed
+  server. The spec applies the residency rule the wait headers and the models
+  list share (`entitled`: a keyed install, a paired client, or this Mac), so
+  no rule moves; the interview did not ask the maintainer whether the notice
+  should reach that one class too, and the spec's choice stands until they say.
 
 ## Audit Notes
 

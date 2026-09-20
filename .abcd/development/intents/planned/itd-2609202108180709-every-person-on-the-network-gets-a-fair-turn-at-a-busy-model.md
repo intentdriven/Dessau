@@ -100,7 +100,12 @@ Confirmed by the maintainer at the 2026-09-20 interview, every bullet walked and
 
 ## Open Questions
 
-_None recorded yet._
+- The level of the per-deferral log line. The spec writes it at the detailed
+  level, because every per-request line this server writes is Debug
+  (iss-2609190200097326), and adds one rate-limited line per model per episode
+  at the shipped level so the contention is visible without turning detail on;
+  the criterion says "the operational log carries one line" and does not name
+  a level. The maintainer may want the per-deferral line at the shipped level.
 
 ## Audit Notes
 
