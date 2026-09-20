@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The bot token is a secret on every surface the API key is, and these are the

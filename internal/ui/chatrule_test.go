@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Every search result says what kind of model it is, in HuggingFace's own

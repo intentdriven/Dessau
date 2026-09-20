@@ -1,6 +1,6 @@
 // What the device's own model's context arithmetic promises, checked on its
 // own: `client/tests/context-budget.sh` compiles this with
-// `client/GropiusChat/ContextBudget.swift` and runs it. The client has no test
+// `client/DessauChat/ContextBudget.swift` and runs it. The client has no test
 // target, so this is a main that prints each promise and exits non-zero on the
 // first one that is broken.
 

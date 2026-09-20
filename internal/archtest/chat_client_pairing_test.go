@@ -22,7 +22,7 @@ func TestTheClientAnswersBothTLSChallenges(t *testing.T) {
 	src := clientSources(t, repoRootDir(t))
 	pairing, ok := src["Pairing.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/Pairing.swift is gone, and with it the client's half of the pairing")
+		t.Fatal("client/DessauChat/Pairing.swift is gone, and with it the client's half of the pairing")
 	}
 	for _, want := range []string{
 		"NSURLAuthenticationMethodServerTrust",
@@ -96,7 +96,7 @@ func TestTheClientAttemptsTheEnclaveAndFallsBack(t *testing.T) {
 // the loudest answer said.
 func TestTheClientPinsWhatTheHandshakePresented(t *testing.T) {
 	src := clientSources(t, repoRootDir(t))
-	app := src["GropiusChat.swift"]
+	app := src["DessauChat.swift"]
 	// The reading has to be of THIS handshake. The delegate's last-presented
 	// fingerprint is shared state, so a probe that never completes a handshake
 	// would otherwise leave the previous server's key standing and be pinned
@@ -127,7 +127,7 @@ func TestTheClientPinsWhatTheHandshakePresented(t *testing.T) {
 // A paired server is reached over TLS or not at all. A fallback to the plain
 // port on a TLS failure is an off switch anything on the network can reach for.
 func TestAPairedServerIsNeverSpokenToInTheClear(t *testing.T) {
-	app := clientSources(t, repoRootDir(t))["GropiusChat.swift"]
+	app := clientSources(t, repoRootDir(t))["DessauChat.swift"]
 	body, ok := swiftFunctionBody(app, "func request(_ path: String) -> URLRequest? {")
 	if !ok {
 		t.Fatal("the client's request builder is gone")
@@ -172,7 +172,7 @@ func TestThePinIsNotInThePreferences(t *testing.T) {
 	if !strings.Contains(pairing, "kSecClassGenericPassword") {
 		t.Error("the pairing record is not stored in the Keychain")
 	}
-	for _, name := range []string{"Pairing.swift", "GropiusChat.swift"} {
+	for _, name := range []string{"Pairing.swift", "DessauChat.swift"} {
 		for _, line := range strings.Split(src[name], "\n") {
 			if strings.Contains(line, "@AppStorage") && strings.Contains(strings.ToLower(line), "pair") {
 				t.Errorf("%s keeps a pairing value in the preferences: %q", name, strings.TrimSpace(line))
@@ -227,7 +227,7 @@ func swiftFunctionBody(src, signature string) (string, bool) {
 // one, or a failed pairing leaves an already-paired client accepting any
 // certificate until the app is relaunched (iss-2609190100212365).
 func TestAFailedPairingRestoresThePinItCleared(t *testing.T) {
-	app := clientSources(t, repoRootDir(t))["GropiusChat.swift"]
+	app := clientSources(t, repoRootDir(t))["DessauChat.swift"]
 	body, ok := swiftFunctionBody(app, "func pair(as name: String) async throws {")
 	if !ok {
 		t.Fatal("the client's pairing flow is gone")
@@ -341,7 +341,7 @@ func TestTheEnclaveFallbackIsTakenOnlyForTheMissingEntitlement(t *testing.T) {
 			"reported")
 	}
 	// And the caller takes the reason rather than flattening it.
-	app := clientSources(t, repoRootDir(t))["GropiusChat.swift"]
+	app := clientSources(t, repoRootDir(t))["DessauChat.swift"]
 	if !strings.Contains(app, "try PairingStore.makeKey()") {
 		t.Error("the pairing flow does not call makeKey as a throwing call, so the reason a key could not " +
 			"be made is thrown away at the one place it would be shown")

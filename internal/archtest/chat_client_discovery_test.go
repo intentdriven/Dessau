@@ -7,8 +7,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/discovery"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/discovery"
 )
 
 // The chat client is a second surface onto the same server, and two of its
@@ -30,7 +30,7 @@ var serverURLDefault = regexp.MustCompile(
 // browses for, so that a comment mentioning the type cannot stand in for it. It
 // is read out of the shared discovery file, which both clients compile.
 var clientServiceType = regexp.MustCompile(
-	`(?m)^\s*let\s+gropiusServiceType\s*=\s*"([^"]*)"`)
+	`(?m)^\s*let\s+dessauServiceType\s*=\s*"([^"]*)"`)
 
 // TestChatClientOpensOnTheServersOwnDefaultAddress holds the client's first-run
 // address to the endpoint a freshly installed server listens on.
@@ -45,11 +45,11 @@ var clientServiceType = regexp.MustCompile(
 // the user cannot place.
 func TestChatClientOpensOnTheServersOwnDefaultAddress(t *testing.T) {
 	root := repoRootDir(t)
-	source := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "GropiusChat.swift"))
+	source := readRepoFile(t, root, filepath.Join("client", "DessauChat", "DessauChat.swift"))
 
 	m := serverURLDefault.FindStringSubmatch(source)
 	if m == nil {
-		t.Fatal(`client/GropiusChat/GropiusChat.swift declares no @AppStorage("serverURL") default; ` +
+		t.Fatal(`client/DessauChat/DessauChat.swift declares no @AppStorage("serverURL") default; ` +
 			"the address the client opens on is unchecked")
 	}
 	want := fmt.Sprintf("http://localhost:%d", config.Default().Port)
@@ -71,12 +71,12 @@ func TestChatClientBrowsesForTheAdvertisedServiceType(t *testing.T) {
 	root := repoRootDir(t)
 
 	t.Run("client source", func(t *testing.T) {
-		source := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "Discovery.swift"))
+		source := readRepoFile(t, root, filepath.Join("client", "DessauChat", "Discovery.swift"))
 		// The declaration, not a mention: a comment naming the type would
 		// otherwise satisfy this while the browse asked for something else.
 		m := clientServiceType.FindStringSubmatch(source)
 		if m == nil {
-			t.Fatal("client/GropiusChat/Discovery.swift declares no gropiusServiceType; " +
+			t.Fatal("client/DessauChat/Discovery.swift declares no dessauServiceType; " +
 				"the type the client browses for is unchecked")
 		}
 		if m[1] != discovery.ServiceType {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // modelsRequest builds a GET /v1/models as a client at remoteAddr would send

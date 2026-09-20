@@ -84,7 +84,7 @@ func names(t *testing.T, dir string) []string {
 
 // The point of the store: what was recorded is still there after the process
 // that recorded it is gone, and every line says which schema it was written
-// under so a later Gropius can read it.
+// under so a later Dessau can read it.
 func TestTheRecordsAreStillThereAfterARestart(t *testing.T) {
 	s, dir := newTestStore(t, StoreOptions{})
 	on(t, s)
@@ -1373,11 +1373,11 @@ func TestAWriteThatFailedOnceRecoversWhenItCan(t *testing.T) {
 
 // In shared-cache mode the layout is created under the shared root, and this
 // store is the one thing that stays under the account's own — which for an
-// account that has never run Gropius per-user does not exist yet. It is
+// account that has never run Dessau per-user does not exist yet. It is
 // created, owner-only, rather than the store refusing to open.
 func TestTheAccountsOwnFolderIsCreatedWhenItIsNotThereYet(t *testing.T) {
 	base := t.TempDir()
-	dir := filepath.Join(base, "Library", "Application Support", "Gropius", "stats")
+	dir := filepath.Join(base, "Library", "Application Support", "Dessau", "stats")
 	s := NewStore(dir, StoreOptions{Months: 1200})
 	t.Cleanup(func() { s.Close() })
 

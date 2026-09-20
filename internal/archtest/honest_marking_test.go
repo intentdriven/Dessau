@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// adr-2609081118587999 rule 1: what Gropius says about a private network may
+// adr-2609081118587999 rule 1: what Dessau says about a private network may
 // state what it observed and may not state what that network is worth. The
 // mark's own vocabulary is guarded where the mark is built — internal/netshape,
 // the Network values the gateway emits, and the panel functions that render
@@ -100,7 +100,7 @@ var vendorNames = []string{
 // claimIn, and it must not be. The two findings this rule makes are not the
 // same kind of thing:
 //
-//   - A vendor name is refused because GROPIUS cannot know which product it is
+//   - A vendor name is refused because DESSAU cannot know which product it is
 //     looking at. A person can, so a person writing it down is a real answer to
 //     the real objection, and the marker is where they write it.
 //   - A claim of encryption, exclusivity or safety is refused because it is not
@@ -142,7 +142,7 @@ func allowedReason(line string) string {
 // It does not in site-src/ui.json, and that is a decision rather than an
 // oversight. JSON has no comment syntax, so a marker written there would have
 // to live inside a value — and every value in that file is a LABEL that
-// cmd/gropius-site renders verbatim onto the public landing page, which would
+// cmd/dessau-site renders verbatim onto the public landing page, which would
 // put the words "abcd-lint:allow" in front of every reader of it. The
 // alternative, a sibling key, would be a second convention for one file. There
 // is no need for either: ui.json's own _purpose says it holds labels and that
@@ -160,7 +160,7 @@ func markerIsHonouredIn(surface string) bool {
 
 // exposureClaims are the shapes a sentence takes when it tells an operator
 // what a network is worth rather than which network an address is on. Each has
-// to survive the transitions Gropius cannot see — the network published to the
+// to survive the transitions Dessau cannot see — the network published to the
 // internet, shared with machines the operator does not own, logged out from —
 // and none of these does.
 //
@@ -176,7 +176,7 @@ func markerIsHonouredIn(surface string) bool {
 // prose claims nothing".
 //
 // One synonym is deliberately absent. "is authenticated" is a true statement
-// about Gropius — it checks a bearer token — so a pattern for it would refuse
+// about Dessau — it checks a bearer token — so a pattern for it would refuse
 // honest prose about the API key written near the mark, and a scan that
 // refuses honest prose gets switched off. "A private network connection is
 // authenticated." therefore passes; "authenticated and tamper-proof" is caught
@@ -210,7 +210,7 @@ var exposureClaims = []*regexp.Regexp{
 }
 
 // theMark is what a passage about the mark says, and it is the mark's own
-// words. A passage containing it is a passage explaining what Gropius told the
+// words. A passage containing it is a passage explaining what Dessau told the
 // operator about their addresses, which is what rule 1 governs.
 const theMark = "private network"
 
@@ -287,13 +287,13 @@ func scanSurfaces(t *testing.T, root string) (vendors, claims []claim, passages 
 // A paragraph is in scope when it names the mark, when the paragraph on either
 // side of it does, or when the heading of the section it sits in does. The
 // bare "names the mark itself" test was the whole rule, and it missed the
-// obvious placement: an explanation runs "Gropius marks a private network
+// obvious placement: an explanation runs "Dessau marks a private network
 // address." and then, in the next paragraph, "That connection is encrypted."
 // The second paragraph is the claim and it never repeats the words.
 //
 // It stops at the section rather than running to the end of the file for a
 // measured reason: unscoped, this scan fires on docs/ saying a model is
-// protected and on the README saying Gropius is tested end-to-end, both honest
+// protected and on the README saying Dessau is tested end-to-end, both honest
 // and neither about a network, and a scan that refuses honest prose gets
 // switched off.
 func markPassages(paras []string) []string {
@@ -449,17 +449,17 @@ func TestTheClaimScanCatchesWhatItSaysItCatches(t *testing.T) {
 		{
 			"a claim in the paragraph AFTER the one that names the mark",
 			"docs/getting-started.md",
-			"\nGropius marks an address that sits on a private network.\n\nThat connection is encrypted, so the API key never crosses the cafe's Wi-Fi.\n",
+			"\nDessau marks an address that sits on a private network.\n\nThat connection is encrypted, so the API key never crosses the cafe's Wi-Fi.\n",
 		},
 		{
 			"a claim in the paragraph BEFORE the one that names the mark",
 			"docs/getting-started.md",
-			"\nThe endpoint you copy from that row is secure.\n\nGropius marks an address that sits on a private network.\n",
+			"\nThe endpoint you copy from that row is secure.\n\nDessau marks an address that sits on a private network.\n",
 		},
 		{
 			"a claim further down the section whose heading names the mark",
 			"docs/getting-started.md",
-			"\n## What the private network mark means\n\nGropius found the address on a tunnel interface.\n\nIt names the network the address belongs to.\n\nOnly your own devices can reach a server at that address.\n",
+			"\n## What the private network mark means\n\nDessau found the address on a tunnel interface.\n\nIt names the network the address belongs to.\n\nOnly your own devices can reach a server at that address.\n",
 		},
 		{
 			"a claim wrapped in a double negative, which the negator check disarmed on",
@@ -494,7 +494,7 @@ func TestTheClaimScanCatchesWhatItSaysItCatches(t *testing.T) {
 		{
 			"a vendor named in the landing page's template",
 			"site-src/index.html.tmpl",
-			"\n<p>Gropius marks the address Tailscale gave this Mac.</p>\n",
+			"\n<p>Dessau marks the address Tailscale gave this Mac.</p>\n",
 		},
 		{
 			"a vendor named in a landing page label",
@@ -504,12 +504,12 @@ func TestTheClaimScanCatchesWhatItSaysItCatches(t *testing.T) {
 		{
 			"a vendor named in a subdirectory of docs/",
 			"docs/guides/mesh-networks.md",
-			"# Mesh networks\n\nGropius marks the address your tailnet gave this Mac.\n",
+			"# Mesh networks\n\nDessau marks the address your tailnet gave this Mac.\n",
 		},
 		{
 			"a vendor named in the README",
 			"README.md",
-			"\nGropius detects Tailscale and marks the address it hands out.\n",
+			"\nDessau detects Tailscale and marks the address it hands out.\n",
 		},
 	}
 
@@ -541,13 +541,13 @@ func TestOnlyAReasonedMarkerExemptsAVendorNameAndNothingExemptsAClaim(t *testing
 		{
 			"a vendor name with a reasoned marker, in a Markdown page",
 			"docs/guides/mesh-networks.md",
-			"# Mesh networks\n\nGropius was tested against Tailscale. <!-- abcd-lint:allow: a page is written by a person who can say what was tested -->\n",
+			"# Mesh networks\n\nDessau was tested against Tailscale. <!-- abcd-lint:allow: a page is written by a person who can say what was tested -->\n",
 			false,
 		},
 		{
 			"a vendor name with a reasoned marker, in the README",
 			"README.md",
-			"\nGropius was tested against Tailscale. <!-- abcd-lint:allow: a page is written by a person who can say what was tested -->\n",
+			"\nDessau was tested against Tailscale. <!-- abcd-lint:allow: a page is written by a person who can say what was tested -->\n",
 			false,
 		},
 		{
@@ -577,25 +577,25 @@ func TestOnlyAReasonedMarkerExemptsAVendorNameAndNothingExemptsAClaim(t *testing
 		{
 			"a vendor name with a bare marker, no colon",
 			"docs/guides/mesh-networks.md",
-			"# Mesh networks\n\nGropius was tested against Tailscale. <!-- abcd-lint:allow -->\n",
+			"# Mesh networks\n\nDessau was tested against Tailscale. <!-- abcd-lint:allow -->\n",
 			true,
 		},
 		{
 			"a vendor name with a bare marker, a colon and nothing after it",
 			"docs/guides/mesh-networks.md",
-			"# Mesh networks\n\nGropius was tested against Tailscale. <!-- abcd-lint:allow: -->\n",
+			"# Mesh networks\n\nDessau was tested against Tailscale. <!-- abcd-lint:allow: -->\n",
 			true,
 		},
 		{
 			"a vendor name with a marker whose reason is whitespace",
 			"docs/guides/mesh-networks.md",
-			"# Mesh networks\n\nGropius was tested against Tailscale. <!-- abcd-lint:allow:    -->\n",
+			"# Mesh networks\n\nDessau was tested against Tailscale. <!-- abcd-lint:allow:    -->\n",
 			true,
 		},
 		{
 			"a vendor name with no marker at all",
 			"docs/guides/mesh-networks.md",
-			"# Mesh networks\n\nGropius was tested against Tailscale.\n",
+			"# Mesh networks\n\nDessau was tested against Tailscale.\n",
 			true,
 		},
 		{
@@ -683,11 +683,11 @@ func TestTheClaimScanLeavesHonestProseAlone(t *testing.T) {
 		// The sentence docs/getting-started.md carries today.
 		"An address in that list that sits on a private network carries a mark saying so: the mark names the network the address belongs to, and says nothing about how safe it is or who else can reach it.",
 		"The private network mark is an observation, not a promise.",
-		"Gropius serves plain HTTP: nothing it sends is encrypted, on a private network or anywhere else.",
-		"A private network address is one Gropius found on a tunnel interface.",
+		"Dessau serves plain HTTP: nothing it sends is encrypted, on a private network or anywhere else.",
+		"A private network address is one Dessau found on a tunnel interface.",
 		// The double-negative cancellation must not swallow a plain denial
 		// that happens to contain the same words.
-		"Gropius does not claim that a private network connection is encrypted.",
+		"Dessau does not claim that a private network connection is encrypted.",
 		"Nothing here says the traffic is safe.",
 	}
 	for _, h := range honest {
@@ -790,7 +790,7 @@ func copyTree(t *testing.T, src, dst string) {
 //     who has looked at the protocol doubts that…" is further than that and is
 //     not cancelled, so the claim it carries is suppressed.
 //   - A negator in the SAME CLAUSE as the claim still suppresses it, and that
-//     is deliberate: it is what lets "Gropius does not claim that a private
+//     is deliberate: it is what lets "Dessau does not claim that a private
 //     network connection is encrypted" through. "It is not true that a private
 //     network address is encrypted" reads the same way to this scan, and so
 //     does the pathological "is never not encrypted".

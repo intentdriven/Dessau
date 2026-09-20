@@ -1,6 +1,6 @@
-# Install, repair and remove Gropius
+# Install, repair and remove Dessau
 
-Gropius puts itself on this Mac, repairs itself, takes itself away, and says
+Dessau puts itself on this Mac, repairs itself, takes itself away, and says
 what is wrong with it. This page walks through each of those four tasks. For
 the verbs, their flags, the exit codes and the machine-readable output, see
 [Reference: the lifecycle verbs](lifecycle-reference.md).
@@ -10,13 +10,13 @@ the verbs, their flags, the exit codes and the machine-readable output, see
 One line, in a terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/intentdriven/Dessau/main/install.sh | bash
 ```
 
 That command is a bootstrap and only a bootstrap: it does the part that has to
-happen before a Gropius binary exists on this Mac. It downloads the current
+happen before a Dessau binary exists on this Mac. It downloads the current
 release, verifies it against the checksums published beside it, clears the
-quarantine attribute, and hands over to `gropius install` **inside the bundle
+quarantine attribute, and hands over to `dessau install` **inside the bundle
 it has just verified** — never to a copy already on the Mac. The script and the
 binary it calls are the same build, which is what makes the two halves of an
 install one thing.
@@ -35,19 +35,19 @@ From there the binary does the work, in this order:
 3. **Installs the private Python and MLX runtime**, in the foreground, naming
    the stage and how many of the three stages are done. This is the part that
    takes minutes.
-4. **Links the `gropius` command** into `~/.local/bin`, and says so. Nothing is
+4. **Links the `dessau` command** into `~/.local/bin`, and says so. Nothing is
    elevated for this.
 5. **Opens the application** and waits for it to answer, then says whether it
    is serving.
 
-When the command returns, Gropius is in the menu bar. Click its icon for the
+When the command returns, Dessau is in the menu bar. Click its icon for the
 control panel, and carry on at
 [Getting started](getting-started.md#3-download-a-model).
 
 ### The one administrator panel
 
 Exactly one panel appears in an install, and it is for the macOS Application
-Firewall. Without that entry, Gropius accepts a connection from another machine
+Firewall. Without that entry, Dessau accepts a connection from another machine
 and then drops it, so the LAN sees an empty response while `localhost` on this
 Mac works.
 
@@ -69,7 +69,7 @@ this Mac while other machines see nothing.
 
 ### When `~/.local/bin` is not on the search path
 
-The `gropius` command is a link in your own bin directory, which is not on
+The `dessau` command is a link in your own bin directory, which is not on
 every Mac's search path. When it is not on yours, the install says so and
 prints the line that fixes it. Add it to `~/.zshrc` (or `~/.bash_profile`):
 
@@ -77,8 +77,8 @@ prints the line that fixes it. Add it to `~/.zshrc` (or `~/.bash_profile`):
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Open a new terminal after saving, and `gropius status` answers. Until then the
-command works by its full path, `~/.local/bin/gropius`.
+Open a new terminal after saving, and `dessau status` answers. Until then the
+command works by its full path, `~/.local/bin/dessau`.
 
 ### When your account is not an administrator
 
@@ -94,14 +94,14 @@ directory.
 Run the install verb again:
 
 ```sh
-gropius install
+dessau install
 ```
 
 It repairs what is missing rather than reinstalling what is not, and says which
 of the two it did: either that the runtime was already complete and nothing was
 reinstalled, or which pieces it put back. A complete installation takes seconds.
 
-Repair acts on the bundle that is already installed. On a Mac with no Gropius
+Repair acts on the bundle that is already installed. On a Mac with no Dessau
 at either destination there is nothing to repair, and the verb refuses and
 names the bootstrap — before it asks for anything, so a Mac with nothing
 installed never raises an authorisation panel.
@@ -112,8 +112,8 @@ A stage that fails stops the run. The command exits non-zero, names the stage
 and why it failed, and names the command that retries it:
 
 ```
-gropius install: the MLX runtime failed: …
-Retry with: gropius install
+dessau install: the MLX runtime failed: …
+Retry with: dessau install
 ```
 
 Retrying resumes rather than restarting: the stages already done are the ones
@@ -125,14 +125,14 @@ the two commands that make it by hand. An application that could not be opened
 leaves everything installed.
 
 The terminal's verdict is what was true when the command exited, and it is not
-revisited. Gropius checks its own runtime whenever it starts, so a provisioning
+revisited. Dessau checks its own runtime whenever it starts, so a provisioning
 run that failed in the terminal may well be finished by the app itself on the
 next launch — the control panel is where that shows.
 
 ## Update it
 
 ```sh
-gropius update
+dessau update
 ```
 
 It fetches the current release, checks it against the checksums published
@@ -140,7 +140,7 @@ beside it, and puts it in place with the same staged swap the install uses.
 Then it tells you two things rather than one:
 
 ```
-installed: 0.5.0, at /Applications/Gropius.app
+installed: 0.5.0, at /Applications/DessauServer.app
 serving:   0.4.0, on port 11535
 ```
 
@@ -170,13 +170,13 @@ The command reports five things every time:
 ### When someone else is logged in
 
 On a Mac with fast user switching, the server port belongs to whichever session
-started Gropius first. If that is not yours, the update still replaces the
+started Dessau first. If that is not yours, the update still replaces the
 bundle — and then says so plainly rather than reporting success:
 
 ```
 This Mac is serving a version this command did not install.
 The bundle just placed takes effect when that session logs out, or when
-Gropius is restarted there.
+Dessau is restarted there.
 Quitting it is not something this command can do: a quit request reaches only
 this login session.
 ```
@@ -192,7 +192,7 @@ is somebody else's.
 
 ### When something unidentified holds the port
 
-If the process on the server port answers Gropius's identity challenge and
+If the process on the server port answers Dessau's identity challenge and
 answers it wrongly, the update stops before it downloads anything. It names the
 port, says what it found, and leaves the installed application exactly as it
 was. A Mac with an impostor on the server port is not a Mac to install software
@@ -200,7 +200,7 @@ on.
 
 That is the one ending where nothing is written. Something that holds the port
 and answers nothing at all is a different case: under per-account data roots
-that is what another account's Gropius looks like from here, so the update goes
+that is what another account's Dessau looks like from here, so the update goes
 ahead and the serving version is reported as unknown.
 
 ### The panel, again
@@ -218,18 +218,18 @@ empty response while this Mac works.
 ### There is no way back
 
 One release is published at a time, so there is no earlier release to fetch and
-`gropius update` takes no version. The tag of a previous version survives and
+`dessau update` takes no version. The tag of a previous version survives and
 can be rebuilt from source, which is a different job to doing at a terminal.
 
 ## Remove it
 
 ```sh
-gropius uninstall
+dessau uninstall
 ```
 
 What goes: the application bundle from both fixed locations, the private Python
 and MLX runtime, `config.json`, the model list, the logs, the request
-statistics, the `gropius` command, and the firewall entry.
+statistics, the `dessau` command, and the firewall entry.
 
 What stays: **the models you downloaded, and the cache they arrived through.**
 They are the expensive thing to fetch again, so removing them is a decision of
@@ -244,14 +244,14 @@ Two lines are worth reading when they appear:
   elevated for, and the firewall entry is reported with the command that
   removes it when the panel is declined. Everything else is still removed.
 
-`GROPIUS_ROOT` and `-root` are never deletion paths. Uninstall acts on the
+`DESSAU_ROOT` and `-root` are never deletion paths. Uninstall acts on the
 fixed locations this account's install uses, and the output names the root it
 did not remove.
 
 ### Remove the models too
 
 ```sh
-gropius uninstall --purge
+dessau uninstall --purge
 ```
 
 `--purge` deletes the downloaded models as well. It needs a terminal, because
@@ -260,16 +260,16 @@ standard input is not a terminal — a script, a pipeline, a CI job — the run
 deletes nothing and names the flag that answers for you:
 
 ```sh
-gropius uninstall --purge --yes
+dessau uninstall --purge --yes
 ```
 
 ### When this Mac uses a shared model cache
 
 With the shared cache from
 [Getting started, step 9](getting-started.md#9-sharing-across-user-accounts-optional),
-the models live in `/Users/Shared/Gropius` and everything belonging to your
+the models live in `/Users/Shared/Dessau` and everything belonging to your
 account — its settings, its model list, its runtime, its logs and its
-statistics — lives in your own `~/Library/Application Support/Gropius`.
+statistics — lives in your own `~/Library/Application Support/Dessau`.
 
 So uninstall removes your own directory and **leaves the shared root alone**.
 The output names what remains in it, how much it holds, and how many other
@@ -278,7 +278,7 @@ account's models, and it is one deliberate command to run once everybody has
 finished with it:
 
 ```sh
-sudo /bin/rm -rf /Users/Shared/Gropius
+sudo /bin/rm -rf /Users/Shared/Dessau
 ```
 
 `--purge` in this mode removes only the files your own account owns, which is
@@ -289,13 +289,13 @@ account's models are that account's to remove.
 ## Diagnose it
 
 ```sh
-gropius doctor
+dessau doctor
 ```
 
 Doctor runs the expensive checks and labels every line with how much its answer
 is worth. Read the label before the severity:
 
-- **Verified** — state Gropius owns, so a severity means what it says: the MLX
+- **Verified** — state Dessau owns, so a severity means what it says: the MLX
   runtime, the data root's writability, the settings file, which build this is,
   and who holds the server port. On a Mac where another account is running the
   server, the port line says so, and says that the build named above it is this
@@ -312,19 +312,19 @@ is worth. Read the label before the severity:
   rather than dropped, and it carries the command that opens the settings pane
   where a person can look.
 
-Warnings exit zero. Only a check Gropius verified and found wrong exits 1, so
-`gropius doctor` is safe to put in a script that branches on the exit code —
-and the severity of every finding is in `gropius doctor --json` for a script
+Warnings exit zero. Only a check Dessau verified and found wrong exits 1, so
+`dessau doctor` is safe to put in a script that branches on the exit code —
+and the severity of every finding is in `dessau doctor --json` for a script
 that wants more than pass or fail.
 
 For what is true right now rather than what is wrong — serving or not, on which
-address, which models are in memory — `gropius status` answers from state that
+address, which models are in memory — `dessau status` answers from state that
 already exists and is cheap enough to poll.
 
 For what the settings say, without opening the file:
 
 ```sh
-gropius config show
+dessau config show
 ```
 
 It prints every setting in force, spelled the way `config.json` spells it, so a
@@ -350,7 +350,7 @@ back into and carries no account name away.
   flag, the exit codes, and the fields `--json` emits.
 - [Getting started](getting-started.md) — from a fresh install to answering a
   prompt from another machine.
-- [Reference: the server's log](logging.md) — where Gropius writes down what it
+- [Reference: the server's log](logging.md) — where Dessau writes down what it
   did, and what it never writes.
 - [The posture page](posture-reference.md) — the control panel's one page
   saying who can reach this server.

@@ -1,6 +1,6 @@
 # Reference: response headers
 
-Gropius adds two headers to the answers it gives a completion request, on
+Dessau adds two headers to the answers it gives a completion request, on
 `POST /v1/chat/completions` and `POST /v1/completions`. They say what the
 request spent getting to a model server, which the OpenAI response body has no
 field for.
@@ -36,16 +36,16 @@ for the figure it gives and was refused at the end of it.
 ```
 HTTP/1.1 200 OK
 Content-Type: text/event-stream
-X-Gropius-State: waited
-X-Gropius-Queue-Time: 47320
+X-Dessau-State: waited
+X-Dessau-Queue-Time: 47320
 ```
 
 ## The headers
 
 | Header | Value |
 | --- | --- |
-| `X-Gropius-State` | `warm` or `waited`. `warm` means the request went straight to a model server. `waited` means it did not. |
-| `X-Gropius-Queue-Time` | Whole milliseconds spent waiting, as a decimal integer. `0` on a warm request. |
+| `X-Dessau-State` | `warm` or `waited`. `warm` means the request went straight to a model server. `waited` means it did not. |
+| `X-Dessau-Queue-Time` | Whole milliseconds spent waiting, as a decimal integer. `0` on a warm request. |
 
 The two agree by construction: the state is `waited` exactly when the queue
 time is not `0`. A client can read either.

@@ -12,7 +12,7 @@ origin: researcher-authored
 production_mode: hand-written
 ---
 
-# Debug logging for one model, until it is restarted: Alice picks a model in the control panel and asks Gropius to run it with its own logging turned all the way up, in a panel that says in plain words what that writes down. From then until that model's server is restarted, its log holds every request sent to it and every answer it produced, prompts and completions included, so Alice can see what a client is actually sending when a model answers strangely. It is per model, it is never on for a model she did not choose, and it is a separate action from recording request statistics: turning statistics on never raises a log level, and this never turns statistics on. Bob's clients see no change, and nothing leaves the Mac either way.
+# Debug logging for one model, until it is restarted: Alice picks a model in the control panel and asks Dessau to run it with its own logging turned all the way up, in a panel that says in plain words what that writes down. From then until that model's server is restarted, its log holds every request sent to it and every answer it produced, prompts and completions included, so Alice can see what a client is actually sending when a model answers strangely. It is per model, it is never on for a model she did not choose, and it is a separate action from recording request statistics: turning statistics on never raises a log level, and this never turns statistics on. Bob's clients see no change, and nothing leaves the Mac either way.
 
 > The title is the quoted capture and is left as captured — a record's id is not
 > a description. Two of its sentences do not survive the review below and are
@@ -62,7 +62,7 @@ promise worth keeping; together they mean the operator of a local inference
 server cannot see her own traffic when it is the traffic that is wrong.
 
 The model server underneath already has the capability. Run at its debug level
-it writes each request body and each response to its own per-model log. Gropius
+it writes each request body and each response to its own per-model log. Dessau
 runs every model server at INFO instead, in one place, and an architecture test
 holds it there, because that level is one switch away from turning a
 content-free statistics toggle into a prompt recorder — the coupling a
@@ -125,7 +125,7 @@ We expect a size bound to hold against a looping client because the bound is
 ours and applies to bytes written, not to requests served: the server itself
 has no `maxBytes`, no `FileHandler` and no truncation of either body, so a
 client that repeats one request writes until the bound stops the writing. It
-is the same instrument `gropius.log` already uses. Falsified if a single
+is the same instrument `dessau.log` already uses. Falsified if a single
 request can exceed the bound before it is checked — one 200,000-character
 context probe body is a single `logging.debug` call — so the bound has to hold
 per write and not only per file.
@@ -173,7 +173,7 @@ per write and not only per file.
   the reason, and both panels say so — the exception means no prompts on disk,
   not "not in this one file". This record holds that refusal, not a carve-out
   from it.
-- **The log also holds the traffic Gropius's own probes send.** The context
+- **The log also holds the traffic Dessau's own probes send.** The context
   probe posts a generated filler prompt sized to the window under test
   (`internal/contextprobe/probe.go`) and the self-test and readiness paths send
   their own requests. At DEBUG those bodies are written like any other, and the
@@ -244,7 +244,7 @@ per write and not only per file.
   for a second consecutive launch not accumulating without bound.
 - **The documentation sentence is corrected.** Given `docs/logging.md`, when
   the docs tests run, then the page no longer says the model servers' debug
-  level is something "no setting in Gropius asks for it", and instead says
+  level is something "no setting in Dessau asks for it", and instead says
   which per-model action asks for it, what it writes, what bounds it, and that
   the previous run's file is kept. *Held by:* the shipped
   `internal/archtest/logging_docs_test.go`, extended with the new claims.
@@ -261,7 +261,7 @@ per write and not only per file.
   on by default, never reachable from the statistics switch or `log_level`,
   named on the panel while it is on, bounded in size — and states plainly that
   the client is not told; adr-2609061503319212 links forward to it and
-  adr-2609061610102325 is untouched, because shape (i) makes Gropius no reader
+  adr-2609061610102325 is untouched, because shape (i) makes Dessau no reader
   of prompt content. *Held by:* the ADR link-integrity check, and a hand check
   that the amended architecture test and this record both cite that ADR's id.
 
@@ -326,7 +326,7 @@ sibling itd-2609091707499248, and the code the draft would change.
    broken by design.** `TestTheModelServerIsAlwaysLaunchedAtInfo` asserts the
    launcher names `--log-level` exactly once, as INFO, and never names DEBUG.
    The logging page tells the reader that the model servers' debug level writes
-   prompts and answers "so no setting in Gropius asks for it". Both are
+   prompts and answers "so no setting in Dessau asks for it". Both are
    deliberate and both must be amended in the same change, by a record that
    says why.
    *Changes:* the amendment is in scope and must preserve what the test was
@@ -347,7 +347,7 @@ sibling itd-2609091707499248, and the code the draft would change.
    `TestStatisticsSwitchReadersAllExist` holds its own.
 
 8. **There are two credible shapes and they cost different things.** (i) Raise
-   the child process's level: Gropius reads no prompt content, so the
+   the child process's level: Dessau reads no prompt content, so the
    prompt-content decision record is untouched, but the content is whatever the
    model server chooses to write — unbounded, unredacted, unverified at the
    pin, and not available to any panel view. (ii) Have the gateway write the
@@ -430,7 +430,7 @@ sibling itd-2609091707499248, and the code the draft would change.
 
 17. **A claim that contradicts shipped prose.** The logging reference page,
     delivered under the shipped server-log intent, tells the reader that no
-    setting in Gropius asks for the model servers' debug level. If this ships
+    setting in Dessau asks for the model servers' debug level. If this ships
     that sentence is false — while the same intent's mechanism names this draft
     as where prompts and answers live. The records agree; the delivered page
     does not.
@@ -502,7 +502,7 @@ no stateless server can tell him; the sibling's hold is the evidence for that.
 **Question 2 — Which shape: raise the model server's own level, or have the
 gateway write the log?**
 
-- (i) The child's level. No new reader of prompt content anywhere in Gropius,
+- (i) The child's level. No new reader of prompt content anywhere in Dessau,
   so the prompt-content record is untouched. The content, the format and the
   size are the model server's to choose; there is nothing to redact with and
   no panel view of it; and it is unverified at the pinned version (finding 1).
@@ -513,7 +513,7 @@ gateway write the log?**
 
 *Recommendation: (i), conditional on finding 1.* The question Alice is asking
 is "what is the client actually sending", and the upstream request body is
-exactly that; keeping Gropius's own blindness to prompt content intact is worth
+exactly that; keeping Dessau's own blindness to prompt content intact is worth
 more than a prettier file. If the maintainer wants the log bounded by us,
 redacted, or visible in the panel, the answer is (ii) and the decision record
 in Question 1 becomes the larger one — it then supersedes the prompt-content

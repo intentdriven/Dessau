@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build GropiusChat for the iPad from the same Swift files build.sh compiles
+# Build DessauChat for the iPad from the same Swift files build.sh compiles
 # for the Mac: no Xcode project, one script. Needs the installed Xcode's
 # toolchain (`xcrun`) and its iOS 27 SDK — as on macOS, the 27 SDK's SwiftUI is
 # implemented with compiler macros whose plugin ships only inside Xcode.
@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP="GropiusChat"
+APP="DessauChat"
 BUNDLE="dist-ipad/$APP.app"
 OBJ="dist-ipad/obj"
 # The client's floor on this system; client/Info-iPad.plist declares the same
@@ -39,7 +39,7 @@ bundle it knows no iPad can install.
 
 One sign-in mints both: open Xcode > Settings > Accounts, add your Apple ID,
 and let the personal team issue an "Apple Development" certificate; the
-matching profile for dev.gropius.chat is in
+matching profile for sh.intentdriven.dessau.chat is in
 ~/Library/Developer/Xcode/UserData/Provisioning Profiles.
 
 Then:
@@ -73,7 +73,7 @@ xcrun swiftc -O -wmo -c -parse-as-library \
     -emit-const-values \
     -Xfrontend -const-gather-protocols-file -Xfrontend appintents-protocols.json \
     -o "$OBJ/$APP.o" \
-    GropiusChat/*.swift
+    DessauChat/*.swift
 # The link step drives clang, which otherwise reaches for the host's macOS
 # sysroot and says so on every build; -isysroot points it at the same SDK the
 # frontend compiled against.
@@ -96,7 +96,7 @@ fi
 [ -n "$CONSTVALS" ] && [ -f "$CONSTVALS" ] ||
     { echo "error: the compiler wrote no .swiftconstvalues; the App Intents metadata would describe nothing" >&2; exit 1; }
 printf '%s\n' "$CONSTVALS" > "$OBJ/constvals.txt"
-ls "$PWD"/GropiusChat/*.swift > "$OBJ/sources.txt"
+ls "$PWD"/DessauChat/*.swift > "$OBJ/sources.txt"
 xcrun appintentsmetadataprocessor \
     --output "$BUNDLE" \
     --toolchain-dir "$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" \
@@ -146,11 +146,11 @@ cat > "$TMP/Assets.xcassets/AppIcon.appiconset/Contents.json" <<'JSON'
       "size" : "1024x1024"
     }
   ],
-  "info" : { "author" : "gropius", "version" : 1 }
+  "info" : { "author" : "dessau", "version" : 1 }
 }
 JSON
 cat > "$TMP/Assets.xcassets/Contents.json" <<'JSON'
-{ "info" : { "author" : "gropius", "version" : 1 } }
+{ "info" : { "author" : "dessau", "version" : 1 } }
 JSON
 xcrun actool --compile "$BUNDLE" \
     --platform "$ACTOOL_PLATFORM" \
@@ -180,7 +180,7 @@ if [ -z "${SIM:-}" ]; then
     security cms -D -i "$IPAD_PROFILE" > "$TMP/profile.plist"
     /usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$TMP/profile.plist" > "$TMP/entitlements.plist"
     TEAM_ID="$(/usr/libexec/PlistBuddy -c "Print :com.apple.developer.team-identifier" "$TMP/entitlements.plist")"
-    /usr/libexec/PlistBuddy -c "Set :application-identifier $TEAM_ID.dev.gropius.chat" "$TMP/entitlements.plist"
+    /usr/libexec/PlistBuddy -c "Set :application-identifier $TEAM_ID.sh.intentdriven.dessau.chat" "$TMP/entitlements.plist"
     # get-task-allow is what lets a debugger attach; a personal team's profile
     # is a development profile, and this is the entitlement it is issued for.
     /usr/libexec/PlistBuddy -c "Set :get-task-allow true" "$TMP/entitlements.plist" 2>/dev/null ||
@@ -237,9 +237,9 @@ xcrun simctl boot "$DEVICE" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE" > /dev/null
 xcrun simctl install "$DEVICE" "$BUNDLE"
 
-echo "Launching dev.gropius.chat..."
+echo "Launching sh.intentdriven.dessau.chat..."
 LOG="$TMP/launch.log"
-xcrun simctl launch --console-pty "$DEVICE" dev.gropius.chat > "$LOG" 2>&1 &
+xcrun simctl launch --console-pty "$DEVICE" sh.intentdriven.dessau.chat > "$LOG" 2>&1 &
 LAUNCHED=$!
 sleep 8
 # Asked while the console is still attached, because detaching it takes the app
@@ -250,7 +250,7 @@ sleep 8
 # grep that stops at the first match make a successful search look like a
 # failed pipeline.
 JOBS="$(xcrun simctl spawn "$DEVICE" launchctl list 2>/dev/null || true)"
-if [ "${JOBS#*UIKitApplication:dev.gropius.chat}" != "$JOBS" ]; then
+if [ "${JOBS#*UIKitApplication:sh.intentdriven.dessau.chat}" != "$JOBS" ]; then
     echo "Launched on \"$NAME\" and still running after 8 seconds."
     STATUS=0
 else
@@ -259,6 +259,6 @@ else
 fi
 kill "$LAUNCHED" 2>/dev/null || true
 wait "$LAUNCHED" 2>/dev/null || true
-xcrun simctl terminate "$DEVICE" dev.gropius.chat 2>/dev/null || true
+xcrun simctl terminate "$DEVICE" sh.intentdriven.dessau.chat 2>/dev/null || true
 [ -s "$LOG" ] && { echo "--- console ---"; cat "$LOG"; }
 exit "$STATUS"

@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // Ask serves one completion to a caller inside this process, without a network

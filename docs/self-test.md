@@ -1,6 +1,6 @@
 # Test your models while the Mac is idle
 
-Gropius can measure its own models, on your Mac, while nobody is using them:
+Dessau can measure its own models, on your Mac, while nobody is using them:
 how long each takes to load, how fast it reads a long prompt, how fast it
 generates, and what that becomes when several requests arrive at once. The
 figures come from your machine rather than from someone else's benchmark, so
@@ -29,12 +29,12 @@ are.
 
 ## What happens while it is on
 
-Once a minute Gropius asks whether the Mac is idle: no request in flight on
+Once a minute Dessau asks whether the Mac is idle: no request in flight on
 any model, no request waiting for a model to load, no download running, and
 the last request older than the idle threshold — five minutes unless you
 change it under **Settings → Context probe**, `idle_threshold_sec` in
 `config.json`; the self-test and the [context probe](context-probe.md) share
-it. When it is, Gropius picks the
+it. When it is, Dessau picks the
 model measured longest ago — a model never measured comes first, and a model
 measured within the last day is left alone — and runs it through the same
 short set every model gets:
@@ -52,7 +52,7 @@ short set every model gets:
 The names are [llama-bench](https://github.com/ggml-org/llama.cpp/tree/master/tools/llama-bench)'s,
 so a figure here can be set beside a published one.
 
-When the set is done Gropius writes one line to the results file and, if the
+When the set is done Dessau writes one line to the results file and, if the
 self-test was what loaded the model, unloads it again; a model that was
 already in memory is left there. Then it goes back to waiting for the next
 idle minute and the next model.
@@ -93,7 +93,7 @@ model — when it ran, how it ended, the load time, and the figures of note
 from each test — and the most recent runs beneath. It shows them whether or
 not request statistics are being recorded; the two switches are separate.
 
-The file is `selftest/results.jsonl` in your Gropius data folder, beside the
+The file is `selftest/results.jsonl` in your Dessau data folder, beside the
 [statistics store](statistics-store-reference.md): one line of JSON per run,
 readable with any tool that reads JSON Lines. It is this account's own file,
 at mode 0600, and it is bounded — when the next line would take it past

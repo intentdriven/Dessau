@@ -114,7 +114,7 @@ func TestURLHostStripsTheBracketsABindNeeds(t *testing.T) {
 }
 
 // ExposedToLAN is read by everything that decides how open this server is: the
-// generate-a-key-or-drop-to-loopback branch in cmd/gropius, the eviction-grace
+// generate-a-key-or-drop-to-loopback branch in cmd/dessau, the eviction-grace
 // key requirement, the panel's warning, whether Bonjour advertises the service
 // at all, and whether the endpoint list enumerates this machine's addresses.
 // It string-compared Host, so it never saw the bracketed spelling of an IPv6
@@ -197,7 +197,7 @@ func TestExposedToLANReadsEverySpellingOfALoopbackBind(t *testing.T) {
 // RFC 1123 has the answer already: the top label of a host name is alphabetic.
 // A value that does not satisfy that is not a name, and if it is not an address
 // either it is refused — which fails closed, since Load then refuses the file
-// and cmd/gropius locks the bind down to loopback.
+// and cmd/dessau locks the bind down to loopback.
 func TestABindHostThatIsSecretlyAnAddressIsRefused(t *testing.T) {
 	for _, host := range []string{
 		"0", "127.1", "2130706433", "0x7f.1", "0177.0.0.1", "10.1",

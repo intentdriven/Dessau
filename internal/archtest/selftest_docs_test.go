@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/selftest"
+	"github.com/intentdriven/Dessau/internal/selftest"
 )
 
 // The self-test's reference page is the promise the results file is held to:

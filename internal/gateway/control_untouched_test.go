@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/registry"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 // A cross-field refusal names a field that changed in this save.

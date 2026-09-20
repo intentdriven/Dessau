@@ -14,9 +14,9 @@ const MaxConfigBytes = 1 << 20
 
 // OpenRegular opens path for reading and refuses anything but a regular file.
 //
-// Every state file Gropius keeps in its data root — config.json, registry.json,
+// Every state file Dessau keeps in its data root — config.json, registry.json,
 // the PID ledger, the instance token — is created lazily, and in shared-cache
-// mode that root is group-writable (/Users/Shared/Gropius, mode 3775): another
+// mode that root is group-writable (/Users/Shared/Dessau, mode 3775): another
 // local account can plant a FIFO or a symlink under any of those names before
 // the first write, and the sticky bit then stops this account from ever
 // removing it. A plain os.Open would block forever on the FIFO (wedging startup
@@ -73,7 +73,7 @@ func ReadRegularInfo(path string, max int64) ([]byte, os.FileInfo, error) {
 	return b, info, nil
 }
 
-// PrivateToThisAccount is privateToThisAccount, for the one other file Gropius
+// PrivateToThisAccount is privateToThisAccount, for the one other file Dessau
 // keeps that a co-tenant account must not be able to substitute: the server's
 // TLS private key (internal/pairing). The rule is the settings file's, stated
 // once and applied twice, rather than a second copy of the same three checks

@@ -396,7 +396,7 @@ func isCasePatternLine(code string) bool {
 // "fail if the destination exists" mode, and any test-then-move in shell is a
 // race by construction — so the ordering this test used to pin (rename aside,
 // then move in, never delete first) was the best a shell could do and not a
-// fix. The server half stopped doing it when `gropius install` took over
+// fix. The server half stopped doing it when `dessau install` took over
 // (iss-2609081310071028); the client half kept it, with the defect recorded in
 // the script's own comment, until iss-2609111454146700.
 //
@@ -428,7 +428,7 @@ func TestTheInstallerPlacesEveryBundleInGoAndNeverWithMv(t *testing.T) {
 			}
 			t.Errorf("install.sh:%d runs %q: `mv` nests into a destination that is already a "+
 				"directory and follows one that is a symbolic link, exiting 0 in both cases. "+
-				"Hand the placement to `gropius place`, which is rename(2) and refuses both: %s",
+				"Hand the placement to `dessau place`, which is rename(2) and refuses both: %s",
 				i+1, word, strings.TrimSpace(line))
 		}
 	}
@@ -448,7 +448,7 @@ func TestTheClientHalfHandsItsPlacementToTheVerb(t *testing.T) {
 	for _, want := range []struct{ text, why string }{
 		{`"$PLACER" place --bundle "$tmp/extract/$APP.app" --into "$DEST"`,
 			"the client's bundle is placed by the verb, from the directory this script verified, into the destination it chose"},
-		{`PLACER="$tmp/placer/Gropius.app/Contents/MacOS/gropius"`,
+		{`PLACER="$tmp/placer/DessauServer.app/Contents/MacOS/dessau"`,
 			"the placer is the binary inside the archive this script just verified, never the copy already installed on this Mac"},
 		{`refuse_symlinks "$PLACER_ASSET" "$tmp/placer"`,
 			"`ditto -x` restores a symbolic link at any component and follows it, so the whole unpacked placer is " +
@@ -466,7 +466,7 @@ func TestTheClientHalfHandsItsPlacementToTheVerb(t *testing.T) {
 //
 // The bootstrap used to raise an authentication panel of its own, as a gate
 // before the download. It no longer elevates at all: the one panel this product
-// raises is raised by `gropius install`, for the firewall entry, after the
+// raises is raised by `dessau install`, for the firewall entry, after the
 // download has been verified — which is also where a credential is never spent
 // on an archive that then fails its checksum. internal/archtest's
 // lifecycle scan holds that to being exactly one site.
@@ -490,7 +490,7 @@ func TestTheInstallerElevatesForNothing(t *testing.T) {
 			t.Errorf("install.sh:%d elevates with sudo, which a standard account cannot satisfy: %s", i+1, trimmed)
 		}
 		if strings.Contains(trimmed, "administrator privileges") {
-			t.Errorf("install.sh:%d raises an authorization panel. The one panel belongs to `gropius install`, "+
+			t.Errorf("install.sh:%d raises an authorization panel. The one panel belongs to `dessau install`, "+
 				"which raises it after the download is verified and where a single scan can hold it to one site: %s",
 				i+1, trimmed)
 		}
@@ -530,7 +530,7 @@ func TestTheInstallerVerifiesBeforeItHandsOver(t *testing.T) {
 	handover := strings.Index(src, `handover=("$VERIFIED_BIN" install --bundle`)
 	if handover < 0 {
 		t.Fatal("install.sh no longer hands over to the verified binary — update this test if the spelling changed, " +
-			"but the bootstrap must reach `gropius install` for anything past the download to happen at all")
+			"but the bootstrap must reach `dessau install` for anything past the download to happen at all")
 	}
 	if handover < verify {
 		t.Error("install.sh hands over before it verifies the download; the binary it executes would be unverified")

@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/app"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/app"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // fakeLauncher stands a fake model server up on the port the pool chose,
@@ -186,7 +186,7 @@ func TestAClientRequestThroughTheRealGatewayYieldsTheProbeAndItResumes(t *testin
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("the client got %d: %s", resp.StatusCode, raw)
 	}
-	if !strings.Contains(string(raw), "GROPIUS OK") {
+	if !strings.Contains(string(raw), "DESSAU OK") {
 		t.Errorf("the client's answer: %s", raw)
 	}
 	// The probe resumes and finishes.

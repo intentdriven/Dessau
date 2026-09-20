@@ -254,14 +254,14 @@ func TestLoadCorruptFileReturnsError(t *testing.T) {
 
 func TestDefaultRootHonorsEnvOverride(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GROPIUS_ROOT", dir)
+	t.Setenv("DESSAU_ROOT", dir)
 
 	got, err := DefaultRoot()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != dir {
-		t.Errorf("DefaultRoot() = %q, want the GROPIUS_ROOT override %q", got, dir)
+		t.Errorf("DefaultRoot() = %q, want the DESSAU_ROOT override %q", got, dir)
 	}
 }
 
@@ -282,13 +282,13 @@ func TestWritableDirRejectsUnwritableAndMissingDirs(t *testing.T) {
 }
 
 func TestDefaultRootFallsBackToHomeWhenNoSharedDir(t *testing.T) {
-	t.Setenv("GROPIUS_ROOT", "")
+	t.Setenv("DESSAU_ROOT", "")
 
 	got, err := DefaultRoot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// On a machine without /Users/Shared/Gropius, this must be the per-user path.
+	// On a machine without /Users/Shared/Dessau, this must be the per-user path.
 	if !writableDir(SharedRoot) && !strings.Contains(got, "Application Support") {
 		t.Errorf("DefaultRoot() = %q, want the per-user Application Support path", got)
 	}
@@ -348,7 +348,7 @@ func sharedLayout(t *testing.T) (Paths, string, string) {
 	withSharedRoot(t, root)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	acct := filepath.Join(home, "Library", "Application Support", "Gropius")
+	acct := filepath.Join(home, "Library", "Application Support", "Dessau")
 	p := NewPaths(root)
 	if p.Bin == filepath.Join(root, "bin") {
 		t.Fatal("NewPaths did not split the layout for the shared root")
@@ -369,7 +369,7 @@ func withSharedRoot(t *testing.T, dir string) {
 // registry sit in its own directory, which is outside it. EnsureDirs has to
 // create both. It used to refuse the whole layout on the first entry that was
 // not under the root — so with the executables moved out, a Mac with a shared
-// cache installed could not start Gropius at all.
+// cache installed could not start Dessau at all.
 func TestEnsureDirsUnderASharedRootCreatesThisAccountsOwnDirectories(t *testing.T) {
 	p, root, acct := sharedLayout(t)
 	if err := p.EnsureDirs(); err != nil {

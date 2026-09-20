@@ -44,6 +44,6 @@ Records drawn on: `iss-2609081427104462`, the `.abcd/work/DECISIONS.md` line of
   `.abcd/.work.local/`; notes about the abcd tooling go to
   `.abcd/.work.local/for_abcd/`. Nothing runtime is written into a tracked
   directory.
-- The product side holds the same line: Gropius writes into the account's own
+- The product side holds the same line: Dessau writes into the account's own
   Application Support folder and the shared cache root it was given, and
   nowhere else.

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/app"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/app"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // getJSON fetches a control-plane endpoint and returns its decoded body along

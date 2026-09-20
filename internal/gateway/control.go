@@ -17,18 +17,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/app"
-	"github.com/intentdriven/Gropius/internal/bind"
-	"github.com/intentdriven/Gropius/internal/bind/private"
-	"github.com/intentdriven/Gropius/internal/capability"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/hub"
-	"github.com/intentdriven/Gropius/internal/netshape"
-	"github.com/intentdriven/Gropius/internal/pairing"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/selftest"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/app"
+	"github.com/intentdriven/Dessau/internal/bind"
+	"github.com/intentdriven/Dessau/internal/bind/private"
+	"github.com/intentdriven/Dessau/internal/capability"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/hub"
+	"github.com/intentdriven/Dessau/internal/netshape"
+	"github.com/intentdriven/Dessau/internal/pairing"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/selftest"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // Control serves the app's own API and the web control panel.
@@ -41,7 +41,7 @@ type Control struct {
 	UI http.Handler
 	// Root is this server's data root. The control plane answers challenges
 	// against it so a future launch can tell this user's server apart from a
-	// process squatting on the port (see cmd/gropius singleton coordination).
+	// process squatting on the port (see cmd/dessau singleton coordination).
 	Root string
 	// Version is the build this server is, published on the state snapshot so
 	// the lifecycle verbs can say which version is serving. Set once before
@@ -265,7 +265,7 @@ func loopbackRefusal(r *http.Request) string {
 	origin := r.Header.Get("Origin")
 	switch {
 	case !isLoopback(r.RemoteAddr):
-		return "the Gropius control panel is only reachable from the computer it runs on"
+		return "the Dessau control panel is only reachable from the computer it runs on"
 	case !isLoopbackHost(r.Host):
 		return "unrecognized Host header — the control panel only answers to localhost"
 	case origin != "" && !isLoopbackOrigin(origin):
@@ -350,7 +350,7 @@ type State struct {
 	TLSPort  int    `json:"tls_port,omitempty"`
 	Hostname string `json:"hostname"`
 	// Version is the build this server is, as the binary reports it about
-	// itself. It is what makes `gropius update`'s report truthful: the version
+	// itself. It is what makes `dessau update`'s report truthful: the version
 	// just installed and the version still being served are two facts, and
 	// without this one the second could only be guessed at
 	// (iss-2609111942567418). Read-only, like everything else on this
@@ -414,7 +414,7 @@ type Machine struct {
 	// is a question only this Mac can answer.
 	DefaultBudget int64 `json:"default_budget"`
 	// BudgetIsDefault says the budget is the share of this Mac's memory
-	// Gropius chose, not a figure the operator set, so the panel can show it as
+	// Dessau chose, not a figure the operator set, so the panel can show it as
 	// the default rather than as their own number.
 	BudgetIsDefault bool `json:"budget_is_default"`
 	// WarnAbove is the budget beyond which the panel warns, or 0 when this Mac
@@ -537,7 +537,7 @@ func (c *Control) snapshot() State {
 	// to read the same source: a bind saved and not yet in force would
 	// otherwise silence the warning while the list went on handing out the LAN
 	// addresses the process is still answering on. It softens only on state
-	// Gropius owns end to end, and never on an inference about another process
+	// Dessau owns end to end, and never on an inference about another process
 	// (adr-2609081118587999 rule 4).
 	if c.App.Bind().ReachesOtherMachines() && cfg.APIKey == "" {
 		st.Warnings = append(st.Warnings,
@@ -801,7 +801,7 @@ func historyRange(from, to, now time.Time) (time.Time, time.Time, bool) {
 // a Mac running ten models a tenth of the span it handed a Mac running one. The
 // figure is past what the summary's own share of the default size limit holds
 // — three years of days for ten models, and more for fewer — so on a store
-// Gropius wrote this cuts nothing off; it is here so that a summary grown by a
+// Dessau wrote this cuts nothing off; it is here so that a summary grown by a
 // build with a larger limit cannot make this answer unbounded.
 const maxSummaryDays = 1500
 
@@ -861,8 +861,8 @@ const redacted = "********"
 // Endpoint is one base URL clients can point at, and the kind of network the
 // address sits on.
 //
-// Network is an observation and never a promise: it says which network Gropius
-// found the address on, not what that network is worth. Gropius cannot see
+// Network is an observation and never a promise: it says which network Dessau
+// found the address on, not what that network is worth. Dessau cannot see
 // whether that network has since been published to the internet, shared with
 // machines the operator does not own, or logged out from, and a word like
 // "encrypted" survives every one of those and then lies
@@ -969,7 +969,7 @@ func bindState(cfg config.Config, plan bind.Plan) BindState {
 // answers on.
 //
 // Nothing here is memoized. The private network can appear, disappear or
-// change address while Gropius runs, and the panel rebuilds this list on every
+// change address while Dessau runs, and the panel rebuilds this list on every
 // snapshot; the classification behind it is interface inspection with no
 // network call and no subprocess, so it can stay on that path.
 func Endpoints(cfg config.Config, plan bind.Plan) []Endpoint {
@@ -1607,7 +1607,7 @@ func (c *Control) applySettings(raw []byte) (map[string]any, error) {
 		"reload_models": samplingReloads(current, incoming, c.App.Pool.Resident()),
 	}
 	// A budget that claims most of the Mac is saved and answered with advice.
-	// What a Mac can actually carry is not a figure Gropius knows, so this is
+	// What a Mac can actually carry is not a figure Dessau knows, so this is
 	// the one thing a save says without refusing anything.
 	if warn := c.App.MemoryBudgetWarning(); warn != "" {
 		out["warning"] = warn

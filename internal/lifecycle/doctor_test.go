@@ -12,18 +12,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/instance"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/instance"
 )
 
-// fakeEnv is a Mac where everything Gropius owns is healthy: the runtime is
+// fakeEnv is a Mac where everything Dessau owns is healthy: the runtime is
 // provisioned, the root is writable, this account's own server holds the port,
 // and the firewall query answered the way it answers for a path it has an entry
 // for — which is also the way it answers for a path it does not.
 func fakeEnv(t *testing.T) DoctorEnv {
 	t.Helper()
 	home := t.TempDir()
-	root := filepath.Join(home, "Library", "Application Support", "Gropius")
+	root := filepath.Join(home, "Library", "Application Support", "Dessau")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func fakeEnv(t *testing.T) DoctorEnv {
 		Version:      "test",
 		Paths:        config.NewPaths(root),
 		Port:         11535,
-		Binary:       filepath.Join(home, "Applications", "Gropius.app", "Contents", "MacOS", "gropius"),
+		Binary:       filepath.Join(home, "Applications", "DessauServer.app", "Contents", "MacOS", "dessau"),
 		Home:         home,
 		Holder:       func() instance.Holder { return instance.HolderOurs },
 		RuntimeReady: func() bool { return true },
@@ -54,7 +54,7 @@ func findingNamed(t *testing.T, r Report, name string) Finding {
 }
 
 // Every finding carries exactly one of the three labels, and the label says how
-// much its answer is worth: what Gropius verified, what it only observed, and
+// much its answer is worth: what Dessau verified, what it only observed, and
 // what cannot be determined from here at all.
 func TestEveryFindingCarriesExactlyOneLabel(t *testing.T) {
 	r := Diagnose(fakeEnv(t), DefaultChecks())
@@ -140,7 +140,7 @@ func TestTheQuotedFirewallAnswerCarriesNoHomeDirectory(t *testing.T) {
 		t.Errorf("the firewall finding spells this account's home directory out, which is what a person pastes "+
 			"into a bug report:\n%s", f.Summary)
 	}
-	if !strings.Contains(f.Summary, "~/Applications/Gropius.app") {
+	if !strings.Contains(f.Summary, "~/Applications/DessauServer.app") {
 		t.Errorf("the abbreviated path is gone from the answer altogether, so the finding no longer says which "+
 			"binary was asked about:\n%s", f.Summary)
 	}
@@ -196,7 +196,7 @@ func TestAnObservedFindingCannotReportAFault(t *testing.T) {
 }
 
 // Severities live in the machine-readable output, not in the exit code:
-// warnings exit zero, and only a check Gropius genuinely verified can make
+// warnings exit zero, and only a check Dessau genuinely verified can make
 // doctor exit non-zero.
 func TestExitCodeFollowsTheVerifiedChecksAlone(t *testing.T) {
 	for _, tc := range []struct {
@@ -250,9 +250,9 @@ func ok(summary string) func(DoctorEnv) Answer {
 	return func(DoctorEnv) Answer { return Answer{Summary: summary, Severity: SeverityOK} }
 }
 
-// The runtime, the root and the port's holder are state Gropius owns, so a
+// The runtime, the root and the port's holder are state Dessau owns, so a
 // severity on them means what it says.
-func TestTheVerifiedChecksReportWhatGropiusOwns(t *testing.T) {
+func TestTheVerifiedChecksReportWhatDessauOwns(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		alter func(*DoctorEnv)
@@ -328,7 +328,7 @@ func TestTheVerifiedChecksReportWhatGropiusOwns(t *testing.T) {
 	}
 }
 
-// A process on the port that is not this account's Gropius is another account's
+// A process on the port that is not this account's Dessau is another account's
 // business: doctor counts it and does not name it, and says that the version it
 // reports is its own and not necessarily the version being served.
 func TestTheForeignPortHolderIsCountedAndNotNamed(t *testing.T) {
@@ -398,7 +398,7 @@ func TestRedactReplacesEveryOccurrenceOfTheHomeDirectory(t *testing.T) {
 		{"open " + filepath.Join(home, "Library") + ": permission denied", "open ~/Library: permission denied"},
 		{"Incoming connection to " + home + "/a is permitted.", "Incoming connection to ~/a is permitted."},
 		{home + " and " + home, "~ and ~"},
-		{filepath.Join(string(filepath.Separator), "Users", "Shared", "Gropius"), "/Users/Shared/Gropius"},
+		{filepath.Join(string(filepath.Separator), "Users", "Shared", "Dessau"), "/Users/Shared/Dessau"},
 		{"", ""},
 	} {
 		if got := redact(tc.in, home); got != tc.want {
@@ -483,10 +483,10 @@ func TestCommandsAreRedactedAsWellAsSummaries(t *testing.T) {
 func TestTheRegrantArgumentIsRunnableAndCarriesNoAccountName(t *testing.T) {
 	home := filepath.Join(string(filepath.Separator), "somewhere", "an-account")
 	for _, tc := range []struct{ in, want string }{
-		{"/Applications/Gropius.app/Contents/MacOS/gropius", "'/Applications/Gropius.app/Contents/MacOS/gropius'"},
-		{"/tmp/an app/gropius", "'/tmp/an app/gropius'"},
-		{"/tmp/it's here/gropius", `'/tmp/it'\''s here/gropius'`},
-		{home + "/Applications/an app/gropius", `"$HOME/Applications/an app/gropius"`},
+		{"/Applications/DessauServer.app/Contents/MacOS/dessau", "'/Applications/DessauServer.app/Contents/MacOS/dessau'"},
+		{"/tmp/an app/dessau", "'/tmp/an app/dessau'"},
+		{"/tmp/it's here/dessau", `'/tmp/it'\''s here/dessau'`},
+		{home + "/Applications/an app/dessau", `"$HOME/Applications/an app/dessau"`},
 		{home, `"$HOME"`},
 		// The four characters a double-quoted shell string still reads: a
 		// backtick would run a command, a dollar would expand another
@@ -505,10 +505,10 @@ func TestTheRegrantArgumentIsRunnableAndCarriesNoAccountName(t *testing.T) {
 // one inside this account's home.
 func TestTheFirewallCommandsAreRunnable(t *testing.T) {
 	env := fakeEnv(t)
-	env.Binary = "/Applications/Gropius beta.app/Contents/MacOS/gropius"
+	env.Binary = "/Applications/Dessau beta.app/Contents/MacOS/dessau"
 	f := findingNamed(t, Diagnose(env, DefaultChecks()), firewallCheckName)
 	for _, c := range f.Commands {
-		if !strings.Contains(c, "'/Applications/Gropius beta.app/Contents/MacOS/gropius'") {
+		if !strings.Contains(c, "'/Applications/Dessau beta.app/Contents/MacOS/dessau'") {
 			t.Errorf("command %q does not quote the bundle path", c)
 		}
 	}
@@ -519,7 +519,7 @@ func TestTheFirewallCommandsAreRunnable(t *testing.T) {
 		if strings.Contains(c, env.Home) {
 			t.Errorf("command %q carries this account's home directory", c)
 		}
-		if !strings.Contains(c, `"$HOME/Applications/Gropius.app/Contents/MacOS/gropius"`) {
+		if !strings.Contains(c, `"$HOME/Applications/DessauServer.app/Contents/MacOS/dessau"`) {
 			t.Errorf("command %q does not name a path a shell would resolve", c)
 		}
 		if strings.Contains(c, "~") {
@@ -528,7 +528,7 @@ func TestTheFirewallCommandsAreRunnable(t *testing.T) {
 	}
 }
 
-// The settings file is state Gropius owns, so it is a verified check: it loads,
+// The settings file is state Dessau owns, so it is a verified check: it loads,
 // it loads with something repaired or dropped, it is not there at all, or it
 // cannot be used as written.
 func TestTheSettingsFileIsChecked(t *testing.T) {
@@ -568,7 +568,7 @@ func TestTheSettingsFileIsChecked(t *testing.T) {
 			env.Settings = func() SettingsState { return tc.state }
 			f := findingNamed(t, Diagnose(env, DefaultChecks()), settingsCheckName)
 			if f.Label != Verified {
-				t.Errorf("label = %q, want %q: the settings file is state Gropius owns", f.Label, Verified)
+				t.Errorf("label = %q, want %q: the settings file is state Dessau owns", f.Label, Verified)
 			}
 			if f.Severity != tc.want {
 				t.Errorf("severity = %q, want %q (%q)", f.Severity, tc.want, f.Summary)
@@ -749,9 +749,9 @@ func goldenEnv() DoctorEnv {
 	home := filepath.Join(string(filepath.Separator), "somewhere", "an-account")
 	return DoctorEnv{
 		Version:      "test",
-		Paths:        config.NewPaths(filepath.Join(home, "Library", "Application Support", "Gropius")),
+		Paths:        config.NewPaths(filepath.Join(home, "Library", "Application Support", "Dessau")),
 		Port:         11535,
-		Binary:       filepath.Join(home, "Applications", "Gropius.app", "Contents", "MacOS", "gropius"),
+		Binary:       filepath.Join(home, "Applications", "DessauServer.app", "Contents", "MacOS", "dessau"),
 		Home:         home,
 		Holder:       func() instance.Holder { return instance.HolderForeign },
 		RuntimeReady: func() bool { return false },

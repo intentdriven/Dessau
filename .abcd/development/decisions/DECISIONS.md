@@ -1,4 +1,4 @@
-# Gropius — architecture decisions
+# Dessau — architecture decisions
 
 Empirically verified on macOS 26.5.2 / M-series / Go 1.25.6, 2026-07-14;
 items 7-9 read from the pinned mlx-lm 0.31.3 source on 2026-09-06 (see
@@ -7,7 +7,7 @@ items 7-9 read from the pinned mlx-lm 0.31.3 source on 2026-09-06 (see
 ## Verified by spike (not assumed)
 
 1. **`mlx_lm.server --model <plain directory>` works.** A directory of files fetched
-   over plain HTTP loads fine. Gropius therefore does **not** reproduce
+   over plain HTTP loads fine. Dessau therefore does **not** reproduce
    huggingface_hub's blobs/snapshots/symlinks cache format. Models live at
    `<root>/models/<org>/<name>/` as ordinary files.
 2. **`HF_HUB_CACHE` must point at an existing directory.** `mlx_lm.server` calls
@@ -38,13 +38,13 @@ items 7-9 read from the pinned mlx-lm 0.31.3 source on 2026-09-06 (see
    `Content-Length` parse sits in a `try`). The socket closes with no HTTP
    response, and the gateway turns that into `502`. Requests carrying their
    own value keep working, so the symptom is a 502 for some clients and not
-   others on a server that reports itself as running. Gropius therefore
+   others on a server that reports itself as running. Dessau therefore
    validates every sampling default against the server's own ranges before it
    can be saved.
 9. **`top_k` must be below the model's vocabulary size.** `sample_utils.
    apply_top_k` refuses anything else, and it raises from *inside* compiled
    generation, one layer deeper than the request check. A vocabulary size is
-   not knowable when a setting is saved, so Gropius caps `top_k` well below
+   not knowable when a setting is saved, so Dessau caps `top_k` well below
    the smallest an MLX model ships.
 
 ## Decisions
@@ -62,7 +62,7 @@ items 7-9 read from the pinned mlx-lm 0.31.3 source on 2026-09-06 (see
   omit it and advertising fails *silently*.
 - **Cross-account sharing by singleton election.** The daemon tries to bind the port;
   on `EADDRINUSE` it becomes a client of the already-running instance. One server,
-  one GPU, N user accounts. The shared model cache lives in `/Users/Shared/Gropius`
+  one GPU, N user accounts. The shared model cache lives in `/Users/Shared/Dessau`
   (setgid, group-writable) so a second account does not re-download gigabytes.
 
 ## Open security note

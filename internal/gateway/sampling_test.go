@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 func f64(v float64) *float64 { return &v }

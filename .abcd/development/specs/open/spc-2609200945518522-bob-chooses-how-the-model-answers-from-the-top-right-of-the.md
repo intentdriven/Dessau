@@ -19,14 +19,14 @@ the wire carries no new role and no new field. Impact: additive.
 
 ## Scope
 
-In: `client/GropiusChat/` and `internal/archtest/`, the client README and
+In: `client/DessauChat/` and `internal/archtest/`, the client README and
 the user-facing docs page for the chat client. Out: the server, the bridge,
 the models list, the pairing and key handling, the transcript recording
 draft. The Discord bridge keeps `/model` as its only per-channel choice.
 
 ## Approach
 
-**One declaration.** A new file `client/GropiusChat/Styles.swift` declares
+**One declaration.** A new file `client/DessauChat/Styles.swift` declares
 `enum AnswerStyle: String, CaseIterable, Codable { case square, circle,
 triangle }` with, per case: a display name, one line of what it does, the
 instruction text, the mark's colour, and a SwiftUI shape for the glyph. The

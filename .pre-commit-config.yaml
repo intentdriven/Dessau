@@ -2,7 +2,7 @@
 # Install: pre-commit install   (https://pre-commit.com)
 #
 # The absolute-path hook exempts /Users/Shared/ — a macOS system directory that
-# is part of Gropius's shared-cache design, not a username.
+# is part of Dessau's shared-cache design, not a username.
 repos:
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.24.3

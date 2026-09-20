@@ -11,7 +11,7 @@ import (
 // server: the mark is shown beside the URL rather than inside it, and every
 // place that hands the operator something to paste hands them the URL alone.
 
-// The row is the URL and, when Gropius saw one, the network the address is on.
+// The row is the URL and, when Dessau saw one, the network the address is on.
 // Nothing else: the mark is a separate element, so no clipboard, example or
 // copy of the row can pick it up by accident.
 func TestEndpointRowShowsTheMarkBesideTheURL(t *testing.T) {

@@ -41,7 +41,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "gropius-site")
+	dir, err := os.MkdirTemp("", "dessau-site")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -73,7 +73,7 @@ func renderTree(root, out string) (rendered, error) {
 // passes no --release at all, which is the record's absence and not an empty
 // one.
 func renderTreeWithRelease(root, out, release string) (rendered, error) {
-	args := []string{"run", "./cmd/gropius-site", "--root", root, "--manifest", filepath.Join(root, ".abcd", "site.json"), "--out", out}
+	args := []string{"run", "./cmd/dessau-site", "--root", root, "--manifest", filepath.Join(root, ".abcd", "site.json"), "--out", out}
 	if release != "" {
 		args = append(args, "--release", release)
 	}
@@ -82,11 +82,11 @@ func renderTreeWithRelease(root, out, release string) (rendered, error) {
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return rendered{}, fmt.Errorf("render: %v\n%s", err, b)
 	}
-	html, err := os.ReadFile(filepath.Join(out, "Gropius", "index.html"))
+	html, err := os.ReadFile(filepath.Join(out, "Dessau", "index.html"))
 	if err != nil {
 		return rendered{}, err
 	}
-	style, err := os.ReadFile(filepath.Join(out, "Gropius", "site.css"))
+	style, err := os.ReadFile(filepath.Join(out, "Dessau", "site.css"))
 	if err != nil {
 		return rendered{}, err
 	}
@@ -221,7 +221,7 @@ func headlineLines(t *testing.T) int {
 // --- Criterion 2 -----------------------------------------------------------
 //
 // The criterion as written says the download button fetches the latest
-// release's Gropius.app.zip. The page no longer carries that button: a browser
+// release's DessauServer.app.zip. The page no longer carries that button: a browser
 // download arrives with the quarantine attribute, and because the bundles are
 // ad-hoc signed and not notarized, macOS refuses them and offers to move them
 // to the Bin — so the button led users to an app they could not open. The
@@ -304,7 +304,7 @@ func flatten(v any) []string {
 }
 
 // sentenceCount counts sentence-ending stops: one inside a file name
-// ("Gropius.app.zip") is not one, because it is followed by a letter.
+// ("DessauServer.app.zip") is not one, because it is followed by a letter.
 func sentenceCount(v string) int {
 	n := 0
 	for _, m := range regexp.MustCompile(`\.(\s|$)`).FindAllString(v, -1) {
@@ -719,7 +719,7 @@ func TestOneClickSelectsAWholeCommand(t *testing.T) {
 
 // The mark is decoration. On a narrow viewport the stacked layout put it above
 // the headline, so the first thing on a phone was a 220px logo and the sentence
-// saying what Gropius is fell below it.
+// saying what Dessau is fell below it.
 func TestTheMarkStepsAsideOnANarrowViewport(t *testing.T) {
 	narrow := blockAfter(t, css, "@media (max-width: 820px)")
 	if got := decl(t, narrow, ".mark", "display"); got != "none" {
@@ -848,7 +848,7 @@ func repositoryURL(t *testing.T) string {
 func renderedPagePath(t *testing.T) string {
 	t.Helper()
 	makefile := read(t, filepath.Join(repoRoot, "Makefile"))
-	m := regexp.MustCompile(`gropius-site\s+--out\s+(\S+)`).FindStringSubmatch(makefile)
+	m := regexp.MustCompile(`dessau-site\s+--out\s+(\S+)`).FindStringSubmatch(makefile)
 	if m == nil {
 		t.Fatal("the Makefile has no `site` target invoking the renderer with --out")
 	}

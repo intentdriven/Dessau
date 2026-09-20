@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/instance"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/instance"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // socketfilterfw is the macOS Application Firewall's command-line interface,
@@ -42,9 +42,9 @@ const (
 type Label string
 
 const (
-	// Verified: state Gropius owns. A severity here means what it says.
+	// Verified: state Dessau owns. A severity here means what it says.
 	Verified Label = "verified"
-	// Observed: a query about state Gropius does not own answered, and what it
+	// Observed: a query about state Dessau does not own answered, and what it
 	// answered could not be established. The firewall entry is the case in
 	// hand: the query answers "permitted" for a path that has no entry and for
 	// a path that does not exist, and an ad-hoc signature's designated
@@ -77,7 +77,7 @@ type Answer struct {
 	Summary string
 	// Severity as the check saw it. For an Observed or Undeterminable check it
 	// is overruled where the report is assembled, so a check cannot report a
-	// fault about state Gropius does not own however it is written.
+	// fault about state Dessau does not own however it is written.
 	Severity Severity
 	// Commands are what a person would run to establish or restore the state.
 	// Every finding that is not Verified carries them: an observation a reader
@@ -162,7 +162,7 @@ type SettingsState struct {
 }
 
 // DefaultChecks is the set a real run asks, in the order it prints them: what
-// Gropius owns first, then the two states nobody can settle from here.
+// Dessau owns first, then the two states nobody can settle from here.
 func DefaultChecks() []Check {
 	return []Check{
 		{Name: runtimeCheckName, Label: Verified, Ask: checkRuntime},
@@ -215,7 +215,7 @@ func Diagnose(env DoctorEnv, checks []Check) Report {
 	return r
 }
 
-// ExitCode is zero unless something Gropius verified is wrong. Warnings exit
+// ExitCode is zero unless something Dessau verified is wrong. Warnings exit
 // zero, and so does every signal reported under the carve-out, whatever it saw.
 func (r Report) ExitCode() int {
 	for _, f := range r.Findings {
@@ -240,7 +240,7 @@ func checkRuntime(env DoctorEnv) Answer {
 		Severity: SeverityWarning,
 		// Starting the server is what provisions it: the run that installs the
 		// runtime is the server's own first start.
-		Commands: []string{"gropius"},
+		Commands: []string{"dessau"},
 	}
 }
 
@@ -255,7 +255,7 @@ func checkRoot(env DoctorEnv) Answer {
 }
 
 // checkSettings reports what config.json did when it was read. It is verified
-// rather than observed: the file is this account's own, Gropius reads it, and a
+// rather than observed: the file is this account's own, Dessau reads it, and a
 // severity on it means what it says.
 //
 // A file that is not there is not a fault. Every install has none until
@@ -267,7 +267,7 @@ func checkSettings(env DoctorEnv) Answer {
 		return Answer{
 			Summary:  "cannot be used as written, so the shipping defaults are in force: " + s.Err.Error(),
 			Severity: SeverityFailed,
-			Commands: []string{"gropius status"},
+			Commands: []string{"dessau status"},
 		}
 	case !s.Present:
 		return Answer{Summary: "not written yet, so the shipping defaults are in force", Severity: SeverityOK}
@@ -293,21 +293,21 @@ func checkPort(env DoctorEnv) Answer {
 	port := strconv.Itoa(env.Port)
 	switch env.Holder() {
 	case instance.HolderOurs:
-		return Answer{Summary: "this account's Gropius is on port " + port, Severity: SeverityOK}
+		return Answer{Summary: "this account's Dessau is on port " + port, Severity: SeverityOK}
 	case instance.HolderForeign:
 		// Counted, not named. Which account it belongs to is that account's
 		// business, and this output is written to be pasted into a bug report.
 		return Answer{
-			Summary: "port " + port + " is held by 1 process that is not this account's Gropius; it is not named here, " +
+			Summary: "port " + port + " is held by 1 process that is not this account's Dessau; it is not named here, " +
 				"and the build reported above is this one's own and not necessarily the build being served",
 			Severity: SeverityWarning,
-			Commands: []string{"gropius status"},
+			Commands: []string{"dessau status"},
 		}
 	default:
 		return Answer{
 			Summary:  "nothing is serving on port " + port,
 			Severity: SeverityWarning,
-			Commands: []string{"gropius"},
+			Commands: []string{"dessau"},
 		}
 	}
 }

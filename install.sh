@@ -1,23 +1,23 @@
 #!/bin/bash
 #
-# One-line installer for Gropius.
+# One-line installer for Dessau.
 #
 #   Server (menu-bar, Apple Silicon, macOS 27):
-#     curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash
+#     curl -fsSL https://raw.githubusercontent.com/intentdriven/Dessau/main/install.sh | bash
 #
-#   Client (GropiusChat, Apple Silicon, macOS 27 — the same floor as the server):
-#     curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash -s -- client
+#   Client (DessauChat, Apple Silicon, macOS 27 — the same floor as the server):
+#     curl -fsSL https://raw.githubusercontent.com/intentdriven/Dessau/main/install.sh | bash -s -- client
 #
 # This is a BOOTSTRAP, and only a bootstrap: it does what has to happen before a
-# Gropius binary exists on this Mac. It downloads the latest release, verifies
+# Dessau binary exists on this Mac. It downloads the latest release, verifies
 # it against the checksums published beside it, clears the quarantine attribute,
-# and then hands over to a `gropius` binary it verified. For the server that is
-# `gropius install` inside the bundle it just downloaded, and everything after
+# and then hands over to a `dessau` binary it verified. For the server that is
+# `dessau install` inside the bundle it just downloaded, and everything after
 # it is the binary's own work: the staged swap, the firewall grant, the MLX
 # runtime, the per-user command and the launch. A binary fetched by curl is not
 # Gatekeeper-quarantined, so no right-click-to-open dance.
 #
-# The client carries no binary of its own, so it hands over too — to `gropius
+# The client carries no binary of its own, so it hands over too — to `dessau
 # place`, from the server's archive, verified the same way. Nothing here moves a
 # bundle with `mv`: it nests into a destination that already exists as a
 # directory and follows one that is a symbolic link, and no test-then-move in
@@ -48,17 +48,17 @@
 # the loop's standard input, so the script's own is never touched.
 set -euo pipefail
 
-REPO="intentdriven/Gropius"
+REPO="intentdriven/Dessau"
 
 # Trust model: the download is checked against the SHA256SUMS.txt published on
 # the same GitHub Release, and every asset carries a GitHub build-provenance
 # attestation binding it to the release workflow run. There is no offline
 # signing key. To check provenance yourself before running this script:
-#   gh attestation verify Gropius.app.zip --repo intentdriven/Gropius
+#   gh attestation verify DessauServer.app.zip --repo intentdriven/Dessau
 # Building from source (see the README) is the escape hatch.
 #
 # That sentence has exactly one exception, and it is refused outside CI. When
-# GITHUB_ACTIONS=true, GROPIUS_ASSET_DIR points this run at a local directory,
+# GITHUB_ACTIONS=true, DESSAU_ASSET_DIR points this run at a local directory,
 # and then BOTH the bundle and the SHA256SUMS.txt it is checked against are read
 # from that directory: the verification proves the directory is self-consistent
 # and NOTHING about where its contents came from. Anywhere else the seam is a
@@ -69,15 +69,15 @@ REPO="intentdriven/Gropius"
 mode="${1:-server}"
 case "$mode" in
 server)
-	APP="Gropius"
-	ASSET="Gropius.app.zip"
+	APP="Dessau"
+	ASSET="DessauServer.app.zip"
 	;;
 client)
-	APP="GropiusChat"
-	ASSET="GropiusChat.app.zip"
+	APP="DessauChat"
+	ASSET="DessauChat.app.zip"
 	# The archive the placer is taken from. The client has no binary of its
 	# own, so the one that places its bundle is the server's.
-	PLACER_ASSET="Gropius.app.zip"
+	PLACER_ASSET="DessauServer.app.zip"
 	;;
 *)
 	echo "usage: install.sh [server|client]" >&2
@@ -90,7 +90,7 @@ die() {
 	exit 1
 }
 
-[ "$(/usr/bin/uname -s)" = "Darwin" ] || die "Gropius is macOS only."
+[ "$(/usr/bin/uname -s)" = "Darwin" ] || die "Dessau is macOS only."
 
 # Both bundles declare the same minimum, so Launch Services refuses either on
 # anything older. Refuse here instead — before the download and before anything
@@ -118,7 +118,7 @@ RELEASE_PATH="latest/download"
 
 # Apple Silicon, for either mode, and there is no build for anything else: the
 # floor above runs on no Intel Mac, the server needs Metal for MLX, and both
-# bundles are placed by a `gropius` binary that is an Apple Silicon build. So an
+# bundles are placed by a `dessau` binary that is an Apple Silicon build. So an
 # Intel Mac is turned away here, before anything is downloaded, with the floor
 # named rather than being left half-installed.
 # `uname -m` reports x86_64 in a Rosetta-translated shell (common with x86_64
@@ -133,7 +133,7 @@ trap '/bin/rm -rf "$tmp"' EXIT
 zip="$tmp/$ASSET"
 
 # Where the release assets come from. Normally the latest published Release;
-# GROPIUS_ASSET_DIR points this run at a local directory holding the same asset
+# DESSAU_ASSET_DIR points this run at a local directory holding the same asset
 # names instead. That is what lets the release workflow run THIS script against
 # the artefacts it has just built, before they are published — the only moment
 # an installer broken in the tagged tree can still be stopped
@@ -151,11 +151,11 @@ zip="$tmp/$ASSET"
 # stops the seam from being reachable by accident, by a stray export, or by a
 # tutorial that tells someone to set it, and it makes the substitution loud when
 # it does happen.
-ASSET_DIR="${GROPIUS_ASSET_DIR:-}"
+ASSET_DIR="${DESSAU_ASSET_DIR:-}"
 if [ -n "$ASSET_DIR" ]; then
 	[ "${GITHUB_ACTIONS:-}" = "true" ] ||
-		die "GROPIUS_ASSET_DIR is a CI-only seam for the release workflow's installer gate, and is refused outside GitHub Actions. It makes this script install from a local directory and verify the checksums against a file in that same directory, so the verification would prove nothing about where the bundle came from. Unset it and rerun to install the published release."
-	echo "warning: GROPIUS_ASSET_DIR is set — installing from $ASSET_DIR, NOT from the published GitHub Release." >&2
+		die "DESSAU_ASSET_DIR is a CI-only seam for the release workflow's installer gate, and is refused outside GitHub Actions. It makes this script install from a local directory and verify the checksums against a file in that same directory, so the verification would prove nothing about where the bundle came from. Unset it and rerun to install the published release."
+	echo "warning: DESSAU_ASSET_DIR is set — installing from $ASSET_DIR, NOT from the published GitHub Release." >&2
 	echo "warning: the checksums are read from that same directory, so the \"Checksum OK.\" below proves only that the directory is self-consistent. It proves NOTHING about the origin of what is being installed, and no attestation is checked." >&2
 fi
 
@@ -234,7 +234,7 @@ fetch "SHA256SUMS.txt" "$tmp/SHA256SUMS.txt"
 # that name.
 verify() {
 	local asset="$1" sums="$2" dir="$3"
-	local line digest name sums_line="" scoped=".gropius-checksum" checksum_output verified=""
+	local line digest name sums_line="" scoped=".dessau-checksum" checksum_output verified=""
 	while IFS= read -r line || [ -n "$line" ]; do
 		line="${line%$'\r'}"
 		digest="${line%% *}"
@@ -305,7 +305,7 @@ verify() {
 # The whole tree, and not the path that is about to be executed, because a path
 # test answers for one component at a time. `ditto -x -k` restores a link at any
 # component and `-x` follows one, and each half of this script execs something
-# four components deep: a link at Gropius.app, at Contents or at MacOS sends the
+# four components deep: a link at DessauServer.app, at Contents or at MacOS sends the
 # exec outside the directory the checksum covered while a test on the leaf finds
 # an ordinary executable file and passes. That is what the two leaf tests here
 # used to be, and it closed one component of four (iss-2609190032572500).
@@ -334,7 +334,7 @@ refuse_symlinks() {
 	# terminal.
 	first="${first#"$dir"/}"
 	first="${first//[[:cntrl:]]/?}"
-	die "$asset carries a symbolic link ($first), and a Gropius archive carries none. A link at any component of a path this script executes would send that exec outside the directory the checksum covered. Refusing to run anything out of it."
+	die "$asset carries a symbolic link ($first), and a Dessau archive carries none. A link at any component of a path this script executes would send that exec outside the directory the checksum covered. Refusing to run anything out of it."
 }
 
 verify "$ASSET" "$tmp/SHA256SUMS.txt" "$tmp"
@@ -383,12 +383,12 @@ if [ "$mode" = "server" ]; then
 	# calls are then always the same build, which is what makes the two halves
 	# of an install a single thing rather than a negotiation between a script
 	# from one release and an application from another.
-	VERIFIED_BIN="$tmp/extract/$APP.app/Contents/MacOS/gropius"
+	VERIFIED_BIN="$tmp/extract/$APP.app/Contents/MacOS/dessau"
 	# Every component of this path is an ordinary directory or file: the whole
 	# extracted tree was scanned for symbolic links above, before anything
 	# walked it. A test here would answer for the last component only.
 	[ -x "$VERIFIED_BIN" ] ||
-		die "$ASSET carries no executable at $APP.app/Contents/MacOS/gropius — refusing to install it."
+		die "$ASSET carries no executable at $APP.app/Contents/MacOS/dessau — refusing to install it."
 
 	handover=("$VERIFIED_BIN" install --bundle "$tmp/extract/$APP.app")
 	if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
@@ -413,12 +413,12 @@ if [ "$mode" = "server" ]; then
 	if [ "$status" -eq 2 ]; then
 		die "the downloaded $APP does not carry the lifecycle verbs: its binary refused \`install\` with exit 2, which is how a build older than this bootstrap refuses an argument it has never heard of. The script and the bundle are different builds. Nothing was launched."
 	elif [ "$status" -ne 0 ]; then
-		die "gropius install stopped (exit $status) — the message above says at which stage. Nothing was launched."
+		die "dessau install stopped (exit $status) — the message above says at which stage. Nothing was launched."
 	fi
 	exit 0
 fi
 
-# From here it is the client, whose placement this script hands to a Gropius
+# From here it is the client, whose placement this script hands to a Dessau
 # binary below.
 #
 # Quit a running copy first. LaunchServices' `open` activates an
@@ -450,14 +450,14 @@ fi
 # Closing it needs os.Rename semantics — rename(2) replaces a symbolic link
 # rather than following it, and refuses a destination that is a non-empty
 # directory — which is Go, not shell. The swap lives in
-# internal/lifecycle/swap.go with its behavioural tests beside it, and `gropius
+# internal/lifecycle/swap.go with its behavioural tests beside it, and `dessau
 # place` is the verb that runs it: it stages inside the destination under an
 # unguessable name, renames the installed bundle ASIDE, renames the new one in,
 # and removes the set-aside copy only once the new one is in place.
 #
-# GropiusChat carries no binary, so the placer is the server's own — downloaded
+# DessauChat carries no binary, so the placer is the server's own — downloaded
 # and verified here, and RUN FROM THE DIRECTORY THAT VERIFICATION COVERED. Never
-# the gropius already installed on this Mac: that copy may be months old or
+# the dessau already installed on this Mac: that copy may be months old or
 # another account's, and "run what you verified" is the same rule the server
 # half keeps.
 echo "Downloading the placer…"
@@ -470,9 +470,9 @@ verify "$PLACER_ASSET" "$tmp/SHA256SUMS.txt" "$tmp"
 # The same rule as the bundle above, and for the same reason: the exec below is
 # four components deep in a directory a downloaded archive laid out.
 refuse_symlinks "$PLACER_ASSET" "$tmp/placer"
-PLACER="$tmp/placer/Gropius.app/Contents/MacOS/gropius"
+PLACER="$tmp/placer/DessauServer.app/Contents/MacOS/dessau"
 [ -x "$PLACER" ] ||
-	die "$PLACER_ASSET carries no executable at Gropius.app/Contents/MacOS/gropius — refusing to place $APP.app with it."
+	die "$PLACER_ASSET carries no executable at DessauServer.app/Contents/MacOS/dessau — refusing to place $APP.app with it."
 
 # The exit status is read rather than left to `set -e`, because ONE of its
 # values means something specific: a binary that predates the placement verb
@@ -482,9 +482,9 @@ PLACER="$tmp/placer/Gropius.app/Contents/MacOS/gropius"
 status=0
 "$PLACER" place --bundle "$tmp/extract/$APP.app" --into "$DEST" || status=$?
 if [ "$status" -eq 2 ]; then
-	die "the downloaded Gropius does not carry the \`place\` verb: its binary refused the argument with exit 2, which is how a build older than this bootstrap refuses an argument it has never heard of. The script and the release are different builds. $APP.app was not placed."
+	die "the downloaded Dessau does not carry the \`place\` verb: its binary refused the argument with exit 2, which is how a build older than this bootstrap refuses an argument it has never heard of. The script and the release are different builds. $APP.app was not placed."
 elif [ "$status" -ne 0 ]; then
-	die "gropius place stopped (exit $status) — the message above says why. $APP.app was not placed."
+	die "dessau place stopped (exit $status) — the message above says why. $APP.app was not placed."
 fi
 
 # CI has no desktop to launch into, and a chat client left running on a runner
@@ -497,7 +497,7 @@ else
 fi
 /bin/cat <<'DONE'
 
-Open GropiusChat, then point it at your Gropius server: the address from the
-server's Connect tab without the trailing /v1 (GropiusChat adds the path
+Open DessauChat, then point it at your Dessau server: the address from the
+server's Connect tab without the trailing /v1 (DessauChat adds the path
 itself).
 DONE

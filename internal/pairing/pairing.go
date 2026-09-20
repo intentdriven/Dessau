@@ -37,7 +37,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // maxKeyBytes caps what LoadIdentity will read. A P-256 key in PEM is about
@@ -217,7 +217,7 @@ func selfSign(key *ecdsa.PrivateKey, sans []string) ([]byte, error) {
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "Gropius"},
+		Subject:               pkix.Name{CommonName: "Dessau"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(leafValidity),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,

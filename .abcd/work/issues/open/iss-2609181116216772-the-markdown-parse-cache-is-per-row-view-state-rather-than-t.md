@@ -8,7 +8,7 @@ source: "agent-finding"
 found_during: "fidelity audits 2026-09-18"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "client/GropiusChat/Markdown.swift"
+found_at: "client/DessauChat/Markdown.swift"
 ---
 
 The markdown parse cache is per-row view state rather than the spec's cache keyed by message id and text length, so a row recreated on scroll re-parses a finished reply.

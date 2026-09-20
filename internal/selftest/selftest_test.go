@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
 )
 
 // fakeServer is a pool with fake model servers behind it. A model is resident

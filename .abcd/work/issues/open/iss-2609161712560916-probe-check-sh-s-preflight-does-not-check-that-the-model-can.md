@@ -11,7 +11,7 @@ production_mode: hand-written
 found_at: ".abcd/development/research/evidence/2026-09-06-model-bench/"
 ---
 
-probe-check.sh's preflight does not check that the model can fit the budget before it quits the menu-bar Gropius for hours. The 2026-09-16 run started against a snapshot whose warnings already said the budget was smaller than the smallest model, then polled a queue that could never start until the Mac froze. The preflight should read /api/state's warnings and the model's charge against the budget and refuse to start a model that cannot fit, naming the served window and batched-requests count that would.
+probe-check.sh's preflight does not check that the model can fit the budget before it quits the menu-bar Dessau for hours. The 2026-09-16 run started against a snapshot whose warnings already said the budget was smaller than the smallest model, then polled a queue that could never start until the Mac froze. The preflight should read /api/state's warnings and the model's charge against the budget and refuse to start a model that cannot fit, naming the served window and batched-requests count that would.
 
 ## Deferral 2026-09-19
 

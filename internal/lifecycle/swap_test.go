@@ -31,7 +31,7 @@ func bundleAt(t *testing.T, path, marker string) string {
 	if err := os.MkdirAll(filepath.Join(path, "Contents", "MacOS"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(path, "Contents", "MacOS", "gropius"), []byte(marker), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(path, "Contents", "MacOS", "dessau"), []byte(marker), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -40,7 +40,7 @@ func bundleAt(t *testing.T, path, marker string) string {
 // markerAt reads back which bundle is at path.
 func markerAt(t *testing.T, path string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(path, "Contents", "MacOS", "gropius"))
+	b, err := os.ReadFile(filepath.Join(path, "Contents", "MacOS", "dessau"))
 	if err != nil {
 		t.Fatalf("no bundle at %s: %v", path, err)
 	}
@@ -50,8 +50,8 @@ func markerAt(t *testing.T, path string) string {
 // The ordinary case: nothing at the destination yet.
 func TestSwapInstallsIntoAnEmptyDestination(t *testing.T) {
 	dir := t.TempDir()
-	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
-	dest := filepath.Join(dir, "Applications", "Gropius.app")
+	src := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
+	dest := filepath.Join(dir, "Applications", "DessauServer.app")
 
 	if err := placeBundle(src, dest, os.Rename); err != nil {
 		t.Fatalf("placeBundle: %v", err)
@@ -63,14 +63,14 @@ func TestSwapInstallsIntoAnEmptyDestination(t *testing.T) {
 }
 
 // A destination that already exists as a directory is REPLACED, not nested
-// into. `mv` would leave the new bundle at Gropius.app/Gropius.app and exit 0,
+// into. `mv` would leave the new bundle at DessauServer.app/DessauServer.app and exit 0,
 // so an upgrade would report success while every launcher went on opening the
 // old binary.
 func TestSwapReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 	dir := t.TempDir()
 	acct := swapHome(t, dir)
-	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
-	dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
+	src := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
+	dest := bundleAt(t, filepath.Join(dir, "Applications", "DessauServer.app"), "old")
 
 	if err := placeBundle(src, dest, os.Rename); err != nil {
 		t.Fatalf("placeBundle: %v", err)
@@ -78,7 +78,7 @@ func TestSwapReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 	if got := markerAt(t, dest); got != "new" {
 		t.Errorf("the destination holds %q, want the new bundle", got)
 	}
-	if _, err := os.Stat(filepath.Join(dest, "Gropius.app")); err == nil {
+	if _, err := os.Stat(filepath.Join(dest, "DessauServer.app")); err == nil {
 		t.Error("the new bundle was nested inside the installed one, which is what `mv` does and what this replaces")
 	}
 	assertNoStagingLeft(t, filepath.Dir(dest))
@@ -92,14 +92,14 @@ func TestSwapReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 func TestSwapReplacesASymlinkRatherThanFollowingIt(t *testing.T) {
 	dir := t.TempDir()
 	acct := swapHome(t, dir)
-	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
-	elsewhere := bundleAt(t, filepath.Join(dir, "elsewhere", "Gropius.app"), "somebody else's")
+	src := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
+	elsewhere := bundleAt(t, filepath.Join(dir, "elsewhere", "DessauServer.app"), "somebody else's")
 
 	apps := filepath.Join(dir, "Applications")
 	if err := os.MkdirAll(apps, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	dest := filepath.Join(apps, "Gropius.app")
+	dest := filepath.Join(apps, "DessauServer.app")
 	if err := os.Symlink(elsewhere, dest); err != nil {
 		t.Fatal(err)
 	}
@@ -130,8 +130,8 @@ func TestSwapReplacesASymlinkRatherThanFollowingIt(t *testing.T) {
 func TestSwapLeavesTheInstalledBundleWhenTheSecondRenameFails(t *testing.T) {
 	dir := t.TempDir()
 	acct := swapHome(t, dir)
-	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
-	dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
+	src := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
+	dest := bundleAt(t, filepath.Join(dir, "Applications", "DessauServer.app"), "old")
 
 	// The first rename sets the installed bundle aside; the second is the one
 	// that fails, which is the ordinary failure — a full disk, a locked file, a
@@ -171,8 +171,8 @@ func TestSwapLeavesTheInstalledBundleWhenTheSecondRenameFails(t *testing.T) {
 func TestSwapKeepsTheSetAsideBundleWhenItCannotBePutBack(t *testing.T) {
 	dir := t.TempDir()
 	acct := swapHome(t, dir)
-	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
-	dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
+	src := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
+	dest := bundleAt(t, filepath.Join(dir, "Applications", "DessauServer.app"), "old")
 
 	// Call 1 sets the installed bundle aside. Call 2 puts the new one in
 	// place, and fails. Call 3 is the restore, and fails too.
@@ -224,8 +224,8 @@ func TestSwapKeepsTheSetAsideBundleWhenItCannotBePutBack(t *testing.T) {
 func TestOnlyTheSwapThatKeepsTheOnlyCopySaysSo(t *testing.T) {
 	dir := t.TempDir()
 	acct := swapHome(t, dir)
-	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
-	dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
+	src := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
+	dest := bundleAt(t, filepath.Join(dir, "Applications", "DessauServer.app"), "old")
 
 	// Call 1 sets the installed bundle aside, call 2 fails to move the new one
 	// in, and call 3 — the restore — succeeds. The installed bundle is back at
@@ -347,8 +347,8 @@ func TestSwapRefusesToClobberWhatAppearedAtTheDestination(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			acct := swapHome(t, dir)
-			src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
-			dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
+			src := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
+			dest := bundleAt(t, filepath.Join(dir, "Applications", "DessauServer.app"), "old")
 
 			// The window: something takes the destination's name in the instant
 			// after the installed bundle is renamed aside. Every rename is
@@ -479,8 +479,8 @@ func assertNoStagingLeft(t *testing.T, dir string) {
 func TestTheSetAsideBundleWaitsInThisAccountsOwnDirectory(t *testing.T) {
 	dir := t.TempDir()
 	acct := swapHome(t, dir)
-	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
-	dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
+	src := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
+	dest := bundleAt(t, filepath.Join(dir, "Applications", "DessauServer.app"), "old")
 
 	// Call 1 sets the installed bundle aside, call 2 fails to move the new one
 	// in, and call 3 — the restore — fails too. The set-aside copy is then the
@@ -529,7 +529,7 @@ func swapHome(t *testing.T, dir string) string {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	return filepath.Join(home, "Library", "Application Support", "Gropius")
+	return filepath.Join(home, "Library", "Application Support", "Dessau")
 }
 
 // inside reports whether path sits under dir.
@@ -593,8 +593,8 @@ func TestAHomeThatCannotHoldTheSetAsideCopyFallsBackAndSaysSo(t *testing.T) {
 			logged := captureLog(t)
 			tc.prepare(t, acct)
 
-			src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
-			dest := bundleAt(t, filepath.Join(dir, "Applications", "Gropius.app"), "old")
+			src := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
+			dest := bundleAt(t, filepath.Join(dir, "Applications", "DessauServer.app"), "old")
 
 			// The path where the set-aside copy is the only one left, so the
 			// fallback has to be as safe as what it falls back from.
@@ -646,8 +646,8 @@ func TestASwapThatRetiresNothingWarnsAboutNothing(t *testing.T) {
 	logged := captureLog(t)
 	answerSameVolume(t, false) // the fallback would fire if it were consulted
 
-	src := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
-	dest := filepath.Join(dir, "Applications", "Gropius.app")
+	src := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
+	dest := filepath.Join(dir, "Applications", "DessauServer.app")
 
 	if err := placeBundle(src, dest, os.Rename); err != nil {
 		t.Fatalf("placeBundle: %v", err)

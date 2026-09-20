@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The Go configuration and the control panel say the same thing, and this is

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/intentdriven/Gropius/internal/applog"
+	"github.com/intentdriven/Dessau/internal/applog"
 )
 
 // A results file is JSON Lines, one Run a line, appended to until it would
@@ -169,7 +169,7 @@ func (f *file) write(run Run) {
 // is the account's own directory, so a single Mkdir is enough and nothing
 // above it is walked, and what keeps the parent honest is its ownership rather
 // than its mode. The file itself is the Rotator's, under the discipline every
-// bounded file Gropius writes is held to.
+// bounded file Dessau writes is held to.
 func (f *file) writerLocked() (*applog.Rotator, error) {
 	if f.w != nil {
 		return f.w, nil

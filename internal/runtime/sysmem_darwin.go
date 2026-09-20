@@ -1,8 +1,8 @@
 package runtime
 
-import "github.com/intentdriven/Gropius/internal/capability"
+import "github.com/intentdriven/Dessau/internal/capability"
 
-// defaultResidentBudget is how much memory Gropius lets loaded models use when
+// defaultResidentBudget is how much memory Dessau lets loaded models use when
 // no budget is configured.
 //
 // The share and the reading both live in internal/capability, which the search

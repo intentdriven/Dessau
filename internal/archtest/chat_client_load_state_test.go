@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/gateway"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/gateway"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // A second set of client/server promises, alongside the address and the service
@@ -104,7 +104,7 @@ func TestChatClientReadsTheResidencyTheGatewayPublishes(t *testing.T) {
 
 	t.Run("field name", func(t *testing.T) {
 		if !clientResidencyField.MatchString(source) {
-			t.Fatal("client/GropiusChat/ declares no `let state: String?` on its " +
+			t.Fatal("client/DessauChat/ declares no `let state: String?` on its " +
 				"models decoder; the field the residency arrives under is unchecked")
 		}
 		gatewaySource := readRepoFile(t, root, filepath.Join("internal", "gateway", "gateway.go"))
@@ -117,7 +117,7 @@ func TestChatClientReadsTheResidencyTheGatewayPublishes(t *testing.T) {
 	t.Run("loaded value", func(t *testing.T) {
 		m := clientResidencyLoaded.FindStringSubmatch(source)
 		if m == nil {
-			t.Fatal("client/GropiusChat/ declares no residencyLoaded; " +
+			t.Fatal("client/DessauChat/ declares no residencyLoaded; " +
 				"the value the client reads as warm is unchecked")
 		}
 		if want := string(runtime.ResidencyLoaded); m[1] != want {
@@ -149,7 +149,7 @@ func TestChatClientRecognizesTheGatewaysLoadingComment(t *testing.T) {
 
 	m := clientLoadingComment.FindStringSubmatch(source)
 	if m == nil {
-		t.Fatal("client/GropiusChat/ declares no modelLoadingComment; " +
+		t.Fatal("client/DessauChat/ declares no modelLoadingComment; " +
 			"the comment the client watches the stream for is unchecked")
 	}
 	// gateway.LoadingComment, not a literal repeated here: a test that compares
@@ -169,7 +169,7 @@ func TestChatClientRecognizesTheGatewaysLoadingComment(t *testing.T) {
 // The client judges a model by the words the list publishes for it. A server
 // that publishes no words and no verdict is one that predates the whole idea,
 // and every model on it must still be offered: default it the other way and the
-// client shows an empty picker against every Gropius already installed -- a
+// client shows an empty picker against every Dessau already installed -- a
 // total failure to chat, from a feature that was added to hide an OCR model.
 func TestChatClientOffersEveryModelAServerDoesNotRuleOut(t *testing.T) {
 	root := repoRootDir(t)
@@ -180,11 +180,11 @@ func TestChatClientOffersEveryModelAServerDoesNotRuleOut(t *testing.T) {
 	// the feature is broken -- a correct default nothing consults hides
 	// nothing, and a filter over a wrong default hides everything.
 	if !clientChattableDefault.MatchString(source) {
-		t.Error("client/GropiusChat/ does not decide chattable as `chat ?? true` " +
+		t.Error("client/DessauChat/ does not decide chattable as `chat ?? true` " +
 			"(or `chat != false`); a models list that publishes no chat capability must offer every model")
 	}
 	if !clientPickerFiltersOnChattable.MatchString(source) {
-		t.Error("client/GropiusChat/ does not build its picker list by filtering " +
+		t.Error("client/DessauChat/ does not build its picker list by filtering " +
 			"the served list through its own chat rule; a model the rule excludes would be offered anyway")
 	}
 }
@@ -210,7 +210,7 @@ func TestChatClientReadsTheCategoryTheGatewayPublishes(t *testing.T) {
 		{"tags", clientTagsField, gatewayTagsField},
 	} {
 		if !c.client.MatchString(source) {
-			t.Errorf("client/GropiusChat/ declares no %q on its models decoder; "+
+			t.Errorf("client/DessauChat/ declares no %q on its models decoder; "+
 				"the words its own rule reads are unchecked", c.field)
 		}
 		if !c.gateway.MatchString(gatewaySource) {
@@ -244,7 +244,7 @@ func TestChatClientShipsTheServersOwnChatRule(t *testing.T) {
 	} {
 		m := c.re.FindStringSubmatch(source)
 		if m == nil {
-			t.Errorf("client/GropiusChat/ declares no stored default for the rule's %s", c.what)
+			t.Errorf("client/DessauChat/ declares no stored default for the rule's %s", c.what)
 			continue
 		}
 		got := []string{}
@@ -261,7 +261,7 @@ func TestChatClientShipsTheServersOwnChatRule(t *testing.T) {
 	// And the rule has to be changeable where the intent says it is, or it is
 	// a default rather than a setting.
 	if !clientRuleIsEditable.MatchString(source) || !clientRequiredIsEditable.MatchString(source) {
-		t.Error("client/GropiusChat/ binds no Settings control to both halves of the rule; " +
+		t.Error("client/DessauChat/ binds no Settings control to both halves of the rule; " +
 			"the rule is then a constant a user cannot change")
 	}
 }
@@ -269,7 +269,7 @@ func TestChatClientShipsTheServersOwnChatRule(t *testing.T) {
 // clientSharedSource is every Swift file the client compiles, read as one
 // string: the promises above belong to the client, not to a file name, and the
 // client's sources are moved between files as they grow (Discovery.swift was
-// split out of GropiusChat.swift when the iPad build began sharing it).
+// split out of DessauChat.swift when the iPad build began sharing it).
 func clientSharedSource(t *testing.T, root string) string {
 	t.Helper()
 	var b strings.Builder

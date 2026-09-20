@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/lifecycle"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/lifecycle"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // The lifecycle reference is the page a script author reads before they write
@@ -23,7 +23,7 @@ import (
 // branches on, or a JSON field a menu bar reads.
 //
 // So the page is held to the code rather than to a reviewer's memory. The verb
-// table is read out of cmd/gropius, the flags out of internal/lifecycle's own
+// table is read out of cmd/dessau, the flags out of internal/lifecycle's own
 // flag registrations, and the exit codes, labels and JSON fields off the
 // exported values themselves.
 //
@@ -47,11 +47,11 @@ func TestTheLifecycleReferenceNamesEveryVerb(t *testing.T) {
 
 	verbs := verbTable(t)
 	if len(verbs) < 4 {
-		t.Fatalf("cmd/gropius declares %d verbs, so this test is reading the wrong table", len(verbs))
+		t.Fatalf("cmd/dessau declares %d verbs, so this test is reading the wrong table", len(verbs))
 	}
 	for verb, kind := range verbs {
-		if !rowNaming(rows, "`gropius "+verb+"`") {
-			t.Errorf("the reference has no table row for `gropius %s`, which this build answers to", verb)
+		if !rowNaming(rows, "`dessau "+verb+"`") {
+			t.Errorf("the reference has no table row for `dessau %s`, which this build answers to", verb)
 		}
 		if kind == "verbNotYet" {
 			// Named rather than omitted, and named as what it is: the person
@@ -68,7 +68,7 @@ func TestTheLifecycleReferenceNamesEveryVerb(t *testing.T) {
 	for _, row := range rows {
 		for _, named := range verbCommandRE.FindAllStringSubmatch(row, -1) {
 			if _, known := verbs[named[1]]; !known {
-				t.Errorf("the reference has a row for `gropius %s`, which is not a verb this build knows", named[1])
+				t.Errorf("the reference has a row for `dessau %s`, which is not a verb this build knows", named[1])
 			}
 		}
 	}
@@ -172,7 +172,7 @@ func TestTheLifecycleReferenceNamesEveryCheckAndItsLabel(t *testing.T) {
 	}
 }
 
-// `gropius status --json` is the contract — the menu bar polls it and scripts
+// `dessau status --json` is the contract — the menu bar polls it and scripts
 // parse it — so every field it emits is named on the page and no field it does
 // not emit is.
 func TestTheStatusContractIsDocumentedFieldByField(t *testing.T) {
@@ -186,19 +186,19 @@ func TestTheStatusContractIsDocumentedFieldByField(t *testing.T) {
 	for _, field := range jsonFieldsOf(lifecycle.Status{}, lifecycle.ResidentModel{}) {
 		known[field] = true
 		if !documented[field] {
-			t.Errorf("the reference does not name %q, which `gropius status --json` emits", field)
+			t.Errorf("the reference does not name %q, which `dessau status --json` emits", field)
 		}
 	}
 	for _, field := range jsonFieldsOf(lifecycle.ConfigDocument{}) {
 		known[field] = true
 		if !documented[field] {
-			t.Errorf("the reference does not name %q, which `gropius config show --json` emits", field)
+			t.Errorf("the reference does not name %q, which `dessau config show --json` emits", field)
 		}
 	}
 	for _, field := range jsonFieldsOf(lifecycle.Report{}, lifecycle.Finding{}) {
 		known[field] = true
 		if !documented[field] {
-			t.Errorf("the reference does not name %q, which `gropius doctor --json` emits", field)
+			t.Errorf("the reference does not name %q, which `dessau doctor --json` emits", field)
 		}
 	}
 	// The values of one of those fields are names too, and a reader deciding
@@ -250,7 +250,7 @@ func TestTheLifecyclePagesNameTheDirectoryTheCommandIsLinkedInto(t *testing.T) {
 	want := "~/" + dir
 	for _, name := range []string{lifecycleHowTo, lifecycleReference} {
 		if !containsAll(readDoc(t, name), want) {
-			t.Errorf("docs/%s does not say the gropius command is linked into %s", name, want)
+			t.Errorf("docs/%s does not say the dessau command is linked into %s", name, want)
 		}
 	}
 	// And the line that makes it reachable, which is what the install prints
@@ -329,7 +329,7 @@ func TestTheLifecyclePagesNeverCallAReleaseSignedOrNotarised(t *testing.T) {
 	}
 }
 
-// The report `gropius update` ends on is documented line by line, and the lines
+// The report `dessau update` ends on is documented line by line, and the lines
 // are read out of the code rather than retyped here.
 //
 // A reference that describes a different report than the one a person reads is
@@ -410,12 +410,12 @@ func concatenatedStringLit(expr ast.Expr) (string, bool) {
 	return "", false
 }
 
-// The verb table in cmd/gropius, read out of the source rather than repeated
+// The verb table in cmd/dessau, read out of the source rather than repeated
 // here: package main cannot be imported, and a list copied into this file
 // would be the thing that goes stale.
 func verbTable(t *testing.T) map[string]string {
 	t.Helper()
-	file := parseRepoGoFile(t, "cmd/gropius/args.go")
+	file := parseRepoGoFile(t, "cmd/dessau/args.go")
 	out := map[string]string{}
 	for _, decl := range file.Decls {
 		gen, ok := decl.(*ast.GenDecl)
@@ -449,7 +449,7 @@ func verbTable(t *testing.T) map[string]string {
 		}
 	}
 	if len(out) == 0 {
-		t.Fatal("cmd/gropius/args.go declares no verbs map, so this scan is reading the wrong file")
+		t.Fatal("cmd/dessau/args.go declares no verbs map, so this scan is reading the wrong file")
 	}
 	return out
 }
@@ -624,6 +624,6 @@ func rowNaming(rows []string, phrases ...string) bool {
 }
 
 var (
-	verbCommandRE = regexp.MustCompile("`gropius ([a-z]+)`")
+	verbCommandRE = regexp.MustCompile("`dessau ([a-z]+)`")
 	flagRE        = regexp.MustCompile(`--([a-z][a-z-]*)`)
 )

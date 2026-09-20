@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 const mergeModel = "mlx-community/Qwen3-8B-4bit"
@@ -41,7 +41,7 @@ func newMergeGateway(t *testing.T, cfg func() config.Config) (*httptest.Server, 
 	t.Helper()
 
 	const modelPath = "/models/mlx-community/Qwen3-8B-4bit"
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "GROPIUS OK"})
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
 
 	models := &stubModels{models: []registry.Model{{
@@ -756,7 +756,7 @@ func TestMergedStreamingRequestStillStreams(t *testing.T) {
 }
 
 // Merging is for chat completions. A plain completion carries a prompt rather
-// than a conversation, and the route is the only thing that makes "Gropius
+// than a conversation, and the route is the only thing that makes "Dessau
 // reads prompt content on exactly one route" true — so a client that posts a
 // messages array to /v1/completions has it relayed untouched.
 func TestPlainCompletionsAreNeverMerged(t *testing.T) {

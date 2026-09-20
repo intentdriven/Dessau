@@ -3,7 +3,7 @@
 // The tests here fix the interface list through SetEnumerator, which the
 // release build compiles out, so they are compiled out with it: without this
 // constraint `go vet -tags prod ./...` and `go test -tags prod ./...` do not
-// build at all, and the configuration Gropius ships is first exercised by the
+// build at all, and the configuration Dessau ships is first exercised by the
 // release job, after the tag is pushed. What needs no seam — the scan over
 // this package's own string literals — is in honesty_test.go and runs in every
 // configuration.
@@ -163,7 +163,7 @@ func TestAddrsSelectsNonLoopbackIPv4AndCarriesTheNetwork(t *testing.T) {
 }
 
 // Nothing is memoized: the private network can appear, disappear or change
-// address while Gropius runs, and the next call must say so.
+// address while Dessau runs, and the next call must say so.
 func TestAddrsReflectsTheCurrentInterfaceList(t *testing.T) {
 	var ifaces []Interface
 	t.Cleanup(SetEnumerator(func() ([]Interface, error) { return ifaces, nil }))

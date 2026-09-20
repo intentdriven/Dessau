@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/selftest"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/selftest"
 )
 
 // fakeGateway stands in for this Mac's own OpenAI endpoint: it counts the
@@ -309,7 +309,7 @@ func TestEveryStepReloadsAndSharesNoPrefix(t *testing.T) {
 	}
 }
 
-// A step the gateway's deadline stopped bounds Gropius's configuration, not
+// A step the gateway's deadline stopped bounds Dessau's configuration, not
 // the model: the figure is a floor and names the bound.
 func TestAStepStoppedByTheDeadlineIsAFloor(t *testing.T) {
 	gw := newFakeGateway(t, 20_000, http.StatusGatewayTimeout)
@@ -443,7 +443,7 @@ func TestAReadingIsDiscardedWhenTheServerCouldNotBeStopped(t *testing.T) {
 	}
 }
 
-// The switch going off, or Gropius quitting, mid-probe: no partial figure,
+// The switch going off, or Dessau quitting, mid-probe: no partial figure,
 // the model unloaded, and the model marked incomplete so the next start says
 // so rather than retrying.
 func TestAnInterruptedProbeWritesNoFigure(t *testing.T) {

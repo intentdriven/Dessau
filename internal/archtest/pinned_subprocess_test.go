@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// Every subprocess Gropius starts is named by an absolute path, never by a
+// Every subprocess Dessau starts is named by an absolute path, never by a
 // bare name PATH resolves.
 //
 // Two arguments say so, and neither carries the rule alone.
@@ -46,13 +46,13 @@ import (
 //
 // WHAT IS NOT, stated so a green run is not over-read. A program argument that
 // is not a string literal is allowed, deliberately: the managed runtime's own
-// interpreter (p.Paths.UV(), the venv's python) is a path Gropius computed and
+// interpreter (p.Paths.UV(), the venv's python) is a path Dessau computed and
 // owns, not a name handed to PATH. So a bare name reaching exec through a
 // constant, a variable or a concatenation passes this scan. So does a process
 // started without os/exec at all — syscall.Exec, os.StartProcess — and so does
 // an exec.Cmd composite literal whose Path is filled in by hand. A green run
 // means no bare-name LITERAL is handed to exec's process starters; it is not a
-// proof that every path executed is one Gropius chose.
+// proof that every path executed is one Dessau chose.
 func TestEverySubprocessIsPinnedToAnAbsolutePath(t *testing.T) {
 	root := repoRootDir(t)
 	fset := token.NewFileSet()

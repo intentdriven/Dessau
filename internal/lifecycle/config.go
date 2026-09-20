@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
-// `gropius config show` is the terminal's read of the settings in force.
+// `dessau config show` is the terminal's read of the settings in force.
 //
 // It exists because the terminal could read no setting at all. Go carries the
 // whole of the functionality and the panel is the accessible layer, and
@@ -174,12 +174,12 @@ func RenderConfig(t Terminal, settings map[string]json.RawMessage) {
 // the control plane stays the only writer of the settings file.
 func RunConfig(env Env, args []string) int {
 	if len(args) == 0 {
-		writeLine(env.Err, "gropius config: say what to do — this verb reads, and "+Quote("show")+" is what it does")
+		writeLine(env.Err, "dessau config: say what to do — this verb reads, and "+Quote("show")+" is what it does")
 		return ExitUsage
 	}
 	sub, rest := args[0], args[1:]
 	if sub != "show" {
-		writeLine(env.Err, "gropius config: "+Quote(sub)+" is not something this verb does; it reads, and "+
+		writeLine(env.Err, "dessau config: "+Quote(sub)+" is not something this verb does; it reads, and "+
 			Quote("show")+" is what it does")
 		return ExitUsage
 	}
@@ -190,7 +190,7 @@ func RunConfig(env Env, args []string) int {
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
-		writeLine(env.Err, "gropius config show: unexpected argument "+Quote(fs.Arg(0)))
+		writeLine(env.Err, "dessau config show: unexpected argument "+Quote(fs.Arg(0)))
 		return ExitUsage
 	}
 
@@ -198,13 +198,13 @@ func RunConfig(env Env, args []string) int {
 	// caller piping Out into a decoder must not have to parse around a
 	// warning, and the figures below may not be the ones the operator wrote.
 	if env.SettingsProblem != "" {
-		writeLine(env.Err, "gropius config show: "+env.SettingsProblem)
+		writeLine(env.Err, "dessau config show: "+env.SettingsProblem)
 	}
 
 	settings := SettingsInForce(env.Config)
 	if *asJSON {
 		if err := writeJSON(env.Out, ConfigDocument{Settings: settings, Problem: env.SettingsProblem}); err != nil {
-			writeLine(env.Err, "gropius config show: "+err.Error())
+			writeLine(env.Err, "dessau config show: "+err.Error())
 			return ExitFailed
 		}
 		return ExitOK
@@ -213,7 +213,7 @@ func RunConfig(env Env, args []string) int {
 	return ExitOK
 }
 
-// ConfigDocument is what `gropius config show --json` answers, and it is the
+// ConfigDocument is what `dessau config show --json` answers, and it is the
 // contract: a script reads settings[<key>] by the same name config.json
 // carries. Wrapped in a field of its own rather than written as a bare object
 // so that a later verb can answer with something beside the settings without

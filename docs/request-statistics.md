@@ -1,13 +1,13 @@
 # Record request statistics on this Mac
 
-Gropius can keep a record of the requests it serves, so you can see how each
+Dessau can keep a record of the requests it serves, so you can see how each
 model actually performs: how fast the first token arrives, how many tokens a
 second it generates, how often a model has to be loaded, and how often it is
 pushed out to make room for another. That is how two quantisations of the same
 model are compared by numbers instead of by feel.
 
 Recording is off until you turn it on. Nothing recorded leaves this Mac —
-not to the project, not to a vendor, not to anyone — because Gropius collects
+not to the project, not to a vendor, not to anyone — because Dessau collects
 no telemetry of any kind and never will
 ([the decision that settles it](../.abcd/development/decisions/adrs/2609061503319212-no-public-telemetry-local-telemetry-only-as-a-strict-opt-in.md)).
 
@@ -37,7 +37,7 @@ how long it waited for a free slot or for the model to load. That is the whole
 of it, field by field, in
 [Reference: the request statistics store](statistics-store-reference.md).
 
-Alongside those, Gropius counts per model how many requests each outcome
+Alongside those, Dessau counts per model how many requests each outcome
 accounted for, how many tokens went in and came out altogether, how many
 times the model loaded and how many times it failed to, how long the last
 load took, how many times it was evicted to make room for another, and the
@@ -63,8 +63,8 @@ you do about them.
 
 ## How much is kept, and where
 
-Records go to a `stats` folder inside your own Gropius data folder, normally
-`~/Library/Application Support/Gropius/stats`. On a Mac with the shared model
+Records go to a `stats` folder inside your own Dessau data folder, normally
+`~/Library/Application Support/Dessau/stats`. On a Mac with the shared model
 cache, the models live in the shared folder and the records do not: they stay
 in the serving account's own folder, because a shared folder is writable by
 every account on the Mac.
@@ -86,11 +86,11 @@ Beside them Settings also shows how much room the records use, and says when
 something went wrong: how many records were dropped rather than made to hold up
 an answer, if the disk could not keep up with a burst; that a reading gave up
 waiting for the disk, so the figures beside it may not yet include the newest
-records; and, if Gropius could not open the store at all, that the figures are
+records; and, if Dessau could not open the store at all, that the figures are
 being kept in memory and nothing is on disk.
 
 What is dropped is counted before it goes. For every model and every day among
-the records being removed, Gropius keeps one short line: how many requests that
+the records being removed, Dessau keeps one short line: how many requests that
 model served, how many tokens went in and out, how long they took in total, how
 they ended, and how often the model was loaded or left memory. It holds no
 figure for any single request, it takes a thousandth of the room the records
@@ -111,7 +111,7 @@ summary holds — are on the
   then decide the history should go too. While recording is off the panel shows
   nothing about the store, here as everywhere else, so this is the one control
   you press without a figure beside it.
-- **Deleting the Gropius data folder** removes them with everything else, as
+- **Deleting the Dessau data folder** removes them with everything else, as
   [Uninstalling](getting-started.md#uninstalling) describes.
 
 Switching recording off does neither: it stops new records and leaves the ones
@@ -119,7 +119,7 @@ already written where they are.
 
 ## On a Mac several people share
 
-With the shared model cache, whoever launches Gropius first runs the server
+With the shared model cache, whoever launches Dessau first runs the server
 and everyone else's menu-bar app points at it, so one process serves every
 account. The records are that account's: they are kept in the serving
 account's own folder — not the shared one the models are in — under that
@@ -147,7 +147,7 @@ and how fast — not the last thousand requests alone.
 tables are.
 
 Any of them can also press **Clear records** and remove what is kept, which
-Gropius notes in its own log without being able to say who did it — the
+Dessau notes in its own log without being able to say who did it — the
 control panel has no idea who is asking.
 
 So on a shared Mac this switch is a decision for everyone who uses it, not
@@ -163,18 +163,18 @@ server status, so anyone who opens it can see that it is.
 - **No answer.** The tokens are counted, by the model server; the words are
   not read.
 - **No API key**, yours or a client's.
-- **No client address.** Gropius does not record which machine on your network
+- **No client address.** Dessau does not record which machine on your network
   sent a request, so it cannot show you and cannot tell anyone else.
 
 This is a property of how the recording is built rather than a filter applied
-afterwards: the part of Gropius that keeps the figures is never handed a
+afterwards: the part of Dessau that keeps the figures is never handed a
 request, its headers or its connection. The only text it can be given is the
 id of a model already on this Mac.
 
-## What Gropius asks the model server for
+## What Dessau asks the model server for
 
 A model server only reports token counts on a streamed answer if the request
-asks it to. While recording is on, Gropius sets `include_usage` inside the
+asks it to. While recording is on, Dessau sets `include_usage` inside the
 request's `stream_options` on the client's behalf, and removes the extra chunk
 from the answer before relaying it when the client did not ask for it. A
 client that did ask keeps it. Either way, what the client receives is the
@@ -185,11 +185,11 @@ stream it would have received anyway.
 Recording is one of three separate states, and no two of them share a switch:
 
 1. **Off.** Nothing worked out from a request is recorded or shown. This is
-   how Gropius starts and how it stays until you say otherwise.
+   how Dessau starts and how it stays until you say otherwise.
 2. **Recording on.** The switch on this page: the counts and timings above,
    and nothing else, kept on this Mac — in memory for the live view, and in
    the files the [reference page](statistics-store-reference.md) describes.
-3. **A model server's own log level.** Every model server Gropius starts runs
+3. **A model server's own log level.** Every model server Dessau starts runs
    at a level that writes what it is loading and its own errors, and writes no
    prompt and no answer. Above that level it would write every request and
    every response it produces to its log — prompts and completions both — so
@@ -197,13 +197,13 @@ Recording is one of three separate states, and no two of them share a switch:
    and this switch can never make it. A test fails the build if the statistics
    switch ever reaches the code that starts a model server.
 
-Gropius offers no way to raise a model server's log level today. Keeping the
+Dessau offers no way to raise a model server's log level today. Keeping the
 three apart is what makes it safe to add one later: turning on statistics
 will never be the thing that turns on a transcript.
 
 ## What the process still logs, whether or not you switch this on
 
-Gropius writes a line to its own log for each API request it serves. That line
+Dessau writes a line to its own log for each API request it serves. That line
 records the method, path, status and duration of the request, and nothing
 else — in particular, never the address of the client that made it.
 

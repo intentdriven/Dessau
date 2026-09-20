@@ -1,9 +1,9 @@
 // Package instance answers one question about the process on the server port:
-// is it this account's Gropius, something else, or nothing identifiable at all.
+// is it this account's Dessau, something else, or nothing identifiable at all.
 //
 // It is one primitive with two callers. The server's singleton election asks it
 // on EADDRINUSE, to decide between deferring to a peer as a client and refusing
-// to route this user's model traffic to an impostor; `gropius status` asks it
+// to route this user's model traffic to an impostor; `dessau status` asks it
 // from a terminal, to decide between reporting the running server and reporting
 // that nothing is serving. A second implementation of the challenge would be a
 // second thing to keep right, on a path where being wrong means either handing
@@ -23,7 +23,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Holder classifies whatever is already bound to the server port.
@@ -31,13 +31,13 @@ type Holder int
 
 const (
 	// HolderNone: nothing identifiable answered — either a predecessor still
-	// shutting down, or a process that is not a Gropius server.
+	// shutting down, or a process that is not a Dessau server.
 	HolderNone Holder = iota
-	// HolderOurs: a Gropius that shares this user's data root (a live server to
+	// HolderOurs: a Dessau that shares this user's data root (a live server to
 	// defer to, or our own predecessor mid-restart).
 	HolderOurs
 	// HolderForeign: something else owns the port and could not prove it is this
-	// user's Gropius. Handing local model traffic to it would be a hijack, so we
+	// user's Dessau. Handing local model traffic to it would be a hijack, so we
 	// refuse rather than silently become its client.
 	HolderForeign
 )
@@ -72,10 +72,10 @@ func Probe(paths config.Paths, port int) Holder {
 //
 // Probe creates the data root if it is missing, which is right for the server:
 // it is about to write the root either way, and a challenge needs somewhere to
-// live. It is wrong for a poll. `gropius status` is run repeatedly, by a person
+// live. It is wrong for a poll. `dessau status` is run repeatedly, by a person
 // and by the menu bar, and a read-only question that creates a directory tree
 // as a side effect is a question nobody can ask safely — the more so under
-// GROPIUS_ROOT, where the tree would be created wherever the variable happens
+// DESSAU_ROOT, where the tree would be created wherever the variable happens
 // to point.
 //
 // A root that is not there, or is not a directory, is not a root this account
@@ -154,7 +154,7 @@ func removeChallenge(paths config.Paths, name string) {
 }
 
 // fetchChallengeAnswer asks the process on the port to read back the nonce.
-// ok=false means nothing that looks like a Gropius answered (connection
+// ok=false means nothing that looks like a Dessau answered (connection
 // refused, non-200, or unparseable).
 func fetchChallengeAnswer(port int, name string) (answer string, ok bool) {
 	c := &http.Client{Timeout: 500 * time.Millisecond}

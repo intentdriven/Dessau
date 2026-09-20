@@ -20,12 +20,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/capability"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/pairing"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/capability"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/pairing"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // LoadingComment is the SSE comment line a streaming response carries, about
@@ -336,7 +336,7 @@ func (g *Gateway) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleListModels reports the models Gropius can serve.
+// handleListModels reports the models Dessau can serve.
 //
 // It deliberately does not proxy to mlx_lm.server's own /v1/models, which
 // enumerates the HuggingFace cache directory rather than the loaded model (and
@@ -411,9 +411,9 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 			"id":       m.RepoID,
 			"object":   "model",
 			"created":  m.AddedAt.Unix(),
-			"owned_by": "gropius",
+			"owned_by": "dessau",
 		}
-		// Gropius's extensions to the OpenAI shape are top-level fields with
+		// Dessau's extensions to the OpenAI shape are top-level fields with
 		// names already common elsewhere. The context length is given under
 		// both spellings on purpose: context_length is what OpenRouter- and
 		// Ollama-style listings publish, max_model_len what vLLM-derived
@@ -438,7 +438,7 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 		}
 		// And what the context probe measured on this Mac, beside the two:
 		// the largest prompt the server verifiably accepted, and what stopped
-		// the step above it — the model itself, or one of Gropius's own
+		// the step above it — the model itself, or one of Dessau's own
 		// bounds, in which case the figure is a floor. Absent while nothing
 		// current has been measured; a stale figure is not published
 		// (itd-2609091301112705). It changes no charge and refuses nothing:
@@ -452,7 +452,7 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 		// the Hub said nothing — an empty string or an empty list would read as
 		// an answer — and `chat` is always present, because the whole value of
 		// the flag is telling a model that can hold a conversation from one
-		// that cannot, and an absent key would be read as an older Gropius that
+		// that cannot, and an absent key would be read as an older Dessau that
 		// cannot say either way.
 		//
 		// All three go to every client, keyed or not, loopback or not. They say
@@ -518,7 +518,7 @@ func addResidency(entry map[string]any, res runtime.Resident, pinned bool) {
 	}
 	// Always present rather than omitted when false: the whole value of the
 	// field is telling a pinned model from an unpinned one, and an absent key
-	// would be read as an older Gropius that cannot say either way.
+	// would be read as an older Dessau that cannot say either way.
 	entry["pinned"] = pinned
 }
 
@@ -740,7 +740,7 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	payload["model"] = rewritten
 
-	// The only rewrite of prompt content Gropius performs, and only for a model
+	// The only rewrite of prompt content Dessau performs, and only for a model
 	// the operator switched it on for: fold the request's system messages into
 	// one leading message, which is the shape a chat template that refuses a
 	// system message anywhere but the front will accept
@@ -761,7 +761,7 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A streamed answer carries no token counts unless the request asks for
-	// them, so with recording on Gropius asks on the client's behalf and
+	// them, so with recording on Dessau asks on the client's behalf and
 	// removes the extra event on the way back if the client did not (see
 	// mergeIncludeUsage and relayOptions). A non-streamed answer already
 	// carries its counts and needs nothing.
@@ -853,18 +853,18 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// gropiusHeaders are the response headers Gropius writes itself, which an
+// dessauHeaders are the response headers Dessau writes itself, which an
 // upstream may not add to.
-var gropiusHeaders = map[string]bool{
-	"x-gropius-state":      true,
-	"x-gropius-queue-time": true,
+var dessauHeaders = map[string]bool{
+	"x-dessau-state":      true,
+	"x-dessau-queue-time": true,
 }
 
 // setWaitHeaders tells the client what this request spent before its model
 // server was asked anything.
 //
-// Two values and one number. X-Gropius-State is warm or waited;
-// X-Gropius-Queue-Time is whole milliseconds, counting the wait for room under
+// Two values and one number. X-Dessau-State is warm or waited;
+// X-Dessau-Queue-Time is whole milliseconds, counting the wait for room under
 // an eviction grace, the wait for a cold model to load, and the wait for a
 // slot on a model already busy. "waited" is exactly "the queue time is not
 // zero", so a client never has to reconcile the two, and sub-millisecond
@@ -896,8 +896,8 @@ func setWaitHeaders(h http.Header, keyed bool, waited time.Duration) {
 	if ms > 0 {
 		state = "waited"
 	}
-	h.Set("X-Gropius-State", state)
-	h.Set("X-Gropius-Queue-Time", strconv.FormatInt(ms, 10))
+	h.Set("X-Dessau-State", state)
+	h.Set("X-Dessau-Queue-Time", strconv.FormatInt(ms, 10))
 }
 
 // relayRewritingModel forwards the upstream response body, mapping the
@@ -1007,7 +1007,7 @@ func renderEvent(b []byte, payload map[string]json.RawMessage, parsed bool, mode
 
 // choicesField is the array of alternatives every completion event carries. A
 // usage-only event carries it empty; every event about the generation itself
-// carries at least one. Gropius reads whether it is empty and nothing else —
+// carries at least one. Dessau reads whether it is empty and nothing else —
 // never what is inside it, which is the answer being generated.
 const choicesField = "choices"
 
@@ -1038,7 +1038,7 @@ func isUsageOnly(ev map[string]json.RawMessage) bool {
 
 // carriesGeneration reports whether an event is about the generation itself,
 // which is what "the client has its first chunk" means here. Nothing inside a
-// choice is read: what is inside is the answer being generated, and Gropius
+// choice is read: what is inside is the answer being generated, and Dessau
 // times the answer rather than reading it.
 func carriesGeneration(ev map[string]json.RawMessage) bool {
 	raw, ok := ev[choicesField]
@@ -1074,7 +1074,7 @@ func readUsage(ev map[string]json.RawMessage) *usageCounts {
 		return nil
 	}
 	// Clamped, because these are the child process's numbers rather than
-	// Gropius's own: a negative count would be summed into the per-model and
+	// Dessau's own: a negative count would be summed into the per-model and
 	// per-minute totals and drag them below zero, and no count is a truer
 	// answer than a wrong one.
 	return &usageCounts{
@@ -1133,7 +1133,7 @@ func streamRewriteSSE(w http.ResponseWriter, src io.Reader, modelArg, requested 
 					}
 				}
 				if parsed && opts.dropUsage && isUsageOnly(ev) {
-					// Gropius asked for this event, not the client. It is
+					// Dessau asked for this event, not the client. It is
 					// removed here rather than never asked for, because the
 					// counts are the whole point of asking.
 					dropBlank = true
@@ -1265,11 +1265,11 @@ func copyResponseHeaders(dst, src http.Header) {
 		if hopByHopHeaders[strings.ToLower(k)] {
 			continue
 		}
-		// Gropius's own statement about this request, already written. This
+		// Dessau's own statement about this request, already written. This
 		// merges rather than replaces, so a model server emitting either name
 		// would otherwise add a second value beside ours and a client reading
 		// the first one it finds could be handed the model server's.
-		if gropiusHeaders[strings.ToLower(k)] {
+		if dessauHeaders[strings.ToLower(k)] {
 			continue
 		}
 		for _, v := range vs {

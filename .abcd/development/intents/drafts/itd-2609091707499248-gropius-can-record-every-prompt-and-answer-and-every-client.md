@@ -12,7 +12,7 @@ origin: researcher-authored
 production_mode: dictated-and-formatted
 ---
 
-# Gropius can record every prompt and answer, and every client is told so first. Alice turns recording on in the server's settings; nothing turns it on by itself. From then on the first answer any client receives opens with a notice that this server records every prompt and answer, every response carries the same fact, and the models list says so, so no client can talk to the server without having been told. The recording lives in Alice's own account on the Mac, readable by nobody else, until she turns it off.
+# Dessau can record every prompt and answer, and every client is told so first. Alice turns recording on in the server's settings; nothing turns it on by itself. From then on the first answer any client receives opens with a notice that this server records every prompt and answer, every response carries the same fact, and the models list says so, so no client can talk to the server without having been told. The recording lives in Alice's own account on the Mac, readable by nobody else, until she turns it off.
 
 ## Press Release
 
@@ -29,13 +29,13 @@ itself and nothing leaves the Mac. Until she turns it on, her server writes what
 it writes today — counts and timings if she has those on, and nothing of what
 anybody typed.
 
-With it on, Gropius says so on every path a client can see. The models list
+With it on, Dessau says so on every path a client can see. The models list
 carries the fact on each model, beside the context length and the chat flag. A
-header on every answer — including the refusals Gropius writes itself — says the
-same thing, whether or not the install has an API key. Bob, using the Gropius
+header on every answer — including the refusals Dessau writes itself — says the
+same thing, whether or not the install has an API key. Bob, using the Dessau
 chat client, sees it in the client: his paired client reads the fact and puts it
 in front of him before he types. Bob using someone else's client sees whatever
-that client chooses to show him, which may be nothing: Gropius can make the fact
+that client chooses to show him, which may be nothing: Dessau can make the fact
 unmissable to a program, and it can hold its own client to showing a person, but
 it cannot make a program it did not write say anything to anybody.
 
@@ -75,11 +75,11 @@ added by name in a diff someone reviews.
 Seven claims, each in the form "we expect X because Y", each with what would
 show it wrong.
 
-- **The header cannot be forged, because it joins `gropiusHeaders`.** We expect
-  `X-Gropius-Recording` to be Gropius's own word about this request and never a
+- **The header cannot be forged, because it joins `dessauHeaders`.** We expect
+  `X-Dessau-Recording` to be Dessau's own word about this request and never a
   model server's, because `copyResponseHeaders` drops any upstream header whose
-  folded name is in `gropiusHeaders` before merging the rest — the mechanism
-  that already keeps `x-gropius-state` and `x-gropius-queue-time` unforgeable,
+  folded name is in `dessauHeaders` before merging the rest — the mechanism
+  that already keeps `x-dessau-state` and `x-dessau-queue-time` unforgeable,
   and which merges rather than replaces precisely so a second value cannot sit
   beside ours. What would show this wrong: a relayed answer in which a client
   can read a recording value the gateway did not write.
@@ -121,11 +121,11 @@ show it wrong.
   discover it; if the entry has to be argued for after the code exists, the speed
   bump did not work.
 
-- **Gropius's own client can be held to showing a person, because the pairing
+- **Dessau's own client can be held to showing a person, because the pairing
   contract is test-holdable.** adr-2609182357322050 gives the client an identity
   the server records and a handshake it must complete, so a paired client has by
   construction read that server's models list and its response headers. We expect
-  an architecture test over `client/GropiusChat/` source, plus a case in the
+  an architecture test over `client/DessauChat/` source, plus a case in the
   Swift unit target, to hold "the notice is in front of Bob before he types" the
   way `internal/archtest/chat_client_load_state_test.go` already holds the
   client's decoder to the field names the gateway writes. What would show this
@@ -151,25 +151,25 @@ show it wrong.
 
 ## Scope Conditions
 
-- **Gropius's own loopback callers are not recorded.** The pool's readiness
+- **Dessau's own loopback callers are not recorded.** The pool's readiness
   probe, the self-test and the context probe each compose their own conversations
   and post them straight to a model server on loopback, never through the gateway
   — the shipped condition `cond-2609061822382803`. Nothing they send or receive
-  enters the transcript, so the transcript is not a record of what Gropius itself
+  enters the transcript, so the transcript is not a record of what Dessau itself
   asked, only of what clients asked.
 
 - **The client's built-in on-device model is never recorded and is never shown a
-  notice.** Gropius's chat client can answer on the device without the server
-  (`client/GropiusChat/Backends.swift`, `Picker.swift`). No request leaves the
+  notice.** Dessau's chat client can answer on the device without the server
+  (`client/DessauChat/Backends.swift`, `Picker.swift`). No request leaves the
   device, the server never sees the turn, and a recording notice drawn over it
   would be a lie in the other direction.
 
 - **Third-party clients are told, not shown.** The server publishes the fact on
   every path a program can see; whether a person ever reads it is that client's
-  choice. This intent makes no promise about a client Gropius did not write, and
+  choice. This intent makes no promise about a client Dessau did not write, and
   the heading is narrowed to say so.
 
-- **The pinned mlx-lm server.** The transcript is composed by Gropius out of what
+- **The pinned mlx-lm server.** The transcript is composed by Dessau out of what
   it relays, not by the model server, so the pin (mlx-lm 0.31.3) does not bear on
   what is written or where. Any claim about what the *child* writes belongs to the
   debug-logging sibling itd-2609062346072707, not here.
@@ -200,26 +200,26 @@ show it wrong.
   drives a full request under a default config and fails if any file appears in
   the transcript's folder.
 
-- **The header is on every answer, including the refusals Gropius composes.**
+- **The header is on every answer, including the refusals Dessau composes.**
   Given the transcript on, When any answer leaves the server — a streamed
   completion, a non-streamed completion, and each refusal the gateway writes
   itself (the 400, 401, 404 and 503 paths the response-header reference already
   enumerates, and the 500 and 502 paths after the model server was secured) —
-  Then the response carries `X-Gropius-Recording`. Held by a table test naming
+  Then the response carries `X-Dessau-Recording`. Held by a table test naming
   each exit path, so a refusal path added later without the header fails.
 
 - **The header is written on a keyless install too.** Given an install with no
-  API key configured, When a LAN client is answered, Then `X-Gropius-Recording`
-  is present on the response and `X-Gropius-State` and `X-Gropius-Queue-Time` are
+  API key configured, When a LAN client is answered, Then `X-Dessau-Recording`
+  is present on the response and `X-Dessau-State` and `X-Dessau-Queue-Time` are
   absent from that same response. Held by one test asserting all three facts
   together, so the deliberate break of the `setWaitHeaders` symmetry is the thing
   under test rather than a side effect.
 
 - **An upstream cannot forge or shadow it.** Given a model server that sets
-  `X-Gropius-Recording` on its own response, When the relay forwards it, Then the
-  client receives exactly one value and it is Gropius's. Held by a test in the
+  `X-Dessau-Recording` on its own response, When the relay forwards it, Then the
+  client receives exactly one value and it is Dessau's. Held by a test in the
   shape of `TestAModelServerCannotAddASecondValueToTheWaitHeaders`, plus the
-  header's name in `gropiusHeaders` and the entry in
+  header's name in `dessauHeaders` and the entry in
   `internal/archtest/repo_id_fold_test.go` that documents the folded lookup.
 
 - **`recording` is on every models-list entry, in the unentitled half.** Given
@@ -299,13 +299,13 @@ show it wrong.
   channel whose first answer was sent with the transcript off is told when the
   next answer is recorded.
 
-- **Gropius's own client shows the person before they type.** Given a paired
-  Gropius chat client and a server with the transcript on, When Bob selects a
+- **Dessau's own client shows the person before they type.** Given a paired
+  Dessau chat client and a server with the transcript on, When Bob selects a
   model and the composer is drawn, Then the notice is in front of him before he
   types, and the picker shows the per-model transcript icon read from the
   models-list `recording` field (the maintainer's 2026-09-20 addition). And Given
   the client's built-in on-device model selected, Then no notice is drawn and no
-  icon claims one. Held by an architecture test over `client/GropiusChat/` source
+  icon claims one. Held by an architecture test over `client/DessauChat/` source
   in the shape `internal/archtest/chat_client_load_state_test.go` already uses,
   plus a case in the client's Swift unit target under `client/tests/`.
 
@@ -323,7 +323,7 @@ show it wrong.
   are read, Then `docs/` carries a reference page for the transcript store in the
   shape `docs/statistics-store-reference.md` takes — what is written, where, the
   mode, the cap, the deletion rule, the shared-cache refusal — and a how-to for
-  turning it on; `docs/response-headers.md` describes `X-Gropius-Recording` and
+  turning it on; `docs/response-headers.md` describes `X-Dessau-Recording` and
   which paths carry it; `docs/models-list.md`'s `## Fields` table documents
   `recording`; `docs/discord-bridge.md` states the bridged-turn rule and the
   channel notice; and the README names the transcript as off by default and not
@@ -357,13 +357,13 @@ draft itd-2609062346072707 stays its own record meanwhile.
 original ground and found more that only the maintainer can settle; the open
 questions below are what the hold now waits on. One part of the lifting
 condition has arrived since the hold was written: itd-2609182357325215 and
-adr-2609182357322050 give Gropius's own client a pairing contract a test can
+adr-2609182357322050 give Dessau's own client a pairing contract a test can
 hold, so a client-side contract that can show a person the notice now exists —
-for Gropius's client, and for no other.
+for Dessau's client, and for no other.
 
 **Lifted on 2026-09-20 by the maintainer.** They adopted the every-answer header
-rule at the 2026-09-20 interview — an unconditional `X-Gropius-Recording` on
-every answer including Gropius's own refusals — which is exactly this hold's
+rule at the 2026-09-20 interview — an unconditional `X-Dessau-Recording` on
+every answer including Dessau's own refusals — which is exactly this hold's
 stated lifting condition: "lifted when a client-side contract exists that can
 show a person the notice, or the maintainer adopts the every-answer rule". Both
 halves are in fact now met, the pairing contract having arrived with
@@ -383,15 +383,15 @@ adr-2609061610102325, adr-2609181004167097 and the readers' list in
 Four carriers exist. One is barred by the record; three carry the fact to a
 program and none of them reaches a person.
 
-1. **A response header** (`X-Gropius-Recording`). The precedent is built:
-   `gropiusHeaders` already reserves `x-gropius-state` and `x-gropius-queue-time`
+1. **A response header** (`X-Dessau-Recording`). The precedent is built:
+   `dessauHeaders` already reserves `x-dessau-state` and `x-dessau-queue-time`
    as headers an upstream may not add to. It breaks no client, it covers the
-   refusals Gropius composes itself, and it costs nothing per token on a stream.
+   refusals Dessau composes itself, and it costs nothing per token on a stream.
    Two things do not carry over. `setWaitHeaders` writes its two headers only on
    an install that has a key, which would leave a keyless open LAN install — the
    one with the most strangers on it — told nothing; a disclosure header has to
    be unconditional, and that has to be decided rather than inherited. And a
-   header must join `gropiusHeaders`, or an upstream can forge it into the
+   header must join `dessauHeaders`, or an upstream can forge it into the
    relayed set.
 2. **A text prefix on the answer.** Barred on three independent grounds. It is a
    write of generated content, strictly larger than any grant on either readers'
@@ -402,13 +402,13 @@ program and none of them reaches a person.
    or corrupts it, `usage` stops matching the delivered text, and any client
    matching an answer exactly breaks. And on a stream the prefix chunk must be
    emitted before the upstream has been asked anything, which makes time to
-   first token an observable lie — to the client, and to Gropius's own
+   first token an observable lie — to the client, and to Dessau's own
    `FirstTokenMS`.
 3. **A field in the models list** (`recording` per entry). The cheapest, and it
    fits a deliberate pattern: the listing already publishes `context_length`,
    `served_context`, `measured_context`, `pipeline_tag`, `tags` and `chat` as
    top-level extensions, and `chat` is documented as always present "because an
-   absent key would be read as an older Gropius that cannot say either way" —
+   absent key would be read as an older Dessau that cannot say either way" —
    word for word the argument for a recording flag, and exactly the per-model
    field itd-2609091715089488 needs. But `/v1/models` is optional: a curl and a
    pinned-model agent never call it, so it cannot carry "no client can talk to
@@ -425,7 +425,7 @@ The finding underneath all four: the heading's promise is about a **person**
 ("every client is told so first"), and every available carrier is a fact about a
 **program**. The promise separates into two claims that can each be held by a
 test — the server publishes the fact on every path a program can see, and
-Gropius's own paired client is held to showing it to a person — and one that
+Dessau's own paired client is held to showing it to a person — and one that
 cannot be held at all, which is the third-party client. Restated in the press
 release.
 
@@ -490,7 +490,7 @@ And two decisions are superseded, not one. The hold names
 adr-2609061610102325. It does not name adr-2609061503319212, whose clause is
 unqualified — "Even when on, local telemetry never records prompt text,
 completions, API keys" — and whose own definition of local telemetry
-("recorded on that Mac, for the operator of that Mac, and shown in Gropius's own
+("recorded on that Mac, for the operator of that Mac, and shown in Dessau's own
 control panel or logs") is exactly what a transcript is. That is the head-on
 contradiction, and it is the larger of the two: it is the decision that fixed the
 posture before any observability feature was designed, precisely so later intents
@@ -505,11 +505,11 @@ would not re-litigate it.
   on that path — the answer is an edited Discord message. Either bridged turns
   are excluded, or the notice goes into the Discord message text (honest there:
   no JSON mode to break), or the bridge's egress sentence gains a second clause.
-- **The client's built-in model.** Gropius's own chat client can answer on the
-  device without the server (`client/GropiusChat/Backends.swift`,
+- **The client's built-in model.** Dessau's own chat client can answer on the
+  device without the server (`client/DessauChat/Backends.swift`,
   `Picker.swift`). That conversation is never recorded and must not be shown a
   recording notice, or the client lies in the other direction.
-- **Gropius's own requests.** The pool's readiness probe, the self-test and the
+- **Dessau's own requests.** The pool's readiness probe, the self-test and the
   context probe each compose their own conversations and post them straight to a
   model server on loopback, never through the gateway — the shipped condition
   `cond-2609061822382803` says so and the audit found it survived. They are not
@@ -544,7 +544,7 @@ pairing contract (adr-2609182357322050) is where a test can hold it.
   pasted back. Both rewritten above, against the shape of itd-2609061521082551.
 - Mechanism, Scope Conditions and Acceptance Criteria stay unfilled: every
   acceptance bullet turns on the carrier and the retention rule, which are the
-  maintainer's. Parts of Scope Conditions are writable now (Gropius's own
+  maintainer's. Parts of Scope Conditions are writable now (Dessau's own
   loopback callers; the client's built-in model; the pinned mlx-lm server) and
   are named above so they are not lost.
 - Carol was unused and is the persona the shared-cache finding needs; she is used
@@ -572,9 +572,9 @@ interview and every one was the recommendation; each is recorded in
 `**Answers 2026-09-20**` lines at the foot of this record carry the same.
 
 1. Answered — **(a)**, the unconditional response header joined to
-   `gropiusHeaders` plus the per-entry models-list field, and the heading's
+   `dessauHeaders` plus the per-entry models-list field, and the heading's
    promise is accepted as narrowed to "every client is told in a place a program
-   can see; Gropius's own paired client is held to showing a person". Recorded on
+   can see; Dessau's own paired client is held to showing a person". Recorded on
    the DECISIONS line for Questions 1-3; built into `## Mechanism` and the first
    five acceptance bullets.
 2. Answered — **(a)**, always, including a keyless install, breaking the
@@ -612,7 +612,7 @@ listing.
      field. (b) The header, the models-list field, and a top-level body field on
      the completion and each chunk. (c) The models-list field alone. (d) A text
      prefix on the answer.
-   - Recommendation: **(a)**. It covers every answer including Gropius's own
+   - Recommendation: **(a)**. It covers every answer including Dessau's own
      refusals, costs nothing per token, breaks no client, and needs no new grant
      to write generated content. (d) is barred by adr-2609061610102325 and breaks
      JSON-mode and tool-call clients outright; (b) adds bytes to every chunk and
@@ -621,7 +621,7 @@ listing.
    - The part that is genuinely theirs: **(a) tells a program, not a person.**
      Adopting it means the heading's "no client can talk to the server without
      having been told" becomes "every client is told, in a place a program can
-     see; Gropius's own client is held to showing a person". If that narrowing
+     see; Dessau's own client is held to showing a person". If that narrowing
      is not acceptable, the intent does not ship in any form.
 
 2. **Is the notice header written on a keyless install?**
@@ -654,7 +654,7 @@ listing.
      reverse, has to have a stated answer — the models-list field is the place it
      becomes visible.
 
-5. **Under the shared-cache install mode, does Gropius record at all?**
+5. **Under the shared-cache install mode, does Dessau record at all?**
    - (a) Refuse: the switch is unavailable, and the panel says why. (b) Record,
      with the pane carrying a sentence saying that the serving account holds every
      local account's conversations, the switch unrenderable without it and held by

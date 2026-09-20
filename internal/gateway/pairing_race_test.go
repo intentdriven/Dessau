@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/app"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/pairing"
+	"github.com/intentdriven/Dessau/internal/app"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/pairing"
 )
 
 // THE FINDING THIS TEST EXISTS FOR (iss-2609190110117982).
@@ -190,7 +190,7 @@ func TestRepairingWithAnUnchangedRowSavesNothing(t *testing.T) {
 }
 
 // newPairingServer is a control plane with the pairing endpoint mounted where
-// cmd/gropius mounts it: outside the loopback-only guard, because a client that
+// cmd/dessau mounts it: outside the loopback-only guard, because a client that
 // has not paired is not on this Mac.
 func newPairingServer(t *testing.T, cfg config.Config) (*httptest.Server, *app.App, *pairing.Registry) {
 	t.Helper()

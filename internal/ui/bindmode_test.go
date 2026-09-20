@@ -177,7 +177,7 @@ func TestTheMarkupOffersTheThirdChoice(t *testing.T) {
 	// what was acquired rather than what is stored — so a bind saved and not
 	// yet in force is a difference the operator can see and has to be able to
 	// explain.
-	if !strings.Contains(string(page), "when Gropius next starts") {
+	if !strings.Contains(string(page), "when Dessau next starts") {
 		t.Error("the pane does not say that a bind change applies at the next start")
 	}
 }

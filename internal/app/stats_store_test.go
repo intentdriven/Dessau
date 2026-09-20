@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 func statsApp(t *testing.T, c config.Config) (*App, config.Paths) {
@@ -68,7 +68,7 @@ func TestTheStoreFollowsTheStatisticsSwitch(t *testing.T) {
 	}
 }
 
-// Every startup with recording on writes down what Gropius is actually
+// Every startup with recording on writes down what Dessau is actually
 // serving under, so a reader of the store can tell a change in the figures
 // from a change in the settings.
 func TestTheSettingsInForceAreRecordedWhenRecordingStarts(t *testing.T) {

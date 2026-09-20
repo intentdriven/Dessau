@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // fakeBridge records what the app asked of it.
@@ -184,7 +184,7 @@ func TestASaveIsNeverRefusedOverTheBridgesSettings(t *testing.T) {
 }
 
 // Shutting the app down closes the bridge, which is the same promise the
-// switch makes: nothing goes on leaving this Mac once Gropius stops.
+// switch makes: nothing goes on leaving this Mac once Dessau stops.
 func TestClosingTheAppClosesTheBridge(t *testing.T) {
 	a := newBridgeTestApp(t, config.Default())
 	fake := &fakeBridge{}

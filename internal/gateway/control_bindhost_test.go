@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The server half of the settings pane's bind-address round trip.

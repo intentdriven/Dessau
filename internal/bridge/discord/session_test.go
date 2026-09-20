@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/intentdriven/Gropius/internal/gateway"
+	"github.com/intentdriven/Dessau/internal/gateway"
 )
 
 // answering wires a bridge to the fake with a completion path that streams

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // perModelAfterSave posts a settings body and returns the per-model settings

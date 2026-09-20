@@ -302,7 +302,7 @@ func (s *session) run(ctx context.Context, resuming bool) sessionOutcome {
 			"intents":         intents,
 			"large_threshold": largeThreshold,
 			"properties": map[string]string{
-				"os": "macOS", "browser": "Gropius", "device": "Gropius",
+				"os": "macOS", "browser": "Dessau", "device": "Dessau",
 			},
 		})
 	}

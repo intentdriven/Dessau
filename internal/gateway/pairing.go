@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/pairing"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/pairing"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // maxPairBodyBytes caps the pairing request. A name and a P-256 public key in

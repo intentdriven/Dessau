@@ -1,7 +1,7 @@
-APP     := Gropius
+APP     := Dessau
 BUNDLE  := dist/$(APP).app
-BIN     := bin/gropius
-PKG     := ./cmd/gropius
+BIN     := bin/dessau
+PKG     := ./cmd/dessau
 
 .PHONY: all test build app icon install run clean fmt vet lint allow-firewall install-shared site
 
@@ -9,7 +9,7 @@ PKG     := ./cmd/gropius
 ##
 ## `build` and `app` both write $(BIN), and `app` copies it into the bundle.
 ## Under `-j` those are three unordered writers of one path: measured, `make
-## -j8 build app` left bin/gropius as the 13.8 MB untagged dev binary while
+## -j8 build app` left bin/dessau as the 13.8 MB untagged dev binary while
 ## the bundle carried the 9.0 MB prod one — the `cp` at the end of `app` is
 ## ordered against neither `go build`, and it happened to win. It is the same
 ## untagged-binary hazard the sub-make in `app` exists to close (a bundle
@@ -40,11 +40,11 @@ lint: fmt vet test
 ## .abcd/site.json names, writes only under site/, and reaches no network, so
 ## the deploy workflow can render in a job that holds no credential.
 site:
-	go run ./cmd/gropius-site --out site
+	go run ./cmd/dessau-site --out site
 
 ## build: the plain binary. LDFLAGS is empty for dev builds (keeps debug symbols
 ## for delve); the app/release build overrides it to strip. VERSION is stamped
-## into `gropius -version`; the release workflow passes the tag explicitly.
+## into `dessau -version`; the release workflow passes the tag explicitly.
 ##
 ## TAGS is empty for dev builds and for every `go build ./...` and `go test`,
 ## which is what keeps netshape.SetEnumerator — the seam the private-network
@@ -72,7 +72,7 @@ build:
 ## prerequisite. A target-specific variable (`app: TAGS = prod`) reaches only
 ## the prerequisites make rebuilds FOR THIS target, and make builds each target
 ## once per invocation: `make build app`, `make all app` and `make run app`
-## each built bin/gropius as a goal in its own right first — no tag, no strip —
+## each built bin/dessau as a goal in its own right first — no tag, no strip —
 ## and `app`'s dependency on it was then already satisfied. The bundle was
 ## assembled from a dev binary carrying the classifier's injection seam. The
 ## recursion pins the tag and the strip to the bundle instead of to the
@@ -90,14 +90,14 @@ app:
 	# Stamp the bundle version (VERSION without a leading v) so Finder's Get
 	# Info matches what the binary reports, before the bundle is signed.
 	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(patsubst v%,%,$(VERSION))" $(BUNDLE)/Contents/Info.plist
-	cp $(BIN)           $(BUNDLE)/Contents/MacOS/gropius
+	cp $(BIN)           $(BUNDLE)/Contents/MacOS/dessau
 	cp build/AppIcon.icns $(BUNDLE)/Contents/Resources/AppIcon.icns
 	# A stable signing identifier matters: Go's linker ad-hoc-signs every binary
-	# with the identifier "a.out", so without this every Gropius build looks like
+	# with the identifier "a.out", so without this every Dessau build looks like
 	# a different app to the firewall and to Local Network Privacy — which means a
 	# fresh permission prompt on every rebuild.
 	codesign --force --deep \
-		--identifier dev.gropius.app \
+		--identifier sh.intentdriven.dessau.server \
 		--sign - $(BUNDLE)
 	@echo "built $(BUNDLE)"
 
@@ -125,26 +125,26 @@ install: app
 	fi
 	rm -rf /Applications/$(APP).app
 	cp -R $(BUNDLE) /Applications/
-	$(MAKE) allow-firewall APP_BIN=/Applications/$(APP).app/Contents/MacOS/gropius
+	$(MAKE) allow-firewall APP_BIN=/Applications/$(APP).app/Contents/MacOS/dessau
 	open /Applications/$(APP).app
-	@echo "Gropius is running in the menu bar."
+	@echo "Dessau is running in the menu bar."
 
 ## allow-firewall: let the macOS Application Firewall accept LAN connections to
-## Gropius. Without this, a locally-built (non-Developer-ID) binary is blocked:
+## Dessau. Without this, a locally-built (non-Developer-ID) binary is blocked:
 ## the firewall accepts the TCP handshake but drops the data, so other machines
 ## see an empty response while loopback still works. Loopback never needs this.
 ## Needs sudo; it modifies a security setting, so it prompts for your password.
 APP_BIN ?= $(PWD)/$(BIN)
 allow-firewall:
-	@echo "Allowing Gropius through the macOS firewall (needs your password)…"
+	@echo "Allowing Dessau through the macOS firewall (needs your password)…"
 	sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add "$(APP_BIN)"
 	sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$(APP_BIN)"
-	@echo "Done. Other machines on your network can now reach Gropius."
+	@echo "Done. Other machines on your network can now reach Dessau."
 
 ## install-shared: let every macOS account on this Mac share one model cache.
 ##
 ## Without this, each user account keeps its own copy of every model — a 70B at
-## 4-bit costs 40 GB twice. Gropius uses /Users/Shared/Gropius automatically once
+## 4-bit costs 40 GB twice. Dessau uses /Users/Shared/Dessau automatically once
 ## it exists and is writable.
 ##
 ## The directory mode is 3775, and both special bits matter:
@@ -165,11 +165,11 @@ allow-firewall:
 ## writes it 0600) and make model weights modifiable by any staff account. File
 ## modes are left to the app, which writes secrets 0600 and logs 0600.
 install-shared:
-	sudo mkdir -p /Users/Shared/Gropius
-	sudo chgrp -R staff /Users/Shared/Gropius
-	sudo find /Users/Shared/Gropius -type d -exec chmod 3775 {} +
-	@echo "Shared model cache ready at /Users/Shared/Gropius."
-	@echo "Restart Gropius; every account on this Mac will now share one set of models."
+	sudo mkdir -p /Users/Shared/Dessau
+	sudo chgrp -R staff /Users/Shared/Dessau
+	sudo find /Users/Shared/Dessau -type d -exec chmod 3775 {} +
+	@echo "Shared model cache ready at /Users/Shared/Dessau."
+	@echo "Restart Dessau; every account on this Mac will now share one set of models."
 
 ## run: run headless in the foreground (for development)
 run: build

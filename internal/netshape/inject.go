@@ -15,7 +15,7 @@ package netshape
 // Exported test-only API is still API: shipped, it is a supported way for
 // anything linked into the binary to make the classifier say whatever it
 // likes. So it is compiled out of the release build instead. `make app` — the
-// only target that produces the bundle Gropius ships — builds with `-tags
+// only target that produces the bundle Dessau ships — builds with `-tags
 // prod`, and this file is absent from it; the dev binary, `go build ./...` and
 // every `go test` invocation carry no tags and have it.
 // internal/archtest holds both halves of that.

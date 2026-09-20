@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The sampling pages promise a reader four things between them, and each of
@@ -48,7 +48,7 @@ func TestSamplingDocsMatchTheCode(t *testing.T) {
 	}
 	for name := range documented {
 		if !known[name] {
-			t.Errorf("the parameter table names %q, which is not a sampling default Gropius holds", name)
+			t.Errorf("the parameter table names %q, which is not a sampling default Dessau holds", name)
 		}
 	}
 
@@ -115,7 +115,7 @@ func TestSamplingReferenceStatesTheRealRanges(t *testing.T) {
 		if b.Max == 1 {
 			continue // "between 0 and 1", below
 		}
-		// Any other ceiling is Gropius' own rather than the model server's, so
+		// Any other ceiling is Dessau' own rather than the model server's, so
 		// the page has to give the figure — read off the bound, not repeated
 		// here, or the page and the code drift apart while this test is green.
 		want := fmt.Sprintf("%d", int(b.Max))
@@ -126,9 +126,9 @@ func TestSamplingReferenceStatesTheRealRanges(t *testing.T) {
 	if !containsAll(page, "temperature is at least 0", "between 0 and 1") {
 		t.Error("the reference does not state the ranges the panel enforces")
 	}
-	// And why the ceilings Gropius sets are not the model server's.
+	// And why the ceilings Dessau sets are not the model server's.
 	if !containsAll(page, "Top-k has an upper limit of") {
-		t.Error("the reference gives top_k's ceiling without saying it is Gropius' own")
+		t.Error("the reference gives top_k's ceiling without saying it is Dessau' own")
 	}
 }
 

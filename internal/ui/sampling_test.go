@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Every sampling parameter the configuration holds must be reachable from the
@@ -185,7 +185,7 @@ func TestSamplingInputsDoNotBlockValuesTheServerAccepts(t *testing.T) {
 	}
 }
 
-// The top-k ceiling is Gropius' own, so the panel has to carry the same figure
+// The top-k ceiling is Dessau' own, so the panel has to carry the same figure
 // the configuration enforces rather than a copy that can drift from it.
 func TestTopKInputsCarryTheConfiguredCeiling(t *testing.T) {
 	page, err := assets.ReadFile("static/index.html")
@@ -246,7 +246,7 @@ func between(s, open, close string) string {
 	return rest[:j]
 }
 
-// The completion-token ceiling is Gropius' own too, so the panel carries the
+// The completion-token ceiling is Dessau' own too, so the panel carries the
 // configured figure rather than a copy of it.
 func TestMaxTokensInputsCarryTheConfiguredCeiling(t *testing.T) {
 	page, err := assets.ReadFile("static/index.html")

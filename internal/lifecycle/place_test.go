@@ -7,13 +7,13 @@ import (
 	"testing"
 )
 
-// `gropius place` is the client's half of the staged swap.
+// `dessau place` is the client's half of the staged swap.
 //
 // The server bundle has been placed by this package since
 // iss-2609081310071028; the chat client was still placed by install.sh's own
 // `mv`, which nests into a destination that already exists as a directory and
 // follows one that is a symbolic link, exiting 0 in both cases
-// (iss-2609111454146700). GropiusChat carries no binary of its own, so the verb
+// (iss-2609111454146700). DessauChat carries no binary of its own, so the verb
 // that places it is a verb on this binary, and the bootstrap calls it.
 //
 // Every case below runs the verb the way a command line reaches it, because
@@ -28,7 +28,7 @@ func placeArgs(bundle, into string) []string {
 // The ordinary case: nothing at the destination yet.
 func TestPlacePutsTheBundleInTheDestinationDirectory(t *testing.T) {
 	dir := t.TempDir()
-	src := bundleAt(t, filepath.Join(dir, "extract", "GropiusChat.app"), "new")
+	src := bundleAt(t, filepath.Join(dir, "extract", "DessauChat.app"), "new")
 	into := filepath.Join(dir, "Applications")
 	if err := os.MkdirAll(into, 0o755); err != nil {
 		t.Fatal(err)
@@ -38,7 +38,7 @@ func TestPlacePutsTheBundleInTheDestinationDirectory(t *testing.T) {
 	if code := RunPlace(env, placeArgs(src, into)); code != ExitOK {
 		t.Fatalf("exit = %d, want %d (%s)", code, ExitOK, errOut)
 	}
-	dest := filepath.Join(into, "GropiusChat.app")
+	dest := filepath.Join(into, "DessauChat.app")
 	if got := markerAt(t, dest); got != "new" {
 		t.Errorf("the destination holds %q, want the new bundle", got)
 	}
@@ -53,9 +53,9 @@ func TestPlacePutsTheBundleInTheDestinationDirectory(t *testing.T) {
 // exits 0, which leaves every launcher opening the old one.
 func TestPlaceReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 	dir := t.TempDir()
-	src := bundleAt(t, filepath.Join(dir, "extract", "GropiusChat.app"), "new")
+	src := bundleAt(t, filepath.Join(dir, "extract", "DessauChat.app"), "new")
 	into := filepath.Join(dir, "Applications")
-	dest := bundleAt(t, filepath.Join(into, "GropiusChat.app"), "old")
+	dest := bundleAt(t, filepath.Join(into, "DessauChat.app"), "old")
 
 	env, _, errOut := testEnv()
 	if code := RunPlace(env, placeArgs(src, into)); code != ExitOK {
@@ -64,7 +64,7 @@ func TestPlaceReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 	if got := markerAt(t, dest); got != "new" {
 		t.Errorf("the destination holds %q, want the new bundle", got)
 	}
-	if _, err := os.Lstat(filepath.Join(dest, "GropiusChat.app")); err == nil {
+	if _, err := os.Lstat(filepath.Join(dest, "DessauChat.app")); err == nil {
 		t.Error("the new bundle was nested inside the installed one, which is what `mv` does")
 	}
 	assertNoStagingLeft(t, into)
@@ -74,13 +74,13 @@ func TestPlaceReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 // through: what it points at is left exactly as it was.
 func TestPlaceReplacesASymlinkAtTheDestinationRatherThanFollowingIt(t *testing.T) {
 	dir := t.TempDir()
-	src := bundleAt(t, filepath.Join(dir, "extract", "GropiusChat.app"), "new")
+	src := bundleAt(t, filepath.Join(dir, "extract", "DessauChat.app"), "new")
 	into := filepath.Join(dir, "Applications")
 	if err := os.MkdirAll(into, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	elsewhere := bundleAt(t, filepath.Join(dir, "elsewhere", "GropiusChat.app"), "planted")
-	dest := filepath.Join(into, "GropiusChat.app")
+	elsewhere := bundleAt(t, filepath.Join(dir, "elsewhere", "DessauChat.app"), "planted")
+	dest := filepath.Join(into, "DessauChat.app")
 	if err := os.Symlink(elsewhere, dest); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestPlaceReplacesASymlinkAtTheDestinationRatherThanFollowingIt(t *testing.T
 // it points. It is refused, and nothing is written.
 func TestPlaceRefusesADestinationDirectoryThatIsASymlink(t *testing.T) {
 	dir := t.TempDir()
-	src := bundleAt(t, filepath.Join(dir, "extract", "GropiusChat.app"), "new")
+	src := bundleAt(t, filepath.Join(dir, "extract", "DessauChat.app"), "new")
 	real := filepath.Join(dir, "elsewhere")
 	if err := os.MkdirAll(real, 0o755); err != nil {
 		t.Fatal(err)
@@ -140,8 +140,8 @@ func TestPlaceRefusesADestinationDirectoryThatIsASymlink(t *testing.T) {
 // bootstrap verified.
 func TestPlaceRefusesABundleThatIsASymlink(t *testing.T) {
 	dir := t.TempDir()
-	real := bundleAt(t, filepath.Join(dir, "elsewhere", "GropiusChat.app"), "planted")
-	src := filepath.Join(dir, "extract", "GropiusChat.app")
+	real := bundleAt(t, filepath.Join(dir, "elsewhere", "DessauChat.app"), "planted")
+	src := filepath.Join(dir, "extract", "DessauChat.app")
 	if err := os.MkdirAll(filepath.Dir(src), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestPlaceRefusesABundleThatIsASymlink(t *testing.T) {
 // run: a missing destination is not a reason to guess one.
 func TestPlaceRefusesAnIncompleteCommandLine(t *testing.T) {
 	dir := t.TempDir()
-	src := bundleAt(t, filepath.Join(dir, "extract", "GropiusChat.app"), "new")
+	src := bundleAt(t, filepath.Join(dir, "extract", "DessauChat.app"), "new")
 	into := filepath.Join(dir, "Applications")
 	if err := os.MkdirAll(into, 0o755); err != nil {
 		t.Fatal(err)
@@ -192,7 +192,7 @@ func TestPlaceRefusesAnIncompleteCommandLine(t *testing.T) {
 			if out.Len() != 0 {
 				t.Errorf("a refused command line still wrote %q to standard output", out)
 			}
-			if _, err := os.Lstat(filepath.Join(into, "GropiusChat.app")); err == nil {
+			if _, err := os.Lstat(filepath.Join(into, "DessauChat.app")); err == nil {
 				t.Error("a refused command line placed the bundle anyway")
 			}
 		})
@@ -204,7 +204,7 @@ func TestPlaceRefusesAnIncompleteCommandLine(t *testing.T) {
 // chooses, so an absent one here means the caller named the wrong place.
 func TestPlaceRefusesADestinationDirectoryThatIsNotThere(t *testing.T) {
 	dir := t.TempDir()
-	src := bundleAt(t, filepath.Join(dir, "extract", "GropiusChat.app"), "new")
+	src := bundleAt(t, filepath.Join(dir, "extract", "DessauChat.app"), "new")
 	into := filepath.Join(dir, "Applications")
 
 	env, _, errOut := testEnv()

@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 func postModel(t *testing.T, url, path, model string) (*http.Response, map[string]any) {

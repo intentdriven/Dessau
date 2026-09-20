@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/selftest"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/selftest"
 )
 
 // selfTestCache holds the last view served, keyed on the results file's size

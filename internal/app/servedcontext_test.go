@@ -3,9 +3,9 @@ package app
 import (
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/capability"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/registry"
+	"github.com/intentdriven/Dessau/internal/capability"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 // The window a model is served at is what it is charged for, and the pinned

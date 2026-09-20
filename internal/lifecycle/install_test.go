@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // fakeProvisioner is the runtime seam: a provisioner that reports the stages a
@@ -173,7 +173,7 @@ func TestInstallSaysWhetherItRepairedOrFoundNothingToDo(t *testing.T) {
 func TestInstallQuitsOnlyWhatItIsAboutToReplace(t *testing.T) {
 	env, ie, _, errOut := installFixture(t)
 	quits := 0
-	ie.Quit = func() error { quits++; return errors.New("Gropius is not running") }
+	ie.Quit = func() error { quits++; return errors.New("Dessau is not running") }
 
 	if code := runInstall(env, nil, ie); code != ExitOK {
 		t.Fatalf("exit = %d, want %d", code, ExitOK)
@@ -232,7 +232,7 @@ func TestInstallNamesTheStageThatFailedAndHowToRetry(t *testing.T) {
 				t.Fatalf("exit = %d, want %d for a failed install", code, ExitFailed)
 			}
 			got := errOut.String()
-			for _, want := range []string{tc.stage, "no space left on device", "gropius install"} {
+			for _, want := range []string{tc.stage, "no space left on device", "dessau install"} {
 				if !strings.Contains(got, want) {
 					t.Errorf("the failure does not carry %q:\n%s", want, got)
 				}
@@ -305,7 +305,7 @@ func TestInstallPlaceOnlyStopsAfterTheSwapAndSaysSo(t *testing.T) {
 	if p := ie.Runtime.(*fakeProvisioner); p.calls != 0 {
 		t.Error("--place-only provisioned the runtime")
 	}
-	if !strings.Contains(out.String(), "gropius install") {
+	if !strings.Contains(out.String(), "dessau install") {
 		t.Errorf("--place-only did not name what finishes the install:\n%s", out)
 	}
 }
@@ -320,7 +320,7 @@ func (c *countingSeams) attach(ie *InstallEnv) {
 	ie.Launch = func(string) error { c.launches++; return nil }
 }
 
-// `gropius install` with no --bundle is the REPAIR path, and there is nothing
+// `dessau install` with no --bundle is the REPAIR path, and there is nothing
 // to repair unless this Mac already has the application. Without this check it
 // raised the administrator panel for a binary that does not exist — reported
 // against a destination that was an empty directory owned by another account
@@ -349,12 +349,12 @@ func TestInstallRefusesToRepairWhatIsNotInstalled(t *testing.T) {
 			if err := os.MkdirAll(macos, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Mkdir(filepath.Join(macos, "gropius"), 0o755); err != nil {
+			if err := os.Mkdir(filepath.Join(macos, "dessau"), 0o755); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{"a destination that is a symbolic link", func(t *testing.T, dest string) {
-			elsewhere := bundleAt(t, filepath.Join(t.TempDir(), "Gropius.app"), "somebody else's")
+			elsewhere := bundleAt(t, filepath.Join(t.TempDir(), "DessauServer.app"), "somebody else's")
 			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -381,11 +381,11 @@ func TestInstallRefusesToRepairWhatIsNotInstalled(t *testing.T) {
 				t.Error("the refusal came after provisioning started")
 			}
 			got := errOut.String()
-			if !strings.Contains(got, "~/Applications/Gropius.app") {
+			if !strings.Contains(got, "~/Applications/DessauServer.app") {
 				t.Errorf("the refusal does not name the destination it looked at:\n%s", got)
 			}
 			if !strings.Contains(got, "install.sh") {
-				t.Errorf("the refusal does not name the command that installs Gropius in the first place:\n%s", got)
+				t.Errorf("the refusal does not name the command that installs Dessau in the first place:\n%s", got)
 			}
 		})
 	}
@@ -487,7 +487,7 @@ func TestInstallSaysWhatToDoNext(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{"menu bar", "control panel"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("the finished install does not say where Gropius is or what to do next (%q missing):\n%s", want, got)
+			t.Errorf("the finished install does not say where Dessau is or what to do next (%q missing):\n%s", want, got)
 		}
 	}
 }
@@ -508,10 +508,10 @@ func installFixture(t *testing.T) (Env, InstallEnv, *bytes.Buffer, *bytes.Buffer
 	// bundle aside, and a fixture that answers with the real one sets bundles
 	// aside in the home of whoever is running the suite.
 	t.Setenv("HOME", home)
-	root := filepath.Join(home, "Library", "Application Support", "Gropius")
+	root := filepath.Join(home, "Library", "Application Support", "Dessau")
 	paths := config.NewPaths(root)
-	dest := filepath.Join(home, "Applications", "Gropius.app")
-	bundle := bundleAt(t, filepath.Join(dir, "verified", "Gropius.app"), "new")
+	dest := filepath.Join(home, "Applications", "DessauServer.app")
+	bundle := bundleAt(t, filepath.Join(dir, "verified", "DessauServer.app"), "new")
 
 	ie := InstallEnv{
 		Paths:    paths,
@@ -570,7 +570,7 @@ func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 // held to printing none of them as they came (iss-2609120438396694).
 func TestInstallWarningsAreRedacted(t *testing.T) {
 	leak := func(home string) error {
-		return errors.New("open " + filepath.Join(home, "Applications", "Gropius.app") + ": operation not permitted")
+		return errors.New("open " + filepath.Join(home, "Applications", "DessauServer.app") + ": operation not permitted")
 	}
 	for _, tc := range []struct {
 		name  string

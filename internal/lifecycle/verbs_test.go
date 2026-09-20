@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/instance"
+	"github.com/intentdriven/Dessau/internal/instance"
 )
 
 // testEnv is a verb's world with both streams captured and no colour, which is

@@ -7,7 +7,7 @@ import "math"
 // Machine describes the resources available to local models.
 type Machine struct {
 	TotalRAM int64 `json:"total_ram"` // installed physical RAM, bytes
-	// RAMBudget is the memory Gropius will let loaded models use. It is spelled
+	// RAMBudget is the memory Dessau will let loaded models use. It is spelled
 	// the way the control plane's own machine object spells it: both reach the
 	// same panel, and one number under two names is what this figure was
 	// centralized to prevent.
@@ -24,7 +24,7 @@ const diskHeadroom = 2 << 30 // 2 GiB
 //
 // This is the charge for a model whose configuration cannot be read — a model
 // in the search results that is not downloaded, a directory whose config.json
-// is unreadable. A model Gropius holds is charged by LoadCostOf, which adds
+// is unreadable. A model Dessau holds is charged by LoadCostOf, which adds
 // what that model's own configuration says its attention cache costs.
 func LoadCost(diskBytes int64) int64 {
 	return diskBytes + diskBytes/5 // 1.2x

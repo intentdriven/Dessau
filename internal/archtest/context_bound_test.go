@@ -3,8 +3,8 @@ package archtest_test
 import (
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // The statistics package bounds a record's windows with its own constant,

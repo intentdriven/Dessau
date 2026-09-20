@@ -1,6 +1,6 @@
 // What a sidebar card's exchange count promises, checked on its own:
 // `client/tests/card-summary.sh` compiles this with
-// `client/GropiusChat/CardSummary.swift` and runs it. The client has no test
+// `client/DessauChat/CardSummary.swift` and runs it. The client has no test
 // target, so this is a main that prints each promise and exits non-zero on the
 // first one that is broken.
 

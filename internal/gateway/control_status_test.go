@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/app"
-	"github.com/intentdriven/Gropius/internal/registry"
+	"github.com/intentdriven/Dessau/internal/app"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 // A model action refused because the server is going away is not a conflict

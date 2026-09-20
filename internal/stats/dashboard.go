@@ -409,7 +409,7 @@ func Aggregate(ctx context.Context, src RecordSource, from, to time.Time, loc *t
 	a := newHistoryAgg(ctx, h.From, h.To, loc)
 	a.partialDay = clippedDay(from, loc)
 	// Bounded in lines rather than in records, because those are different
-	// numbers the moment a line does not parse — a store a newer Gropius wrote,
+	// numbers the moment a line does not parse — a store a newer Dessau wrote,
 	// or one a crash tore, yields nothing while costing every byte of itself —
 	// and the context goes to the reader for the same reason: the check in take
 	// never runs on a store this build cannot read a line of.

@@ -73,7 +73,7 @@ type DownloadRequest struct {
 // partSuffix marks an in-flight file. A download is only renamed onto its final
 // name once complete and size-checked, so an interrupted run never leaves a
 // truncated file that later looks valid.
-const partSuffix = ".gropius-part"
+const partSuffix = ".dessau-part"
 
 // Download fetches every needed file in a repo into req.Dest, resuming any
 // partial transfers from a previous run.

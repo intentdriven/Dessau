@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Spec describes one model server process to launch.
@@ -405,7 +405,7 @@ func (p *execProcess) Footprint() int64 {
 // — which is the state a Mac under memory pressure puts one in, and the state
 // this reader exists to survive — does not die when it is signalled, so its
 // pipe stays open and the caller stays parked for as long as that lasts. The
-// pool's close waits on this reader, so an unbounded wait here is a Gropius
+// pool's close waits on this reader, so an unbounded wait here is a Dessau
 // that will not quit. WaitDelay is the second bound: it gives up on the output
 // rather than on the answer, and an abandoned listing is simply no reading.
 func sampleProcess(ctx context.Context, name string, args ...string) ([]byte, error) {

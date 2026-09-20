@@ -37,7 +37,7 @@ var ipadDeviceFamily = regexp.MustCompile(
 // service type across the client's sources, so that the shared discovery file
 // can be held to being its one home.
 var clientServiceTypeDeclarations = regexp.MustCompile(
-	`(?m)^\s*let\s+gropiusServiceType\s*=`)
+	`(?m)^\s*let\s+dessauServiceType\s*=`)
 
 // TestChatClientIPadBuildIsSignedForADevice holds the iPad build script to the
 // signing the intent's scope condition fixes: the maintainer's own free
@@ -185,7 +185,7 @@ func TestChatClientGuardsTheMacOnlyCalls(t *testing.T) {
 			}
 			for _, call := range macOSOnlyCalls {
 				if strings.Contains(line, call) {
-					t.Errorf("client/GropiusChat/%s:%d uses %s outside an `#if os(macOS)` branch; "+
+					t.Errorf("client/DessauChat/%s:%d uses %s outside an `#if os(macOS)` branch; "+
 						"the iPad build would not compile", name, n+1, call)
 				}
 			}
@@ -207,12 +207,12 @@ func TestChatClientSharesDiscoveryWithoutNetService(t *testing.T) {
 	all := clientSources(t, root)
 
 	if _, ok := all["Discovery.swift"]; !ok {
-		t.Fatal("client/GropiusChat/Discovery.swift is missing; the two clients share no discovery file")
+		t.Fatal("client/DessauChat/Discovery.swift is missing; the two clients share no discovery file")
 	}
 
 	for name, src := range all {
 		if strings.Contains(src, "NetService") {
-			t.Errorf("client/GropiusChat/%s mentions NetService; it is deprecated on macOS and absent "+
+			t.Errorf("client/DessauChat/%s mentions NetService; it is deprecated on macOS and absent "+
 				"on iPadOS, so discovery resolves on the Network framework", name)
 		}
 	}
@@ -224,7 +224,7 @@ func TestChatClientSharesDiscoveryWithoutNetService(t *testing.T) {
 		}
 	}
 	if len(declared) != 1 || declared[0] != "Discovery.swift" {
-		t.Errorf("gropiusServiceType is declared in %v; it belongs to the shared discovery file alone",
+		t.Errorf("dessauServiceType is declared in %v; it belongs to the shared discovery file alone",
 			declared)
 	}
 }

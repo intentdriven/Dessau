@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/applog"
+	"github.com/intentdriven/Dessau/internal/applog"
 )
 
 // The summary written before deletion (itd-2609061602043757).
@@ -193,7 +193,7 @@ type summaryKey struct {
 type summarySet struct {
 	index []foldedFile
 	days  map[summaryKey]*Summary
-	// kept are the lines this build could not read: one a newer Gropius wrote,
+	// kept are the lines this build could not read: one a newer Dessau wrote,
 	// one a crash tore. The fold is a read-modify-rename, so a line dropped on
 	// the way in is a line deleted — and the format's own promise is that a
 	// reader skips what it does not understand rather than destroying it. They
@@ -239,7 +239,7 @@ func readSummarySetSized(root *os.Root) (*summarySet, int64, error) {
 			}
 		default:
 			// A line this file has no use for but that reads as something: a
-			// record kind that has no business here, or one a newer Gropius
+			// record kind that has no business here, or one a newer Dessau
 			// puts here for a reason this build does not know. Kept, for the
 			// same reason an unreadable line is.
 			set.kept = append(set.kept, append([]byte(nil), bytes.TrimSpace(b)...))
@@ -700,7 +700,7 @@ type SummaryStats struct {
 	Days  int
 	Lines int
 	// Skipped counts lines of the summary that could not be used: one a newer
-	// Gropius wrote, one a crash tore. They are kept on disk rather than
+	// Dessau wrote, one a crash tore. They are kept on disk rather than
 	// dropped, so a reader meets them on every read.
 	Skipped int64
 	// Bytes is how much file content was read.

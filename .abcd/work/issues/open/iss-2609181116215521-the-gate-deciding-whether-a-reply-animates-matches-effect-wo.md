@@ -8,7 +8,7 @@ source: "agent-finding"
 found_during: "fidelity audits 2026-09-18"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "client/GropiusChat/Effects.swift"
+found_at: "client/DessauChat/Effects.swift"
 ---
 
 The gate deciding whether a reply animates matches effect words over the whole reply's raw markdown text while the renderer matches per rendered block over the block's plain text, so the two matches can disagree.

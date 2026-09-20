@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // The page beside the switch promises a reader four things, and each of the
@@ -48,7 +48,7 @@ func TestTheStatisticsPageNamesEveryFieldThatIsRecorded(t *testing.T) {
 
 	// 4. What the process still writes while the switch is off — which is the
 	//    honest half of "off is identical to today", and is exactly the line
-	//    cmd/gropius writes.
+	//    cmd/dessau writes.
 	if !containsAll(page, "method, path, status and duration") {
 		t.Error("the page does not say what the process logs while the switch is off")
 	}

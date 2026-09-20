@@ -1,4 +1,4 @@
-// Package selftest measures Gropius's own models while nobody is using them.
+// Package selftest measures Dessau's own models while nobody is using them.
 //
 // When the operator switches it on (config.Config.SelfTest), a loop wakes
 // once a minute and asks whether the Mac is idle: no request in flight on any
@@ -35,7 +35,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Server is what the self-test needs from the app: the models it may test,

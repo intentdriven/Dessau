@@ -5,10 +5,10 @@ model or a base model without a chat template is worth downloading and worth
 calling, but it has no business in a chat application's model menu — the first
 message sent to one is wasted.
 
-Gropius records what HuggingFace says each model is when you download it, and
+Dessau records what HuggingFace says each model is when you download it, and
 publishes those words on the models list. A rule decides which of them count as
 able to chat. There are two places to change it: the server, which is what every
-client is told, and the GropiusChat client, which applies its own.
+client is told, and the DessauChat client, which applies its own.
 
 ## On the server
 
@@ -32,7 +32,7 @@ The same rule lives in `config.json`, which is hand-editable:
 }
 ```
 
-Delete the `chat_rule` key to go back to the rule Gropius ships.
+Delete the `chat_rule` key to go back to the rule Dessau ships.
 
 Each list holds at most 64 words, of at most 128 bytes each. A save that goes
 beyond that is refused and names the field; a `config.json` that does is
@@ -41,7 +41,7 @@ than the server refusing to start.
 
 ## In the chat client
 
-GropiusChat applies its own rule to the same words, so the models it offers are
+DessauChat applies its own rule to the same words, so the models it offers are
 its user's decision rather than the server's. Open **Settings** (Cmd-,) and
 edit the two fields under **Models to offer**. They ship with the server's own
 default. The Mac's own model — the client's "On this Mac" — is not a served
@@ -53,12 +53,12 @@ model and is exempt from the rule: it is offered whenever the Mac can run it.
   is listed under, whatever the rule says of it. The rule decides one field on
   the models list, `chat`, which a client is free to act on or ignore. See
   [the models list reference](models-list.md).
-- **The words are HuggingFace's.** Gropius invents no categories: it republishes
+- **The words are HuggingFace's.** Dessau invents no categories: it republishes
   the repository's pipeline tag and tags as they are written on the Hub, and the
   search tab shows each result's pipeline tag — or "no tag" — before you
   download anything.
 - **A model with no tags is marked as unable to chat** under the shipped rule,
   because the rule asks for a pipeline tag it does not have. Models downloaded
-  before Gropius recorded these words carry none: nothing on disk says what kind
+  before Dessau recorded these words carry none: nothing on disk says what kind
   of model it is, so download such a model again to give it its words, or clear
   the pipeline-tag field to stop testing that half.

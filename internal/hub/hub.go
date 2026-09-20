@@ -3,7 +3,7 @@
 //
 // It deliberately does not reproduce huggingface_hub's blobs/snapshots/symlinks
 // cache format. mlx-lm loads a model from any plain directory of files, so
-// Gropius downloads each repo into <models>/<org>/<name>/ and hands that path
+// Dessau downloads each repo into <models>/<org>/<name>/ and hands that path
 // to the server process. That keeps the on-disk result inspectable and means a
 // half-finished download can never masquerade as a valid cache entry.
 package hub
@@ -203,7 +203,7 @@ func (c *Client) newTokenRequest(ctx context.Context, method, u, token string) (
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	req.Header.Set("User-Agent", "gropius/1.0 (+https://github.com/intentdriven/Gropius)")
+	req.Header.Set("User-Agent", "dessau/1.0 (+https://github.com/intentdriven/Dessau)")
 	return req, nil
 }
 
@@ -638,7 +638,7 @@ func nextPageURL(link string) string {
 }
 
 // RepoSize returns the total download size, in bytes, of the MLX-relevant files
-// in a repo at the default revision. This is what Gropius would actually fetch.
+// in a repo at the default revision. This is what Dessau would actually fetch.
 func (c *Client) RepoSize(ctx context.Context, repoID string) (int64, error) {
 	files, err := c.Files(ctx, repoID, "main")
 	if err != nil {
@@ -800,7 +800,7 @@ func WantedFiles(files []File) []File {
 
 // caseCollision reports the first pair of wanted paths that differ only by
 // case. Such a pair cannot both exist on macOS's case-insensitive default
-// volume: two goroutines would race over one .gropius-part and, at best, the
+// volume: two goroutines would race over one .dessau-part and, at best, the
 // download aborts. The repo is refused up front instead.
 func caseCollision(files []File) (a, b string, collide bool) {
 	seen := make(map[string]string, len(files))

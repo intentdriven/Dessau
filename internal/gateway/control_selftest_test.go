@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/selftest"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/selftest"
 )
 
 // writeSelfTestRuns puts runs into the results file the way the loop would,

@@ -9,7 +9,7 @@ import (
 )
 
 // The lifecycle verbs are not reachable from the HTTP control plane, and the
-// dependency runs one way: from cmd/gropius down.
+// dependency runs one way: from cmd/dessau down.
 //
 // WHY IT IS A RULE AND NOT A PREFERENCE. internal/lifecycle is where a verb
 // removes files, raises an authorization panel and replaces the running
@@ -20,7 +20,7 @@ import (
 // closes that; not being on the path does.
 //
 // It carries a second rule at the same time. adr-2609111126115848 lets a
-// diagnostic a person invokes report an observed signal about state Gropius
+// diagnostic a person invokes report an observed signal about state Dessau
 // does not own — the firewall entry — on three conditions, and the third is
 // that it gates nothing, armed rather than asserted. This is that arming: the
 // enforcement path cannot see the package that reads the signal, so no
@@ -33,7 +33,7 @@ import (
 // re-derive a signal for itself: anything linked into this process can run the
 // firewall query in three lines without naming this package. The superseded
 // record says exactly that about its own guards, and it stays true here.
-const lifecyclePkg = "github.com/intentdriven/Gropius/internal/lifecycle"
+const lifecyclePkg = "github.com/intentdriven/Dessau/internal/lifecycle"
 
 // controlPlaneRoots are the packages the spec names as the control plane's
 // path. Their dependency closures are computed rather than listed, so a package
@@ -45,8 +45,8 @@ const lifecyclePkg = "github.com/intentdriven/Gropius/internal/lifecycle"
 // it serves the panel's assets, and a helper there that reached a lifecycle
 // verb would put the verbs behind the same surface by another door.
 var controlPlaneRoots = []string{
-	"github.com/intentdriven/Gropius/internal/gateway",
-	"github.com/intentdriven/Gropius/internal/ui",
+	"github.com/intentdriven/Dessau/internal/gateway",
+	"github.com/intentdriven/Dessau/internal/ui",
 }
 
 // offTheControlPlane is every package in the module that is not on that path,
@@ -56,14 +56,14 @@ var controlPlaneRoots = []string{
 // be uncovered by default and the rule would quietly stop applying to it.
 var offTheControlPlane = map[string]string{
 	lifecyclePkg: "is the package the rule is about",
-	"github.com/intentdriven/Gropius/cmd/gropius":             "is the one place both sides meet, by design: it dispatches a verb typed in a terminal and it starts the server. Nothing imports it, so it is a leaf and not a path",
-	"github.com/intentdriven/Gropius/cmd/gropius-site":        "renders the landing page offline and serves nothing",
-	"github.com/intentdriven/Gropius/internal/archtest":       "is these rules",
-	"github.com/intentdriven/Gropius/internal/mlxtest":        "test helpers; nothing ships in the binary",
-	"github.com/intentdriven/Gropius/internal/sitetest":       "test helpers for the landing-page renderer",
-	"github.com/intentdriven/Gropius/internal/discovery":      "advertises the server over mDNS. Only the command imports it, and it answers the network rather than being asked anything by a route; a lifecycle verb reaching it would be advertising from a terminal command, which is why it is written down rather than left uncovered",
-	"github.com/intentdriven/Gropius/internal/instance":       "classifies the process on the server port. The command and the lifecycle verbs both ask it; it imports only the paths, and a route cannot reach a verb through it",
-	"github.com/intentdriven/Gropius/internal/bridge/discord": "the Discord bridge. It imports the gateway rather than the other way round — nothing the control plane serves can reach it, and only the command builds it — so no route arrives here, and it imports no lifecycle verb",
+	"github.com/intentdriven/Dessau/cmd/dessau":              "is the one place both sides meet, by design: it dispatches a verb typed in a terminal and it starts the server. Nothing imports it, so it is a leaf and not a path",
+	"github.com/intentdriven/Dessau/cmd/dessau-site":         "renders the landing page offline and serves nothing",
+	"github.com/intentdriven/Dessau/internal/archtest":       "is these rules",
+	"github.com/intentdriven/Dessau/internal/mlxtest":        "test helpers; nothing ships in the binary",
+	"github.com/intentdriven/Dessau/internal/sitetest":       "test helpers for the landing-page renderer",
+	"github.com/intentdriven/Dessau/internal/discovery":      "advertises the server over mDNS. Only the command imports it, and it answers the network rather than being asked anything by a route; a lifecycle verb reaching it would be advertising from a terminal command, which is why it is written down rather than left uncovered",
+	"github.com/intentdriven/Dessau/internal/instance":       "classifies the process on the server port. The command and the lifecycle verbs both ask it; it imports only the paths, and a route cannot reach a verb through it",
+	"github.com/intentdriven/Dessau/internal/bridge/discord": "the Discord bridge. It imports the gateway rather than the other way round — nothing the control plane serves can reach it, and only the command builds it — so no route arrives here, and it imports no lifecycle verb",
 }
 
 // No package on the control plane's path may see internal/lifecycle, at any
@@ -101,13 +101,13 @@ func TestEveryPackageIsJudgedByTheBoundary(t *testing.T) {
 	onPath := map[string]bool{}
 	for _, root := range controlPlaneRoots {
 		for _, dep := range depsOf(t, root) {
-			if strings.HasPrefix(dep, "github.com/intentdriven/Gropius/") {
+			if strings.HasPrefix(dep, "github.com/intentdriven/Dessau/") {
 				onPath[dep] = true
 			}
 		}
 	}
 
-	const all = "github.com/intentdriven/Gropius/..."
+	const all = "github.com/intentdriven/Dessau/..."
 	out, err := exec.Command("go", "list", all).CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list %s: %v\n%s", all, err, out)
@@ -157,7 +157,7 @@ func depsOf(t *testing.T, pkg string) []string {
 // config.json is single-writer state (iss-2609062045106963): the control plane
 // writes it, and a save there is serialized behind one lock. A terminal verb
 // that wrote it would be a second writer with no lock between them, and the
-// two would race on a file that decides who can reach this server. `gropius
+// two would race on a file that decides who can reach this server. `dessau
 // config show` therefore reads and answers, which is a decision the record
 // took rather than a stage on the way to a writing verb
 // (itd-2609081259493890) — and this is what keeps the decision from being

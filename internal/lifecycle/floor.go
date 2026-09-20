@@ -14,7 +14,7 @@ import (
 // 2026-09-20). Two of the three ways a build reaches a Mac already refuse
 // below it: install.sh refuses before it downloads anything, and Launch
 // Services refuses to open a bundle whose LSMinimumSystemVersion is above the
-// running system. The third is `gropius update`, and it is the destructive
+// running system. The third is `dessau update`, and it is the destructive
 // one — it quits the running server and swaps the installed bundle aside
 // before anything about the new build is asked of the system. A Mac below the
 // floor that ran that verb would be left with the old bundle gone, a new one
@@ -44,17 +44,17 @@ func hostMacOSVersion() (string, error) {
 // as the bootstrap's `[ "${macos_major:-0}" -ge … ]` does.
 func belowFloor(version string, err error) (string, bool) {
 	if err != nil || strings.TrimSpace(version) == "" {
-		return "Gropius requires macOS " + strconv.Itoa(minMacOSMajor) +
+		return "Dessau requires macOS " + strconv.Itoa(minMacOSMajor) +
 			", and this Mac's version could not be read.", true
 	}
 	major, _, _ := strings.Cut(version, ".")
 	n, convErr := strconv.Atoi(major)
 	if convErr != nil {
-		return "Gropius requires macOS " + strconv.Itoa(minMacOSMajor) +
+		return "Dessau requires macOS " + strconv.Itoa(minMacOSMajor) +
 			" (this Mac reports " + Quote(version) + ", which is not a version this can read).", true
 	}
 	if n < minMacOSMajor {
-		return "Gropius requires macOS " + strconv.Itoa(minMacOSMajor) +
+		return "Dessau requires macOS " + strconv.Itoa(minMacOSMajor) +
 			" (this Mac runs " + version + ").", true
 	}
 	return "", false

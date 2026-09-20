@@ -27,12 +27,12 @@ import (
 var linkDirName = filepath.Join(".local", "bin")
 
 // linkFileName is the command a person types.
-const linkFileName = "gropius"
+const linkFileName = "dessau"
 
 // binDir is this account's own bin directory.
 func binDir(home string) string { return filepath.Join(home, linkDirName) }
 
-// linkCommand points this account's `gropius` at the installed binary and
+// linkCommand points this account's `dessau` at the installed binary and
 // returns where the link is.
 //
 // The link is made under a random name and renamed over the final one, so an
@@ -109,7 +109,7 @@ func pathAdvice(dir, home string) string {
 	if home != "" && strings.HasPrefix(dir, home+string(filepath.Separator)) {
 		spelled = "$HOME" + dir[len(home):]
 	}
-	return "the gropius command is at " + spelled + ", which is not on this account's PATH.\n" +
+	return "the dessau command is at " + spelled + ", which is not on this account's PATH.\n" +
 		"Add this line to ~/.zshrc (or ~/.bash_profile) to reach it by name:\n" +
 		"  export PATH=\"" + spelled + ":$PATH\""
 }

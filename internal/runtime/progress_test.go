@@ -3,7 +3,7 @@ package runtime
 import (
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Provisioning reports a PROPORTION, not a spinner.

@@ -20,9 +20,9 @@ import (
 // clientSources returns every Swift file of the client, keyed by its base name.
 func clientSources(t *testing.T, root string) map[string]string {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(root, "client", "GropiusChat", "*.swift"))
+	matches, err := filepath.Glob(filepath.Join(root, "client", "DessauChat", "*.swift"))
 	if err != nil || len(matches) == 0 {
-		t.Fatal("client/GropiusChat/ holds no Swift file")
+		t.Fatal("client/DessauChat/ holds no Swift file")
 	}
 	out := map[string]string{}
 	for _, m := range matches {
@@ -57,7 +57,7 @@ func TestChatClientCarriesNoStylingOfItsOwn(t *testing.T) {
 		}
 		for _, s := range styling {
 			if strings.Contains(src, s) {
-				t.Errorf("client/GropiusChat/%s uses %q; the client carries no styling of its own — "+
+				t.Errorf("client/DessauChat/%s uses %q; the client carries no styling of its own — "+
 					"a standard control draws the system's design by itself", name, s)
 			}
 		}
@@ -71,15 +71,15 @@ func TestChatClientBuiltInBackendTouchesNoNetwork(t *testing.T) {
 	root := repoRootDir(t)
 	src, ok := clientSources(t, root)["Backends.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/Backends.swift is missing; the answerer seam has no home")
+		t.Fatal("client/DessauChat/Backends.swift is missing; the answerer seam has no home")
 	}
 	if strings.Contains(src, "import Network") {
-		t.Error("client/GropiusChat/Backends.swift imports Network; the built-in answerer must touch no network")
+		t.Error("client/DessauChat/Backends.swift imports Network; the built-in answerer must touch no network")
 	}
 	start := strings.Index(src, "struct BuiltInBackend")
 	end := strings.Index(src, "struct ServerBackend")
 	if start < 0 || end < 0 || end < start {
-		t.Fatal("client/GropiusChat/Backends.swift does not declare BuiltInBackend before ServerBackend")
+		t.Fatal("client/DessauChat/Backends.swift does not declare BuiltInBackend before ServerBackend")
 	}
 	body := src[start:end]
 	for _, s := range []string{"URLSession", "URLRequest", "http"} {
@@ -97,12 +97,12 @@ func TestChatClientKeepsWritingTools(t *testing.T) {
 	for name, src := range all {
 		for _, s := range []string{"writingToolsBehavior(.disabled)", "NSViewRepresentable", "NSTextView"} {
 			if strings.Contains(src, s) {
-				t.Errorf("client/GropiusChat/%s uses %q; the composer is a standard TextField so the system's Writing Tools reach it", name, s)
+				t.Errorf("client/DessauChat/%s uses %q; the composer is a standard TextField so the system's Writing Tools reach it", name, s)
 			}
 		}
 	}
-	if !regexp.MustCompile(`TextField\("Message…", text: \$draft, axis: \.vertical\)`).MatchString(all["GropiusChat.swift"]) {
-		t.Error("client/GropiusChat/GropiusChat.swift has no multi-line TextField composer")
+	if !regexp.MustCompile(`TextField\("Message…", text: \$draft, axis: \.vertical\)`).MatchString(all["DessauChat.swift"]) {
+		t.Error("client/DessauChat/DessauChat.swift has no multi-line TextField composer")
 	}
 }
 
@@ -115,19 +115,19 @@ func TestChatClientBrowsesOnlyWhileThePickerIsShown(t *testing.T) {
 	all := clientSources(t, root)
 	picker, ok := all["Picker.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/Picker.swift is missing")
+		t.Fatal("client/DessauChat/Picker.swift is missing")
 	}
 	onAppear := regexp.MustCompile(`\.onAppear\s*\{[^}]*browser\.start\(\)`)
 	onDisappear := regexp.MustCompile(`\.onDisappear\s*\{[^}]*browser\.stop\(\)`)
 	if !onAppear.MatchString(picker) {
-		t.Error("client/GropiusChat/Picker.swift does not start the browse in .onAppear")
+		t.Error("client/DessauChat/Picker.swift does not start the browse in .onAppear")
 	}
 	if !onDisappear.MatchString(picker) {
-		t.Error("client/GropiusChat/Picker.swift does not stop the browse in .onDisappear")
+		t.Error("client/DessauChat/Picker.swift does not stop the browse in .onDisappear")
 	}
 	for name, src := range all {
 		if name != "Picker.swift" && strings.Contains(src, "browser.start()") {
-			t.Errorf("client/GropiusChat/%s starts a browse; only the picker may", name)
+			t.Errorf("client/DessauChat/%s starts a browse; only the picker may", name)
 		}
 	}
 }
@@ -136,14 +136,14 @@ func TestChatClientBrowsesOnlyWhileThePickerIsShown(t *testing.T) {
 // about the API key: it is attached only to the host it was entered for.
 func TestChatClientSendsTheKeyToOneHostOnly(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	if !regexp.MustCompile(`if !apiKey\.isEmpty, origin == apiKeyHost \{`).MatchString(src) {
-		t.Error("client/GropiusChat/GropiusChat.swift attaches the bearer token without comparing the request's origin to apiKeyHost")
+		t.Error("client/DessauChat/DessauChat.swift attaches the bearer token without comparing the request's origin to apiKeyHost")
 	}
 	// The Settings pane must not re-bind the stored key on its initial load:
 	// the change handler ignores a value equal to the stored key.
 	if !regexp.MustCompile(`guard new != model\.apiKey else \{ return \}`).MatchString(src) {
-		t.Error("client/GropiusChat/GropiusChat.swift saves the API key on every change of the field, including the initial load, which re-binds it to the current server")
+		t.Error("client/DessauChat/DessauChat.swift saves the API key on every change of the field, including the initial load, which re-binds it to the current server")
 	}
 }
 
@@ -179,11 +179,11 @@ func TestChatClientEffectWordsLiveInOnePlace(t *testing.T) {
 	all := clientSources(t, root)
 	effects, ok := all["Effects.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/Effects.swift is missing")
+		t.Fatal("client/DessauChat/Effects.swift is missing")
 	}
 	list := regexp.MustCompile(`static let list: \[\(word: String, kind: EffectKind\)\] = \[([^\]]*)\]`).FindStringSubmatch(effects)
 	if list == nil {
-		t.Fatal("client/GropiusChat/Effects.swift declares no EffectWords.list")
+		t.Fatal("client/DessauChat/Effects.swift declares no EffectWords.list")
 	}
 	words := regexp.MustCompile(`\("([^"]+)", \.`).FindAllStringSubmatch(list[1], -1)
 	if len(words) < 3 || len(words) > 8 {
@@ -192,12 +192,12 @@ func TestChatClientEffectWordsLiveInOnePlace(t *testing.T) {
 	if !strings.Contains(effects, `options: [.caseInsensitive]`) {
 		t.Error("EffectWords.matches is not case-insensitive")
 	}
-	if !strings.Contains(all["GropiusChat.swift"], "EffectWords.settingsSentence") {
+	if !strings.Contains(all["DessauChat.swift"], "EffectWords.settingsSentence") {
 		t.Error("the Settings page does not name the words from EffectWords")
 	}
 	for name, src := range all {
 		if name != "Effects.swift" && strings.Contains(src, `"congratulations"`) {
-			t.Errorf("client/GropiusChat/%s repeats an effect word; the list lives in Effects.swift alone", name)
+			t.Errorf("client/DessauChat/%s repeats an effect word; the list lives in Effects.swift alone", name)
 		}
 	}
 }
@@ -209,11 +209,11 @@ func TestChatClientRendersMarkdownWithTheFullSyntax(t *testing.T) {
 	root := repoRootDir(t)
 	md, ok := clientSources(t, root)["Markdown.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/Markdown.swift is missing")
+		t.Fatal("client/DessauChat/Markdown.swift is missing")
 	}
 	for _, want := range []string{"interpretedSyntax: .full", "failurePolicy: .returnPartiallyParsedIfPossible"} {
 		if !strings.Contains(md, want) {
-			t.Errorf("client/GropiusChat/Markdown.swift does not parse with %q", want)
+			t.Errorf("client/DessauChat/Markdown.swift does not parse with %q", want)
 		}
 	}
 }
@@ -222,11 +222,11 @@ func TestChatClientRendersMarkdownWithTheFullSyntax(t *testing.T) {
 // every action in the Chat menu has a keyboard shortcut.
 func TestChatClientMenuActionsCarryShortcuts(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	start := strings.Index(src, `CommandMenu("Chat")`)
 	end := strings.Index(src, "Settings {")
 	if start < 0 || end < 0 {
-		t.Fatal("client/GropiusChat/GropiusChat.swift declares no Chat command menu before its Settings scene")
+		t.Fatal("client/DessauChat/DessauChat.swift declares no Chat command menu before its Settings scene")
 	}
 	menu := src[start:end]
 	buttons := strings.Count(menu, "Button(") + strings.Count(menu, "Button {")
@@ -246,7 +246,7 @@ func TestChatClientMenuActionsCarryShortcuts(t *testing.T) {
 // a row that finds the id already there consumes it without playing.
 func TestChatClientEffectPlaysOnceWhenTheReplyFinishes(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 
 	if !strings.Contains(src, "onChange(of: model.effectsToPlay.contains(message.id))") {
 		t.Error("MessageRow does not watch model.effectsToPlay for this message's id; " +
@@ -278,7 +278,7 @@ func TestChatClientEffectPlaysOnceWhenTheReplyFinishes(t *testing.T) {
 // second window of its own WindowGroup itself. New Chat keeps Cmd-N.
 func TestChatClientOpensASecondWindow(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 
 	if !strings.Contains(src, `@Environment(\.openWindow)`) {
 		t.Error("the app reads no openWindow action; nothing in the client can open a second window")
@@ -317,7 +317,7 @@ func TestChatClientEffectKeepsTheReplySelectable(t *testing.T) {
 	effects := clientSources(t, root)["Effects.swift"]
 	renderer := strings.Index(effects, ".textRenderer(")
 	if renderer < 0 {
-		t.Fatal("client/GropiusChat/Effects.swift installs no text renderer")
+		t.Fatal("client/DessauChat/Effects.swift installs no text renderer")
 	}
 	if !strings.Contains(effects[renderer:], ".textSelection(.enabled)") {
 		t.Error("the block being animated carries no .textSelection(.enabled); " +
@@ -332,7 +332,7 @@ func TestChatClientEffectKeepsTheReplySelectable(t *testing.T) {
 // debounce they share (TestChatClientThoughtsShareTheReplyScheduler).
 func TestChatClientReplyReparseStaysWithinItsBudget(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	found := regexp.MustCompile(`([0-9.]+) - Date\(\)\.timeIntervalSince\(last[A-Za-z]*Parse\)`).FindAllStringSubmatch(src, -1)
 	if len(found) == 0 {
 		t.Fatal("no re-parse debounce; a streaming reply is parsed on every chunk that arrives")
@@ -360,7 +360,7 @@ func TestChatClientBubbleTextReadsOnItsBubble(t *testing.T) {
 			"white on a light bubble cannot be read")
 	}
 	if !strings.Contains(bubbles, "isDark") {
-		t.Error("nothing in client/GropiusChat/Bubbles.swift asks how dark a bubble is; " +
+		t.Error("nothing in client/DessauChat/Bubbles.swift asks how dark a bubble is; " +
 			"the text colour cannot follow the bubble it sits on")
 	}
 	// A chosen colour survives; the way back is the Default button.
@@ -387,12 +387,12 @@ func TestChatClientBubbleColoursFollowTheAppearance(t *testing.T) {
 		t.Error("the model's bubble defaults to Color.gray, which is the same grey in Light and in Dark")
 	}
 	if strings.Contains(bubbles, "Color.white") {
-		t.Error("client/GropiusChat/Bubbles.swift still draws a fixed Color.white; " +
+		t.Error("client/DessauChat/Bubbles.swift still draws a fixed Color.white; " +
 			"the bubble's text has to be the system's label colour, read in the appearance the fill reads as")
 	}
 	for _, want := range []string{"dynamicProvider:", "userInterfaceStyle", `.environment(\.colorScheme`} {
 		if !strings.Contains(bubbles, want) {
-			t.Errorf("client/GropiusChat/Bubbles.swift does not carry %q; a picked colour is drawn "+
+			t.Errorf("client/DessauChat/Bubbles.swift does not carry %q; a picked colour is drawn "+
 				"as its stored value whatever the appearance", want)
 		}
 	}

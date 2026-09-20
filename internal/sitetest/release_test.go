@@ -8,10 +8,10 @@ package sitetest_test
 //
 // No network and no forge: the record arrives as a file, which is the whole
 // point of the transport. WHICH release the record describes is decided by
-// electLatest in cmd/gropius-site and tested against a fixture there
+// electLatest in cmd/dessau-site and tested against a fixture there
 // (TestTheFlaggedLatestIsElectedAndNotTheNewest); what is held here is the shape
 // of the workflow that calls it — that it lists the releases with the forge's
-// own flag, elects through `gropius-site select`, fetches the elected tag, and
+// own flag, elects through `dessau-site select`, fetches the elected tag, and
 // validates the record before the render commits to it.
 
 import (
@@ -29,23 +29,23 @@ import (
 const fixtureRelease = `{
   "version": "v9.9.9",
   "published_at": "2026-09-05T09:41:07Z",
-  "html_url": "https://github.com/intentdriven/Gropius/releases/tag/v9.9.9",
-  "checksums_url": "https://github.com/intentdriven/Gropius/releases/download/v9.9.9/SHA256SUMS.txt",
+  "html_url": "https://github.com/intentdriven/Dessau/releases/tag/v9.9.9",
+  "checksums_url": "https://github.com/intentdriven/Dessau/releases/download/v9.9.9/SHA256SUMS.txt",
   "assets": [
     {
-      "name": "Gropius.app.zip",
+      "name": "DessauServer.app.zip",
       "size_bytes": 20971520,
-      "url": "https://github.com/intentdriven/Gropius/releases/download/v9.9.9/Gropius.app.zip"
+      "url": "https://github.com/intentdriven/Dessau/releases/download/v9.9.9/DessauServer.app.zip"
     },
     {
-      "name": "GropiusChat.app.zip",
+      "name": "DessauChat.app.zip",
       "size_bytes": 4718592,
-      "url": "https://github.com/intentdriven/Gropius/releases/download/v9.9.9/GropiusChat.app.zip"
+      "url": "https://github.com/intentdriven/Dessau/releases/download/v9.9.9/DessauChat.app.zip"
     },
     {
       "name": "SHA256SUMS.txt",
       "size_bytes": 210,
-      "url": "https://github.com/intentdriven/Gropius/releases/download/v9.9.9/SHA256SUMS.txt"
+      "url": "https://github.com/intentdriven/Dessau/releases/download/v9.9.9/SHA256SUMS.txt"
     }
   ]
 }`
@@ -171,8 +171,8 @@ func TestTheReleaseSectionMatchesTheRecordFieldByField(t *testing.T) {
 	// written here as the literal a reader sees, so a change to the rounding
 	// rule fails rather than passing under a recomputed expectation.
 	for _, want := range []struct{ name, size string }{
-		{"Gropius.app.zip", "20.9 MB"},
-		{"GropiusChat.app.zip", "4.7 MB"},
+		{"DessauServer.app.zip", "20.9 MB"},
+		{"DessauChat.app.zip", "4.7 MB"},
 		{"SHA256SUMS.txt", "210 bytes"},
 	} {
 		if n := strings.Count(region, ">"+want.name+"<"); n != 1 {
@@ -218,8 +218,8 @@ func TestTheReleaseSectionMatchesTheRecordFieldByField(t *testing.T) {
 // page is produced, then the page names the release flagged latest."
 //
 // The election is a function in this repository — electLatest, reached through
-// `gropius-site select --from <list>` — and the criterion's own case is a
-// fixture test of it in cmd/gropius-site: a list whose two newest-published
+// `dessau-site select --from <list>` — and the criterion's own case is a
+// fixture test of it in cmd/dessau-site: a list whose two newest-published
 // entries are a pre-release and a draft, with an older release flagged, must
 // elect the flagged one. That case cannot be produced against a live forge
 // without hand-making a stale release, which is why the election was moved here
@@ -240,11 +240,11 @@ func TestTheReleaseRecordIsTheFlaggedLatestRelease(t *testing.T) {
 	if !regexp.MustCompile(`gh release list\s+--repo\s+"\$GITHUB_REPOSITORY"[^|]*--json\s+tagName,isLatest,isDraft,isPrerelease,publishedAt`).MatchString(step) {
 		t.Errorf("the release-record step does not list the releases with the forge's isLatest flag:\n%s", step)
 	}
-	// The election itself is cmd/gropius-site's, which is what makes the
+	// The election itself is cmd/dessau-site's, which is what makes the
 	// criterion testable against a fixture (TestTheFlaggedLatestIsElectedAndNotTheNewest
 	// in that package). A step that elected in shell would be untestable here.
-	if !strings.Contains(step, `gropius-site select --from "$list"`) {
-		t.Errorf("the release-record step does not elect through `gropius-site select`:\n%s", step)
+	if !strings.Contains(step, `dessau-site select --from "$list"`) {
+		t.Errorf("the release-record step does not elect through `dessau-site select`:\n%s", step)
 	}
 	// And the release it then fetches is the elected one. Every name the run's
 	// own tag could arrive under is refused, so a later edit cannot quietly
@@ -259,7 +259,7 @@ func TestTheReleaseRecordIsTheFlaggedLatestRelease(t *testing.T) {
 	}
 	// The record is validated before the render commits to it, so an
 	// unacceptable one costs the page its facts and not its deploy.
-	if !strings.Contains(step, "gropius-site validate-release") {
+	if !strings.Contains(step, "dessau-site validate-release") {
 		t.Errorf("the release-record step does not validate the record before handing it on:\n%s", step)
 	}
 }
@@ -328,7 +328,7 @@ func TestTheRenderProceedsWhenTheRecordCannotBeRead(t *testing.T) {
 	if !strings.Contains(render, "--release") {
 		t.Errorf("the render step never passes --release:\n%s", render)
 	}
-	if !regexp.MustCompile(`go run \./cmd/gropius-site --out site\s`).MatchString(render) {
+	if !regexp.MustCompile(`go run \./cmd/dessau-site --out site\s`).MatchString(render) {
 		t.Errorf("the render step has no invocation without --release; the record's absence must still produce a page:\n%s", render)
 	}
 }

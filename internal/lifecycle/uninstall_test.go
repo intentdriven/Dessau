@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // uninstallFixture lays down an installation in a temporary directory: a
@@ -20,13 +20,13 @@ func uninstallFixture(t *testing.T) (Env, UninstallEnv, *bytes.Buffer, *bytes.Bu
 
 	dir := t.TempDir()
 	home := filepath.Join(dir, "home")
-	root := filepath.Join(home, "Library", "Application Support", "Gropius")
+	root := filepath.Join(home, "Library", "Application Support", "Dessau")
 	paths := config.NewPaths(root)
 	if err := paths.EnsureDirs(); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range []string{paths.Config, paths.State, paths.UV(), paths.VenvPython(),
-		filepath.Join(paths.Logs, "gropius.log"), filepath.Join(paths.Stats, "2026-09.json"),
+		filepath.Join(paths.Logs, "dessau.log"), filepath.Join(paths.Stats, "2026-09.json"),
 		filepath.Join(paths.Python, "cpython-3.12", "bin", "python3"),
 		filepath.Join(paths.Models, "mlx-community", "a-model", "weights.safetensors"),
 		filepath.Join(paths.HFCache, "blob"),
@@ -34,7 +34,7 @@ func uninstallFixture(t *testing.T) (Env, UninstallEnv, *bytes.Buffer, *bytes.Bu
 		writeFileAt(t, f, "x")
 	}
 
-	bundle := bundleAt(t, filepath.Join(home, "Applications", "Gropius.app"), "installed")
+	bundle := bundleAt(t, filepath.Join(home, "Applications", "DessauServer.app"), "installed")
 	binary := filepath.Join(bundle, binaryInBundle)
 	link, err := linkCommand(home, binary)
 	if err != nil {
@@ -174,7 +174,7 @@ func TestUninstallSaysWhenItRemovedTheCopyEveryAccountLaunches(t *testing.T) {
 	// A stand-in for the machine-wide directory, so this test never touches the
 	// real one.
 	apps := filepath.Join(t.TempDir(), "Applications")
-	machineWide := bundleAt(t, filepath.Join(apps, "Gropius.app"), "everybody's")
+	machineWide := bundleAt(t, filepath.Join(apps, "DessauServer.app"), "everybody's")
 	ue.SystemApplications = apps
 	ue.Bundles = []string{machineWide}
 
@@ -207,7 +207,7 @@ func TestSharedCacheUninstallLeavesTheSharedRootAlone(t *testing.T) {
 
 	// The shared layout: models in the shared root, everything of this
 	// account's own in its own directory.
-	shared := filepath.Join(t.TempDir(), "Shared", "Gropius")
+	shared := filepath.Join(t.TempDir(), "Shared", "Dessau")
 	ue.SharedRoot = shared
 	ue.Paths.Models = filepath.Join(shared, "models")
 	ue.Paths.HFCache = filepath.Join(shared, "hf", "hub")
@@ -247,7 +247,7 @@ func TestSharedCacheUninstallLeavesTheSharedRootAlone(t *testing.T) {
 func TestSharedPurgeRemovesOnlyWhatThisAccountOwns(t *testing.T) {
 	env, ue, out, _ := uninstallFixture(t)
 
-	shared := filepath.Join(t.TempDir(), "Shared", "Gropius")
+	shared := filepath.Join(t.TempDir(), "Shared", "Dessau")
 	ue.SharedRoot = shared
 	ue.Paths.Models = filepath.Join(shared, "models")
 	ue.Paths.HFCache = filepath.Join(shared, "hf", "hub")
@@ -279,18 +279,18 @@ func TestSharedPurgeRemovesOnlyWhatThisAccountOwns(t *testing.T) {
 	}
 }
 
-// GROPIUS_ROOT is never a deletion path. A directory any local account can
+// DESSAU_ROOT is never a deletion path. A directory any local account can
 // pre-create as a symlink would otherwise choose what is deleted, so the
 // removal acts on the fixed locations this account's install uses — and says so
 // rather than leaving a reader to expect the variable to be honoured.
-func TestGropiusRootIsNeverADeletionPath(t *testing.T) {
+func TestDessauRootIsNeverADeletionPath(t *testing.T) {
 	decoy := t.TempDir()
 	witness := filepath.Join(decoy, "models", "someone-elses-data")
 	writeFileAt(t, witness, "not ours to delete")
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GROPIUS_ROOT", decoy)
+	t.Setenv("DESSAU_ROOT", decoy)
 
 	// The live resolution is what this case is about — which root uninstall
 	// picks when the environment names another one — so the guard that keeps
@@ -316,9 +316,9 @@ func TestGropiusRootIsNeverADeletionPath(t *testing.T) {
 		t.Fatalf("exit = %d, want %d", code, ExitOK)
 	}
 	if !exists(witness) {
-		t.Fatal("uninstall deleted what GROPIUS_ROOT named")
+		t.Fatal("uninstall deleted what DESSAU_ROOT named")
 	}
-	if !strings.Contains(out.String(), "GROPIUS_ROOT") {
+	if !strings.Contains(out.String(), "DESSAU_ROOT") {
 		t.Errorf("the output does not name the root it did not remove:\n%s", out)
 	}
 }
@@ -375,7 +375,7 @@ func TestTheOwnerReaderReadsTheFilesystem(t *testing.T) {
 func TestThePurgeCannotBeRedirectedByARenamedComponent(t *testing.T) {
 	env, ue, _, _ := uninstallFixture(t)
 
-	shared := filepath.Join(t.TempDir(), "Shared", "Gropius")
+	shared := filepath.Join(t.TempDir(), "Shared", "Dessau")
 	ue.SharedRoot = shared
 	ue.Paths.Models = filepath.Join(shared, "models")
 	ue.Paths.HFCache = filepath.Join(shared, "hf", "hub")

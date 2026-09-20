@@ -8,7 +8,7 @@ import (
 // The live environments — the ones that act on this Mac — refuse to be built
 // inside a test binary.
 //
-// WHY THIS EXISTS. A unit test in cmd/gropius dispatched `install` through the
+// WHY THIS EXISTS. A unit test in cmd/dessau dispatched `install` through the
 // verb runner once phase B wired it, and so ran a real install on the
 // developer's Mac: it asked the running copy to quit and raised the
 // administrator panel twice, hanging the suite (iss-2609111240578491). Nothing
@@ -29,7 +29,7 @@ import (
 // which is the price of a guard that cannot be forgotten.
 //
 // The one test that does want the live resolution — the one proving uninstall
-// never derives a deletion path from GROPIUS_ROOT — opens it deliberately with
+// never derives a deletion path from DESSAU_ROOT — opens it deliberately with
 // allowLiveEnvInTest, which is unexported and says in one line what is being
 // allowed.
 var liveEnvAllowedInTest bool
@@ -60,7 +60,7 @@ func liveEnvGuard(verb string) error {
 	if !testing.Testing() || liveEnvAllowedInTest {
 		return nil
 	}
-	return fmt.Errorf("refusing to build the live environment for `gropius %s` inside a test: it would act on "+
+	return fmt.Errorf("refusing to build the live environment for `dessau %s` inside a test: it would act on "+
 		"this Mac — quit a running copy, raise the authorisation panel, provision a runtime, replace an "+
 		"application. Hand run%s a fake environment instead", verb, verbNoun(verb))
 }

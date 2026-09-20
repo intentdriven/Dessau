@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/gateway"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/gateway"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // status decodes the control plane's snapshot structurally rather than by
@@ -17,7 +17,7 @@ import (
 // see this package and the dependency may not run the other way either. What
 // that costs is a decode bound to nothing: a json tag renamed in the gateway
 // would leave this package reading a field that no longer arrives, the suite
-// green, and `gropius status` reporting no address and no models against a
+// green, and `dessau status` reporting no address and no models against a
 // server that is answering.
 //
 // This is the test that pays that cost back. It is a TEST-ONLY import of the

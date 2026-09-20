@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
-// The endpoint Gropius hands to other machines must use the Bonjour name
+// The endpoint Dessau hands to other machines must use the Bonjour name
 // (LocalHostName), not the BSD hostname. On this machine they differ: the BSD
 // hostname is "Mac" while Bonjour publishes "AlicesMac". "Mac.local" resolves to
 // loopback locally — so the bug is invisible when testing on the same Mac — and
 // fails to resolve from every other machine on the network.
 func TestLocalHostNameMatchesBonjourNotBSDHostname(t *testing.T) {
 	// The same absolute path the code under test uses: an oracle resolved
-	// through PATH could answer from a different binary than the one Gropius
+	// through PATH could answer from a different binary than the one Dessau
 	// asks, and this test would then be comparing two machines' answers.
 	out, err := exec.Command("/usr/sbin/scutil", "--get", "LocalHostName").Output()
 	if err != nil {

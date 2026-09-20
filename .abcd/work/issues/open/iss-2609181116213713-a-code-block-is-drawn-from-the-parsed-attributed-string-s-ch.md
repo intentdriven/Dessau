@@ -8,7 +8,7 @@ source: "agent-finding"
 found_during: "fidelity audits 2026-09-18"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "client/GropiusChat/Markdown.swift"
+found_at: "client/DessauChat/Markdown.swift"
 ---
 
 A code block is drawn from the parsed attributed string's characters rather than from its raw source range as the mechanism promised, so its line breaks surviving is unproven.

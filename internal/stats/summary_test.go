@@ -852,7 +852,7 @@ func TestAFoldThatCannotBeDoneStopsRetentionAndNothingElse(t *testing.T) {
 
 // The fold rewrites the whole summary file, so a line it cannot read is a line
 // it would delete. The format's own promise is the opposite: a reader skips
-// what it does not understand. A newer Gropius's line must survive an older
+// what it does not understand. A newer Dessau's line must survive an older
 // one's fold.
 func TestAFoldCarriesALineThisBuildCannotReadThrough(t *testing.T) {
 	clock := &testClock{}
@@ -884,7 +884,7 @@ func TestAFoldCarriesALineThisBuildCannotReadThrough(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(raw), newer) {
-		t.Errorf("the fold deleted a line a newer Gropius wrote:\n%s", raw)
+		t.Errorf("the fold deleted a line a newer Dessau wrote:\n%s", raw)
 	}
 	if !strings.Contains(string(raw), torn) {
 		t.Errorf("the fold deleted a line it could not parse:\n%s", raw)

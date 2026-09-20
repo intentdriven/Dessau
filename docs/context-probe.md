@@ -1,6 +1,6 @@
 # Measure a model's real context window
 
-Gropius can measure how long a prompt each model on your Mac can actually
+Dessau can measure how long a prompt each model on your Mac can actually
 take, rather than believing the window its configuration declares. It sends
 prompts of growing length through its own OpenAI endpoint, the way a client
 does, bisects between the last one that came back and the first that did
@@ -43,7 +43,7 @@ Read this before switching it on. A measurement is not free:
 
 From then on, whenever the Mac has been idle for the idle threshold (five
 minutes unless you change it, in the same section) and nothing is
-downloading, Gropius measures the first model that has no current
+downloading, Dessau measures the first model that has no current
 measurement, one model at a time. A model you download later is measured
 the next time the Mac is idle. In `config.json` the switch is
 `"context_probe": true` and the threshold `"idle_threshold_sec"`.
@@ -60,7 +60,7 @@ declared and the served ones, with what stopped the step above it:
 - **the model** — the server refused or crashed above this size. The figure
   is the model's own limit on this Mac.
 - **the prefill deadline**, **the served window**, or **the memory guard** —
-  Gropius's own limit stopped the probe first. The figure is a verified
+  Dessau's own limit stopped the probe first. The figure is a verified
   floor: the model takes at least this much, and its own limit is not known.
   On the 2026-09-06 evidence that is the common case.
 
@@ -92,7 +92,7 @@ least that large, and still stands. Setting it to any other figure does.
 
 ## Stop it
 
-Clear the box and save, or quit Gropius. A run in progress stops at once,
+Clear the box and save, or quit Dessau. A run in progress stops at once,
 writes no figure, leaves the model unloaded, and the card says the probe was
 incomplete. It is not retried on its own; press **Measure now** to run it
 again.

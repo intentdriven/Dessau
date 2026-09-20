@@ -114,13 +114,13 @@ func macOSBranchLines(src string) []bool {
 }
 
 // serverMacSentences are the literals that mean the Mac at the other end of
-// the network -- the machine running the Gropius server, which is a Mac
+// the network -- the machine running the Dessau server, which is a Mac
 // whichever device the client is on. They are the one kind of sentence that
 // may spell "Mac" out, so they are named here one by one rather than matched
 // by a pattern: a new sentence about the device the person is holding must
 // fail this guard rather than slip past a loose rule.
 var serverMacSentences = map[string]bool{
-	"A Gropius server's address: the Mac's .local name or LAN address, port 11535. " +
+	"A Dessau server's address: the Mac's .local name or LAN address, port 11535. " +
 		"Servers on your network are offered in the model picker without typing anything.": true,
 }
 
@@ -136,14 +136,14 @@ var serverMacSentences = map[string]bool{
 func TestChatClientNamesTheDeviceThePersonIsHolding(t *testing.T) {
 	root := repoRootDir(t)
 
-	backends := readRepoFile(t, root, filepath.Join("client", "GropiusChat", "Backends.swift"))
+	backends := readRepoFile(t, root, filepath.Join("client", "DessauChat", "Backends.swift"))
 	if !strings.Contains(backends, `static let deviceNoun = "Mac"`) {
-		t.Fatal("client/GropiusChat/Backends.swift declares no deviceNoun = \"Mac\"; " +
+		t.Fatal("client/DessauChat/Backends.swift declares no deviceNoun = \"Mac\"; " +
 			"the one place the device is named has moved and this guard reads the wrong file")
 	}
 
-	for _, name := range []string{"Backends.swift", "GropiusChat.swift"} {
-		rel := filepath.Join("client", "GropiusChat", name)
+	for _, name := range []string{"Backends.swift", "DessauChat.swift"} {
+		rel := filepath.Join("client", "DessauChat", name)
 		src := readRepoFile(t, root, rel)
 		macOS := macOSBranchLines(src)
 		for _, lit := range swiftStringLiterals(src) {

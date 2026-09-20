@@ -8,17 +8,17 @@ import (
 	"testing"
 )
 
-// The UI toolkit (systray/AppKit, via cgo) must stay confined to cmd/gropius.
+// The UI toolkit (systray/AppKit, via cgo) must stay confined to cmd/dessau.
 // If it leaks into internal/, the business logic can no longer be tested without
 // a display server, and the daemon can no longer run headless under launchd.
 func TestNoGUIToolkitInInternalPackages(t *testing.T) {
 	// Enumerate the internal packages with a wildcard so a new package is
 	// covered the day it appears. Rooting the scan on every internal package
 	// matters: one imported only from test files (internal/mlxtest) or only by
-	// cmd/gropius (internal/ui) is in no other internal package's dependency
+	// cmd/dessau (internal/ui) is in no other internal package's dependency
 	// closure and would escape a scan rooted anywhere narrower.
 	out, err := exec.Command("go", "list",
-		"github.com/intentdriven/Gropius/internal/...",
+		"github.com/intentdriven/Dessau/internal/...",
 	).CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)
@@ -34,7 +34,7 @@ func TestNoGUIToolkitInInternalPackages(t *testing.T) {
 	}
 	for _, dep := range strings.Fields(string(out)) {
 		if strings.Contains(dep, "fyne.io/systray") {
-			t.Errorf("an internal package imports %s — the GUI toolkit must stay in cmd/gropius, "+
+			t.Errorf("an internal package imports %s — the GUI toolkit must stay in cmd/dessau, "+
 				"or internal packages can no longer run headless or be tested without a display", dep)
 		}
 	}
@@ -76,9 +76,9 @@ func TestNoAbsolutePathsHookCatchesPathsOnAnExemptedLine(t *testing.T) {
 		content   string
 		wantFlags bool
 	}{
-		{"shared_only.md", "The shared cache lives at /Users/Shared/Gropius.\n", false},
-		{"private_only.md", "Alice's install is at /Users/alice/Library/Application Support/Gropius.\n", true},
-		{"mixed.md", "Compare /Users/Shared/Gropius with a per-user install at /Users/bob/Library/Application Support/Gropius.\n", true},
+		{"shared_only.md", "The shared cache lives at /Users/Shared/Dessau.\n", false},
+		{"private_only.md", "Alice's install is at /Users/alice/Library/Application Support/Dessau.\n", true},
+		{"mixed.md", "Compare /Users/Shared/Dessau with a per-user install at /Users/bob/Library/Application Support/Dessau.\n", true},
 	}
 
 	for _, c := range cases {

@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/app"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/app"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // historyPath is the endpoint under a range given in whole UTC seconds, which
@@ -168,7 +168,7 @@ func TestTheHistoryEndpointIsRefusedFromAnywhereButThisMac(t *testing.T) {
 		origin string
 	}{
 		{"from the LAN", "192.0.2.44:5555", "127.0.0.1:11535", ""},
-		{"a rebound host", "127.0.0.1:5555", "gropius.example:11535", ""},
+		{"a rebound host", "127.0.0.1:5555", "dessau.example:11535", ""},
 		{"a foreign origin", "127.0.0.1:5555", "127.0.0.1:11535", "https://example.invalid"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

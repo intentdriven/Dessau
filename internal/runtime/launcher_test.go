@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Distinct repo ids must map to distinct log files. ValidRepoID admits

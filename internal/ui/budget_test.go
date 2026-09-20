@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/app"
+	"github.com/intentdriven/Dessau/internal/app"
 )
 
 // inputWithID returns the whole <input> tag with the given id, so a test can

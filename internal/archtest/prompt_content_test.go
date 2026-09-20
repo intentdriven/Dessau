@@ -11,7 +11,7 @@ import (
 // promptContentReaders are the files allowed to name the fields of a chat
 // message, each with the reason it is allowed to.
 //
-// Gropius reads the content of a request's messages in exactly one place, for
+// Dessau reads the content of a request's messages in exactly one place, for
 // exactly one purpose, and only for a model the operator switched merging on
 // for: adr-2609061610102325 grants that and nothing else. The grant is only
 // worth as much as the boundary around it, and a boundary made of prose erodes
@@ -94,7 +94,7 @@ type contentBoundary struct {
 	list    string
 }
 
-// Merging is the only rewrite of prompt content Gropius performs, and the only
+// Merging is the only rewrite of prompt content Dessau performs, and the only
 // reading of it. This walks every Go source file that ships (test files
 // excluded — a test may compose whatever conversation it needs) and fails on
 // any file outside the list above that names a chat message's fields.

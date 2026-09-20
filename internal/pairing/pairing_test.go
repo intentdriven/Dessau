@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/pairing"
+	"github.com/intentdriven/Dessau/internal/pairing"
 )
 
 // The server's KEY is what a client pins, so it has to outlive a restart. The

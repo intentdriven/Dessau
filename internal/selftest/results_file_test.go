@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The results file is written by the same primitive as Gropius's own log and
+// The results file is written by the same primitive as Dessau's own log and
 // its statistics store (internal/applog), so it refuses what they refuse. A
 // link under the file's name is the older half of that and was already held;
 // a file this account's own writers could not have created is the half the

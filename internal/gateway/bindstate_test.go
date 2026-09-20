@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/app"
+	"github.com/intentdriven/Dessau/internal/app"
 
-	"github.com/intentdriven/Gropius/internal/bind"
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/bind"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The amendment's second condition: the choice is always shown
@@ -79,7 +79,7 @@ func TestTheCandidatesAreReadLiveAndUnderEveryMode(t *testing.T) {
 // The keyless-exposure warning is about who can reach this server, so it goes
 // quiet when the answer is nobody off this Mac — including under a mode that
 // asked for more and found nothing to bind. It softens on the sockets this
-// process holds, which is state Gropius owns; it never softens on the presence
+// process holds, which is state Dessau owns; it never softens on the presence
 // of a private network, which is state it does not (adr-2609081118587999 rules
 // 2 and 4).
 func TestTheKeylessWarningIsAboutWhatWasActuallyBound(t *testing.T) {

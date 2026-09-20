@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/applog"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/applog"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
-// Gropius writes three bounded line files on this Mac — its own log, the
+// Dessau writes three bounded line files on this Mac — its own log, the
 // request statistics store and the self-test's results — and every one of them
 // is opened under one discipline: through an os.Root on its own directory,
 // never following a link, never waiting on a pipe, and refusing a handle that

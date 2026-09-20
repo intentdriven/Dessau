@@ -130,7 +130,7 @@ func TestTheReleaseGateRunsTheTaggedTreesInstallerBeforeItPublishes(t *testing.T
 	}
 
 	for _, after := range []struct{ what, marker string }{
-		{"the artefacts are packaged", "shasum -a 256 Gropius.app.zip"},
+		{"the artefacts are packaged", "shasum -a 256 DessauServer.app.zip"},
 	} {
 		i := strings.Index(job, after.marker)
 		if i < 0 {
@@ -161,7 +161,7 @@ func TestTheReleaseGateRunsTheTaggedTreesInstallerBeforeItPublishes(t *testing.T
 	// with the right name whose body merely mentions the expected text —
 	//
 	//	- name: Gate the release on the tagged tree's own installer
-	//	  run: echo './install.sh GROPIUS_ASSET_DIR dist/Gropius.app/…'
+	//	  run: echo './install.sh DESSAU_ASSET_DIR dist/DessauServer.app/…'
 	//
 	// — which was reproduced against the substring version of this guard and
 	// left it green while the gate installed nothing. An anchored line is the
@@ -219,7 +219,7 @@ func TestTheReleaseGateRunsTheTaggedTreesInstallerBeforeItPublishes(t *testing.T
 	// Release — of which there is none yet, which is the point of gating here.
 	lastInvocation := -1
 	for _, run := range []struct{ pattern, why string }{
-		{`(?m)^export GROPIUS_ASSET_DIR="\$PWD"[ \t]*$`,
+		{`(?m)^export DESSAU_ASSET_DIR="\$PWD"[ \t]*$`,
 			"the gate does not point install.sh at the artefacts it built; it would install the PREVIOUS release and pass while the tagged one is broken"},
 		{`(?m)^bash -s -- < \./install\.sh[ \t]*$`,
 			"the gate never runs the checked-out install.sh in its documented server form"},
@@ -263,8 +263,8 @@ func TestTheReleaseGateRunsTheTaggedTreesInstallerBeforeItPublishes(t *testing.T
 	// green having never touched the tagged artefacts, which is this gate's own
 	// failure mode one level up.
 	for _, bind := range []struct{ pattern, why string }{
-		{`(?m)^[ \t]*built="dist/Gropius\.app/Contents/MacOS/gropius"[ \t]*$`, "the built server executable"},
-		{`(?m)^[ \t]*built="client/dist/GropiusChat\.app/Contents/MacOS/GropiusChat"[ \t]*$`, "the built client executable"},
+		{`(?m)^[ \t]*built="dist/Dessau\.app/Contents/MacOS/dessau"[ \t]*$`, "the built server executable"},
+		{`(?m)^[ \t]*built="client/dist/DessauChat\.app/Contents/MacOS/DessauChat"[ \t]*$`, "the built client executable"},
 	} {
 		if !regexp.MustCompile(bind.pattern).MatchString(live) {
 			t.Errorf("the installer gate never binds what it installed to %s (no line matching %s); "+
@@ -272,12 +272,12 @@ func TestTheReleaseGateRunsTheTaggedTreesInstallerBeforeItPublishes(t *testing.T
 		}
 	}
 
-	// The two halves must not drift apart: a gate that sets GROPIUS_ASSET_DIR
+	// The two halves must not drift apart: a gate that sets DESSAU_ASSET_DIR
 	// against a script that ignores it would install the previous release and
 	// pass.
 	installer := readRepoFile(t, root, "install.sh")
-	if !strings.Contains(installer, "GROPIUS_ASSET_DIR") {
-		t.Error("install.sh reads no GROPIUS_ASSET_DIR; the release gate's assets would be ignored and the " +
+	if !strings.Contains(installer, "DESSAU_ASSET_DIR") {
+		t.Error("install.sh reads no DESSAU_ASSET_DIR; the release gate's assets would be ignored and the " +
 			"PREVIOUS release installed instead")
 	}
 	// install.sh honours that seam only under GITHUB_ACTIONS, so the gate must
@@ -285,7 +285,7 @@ func TestTheReleaseGateRunsTheTaggedTreesInstallerBeforeItPublishes(t *testing.T
 	// into a container or a local rehearsal would silently stop installing from
 	// the workspace and start installing the previous release.
 	if !strings.Contains(installer, "GITHUB_ACTIONS") {
-		t.Error("install.sh no longer restricts GROPIUS_ASSET_DIR to CI; the seam voids the script's only " +
+		t.Error("install.sh no longer restricts DESSAU_ASSET_DIR to CI; the seam voids the script's only " +
 			"integrity control wherever it is honoured")
 	}
 }
@@ -415,8 +415,8 @@ func TestNoJobOutsideTheReleaseJobPublishes(t *testing.T) {
 // TestTheGateBindsTheBytesItExercisedToTheBytesPublished closes the gap between
 // "the gate ran first" and "the gate ran on THESE bytes".
 //
-// The gate validates dist/Gropius.app/Contents/MacOS/gropius; the publish step
-// uploads Gropius.app.zip. Nothing in the ordering assertions stops a
+// The gate validates dist/DessauServer.app/Contents/MacOS/dessau; the publish step
+// uploads DessauServer.app.zip. Nothing in the ordering assertions stops a
 // "Re-package after the gate" step inserted between the two: the gate passes,
 // the artefacts are rebuilt, and the Release ships bytes the gate never saw.
 // Reproduced.
@@ -442,7 +442,7 @@ func TestTheGateBindsTheBytesItExercisedToTheBytesPublished(t *testing.T) {
 	gateStep, gate := workflowStep(t, job, gateStepName)
 	pubStep, publish := workflowStep(t, job, publishStepName)
 
-	const digests = `shasum -a 256 Gropius.app.zip GropiusChat.app.zip SHA256SUMS.txt | tee "$RUNNER_TEMP/gate-verified-assets.txt"`
+	const digests = `shasum -a 256 DessauServer.app.zip DessauChat.app.zip SHA256SUMS.txt | tee "$RUNNER_TEMP/gate-verified-assets.txt"`
 	const verify = `shasum -a 256 -c "$RUNNER_TEMP/gate-verified-assets.txt"`
 
 	gateBody := normalisedShellLines(stripHeredocs(stepRunBody(t, gateStep, gateStepName)))
@@ -506,7 +506,7 @@ func TestTheInstallerInstallsFromTheAssetDirectoryAndNotTheNetwork(t *testing.T)
 	}
 
 	if _, err := os.Stat(fx.reached); err == nil {
-		t.Errorf("install.sh reached for the network although GROPIUS_ASSET_DIR named the assets:\n%s", out)
+		t.Errorf("install.sh reached for the network although DESSAU_ASSET_DIR named the assets:\n%s", out)
 	}
 	for _, want := range []struct{ reached, marker string }{
 		// Honouring the seam is announced, and announced as what it is: the
@@ -522,9 +522,9 @@ func TestTheInstallerInstallsFromTheAssetDirectoryAndNotTheNetwork(t *testing.T)
 		// The line v0.3.0 died on, executed. An installer that stops here
 		// stops before it has copied anything, which is what made the break
 		// invisible to everything except a real run.
-		{"chose a destination and said so", "Installing GropiusChat.app to "},
+		{"chose a destination and said so", "Installing DessauChat.app to "},
 		// And it read the asset directory's zip rather than a downloaded one.
-		{"unpacked the asset from the directory", "did not contain GropiusChat.app"},
+		{"unpacked the asset from the directory", "did not contain DessauChat.app"},
 	} {
 		if !strings.Contains(out, want.marker) {
 			t.Errorf("install.sh never %s (no %q in its output):\n%s", want.reached, want.marker, out)
@@ -535,7 +535,7 @@ func TestTheInstallerInstallsFromTheAssetDirectoryAndNotTheNetwork(t *testing.T)
 // TestTheInstallerRefusesTheAssetDirectorySeamOutsideCI is the seam's own
 // boundary.
 //
-// GROPIUS_ASSET_DIR makes `fetch` serve the bundle AND the SHA256SUMS.txt the
+// DESSAU_ASSET_DIR makes `fetch` serve the bundle AND the SHA256SUMS.txt the
 // bundle is checked against out of one caller-named directory, so the
 // verification compares bytes with their own digest: an attacker-authored zip
 // with a matching checksums file installs, has its quarantine cleared, gets a
@@ -543,7 +543,7 @@ func TestTheInstallerInstallsFromTheAssetDirectoryAndNotTheNetwork(t *testing.T)
 // output to distinguish it from a genuine download. That is the whole of this
 // script's integrity control, substituted by two environment variables.
 //
-// TWO, and both are ordinary environment variables: GROPIUS_ASSET_DIR names the
+// TWO, and both are ordinary environment variables: DESSAU_ASSET_DIR names the
 // directory, and GITHUB_ACTIONS=true is what makes the script honour it. A
 // caller who can set one can set the other — install.sh:107 says so in as many
 // words — and TestTheInstallerInstallsFromTheAssetDirectoryAndNotTheNetwork,
@@ -560,10 +560,10 @@ func TestTheInstallerRefusesTheAssetDirectorySeamOutsideCI(t *testing.T) {
 	// Exactly the run above, minus GITHUB_ACTIONS.
 	out, err := fx.run(t)
 	if err == nil {
-		t.Fatalf("install.sh honoured GROPIUS_ASSET_DIR outside CI:\n%s", out)
+		t.Fatalf("install.sh honoured DESSAU_ASSET_DIR outside CI:\n%s", out)
 	}
-	if !strings.Contains(out, "GROPIUS_ASSET_DIR") || !strings.Contains(out, "CI-only") {
-		t.Errorf("install.sh failed outside CI without naming GROPIUS_ASSET_DIR as a CI-only seam, so a user "+
+	if !strings.Contains(out, "DESSAU_ASSET_DIR") || !strings.Contains(out, "CI-only") {
+		t.Errorf("install.sh failed outside CI without naming DESSAU_ASSET_DIR as a CI-only seam, so a user "+
 			"cannot tell what refused them:\n%s", out)
 	}
 	// It must refuse BEFORE it uses the directory: reaching the verification at
@@ -594,13 +594,13 @@ func TestTheInstallerRefusesTheAssetDirectorySeamOutsideCI(t *testing.T) {
 // archive's OWN line before shasum sees it, --ignore-missing goes with the
 // narrowing, a line naming a PATH is refused rather than matched, and the pass
 // is read line by line rather than as a substring — because
-// "/somewhere/GropiusChat.app.zip: OK" ends in the same characters as the line
+// "/somewhere/DessauChat.app.zip: OK" ends in the same characters as the line
 // this script is looking for.
 //
 // Narrowing the input is not making the verdict: the digest is still computed
 // and compared by /usr/bin/shasum, against a real archive, in every case below.
 func TestTheInstallerVerifiesTheArchiveItDownloadedIsInTheChecksums(t *testing.T) {
-	const archive = "GropiusChat.app.zip"
+	const archive = "DessauChat.app.zip"
 
 	// THE REPRODUCTION, as the capture recorded it: a checksums file naming one
 	// readable file that is not the download. /dev/null is readable from every
@@ -621,7 +621,7 @@ func TestTheInstallerVerifiesTheArchiveItDownloadedIsInTheChecksums(t *testing.T
 	// a checksums file that is intact and answers about something else.
 	t.Run("names only the other bundle", func(t *testing.T) {
 		fx := installerFixture(t)
-		fx.writeChecksums(t, digestOf(t, fx.dir, "/dev/null")+"  Gropius.app.zip\n")
+		fx.writeChecksums(t, digestOf(t, fx.dir, "/dev/null")+"  DessauServer.app.zip\n")
 
 		out, err := fx.run(t, "GITHUB_ACTIONS=true")
 		fx.assertRefusedUnverified(t, out, err, archive)
@@ -755,7 +755,7 @@ func installerFixture(t *testing.T) *fixture {
 		t.Skip("install.sh refuses anything but macOS, and it needs ditto and shasum")
 	}
 	if runtime.GOARCH != "arm64" {
-		// The client half needs it too now: the bundle is placed by a Gropius
+		// The client half needs it too now: the bundle is placed by a Dessau
 		// binary, which is an Apple Silicon build, and the script turns an
 		// Intel Mac away before it reaches the asset directory.
 		t.Skip("install.sh refuses either app on anything but Apple Silicon")
@@ -777,7 +777,7 @@ func installerFixture(t *testing.T) *fixture {
 		// ci.yml's check job AND on release.yml's verify job, with a message
 		// about runner provisioning rather than about the plist that was
 		// edited. The alternative is to key it on a variable the workflows
-		// set (GROPIUS_INSTALLER_GATE_REQUIRED=1), which decouples "this
+		// set (DESSAU_INSTALLER_GATE_REQUIRED=1), which decouples "this
 		// repository's CI" from "any GitHub Actions runner"; it is not done
 		// here because a variable a workflow sets is a variable a workflow
 		// edit can unset, and the failure this guard prevents is exactly a
@@ -803,8 +803,8 @@ func installerFixture(t *testing.T) *fixture {
 	if err := os.WriteFile(filepath.Join(staging, "placeholder"), []byte("not a bundle\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", staging, filepath.Join(fx.assets, "GropiusChat.app.zip"))
-	sums := runIn(t, fx.assets, "shasum", "-a", "256", "GropiusChat.app.zip")
+	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", staging, filepath.Join(fx.assets, "DessauChat.app.zip"))
+	sums := runIn(t, fx.assets, "shasum", "-a", "256", "DessauChat.app.zip")
 	if err := os.WriteFile(filepath.Join(fx.assets, "SHA256SUMS.txt"), []byte(sums), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -826,7 +826,7 @@ func installerFixture(t *testing.T) *fixture {
 	// construction (the run dies at "did not contain", before `staged=` is
 	// ever evaluated), and this is the tripwire under that reasoning.
 	//
-	// Names alone would not be a tripwire. On a Mac that ALREADY has Gropius
+	// Names alone would not be a tripwire. On a Mac that ALREADY has Dessau
 	// installed — every maintainer's — a fixture edit that supplied a real
 	// bundle would OVERWRITE the existing one and leave the name list
 	// identical, and this test would pass having clobbered the developer's
@@ -844,10 +844,10 @@ func (fx *fixture) run(t *testing.T, extra ...string) (string, error) {
 	root := repoRootDir(t)
 	cmd := exec.Command("bash", filepath.Join(root, "install.sh"), "client")
 	cmd.Dir = fx.dir
-	env := append(envWithout(os.Environ(), "PATH", "HOME", "GROPIUS_ASSET_DIR", "GITHUB_ACTIONS"),
+	env := append(envWithout(os.Environ(), "PATH", "HOME", "DESSAU_ASSET_DIR", "GITHUB_ACTIONS"),
 		"PATH="+fx.stubs+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"HOME="+fx.home,
-		"GROPIUS_ASSET_DIR="+fx.assets,
+		"DESSAU_ASSET_DIR="+fx.assets,
 	)
 	cmd.Env = append(env, extra...)
 	out, err := cmd.CombinedOutput()
@@ -875,7 +875,7 @@ func applicationsListing(t *testing.T) []string {
 		}
 		sort.Strings(names)
 	}
-	for _, bundle := range []string{"Gropius.app", "GropiusChat.app"} {
+	for _, bundle := range []string{"DessauServer.app", "DessauChat.app"} {
 		names = append(names, bundle+" = "+bundleFingerprint(filepath.Join("/Applications", bundle)))
 	}
 	return names

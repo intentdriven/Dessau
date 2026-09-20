@@ -1,4 +1,4 @@
-// Package discovery advertises the Gropius server over Bonjour/mDNS so other
+// Package discovery advertises the Dessau server over Bonjour/mDNS so other
 // machines on the network can find it without being told an IP address.
 package discovery
 
@@ -13,14 +13,14 @@ import (
 
 	"github.com/brutella/dnssd"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
-// ServiceType is Gropius' own mDNS service type.
+// ServiceType is Dessau' own mDNS service type.
 //
 // A dedicated type rather than _http._tcp: clients looking for an inference
 // endpoint should not have to sift through every web server on the network.
-const ServiceType = "_gropius._tcp"
+const ServiceType = "_dessau._tcp"
 
 // maxDNSLabel is the RFC 1035 ceiling for a single DNS label, in octets. Both
 // the host label and the service instance name must respect it: dnssd performs
@@ -47,13 +47,13 @@ func truncateLabel(s string, max int) string {
 	return strings.TrimRight(s, "-")
 }
 
-// serviceHost derives the name Gropius publishes its own address records under.
+// serviceHost derives the name Dessau publishes its own address records under.
 //
 // It is deliberately NOT the machine's LocalHostName. See the comment on
 // dnssd.Config.Host below: claiming the machine's name makes macOS rename the
-// machine. "gropius-alicesmac.local" collides with nothing.
+// machine. "dessau-alicesmac.local" collides with nothing.
 func serviceHost(localHostName string) string {
-	const prefix = "gropius-"
+	const prefix = "dessau-"
 	safe := strings.Map(func(r rune) rune {
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
@@ -74,8 +74,8 @@ func serviceHost(localHostName string) string {
 // is a single DNS label just like the host label, so the hostname it embeds is
 // capped to keep the whole name legal.
 func serviceName(host string) string {
-	const wrap = len("Gropius ()")
-	return "Gropius (" + truncateLabel(host, maxDNSLabel-wrap-labelHeadroom) + ")"
+	const wrap = len("Dessau ()")
+	return "Dessau (" + truncateLabel(host, maxDNSLabel-wrap-labelHeadroom) + ")"
 }
 
 // Advertiser publishes the service on the local network.
@@ -175,7 +175,7 @@ func (a *Advertiser) Start(ctx context.Context) error {
 
 	host := config.LocalHostName()
 	if host == "" {
-		host = "gropius"
+		host = "dessau"
 	}
 
 	cfg := dnssd.Config{

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/capability"
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/capability"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // evalPanelValue evaluates one expression against the named functions lifted
@@ -495,9 +495,9 @@ func TestThePanelSaysWhenTheSavedConcurrencyIsNotInForce(t *testing.T) {
 	}{
 		{"the saved figure is in force", `{"decode_concurrency":4}`, `{"decode_concurrency":4}`, ""},
 		{"a saved figure the pool has not picked up", `{"decode_concurrency":4}`, `{"decode_concurrency":8}`,
-			"Gropius is batching 4 requests at a time. The saved figure of 8 takes effect at the next start, and the memory a pinned model is charged below is worked out from the 4 in force."},
+			"Dessau is batching 4 requests at a time. The saved figure of 8 takes effect at the next start, and the memory a pinned model is charged below is worked out from the 4 in force."},
 		{"one request at a time in force", `{"decode_concurrency":1}`, `{"decode_concurrency":2}`,
-			"Gropius is batching 1 request at a time. The saved figure of 2 takes effect at the next start, and the memory a pinned model is charged below is worked out from the 1 in force."},
+			"Dessau is batching 1 request at a time. The saved figure of 2 takes effect at the next start, and the memory a pinned model is charged below is worked out from the 1 in force."},
 		{"nothing known", `{}`, `{}`, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

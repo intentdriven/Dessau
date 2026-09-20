@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // keyedConfig is an install with an API key set, which is the condition the
@@ -54,11 +54,11 @@ func TestAWarmCompletionSaysItDidNotWait(t *testing.T) {
 	resp := postRaw(t, srv, `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`)
 	defer resp.Body.Close()
 
-	if got := resp.Header.Get("X-Gropius-State"); got != "warm" {
-		t.Errorf("X-Gropius-State = %q, want warm", got)
+	if got := resp.Header.Get("X-Dessau-State"); got != "warm" {
+		t.Errorf("X-Dessau-State = %q, want warm", got)
 	}
-	if got := resp.Header.Get("X-Gropius-Queue-Time"); got != "0" {
-		t.Errorf("X-Gropius-Queue-Time = %q, want 0", got)
+	if got := resp.Header.Get("X-Dessau-Queue-Time"); got != "0" {
+		t.Errorf("X-Dessau-Queue-Time = %q, want 0", got)
 	}
 }
 
@@ -75,11 +75,11 @@ func TestAStreamedCompletionReportsTheWaitItPaid(t *testing.T) {
 	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/event-stream") {
 		t.Fatalf("Content-Type = %q, want a streamed answer", got)
 	}
-	if got := resp.Header.Get("X-Gropius-State"); got != "waited" {
-		t.Errorf("X-Gropius-State = %q, want waited", got)
+	if got := resp.Header.Get("X-Dessau-State"); got != "waited" {
+		t.Errorf("X-Dessau-State = %q, want waited", got)
 	}
-	if got := resp.Header.Get("X-Gropius-Queue-Time"); got != "1500" {
-		t.Errorf("X-Gropius-Queue-Time = %q, want 1500", got)
+	if got := resp.Header.Get("X-Dessau-Queue-Time"); got != "1500" {
+		t.Errorf("X-Dessau-Queue-Time = %q, want 1500", got)
 	}
 	// And the headers arrived with the status line, before any event: reading
 	// one proves the response was already committed.
@@ -99,11 +99,11 @@ func TestALoadWaitIsReportedAsAWait(t *testing.T) {
 	resp := postRaw(t, srv, `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`)
 	defer resp.Body.Close()
 
-	if got := resp.Header.Get("X-Gropius-State"); got != "waited" {
-		t.Errorf("X-Gropius-State = %q, want waited", got)
+	if got := resp.Header.Get("X-Dessau-State"); got != "waited" {
+		t.Errorf("X-Dessau-State = %q, want waited", got)
 	}
-	if got := resp.Header.Get("X-Gropius-Queue-Time"); got != "4000" {
-		t.Errorf("X-Gropius-Queue-Time = %q, want 4000", got)
+	if got := resp.Header.Get("X-Dessau-Queue-Time"); got != "4000" {
+		t.Errorf("X-Dessau-Queue-Time = %q, want 4000", got)
 	}
 }
 
@@ -122,11 +122,11 @@ func TestARefusalAfterAWaitCarriesTheWaitHeaders(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", resp.StatusCode)
 	}
-	if got := resp.Header.Get("X-Gropius-State"); got != "waited" {
-		t.Errorf("X-Gropius-State = %q, want waited", got)
+	if got := resp.Header.Get("X-Dessau-State"); got != "waited" {
+		t.Errorf("X-Dessau-State = %q, want waited", got)
 	}
-	if got := resp.Header.Get("X-Gropius-Queue-Time"); got != "300000" {
-		t.Errorf("X-Gropius-Queue-Time = %q, want 300000", got)
+	if got := resp.Header.Get("X-Dessau-Queue-Time"); got != "300000" {
+		t.Errorf("X-Dessau-Queue-Time = %q, want 300000", got)
 	}
 	if !errors.Is(pool.acquireErr, runtime.ErrBusy) {
 		t.Error("the no-room refusal no longer wraps ErrBusy")
@@ -140,7 +140,7 @@ func TestTheResponseHeaderReferenceDescribesEveryHeaderServed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the response-header reference is missing: %v", err)
 	}
-	for _, header := range []string{"X-Gropius-State", "X-Gropius-Queue-Time"} {
+	for _, header := range []string{"X-Dessau-State", "X-Dessau-Queue-Time"} {
 		if !strings.Contains(string(page), header) {
 			t.Errorf("the gateway serves %s, which the reference page does not describe", header)
 		}
@@ -152,23 +152,23 @@ func TestTheResponseHeaderReferenceDescribesEveryHeaderServed(t *testing.T) {
 	}
 }
 
-// The two headers are Gropius's own statement about this request. A model
+// The two headers are Dessau's own statement about this request. A model
 // server that happens to emit either name must not add a second value beside
 // it: copyResponseHeaders merges rather than replaces, so a client reading the
 // first value it finds could be handed the model server's.
 func TestAModelServerCannotAddASecondValueToTheWaitHeaders(t *testing.T) {
 	upstream := http.Header{
-		"X-Gropius-State":      []string{"whatever the model server says"},
-		"X-Gropius-Queue-Time": []string{"999999"},
-		"Content-Type":         []string{"application/json"},
+		"X-Dessau-State":      []string{"whatever the model server says"},
+		"X-Dessau-Queue-Time": []string{"999999"},
+		"Content-Type":        []string{"application/json"},
 	}
 	out := http.Header{}
 	setWaitHeaders(out, true, 1500*time.Millisecond)
 	copyResponseHeaders(out, upstream)
 
 	for header, want := range map[string]string{
-		"X-Gropius-State":      "waited",
-		"X-Gropius-Queue-Time": "1500",
+		"X-Dessau-State":      "waited",
+		"X-Dessau-Queue-Time": "1500",
 	} {
 		if got := out.Values(header); len(got) != 1 || got[0] != want {
 			t.Errorf("%s = %v, want exactly [%q]", header, got, want)
@@ -253,16 +253,16 @@ func TestARequestThatReallyWaitedSaysSoOnTheWire(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d, body %s", resp.StatusCode, body)
 	}
-	if got := resp.Header.Get("X-Gropius-State"); got != "waited" {
-		t.Errorf("X-Gropius-State = %q, want waited: the request queued for room", got)
+	if got := resp.Header.Get("X-Dessau-State"); got != "waited" {
+		t.Errorf("X-Dessau-State = %q, want waited: the request queued for room", got)
 	}
-	ms, err := strconv.ParseInt(resp.Header.Get("X-Gropius-Queue-Time"), 10, 64)
+	ms, err := strconv.ParseInt(resp.Header.Get("X-Dessau-Queue-Time"), 10, 64)
 	if err != nil {
-		t.Fatalf("X-Gropius-Queue-Time = %q, which is not a number: %v",
-			resp.Header.Get("X-Gropius-Queue-Time"), err)
+		t.Fatalf("X-Dessau-Queue-Time = %q, which is not a number: %v",
+			resp.Header.Get("X-Dessau-Queue-Time"), err)
 	}
 	if want := (grace / 2).Milliseconds(); ms < want {
-		t.Errorf("X-Gropius-Queue-Time = %d ms, want at least %d — it waited out a grace", ms, want)
+		t.Errorf("X-Dessau-Queue-Time = %d ms, want at least %d — it waited out a grace", ms, want)
 	}
 }
 
@@ -281,7 +281,7 @@ func TestTheWaitHeadersFollowTheResidencyRule(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d, want 200", resp.StatusCode)
 		}
-		for _, header := range []string{"X-Gropius-State", "X-Gropius-Queue-Time"} {
+		for _, header := range []string{"X-Dessau-State", "X-Dessau-Queue-Time"} {
 			if got := resp.Header.Get(header); got != "" {
 				t.Errorf("an unkeyed install answered a network client with %s: %q — "+
 					"the models list withholds the same fact", header, got)
@@ -298,11 +298,11 @@ func TestTheWaitHeadersFollowTheResidencyRule(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d, want 200", resp.StatusCode)
 		}
-		if got := resp.Header.Get("X-Gropius-State"); got != "warm" {
-			t.Errorf("X-Gropius-State = %q on a keyed install, want warm", got)
+		if got := resp.Header.Get("X-Dessau-State"); got != "warm" {
+			t.Errorf("X-Dessau-State = %q on a keyed install, want warm", got)
 		}
-		if got := resp.Header.Get("X-Gropius-Queue-Time"); got != "0" {
-			t.Errorf("X-Gropius-Queue-Time = %q on a keyed install, want 0", got)
+		if got := resp.Header.Get("X-Dessau-Queue-Time"); got != "0" {
+			t.Errorf("X-Dessau-Queue-Time = %q on a keyed install, want 0", got)
 		}
 	})
 
@@ -315,7 +315,7 @@ func TestTheWaitHeadersFollowTheResidencyRule(t *testing.T) {
 		if resp.StatusCode != http.StatusServiceUnavailable {
 			t.Fatalf("status = %d, want 503", resp.StatusCode)
 		}
-		if got := resp.Header.Get("X-Gropius-Queue-Time"); got != "" {
+		if got := resp.Header.Get("X-Dessau-Queue-Time"); got != "" {
 			t.Errorf("an unkeyed install told a network client it waited %q ms", got)
 		}
 	})

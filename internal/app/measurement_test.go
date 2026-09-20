@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The launch flags reach the load event by name, only the ones set: the

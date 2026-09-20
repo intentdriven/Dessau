@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/app"
-	"github.com/intentdriven/Gropius/internal/bind"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/registry"
+	"github.com/intentdriven/Dessau/internal/app"
+	"github.com/intentdriven/Dessau/internal/bind"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 func newTestControl(t *testing.T, cfg config.Config) *httptest.Server {
@@ -63,7 +63,7 @@ func postJSON(t *testing.T, srv *httptest.Server, path, body string) *http.Respo
 }
 
 // /api/instance answers a challenge the caller wrote into the data root, which
-// is how the singleton coordinator tells a genuine Gropius apart from a port
+// is how the singleton coordinator tells a genuine Dessau apart from a port
 // squatter without either side keeping a secret.
 func TestInstanceEndpointAnswersAChallenge(t *testing.T) {
 	paths := config.NewPaths(t.TempDir())
@@ -126,7 +126,7 @@ func TestInstanceEndpointRefusesTraversalAndLeaksNothing(t *testing.T) {
 	wrong := strings.Repeat("ab12", 7) + "ab1"
 	for _, probe := range []string{
 		"", "../config.json", "..%2Fconfig.json", "../../../../etc/passwd",
-		wrong, ".gropius-challenge-x",
+		wrong, ".dessau-challenge-x",
 	} {
 		resp, err := srv.Client().Get(srv.URL + "/api/instance?challenge=" + probe)
 		if err != nil {
@@ -598,7 +598,7 @@ func TestSavingAShorterPinnedListRemovesTheRest(t *testing.T) {
 
 // The snapshot says which build is serving.
 //
-// `gropius update` reports the version it installed and the version this Mac
+// `dessau update` reports the version it installed and the version this Mac
 // is serving as two separate facts, and the second is knowable only if the
 // running server publishes it; until it did, every Mac was told the serving
 // version could not be determined (iss-2609111942567418). It is a read on a

@@ -28,7 +28,7 @@ type Sampling struct {
 }
 
 // SamplingBound is the range one sampling parameter accepts, and the value the
-// model server itself uses when Gropius holds none.
+// model server itself uses when Dessau holds none.
 type SamplingBound struct {
 	// Field is the parameter's name, as it appears in config.json and in the
 	// error a refused settings save reports.
@@ -74,22 +74,22 @@ type samplingParam struct {
 // uncaught, so the connection is closed with no response and the gateway
 // answers 502. A default this package accepts and the server rejects therefore
 // breaks every request that omits the parameter, which is the whole population
-// this feature exists for. Gropius must never accept a value wider than the
+// this feature exists for. Dessau must never accept a value wider than the
 // table below.
-// MaxTopK is Gropius' own ceiling on top-k, deliberately narrower than the
+// MaxTopK is Dessau' own ceiling on top-k, deliberately narrower than the
 // request check, which accepts any non-negative integer.
 //
 // The sampler imposes a second limit the request check does not: it refuses a
 // top-k at or above the model's vocabulary size, and it raises inside
 // generation rather than at start-up — so an oversized default leaves the
 // process healthy and fails every request that omits top_k, silently and
-// across restarts. Gropius has no vocabulary size to compare against when the
+// across restarts. Dessau has no vocabulary size to compare against when the
 // value is saved, so it caps top-k far below the smallest vocabulary an MLX
 // model ships (tens of thousands of tokens). Nothing is lost: keeping more
 // than a thousand candidates is indistinguishable from keeping all of them.
 const MaxTopK = 1024
 
-// MaxCompletionTokens is Gropius' own ceiling on the completion-token default.
+// MaxCompletionTokens is Dessau' own ceiling on the completion-token default.
 //
 // The model server sets none: it takes any non-negative integer. But this is a
 // default applied to every request that omits the parameter, so a figure above

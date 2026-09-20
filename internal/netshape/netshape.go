@@ -12,7 +12,7 @@
 //
 // Nothing here may be read by anything that enforces. adr-2609081118587999
 // makes that a rule: this is an inference about another process's state, that
-// state changes without Gropius being told, and a check that relaxed on it
+// state changes without Dessau being told, and a check that relaxed on it
 // would fail open on every one of those changes. internal/archtest holds the
 // import rule that keeps the enforcement path clear of this package, which is
 // why nothing here imports internal/gateway.
@@ -175,7 +175,7 @@ func networkOf(ifaceName string, ip net.IP) string {
 }
 
 // isTunnel reports whether the interface name is one of macOS's tunnel
-// interfaces. Gropius is an Apple-silicon-only app, so utun is the whole list.
+// interfaces. Dessau is an Apple-silicon-only app, so utun is the whole list.
 func isTunnel(name string) bool {
 	return strings.HasPrefix(name, "utun")
 }

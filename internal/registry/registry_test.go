@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 func newTestRegistry(t *testing.T) (*Registry, string) {
@@ -324,7 +324,7 @@ func TestRescanSkipsPartialDownloads(t *testing.T) {
 	models := filepath.Join(dir, "models")
 	md := writeModelDir(t, models, "org", "half", 512)
 	// A leftover .part marks the download as incomplete.
-	if err := os.WriteFile(filepath.Join(md, "extra.safetensors.gropius-part"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(md, "extra.safetensors.dessau-part"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -373,7 +373,7 @@ func TestRescanSkipsNestedPartialDownloads(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(sub, "weights.safetensors.gropius-part"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sub, "weights.safetensors.dessau-part"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

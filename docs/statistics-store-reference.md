@@ -1,24 +1,24 @@
 # Reference: the request statistics store
 
-What Gropius writes down while [request statistics](request-statistics.md) are
+What Dessau writes down while [request statistics](request-statistics.md) are
 switched on, where it writes it, and what removes it. Nothing here is written
 while the switch is off.
 
 ## Where the files are
 
-In a `stats` folder inside your own Gropius data folder — normally
-`~/Library/Application Support/Gropius/stats`.
+In a `stats` folder inside your own Dessau data folder — normally
+`~/Library/Application Support/Dessau/stats`.
 
 On a Mac with the [shared model cache](getting-started.md#9-sharing-across-user-accounts-optional)
 the store stays where it is: the models and the download cache they arrive
 through move to the shared folder, while `config.json`, `registry.json`, the
 server logs and the records stay in the serving account's own
-`~/Library/Application Support/Gropius`. A shared folder is writable by every
+`~/Library/Application Support/Dessau`. A shared folder is writable by every
 account on the Mac, and one account's settings, its list of models and its
 record of what it served have no business there.
 
 The folder is yours alone (mode `0700`), and so is every file in it (`0600`).
-Gropius refuses to write records into a folder any other account on this Mac
+Dessau refuses to write records into a folder any other account on this Mac
 could write to, or one that belongs to another account; if it has to refuse, it
 says so in its own log, keeps the figures in memory, and says on the Settings
 page that nothing is being written.
@@ -36,26 +36,26 @@ It is described under [Retention](#retention).
 A file holds one JSON object per line — the format every tool already reads:
 
 ```sh
-cat ~/Library/Application\ Support/Gropius/stats/*.jsonl | jq -r 'select(.kind == "request") | [.model, .class, .completion_tokens] | @tsv'
+cat ~/Library/Application\ Support/Dessau/stats/*.jsonl | jq -r 'select(.kind == "request") | [.model, .class, .completion_tokens] | @tsv'
 ```
 
 Every line carries two fields before anything else:
 
 | Field | Meaning |
 | --- | --- |
-| `v` | The version of this format the line was written under. A later Gropius can still read an older file. |
+| `v` | The version of this format the line was written under. A later Dessau can still read an older file. |
 | `kind` | Which of the seven kinds below the line is: `request`, `load`, `removed`, `footprint`, `settings`, `summary` or `summary_index`. The first five are the record kinds the [decision record](../.abcd/development/decisions/adrs/2609121450000000-the-statistics-store-gains-a-fifth-record-kind-a-footprint.md) ratifies, and the last two belong to the summary that is kept when detail is dropped, which is why that record counts five kinds and this page counts seven. |
 
 A reader should ignore a field it does not know, and skip a line it cannot
 parse. A line whose `v` is newer than the reader understands is one to skip:
-the version changes only when the shape changes. Gropius holds itself to the
+the version changes only when the shape changes. Dessau holds itself to the
 same rule when it rewrites the summary: a line it cannot read is written back
 exactly as it was found. Those lines are inside the summary's size bound like
 everything else, so a great many of them are dropped oldest first rather than
 allowed to crowd out the records.
 
 Records are written a couple of seconds behind the requests they describe, and
-Gropius never asks the disk to make sure they are really on it — forcing a
+Dessau never asks the disk to make sure they are really on it — forcing a
 write on every request would put a slow disk in the path of every answer, to
 protect figures worth less than the answer is. So a crash or a power cut costs
 the last few seconds of records, and leaves the line being written at that
@@ -77,15 +77,15 @@ no answer, no key, no client address (see
 | `model` | Which of your models served it, as its repo id. A request refused before it named a model you have is recorded with no model at all; the name the client asked for is never kept. |
 | `at` | When the request arrived, in whole UTC seconds. |
 | `class` | How it ended: `ok`, `client_error`, `upstream_status`, `busy`, `refused`, `launch_failed`, `not_ready`, `unreachable`, `cancelled` or `gateway_error`. |
-| `source` | How the request reached this Mac: `http` for one that arrived over the OpenAI-compatible API, `bridge` for one a [bridge](discord-bridge.md) carried in. A fixed class of Gropius's own, never anything a platform supplied. |
+| `source` | How the request reached this Mac: `http` for one that arrived over the OpenAI-compatible API, `bridge` for one a [bridge](discord-bridge.md) carried in. A fixed class of Dessau's own, never anything a platform supplied. |
 | `streamed` | Whether the client asked for the answer a chunk at a time. |
 | `prompt_tokens`, `completion_tokens` | The model server's own count of what went in and what came out. Only an answered request carries them. |
-| `first_token_ms` | How long the model took to produce the first chunk of a streamed answer, measured from the request arriving to that chunk reaching Gropius. `-1` when there was no streamed chunk at all. |
+| `first_token_ms` | How long the model took to produce the first chunk of a streamed answer, measured from the request arriving to that chunk reaching Dessau. `-1` when there was no streamed chunk at all. |
 | `duration_ms` | How long the whole request took, from the moment it arrived. |
 | `queue_wait_ms` | How long it waited for the machine rather than for the model: for a free slot on a model that was already loaded, and for memory to free up under [eviction grace](eviction-grace.md). |
 | `load_wait_ms` | How long it waited for the model to load. |
 | `declared_context`, `served_context` | The two windows the request was judged against: the one the model's own configuration declares, and the one this Mac serves it at. Absent on a request refused before it named a model. |
-| `estimated_prompt_tokens` | Gropius's own estimate of the prompt's size, from the request's bytes, written for every request including one refused for its size — so a refusal still says how big the prompt was. The model server's exact count is `prompt_tokens`, on an answered request only. |
+| `estimated_prompt_tokens` | Dessau's own estimate of the prompt's size, from the request's bytes, written for every request including one refused for its size — so a refusal still says how big the prompt was. The model server's exact count is `prompt_tokens`, on an answered request only. |
 | `requested_tokens` | The figure the served-window check judged: the estimate above plus the answer the request asked for. A request is refused when this is over `served_context`, so the record, the refusal and the dashboard's bands rest on one number. |
 | `in_flight` | How many requests the model already had when this one was admitted. |
 | `overrides` | The names of the sampling parameters the client set in its own request — the temperature, the top-p, the top-k, the min-p and the maximum tokens; a maximum set under either of its two spellings is recorded as the one name — and never their values. It is the one field derived from a client's body, and it says only which knob was touched. Absent when the client set none. |
@@ -101,7 +101,7 @@ no answer, no key, no client address (see
 | `failed` | Present and `true` when the model server started but never became ready. |
 | `sampling` | The sampling values the model server was launched with, by parameter name, only the ones set. It is what a request's `overrides` are overrides of. Absent when every value was the model's own default. |
 
-A load carries no `reason`: nothing in Gropius knows why a model was loaded
+A load carries no `reason`: nothing in Dessau knows why a model was loaded
 beyond the fact that something asked for it.
 
 ## `kind: "removed"` — a model server left memory
@@ -130,7 +130,7 @@ request happened to see. A reading is of the process, not of any request:
 what a long prompt cost is not recoverable from it, only what the server was
 holding while that prompt and any others were in it.
 
-## `kind: "settings"` — what Gropius was serving under
+## `kind: "settings"` — what Dessau was serving under
 
 Written each time recording starts and whenever one of these changes, so a
 change in the figures can be told from a change in the settings that produced
@@ -186,7 +186,7 @@ it.
 
 ## `kind: "run"` — one self-test run
 
-The eighth record kind Gropius writes, and the one that is not in these files.
+The eighth record kind Dessau writes, and the one that is not in these files.
 A run is what the [self-test](self-test.md) measured of one model while nobody
 was using the Mac, and it is written to `selftest/results.jsonl` beside this
 folder, by the same writer and under the same rules: one JSON object per line,
@@ -219,7 +219,7 @@ until its own newest record falls beyond it, and then it goes too — including
 the file being written, on a Mac quiet enough that it never fills.
 
 Both limits are applied when a file is rotated, at least once an hour while
-Gropius is running, when recording starts, and the moment either figure is
+Dessau is running, when recording starts, and the moment either figure is
 changed.
 
 Before a file is removed, whichever limit removes it, its records are folded
@@ -242,7 +242,7 @@ daily lines for ten models, and far more for fewer.
 
 A file the store is about to drop that it cannot read, or a summary it cannot
 write, stops retention rather than the records: nothing is removed that has not
-been counted, the Settings page says so, and Gropius's own log says why. The
+been counted, the Settings page says so, and Dessau's own log says why. The
 size limit is still the limit, though. Once the store is over it by more than
 one file's growth and still cannot summarise what it would drop, the oldest
 file goes without a summary — a full disk is exactly what stops a summary being
@@ -252,9 +252,9 @@ silent.
 
 Anything under one of these names that is not a plain file — a named pipe, a
 device, a folder — is refused rather than read. A plain file whose mode is not
-`0600` is refused too: Gropius creates every file here owner-only, so one that
+`0600` is refused too: Dessau creates every file here owner-only, so one that
 any other account could read is not a file it wrote, and it is left alone
-rather than appended to. Gropius never waits on something in this folder to
+rather than appended to. Dessau never waits on something in this folder to
 answer it.
 
 A request record measures about 380 bytes, so 200 MB is roughly seven weeks
@@ -268,7 +268,7 @@ the Settings page beside the two limits, rather than promised here.
 - **Clear records** in Settings removes every file the store wrote, the summary
   among them, and nothing else in the folder. It works whether recording is on or off, and leaves the
   switch as it found it.
-- **Deleting the Gropius data folder** removes them with everything else, as
+- **Deleting the Dessau data folder** removes them with everything else, as
   [Uninstalling](getting-started.md#uninstalling) describes.
 
 Switching recording off does neither: it stops new records and leaves the ones

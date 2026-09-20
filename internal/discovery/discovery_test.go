@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Regression test for a bug that renamed the user's Mac.
 //
 // brutella/dnssd is a standalone responder: it publishes A/AAAA records claiming
 // whatever Config.Host is set to. macOS's mDNSResponder already owns
-// <LocalHostName>.local. When Gropius claimed that same name, macOS detected a
+// <LocalHostName>.local. When Dessau claimed that same name, macOS detected a
 // collision and renamed the machine (AlicesMac -> AlicesMac-2) — a persistent
 // change to the user's system settings.
 //
@@ -28,8 +28,8 @@ func TestServiceHostNeverClaimsTheMachineHostname(t *testing.T) {
 		t.Fatalf("serviceHost(%q) = %q — publishing address records for the machine's own "+
 			"hostname makes macOS rename the machine to avoid the collision", local, got)
 	}
-	if !strings.HasPrefix(got, "gropius-") {
-		t.Errorf("serviceHost(%q) = %q, want a gropius- prefixed name that nothing else can own", local, got)
+	if !strings.HasPrefix(got, "dessau-") {
+		t.Errorf("serviceHost(%q) = %q, want a dessau- prefixed name that nothing else can own", local, got)
 	}
 }
 
@@ -99,10 +99,10 @@ func TestServiceHostIsALegalDNSLabel(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"AlicesMac", "gropius-alicesmac"},
-		{"Alice's iMac", "gropius-alice-s-imac"},
-		{"Mac-Pro-2", "gropius-mac-pro-2"},
-		{"", "gropius-host"},
+		{"AlicesMac", "dessau-alicesmac"},
+		{"Alice's iMac", "dessau-alice-s-imac"},
+		{"Mac-Pro-2", "dessau-mac-pro-2"},
+		{"", "dessau-host"},
 	}
 	for _, tt := range tests {
 		got := serviceHost(tt.in)

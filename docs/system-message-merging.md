@@ -7,7 +7,7 @@ the next one. This page is how to switch merging on for such a model, and what
 switching it on agrees to.
 
 Merging is per model and is off until you switch it on. It is the one setting
-that has Gropius read part of a request rather than pass it straight on, which
+that has Dessau read part of a request rather than pass it straight on, which
 is why it is granted model by model and why the rule it runs under is written
 down as
 [an architecture decision](../.abcd/development/decisions/adrs/2609061610102325-the-gateway-may-rewrite-prompt-content-only-to-merge-system.md).
@@ -26,7 +26,7 @@ entry under `models`, beside anything else set for that model.
 
 ## What it does to a request
 
-For requests to that model, Gropius gathers the instruction (`system`)
+For requests to that model, Dessau gathers the instruction (`system`)
 messages into the first one, in the order they were sent and separated by a
 blank line, and passes every other message and field on untouched. An
 instruction that is empty adds nothing, so the prompt does not begin with a
@@ -40,7 +40,7 @@ that is merely in the wrong place is moved with everything it carries.
 
 ## What it reads, and what it keeps
 
-For a model you switch it on for, Gropius reads the instruction messages of
+For a model you switch it on for, Dessau reads the instruction messages of
 each request and nothing else: the role of every message, and the text of the
 instruction ones. It keeps none of what it reads. Nothing of a request's
 contents reaches the log, the model server's command line, or any file on

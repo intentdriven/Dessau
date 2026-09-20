@@ -3,8 +3,8 @@ package app
 import (
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/bind"
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/bind"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The Bonjour advert is started once, when the process starts, from the
@@ -37,7 +37,7 @@ func TestTheAdvertDecisionIsMadeAtStartAndDoesNotFollowASave(t *testing.T) {
 	}
 }
 
-// Advertises is the one spelling of the rule cmd/gropius starts the advert
+// Advertises is the one spelling of the rule cmd/dessau starts the advert
 // by: the setting, the mode, and whether the bind reaches another machine.
 func TestAdvertisesIsTheSettingTheModeAndTheReach(t *testing.T) {
 	wildcard := bind.ForHost("0.0.0.0")

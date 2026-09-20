@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/capability"
+	"github.com/intentdriven/Dessau/internal/capability"
 )
 
 // safeBuf is a log sink a test can read while the pool writes to it from the

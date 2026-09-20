@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>Gropius</string>
+	<string>Dessau</string>
 	<key>CFBundleDisplayName</key>
-	<string>Gropius</string>
+	<string>Dessau</string>
 	<key>CFBundleIdentifier</key>
-	<string>dev.gropius.app</string>
+	<string>sh.intentdriven.dessau.server</string>
 	<key>CFBundleExecutable</key>
-	<string>gropius</string>
+	<string>dessau</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
@@ -31,14 +31,14 @@
 	     this string the system denies LAN access and the server is unreachable
 	     from other machines. -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Gropius serves your local MLX models to other devices on your network.</string>
+	<string>Dessau serves your local MLX models to other devices on your network.</string>
 
 	<!-- Mandatory for Bonjour inside an app bundle. If this list does not include
 	     the service type we advertise, mDNS registration fails SILENTLY: the
 	     server still runs, but other machines cannot discover it. -->
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_gropius._tcp</string>
+		<string>_dessau._tcp</string>
 	</array>
 </dict>
 </plist>

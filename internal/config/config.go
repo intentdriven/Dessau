@@ -1,6 +1,6 @@
-// Package config holds Gropius' on-disk layout and user settings.
+// Package config holds Dessau' on-disk layout and user settings.
 //
-// Everything Gropius creates lives under a single root directory so the whole
+// Everything Dessau creates lives under a single root directory so the whole
 // installation — including its private Python interpreter — can be removed by
 // deleting one folder.
 package config
@@ -27,7 +27,7 @@ import (
 
 // Paths is the on-disk layout. All fields are absolute.
 type Paths struct {
-	Root    string // ~/Library/Application Support/Gropius
+	Root    string // ~/Library/Application Support/Dessau
 	Bin     string // uv lives here
 	Venv    string // the mlx-lm virtualenv
 	Python  string // uv-managed CPython installs (UV_PYTHON_INSTALL_DIR)
@@ -59,7 +59,7 @@ type Paths struct {
 // Models are large. If two macOS accounts each keep their own copy, a 70B model
 // costs 40 GB twice. When an administrator has created this directory (see
 // `make install-shared`), every account shares one set of models.
-const SharedRoot = "/Users/Shared/Gropius"
+const SharedRoot = "/Users/Shared/Dessau"
 
 // sharedRoot is the shared root everything actually compares against, so a
 // test can stand a temporary directory in its place and exercise the real
@@ -68,7 +68,7 @@ const SharedRoot = "/Users/Shared/Gropius"
 // constant above.
 var sharedRoot = SharedRoot
 
-// userSupportDir is this account's own Gropius directory in Application
+// userSupportDir is this account's own Dessau directory in Application
 // Support — the one place a per-user install lives, and the one place a shared
 // install keeps what an account does not share. It is derived once here so the
 // default root and accountDir cannot come to disagree about where it is.
@@ -77,16 +77,16 @@ func userSupportDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
-	return filepath.Join(home, "Library", "Application Support", "Gropius"), nil
+	return filepath.Join(home, "Library", "Application Support", "Dessau"), nil
 }
 
-// DefaultRoot returns where Gropius keeps its data.
+// DefaultRoot returns where Dessau keeps its data.
 //
-// Order: $GROPIUS_ROOT, then the shared directory if an administrator created
+// Order: $DESSAU_ROOT, then the shared directory if an administrator created
 // it (see sharedRootShape) and this account can write to it, then the per-user
 // Application Support directory.
 func DefaultRoot() (string, error) {
-	if env := os.Getenv("GROPIUS_ROOT"); env != "" {
+	if env := os.Getenv("DESSAU_ROOT"); env != "" {
 		return env, nil
 	}
 	return InstalledRoot()
@@ -96,7 +96,7 @@ func DefaultRoot() (string, error) {
 // when an administrator created one this account can write, and this account's
 // own Application Support directory otherwise.
 //
-// It exists for the one caller that must not honour GROPIUS_ROOT — `gropius
+// It exists for the one caller that must not honour DESSAU_ROOT — `dessau
 // uninstall`, which derives every deletion path from the fixed locations this
 // account's install actually uses. A directory that any local account can
 // pre-create, and name through an environment variable, would otherwise choose
@@ -109,14 +109,14 @@ func InstalledRoot() (string, error) {
 }
 
 // AccountHome is this account's own directory, asked for without a data root
-// in hand: ~/Library/Application Support/Gropius, which is what accountDir
+// in hand: ~/Library/Application Support/Dessau, which is what accountDir
 // answers under a shared root and what the root itself IS under a per-user
 // install.
 //
 // It exists for the swap (internal/lifecycle), which needs somewhere only this
 // account can unlink an entry from while a retired application bundle waits to
 // be put back, and which has no root to derive it from. It deliberately does
-// not honour GROPIUS_ROOT: the property wanted here is the one macOS gives
+// not honour DESSAU_ROOT: the property wanted here is the one macOS gives
 // ~/Library and no environment variable can, so a root named from the
 // environment would silently answer with a directory that may not have it.
 //
@@ -171,7 +171,7 @@ func writableDir(dir string) bool {
 	}
 	// A randomly-named temp (os.CreateTemp implies O_CREATE|O_EXCL) avoids the
 	// symlink race a fixed name invites in a shared, group-writable directory.
-	f, err := os.CreateTemp(dir, ".gropius-write-probe-*")
+	f, err := os.CreateTemp(dir, ".dessau-write-probe-*")
 	if err != nil {
 		return false
 	}
@@ -267,8 +267,8 @@ func NewPaths(root string) Paths {
 // design (see the Makefile's install-shared), and a file holding one account's
 // own record of what it served has no business in a directory every other
 // account on the Mac can write to and this one cannot re-mode. Under an
-// explicit GROPIUS_ROOT the store lives under that root, so the rule is total
-// and the store never appears somewhere the operator did not point Gropius at.
+// explicit DESSAU_ROOT the store lives under that root, so the rule is total
+// and the store never appears somewhere the operator did not point Dessau at.
 //
 // A home directory that cannot be resolved falls back to the root, where the
 // store's own refusal to create itself in a group- or other-writable directory
@@ -279,7 +279,7 @@ func StatsDir(root string) string { return filepath.Join(accountDir(root), "stat
 // sameDir reports whether two paths name the same directory.
 //
 // Cleaned, and then resolved through any symbolic links when both sides exist:
-// the root arrives from GROPIUS_ROOT or the -root flag exactly as it was
+// the root arrives from DESSAU_ROOT or the -root flag exactly as it was
 // typed, so a trailing slash, a dot segment or a link would otherwise let a
 // root that IS the shared root compare unequal to it — and the whole point of
 // the comparison is to keep a per-account record file out of a directory every
@@ -299,7 +299,7 @@ func sameDir(a, b string) bool {
 	return ra == rb
 }
 
-// UV is the path to the uv binary Gropius manages.
+// UV is the path to the uv binary Dessau manages.
 func (p Paths) UV() string { return filepath.Join(p.Bin, "uv") }
 
 // ValidRepoID reports whether s is a well-formed HuggingFace repo id, i.e.
@@ -670,7 +670,7 @@ type Config struct {
 	StatsMonths   int   `json:"stats_months,omitempty"`
 	StatsMaxBytes int64 `json:"stats_max_bytes,omitempty"`
 
-	// SelfTest lets Gropius measure its own models while nobody is using it:
+	// SelfTest lets Dessau measure its own models while nobody is using it:
 	// when the Mac has been idle for a while it loads each downloaded model in
 	// turn, runs the same short set of tests against it, records the figures
 	// in a file under this account's data directory, and unloads what it
@@ -680,7 +680,7 @@ type Config struct {
 	// (adr-2609061503319212).
 	SelfTest bool `json:"self_test,omitempty"`
 
-	// ContextProbe lets Gropius measure each model's servable context window
+	// ContextProbe lets Dessau measure each model's servable context window
 	// while nobody is using the Mac: prompts of growing size through its own
 	// OpenAI endpoint, bisected to the largest the server accepts, recorded
 	// on the model's registry entry and published beside the declared and
@@ -696,7 +696,7 @@ type Config struct {
 	// EffectiveIdleThresholdSec.
 	IdleThresholdSec int `json:"idle_threshold_sec,omitempty"`
 
-	// LogLevel decides how much Gropius writes about itself, in its own log and
+	// LogLevel decides how much Dessau writes about itself, in its own log and
 	// on standard error. "sparse" — the default, and what every configuration
 	// written before this field carries — is one line per event that mattered:
 	// a refusal, a model loading or leaving, a launch that failed, the server
@@ -705,7 +705,7 @@ type Config struct {
 	// in bytes, how long a request waited, the wrapped launch error, and the
 	// drain behind an eviction.
 	//
-	// It is Gropius's own level and reaches nothing else. In particular it
+	// It is Dessau's own level and reaches nothing else. In particular it
 	// never reaches the model servers, which are launched at INFO whatever this
 	// says (adr-2609061503319212, and the guard in
 	// internal/archtest/statistics_switch_test.go): at DEBUG mlx_lm writes
@@ -720,7 +720,7 @@ type Config struct {
 	// ChatRule decides which models are published on the models list as able
 	// to hold a conversation, from the Hub's own words for what a model is.
 	// Absent — the default, and what a fresh install stores — means the rule
-	// Gropius ships (DefaultChatRule). It is not a second representation of
+	// Dessau ships (DefaultChatRule). It is not a second representation of
 	// that rule: a rule whose two lists are present and empty tests nothing,
 	// which is how an operator says "offer every model for chat".
 	//
@@ -735,7 +735,7 @@ type Config struct {
 	// entry runs on the machine-wide settings above, which is what every model
 	// does until the operator says otherwise.
 	//
-	// One map, and exactly one. Gropius carried three of these — a sampling
+	// One map, and exactly one. Dessau carried three of these — a sampling
 	// override map, a per-model settings map and a pinned list — each with its
 	// own ceiling, its own sanitiser, its own guard in the settings handler
 	// and its own canonicalisation, held to the same rules by prose in three
@@ -752,7 +752,7 @@ type Config struct {
 	Clients map[string]Client `json:"clients,omitempty"`
 }
 
-// ModelSettings are the settings of a single model: everything Gropius does
+// ModelSettings are the settings of a single model: everything Dessau does
 // differently for one model rather than for the machine.
 //
 // Every field is off or zero by default, so a model gains a behavior only when
@@ -770,7 +770,7 @@ type ModelSettings struct {
 	// reaches the model server, which is the shape a chat template that refuses
 	// a system message anywhere but the front will accept.
 	//
-	// It is the one case in which Gropius reads the content of a request's
+	// It is the one case in which Dessau reads the content of a request's
 	// messages, it reads them for no other purpose, and it keeps nothing it
 	// reads (adr-2609061610102325). Off unless the operator switches it on for
 	// this model.
@@ -792,7 +792,7 @@ type ModelSettings struct {
 	// that says only "temperature 0.2" still gets the machine's token budget.
 	Sampling Sampling `json:"sampling,omitzero"`
 
-	// ServedContext is the context window Gropius serves this model at, in
+	// ServedContext is the context window Dessau serves this model at, in
 	// tokens. Zero means the window the model's own configuration declares,
 	// which is the default and what most models will run at.
 	//
@@ -805,7 +805,7 @@ type ModelSettings struct {
 	ServedContext int64 `json:"served_context,omitempty"`
 }
 
-// MaxContextLength bounds every context window Gropius will believe, declared
+// MaxContextLength bounds every context window Dessau will believe, declared
 // or served. A model directory's config.json is, in shared-cache mode, a file
 // another local account can write, and so is config.json itself; the figure is
 // served to the LAN and decides how much memory a model is charged, so a
@@ -827,7 +827,7 @@ func (m ModelSettings) IsZero() bool {
 	return !m.MergeSystemMessages && !m.Pinned && m.ServedContext == 0 && m.Sampling.IsZero()
 }
 
-// ServedContext is the window Gropius serves the named model at: the
+// ServedContext is the window Dessau serves the named model at: the
 // operator's figure, or declared — the window the model's own configuration
 // states — when they have set none or set one the model cannot address.
 //
@@ -1314,7 +1314,7 @@ func Default() Config {
 	}
 }
 
-// The two levels Gropius writes its own log at. Sparse is one line per event
+// The two levels Dessau writes its own log at. Sparse is one line per event
 // that mattered; detailed adds the figures sparse omits. They are the strings
 // config.json carries, the strings the control panel posts, and the strings
 // docs/logging.md prints — one spelling, so a level cannot mean one thing in
@@ -1447,7 +1447,7 @@ func (c Config) Validate() error {
 		return errors.New("host must not be empty")
 	}
 	// A Host that cannot be bound is refused here rather than at the listener.
-	// It used to travel two ways: cmd/gropius built "<host>:<port>" and the
+	// It used to travel two ways: cmd/dessau built "<host>:<port>" and the
 	// process exited when that would not listen, and — before it got that far —
 	// gateway.Endpoints pasted the same value into the base URL the panel, the
 	// menu bar and the clipboard hand out. A value carrying CR or LF in a base
@@ -1570,7 +1570,7 @@ const (
 	BindModePrivateNetwork = "private-network"
 )
 
-// ValidBindHost reports whether a value is something cmd/gropius can bind.
+// ValidBindHost reports whether a value is something cmd/dessau can bind.
 //
 // It is as wide as the listener and no wider, and that is checked rather than
 // asserted: every value the table in host_test.go marks bindable was watched
@@ -1669,7 +1669,7 @@ func unbracket(host string) (string, bool) {
 // side. `{"host":"127.1"}` bound loopback while ExposedToLAN read a name and
 // told the operator they bind a LAN address.
 //
-// Refusing is the closed direction: Validate refuses the file, and cmd/gropius
+// Refusing is the closed direction: Validate refuses the file, and cmd/dessau
 // locks the bind down to loopback rather than binding wider than the panel
 // says. Nobody writes "0" meaning the wildcard; they write "0.0.0.0" or leave
 // it empty, and both still work.
@@ -1772,7 +1772,7 @@ func validHostLabel(label string) bool {
 // security warnings.
 //
 // It is read by everything that decides how open this server is — the
-// generate-a-key-or-drop-to-loopback branch in cmd/gropius, the eviction-grace
+// generate-a-key-or-drop-to-loopback branch in cmd/dessau, the eviction-grace
 // key requirement, the panel's warning, whether Bonjour advertises at all, and
 // whether the endpoint list enumerates this machine's addresses — so it has to
 // understand the same spellings of the bind that the listener does. It did
@@ -2217,7 +2217,7 @@ func GenerateAPIKey() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// Challenge coordination: how a starting Gropius proves the process already on
+// Challenge coordination: how a starting Dessau proves the process already on
 // its port shares its data root, without either side keeping a secret.
 //
 // The prober writes a random answer into a random-named file in the data root
@@ -2236,7 +2236,7 @@ func GenerateAPIKey() (string, error) {
 const (
 	// ChallengeFilePrefix names a challenge file. The leading dot keeps it out
 	// of ordinary listings; the name after it is the caller's nonce.
-	ChallengeFilePrefix = ".gropius-challenge-"
+	ChallengeFilePrefix = ".dessau-challenge-"
 	// MaxChallengeBytes caps the answer read. A real answer is 64 hex chars.
 	MaxChallengeBytes = 4096
 	// challengeNameLen is the nonce length in hex characters (16 random bytes).

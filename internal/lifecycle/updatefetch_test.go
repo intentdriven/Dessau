@@ -100,7 +100,7 @@ func releaseSums(t *testing.T, archive []byte) []byte {
 	t.Helper()
 	return sums(
 		digestOf(t, updateArchiveName, archive),
-		digestOf(t, "GropiusChat.app.zip", []byte("the client bundle, which this verb never downloads")),
+		digestOf(t, "DessauChat.app.zip", []byte("the client bundle, which this verb never downloads")),
 		digestOf(t, "SHA256SUMS.txt", []byte("the release names this too on some runs")),
 	)
 }
@@ -146,7 +146,7 @@ func TestTheChecksumVerificationFailsClosedOnEveryBadInput(t *testing.T) {
 			name: "a checksums file that does not cover the archive",
 			assets: map[string][]byte{
 				updateArchiveName: good,
-				checksumsName:     sums(digestOf(t, "GropiusChat.app.zip", good)),
+				checksumsName:     sums(digestOf(t, "DessauChat.app.zip", good)),
 			},
 			wantCause: causeArchiveNotCovered,
 		},
@@ -193,7 +193,7 @@ func TestTheChecksumVerificationFailsClosedOnEveryBadInput(t *testing.T) {
 		},
 		{
 			// And the same trick spelled so that a substring check would be
-			// fooled: shasum would print "/somewhere/Gropius.app.zip: OK",
+			// fooled: shasum would print "/somewhere/DessauServer.app.zip: OK",
 			// which CONTAINS the archive's own success line. A checksums file
 			// has no business naming a path at all.
 			name: "a checksums file naming the archive somewhere else on the disk",
@@ -256,8 +256,8 @@ func TestTheAssetOriginIsFixedInTheBinary(t *testing.T) {
 	before := strings.Join(curlArgs(updateArchiveName, dest), " ")
 
 	for _, name := range []string{
-		"GROPIUS_ASSET_DIR", "GROPIUS_ROOT", "GITHUB_ACTIONS", "GROPIUS_RELEASE",
-		"GROPIUS_UPDATE_URL", "http_proxy", "HTTPS_PROXY",
+		"DESSAU_ASSET_DIR", "DESSAU_ROOT", "GITHUB_ACTIONS", "DESSAU_RELEASE",
+		"DESSAU_UPDATE_URL", "http_proxy", "HTTPS_PROXY",
 	} {
 		t.Setenv(name, "https://somewhere-else.invalid/")
 	}
@@ -344,7 +344,7 @@ func TestAStagedBundleWithASymbolicLinkAboveItsProgramIsRefused(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(elsewhere, "MacOS"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(elsewhere, "MacOS", "gropius"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(elsewhere, "MacOS", "dessau"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -371,7 +371,7 @@ func TestAStagedBundleWithASymbolicLinkAboveItsProgramIsRefused(t *testing.T) {
 // just verified — never the bundle already on the Mac, and never a guess.
 func TestTheInstalledVersionIsReadFromTheStagedBuild(t *testing.T) {
 	t.Run("a build that answers", func(t *testing.T) {
-		program := writeFakeProgram(t, "#!/bin/sh\necho \"gropius 0.5.0\"\n")
+		program := writeFakeProgram(t, "#!/bin/sh\necho \"dessau 0.5.0\"\n")
 		got, err := stagedVersion(program)
 		if err != nil {
 			t.Fatalf("stagedVersion: %v", err)
@@ -385,7 +385,7 @@ func TestTheInstalledVersionIsReadFromTheStagedBuild(t *testing.T) {
 	// with exit 2. That is a version that is unknown, and it is reported as
 	// unknown rather than guessed from the release it came out of.
 	t.Run("a build that refuses the verb", func(t *testing.T) {
-		program := writeFakeProgram(t, "#!/bin/sh\necho 'gropius: unknown argument \"version\"' >&2\nexit 2\n")
+		program := writeFakeProgram(t, "#!/bin/sh\necho 'dessau: unknown argument \"version\"' >&2\nexit 2\n")
 		if _, err := stagedVersion(program); err == nil {
 			t.Error("a build that refused the version verb was read as a version")
 		}
@@ -401,8 +401,8 @@ func TestTheStagedBuildIsRunIsolatedAndItsAnswerIsBounded(t *testing.T) {
 	// variable set here and read by the build; a clean environment leaves the
 	// fallback, and a leaked one puts the variable's value into the report.
 	t.Run("the build sees nothing of this process's environment", func(t *testing.T) {
-		t.Setenv("GROPIUS_TEST_LEAK", "leaked")
-		program := writeFakeProgram(t, "#!/bin/sh\necho \"gropius ${GROPIUS_TEST_LEAK:-clean}\"\n")
+		t.Setenv("DESSAU_TEST_LEAK", "leaked")
+		program := writeFakeProgram(t, "#!/bin/sh\necho \"dessau ${DESSAU_TEST_LEAK:-clean}\"\n")
 		got, err := stagedVersion(program)
 		if err != nil {
 			t.Fatalf("stagedVersion: %v", err)
@@ -415,7 +415,7 @@ func TestTheStagedBuildIsRunIsolatedAndItsAnswerIsBounded(t *testing.T) {
 	// The verb runs inside the verified directory, which is the directory the
 	// program is in and never the caller's working directory.
 	t.Run("the build runs inside the verified directory", func(t *testing.T) {
-		program := writeFakeProgram(t, "#!/bin/sh\necho \"gropius $(/usr/bin/basename \"$PWD\")\"\n")
+		program := writeFakeProgram(t, "#!/bin/sh\necho \"dessau $(/usr/bin/basename \"$PWD\")\"\n")
 		got, err := stagedVersion(program)
 		if err != nil {
 			t.Fatalf("stagedVersion: %v", err)
@@ -431,7 +431,7 @@ func TestTheStagedBuildIsRunIsolatedAndItsAnswerIsBounded(t *testing.T) {
 	// buffered on its way to being ignored.
 	t.Run("the answer is read only up to the cap", func(t *testing.T) {
 		program := writeFakeProgram(t, "#!/bin/sh\n/usr/bin/head -c "+strconv.Itoa(maxVersionBytes+64)+
-			" /dev/zero | /usr/bin/tr '\\0' ' '\necho \"gropius 0.5.0\"\n")
+			" /dev/zero | /usr/bin/tr '\\0' ' '\necho \"dessau 0.5.0\"\n")
 		if got, err := stagedVersion(program); err == nil {
 			t.Errorf("stagedVersion = %q; an answer beyond the cap was read", got)
 		}
@@ -440,7 +440,7 @@ func TestTheStagedBuildIsRunIsolatedAndItsAnswerIsBounded(t *testing.T) {
 
 func writeFakeProgram(t *testing.T, body string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "gropius")
+	path := filepath.Join(t.TempDir(), "dessau")
 	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}

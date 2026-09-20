@@ -16,7 +16,7 @@ import (
 // This is the trick the release gate already uses for `open`: a stub in a
 // temporary directory that records how it was called. Here the stub IS the
 // downloaded application's binary — the asset directory carries a bundle whose
-// Contents/MacOS/gropius is a shell script — so what it records is the path the
+// Contents/MacOS/dessau is a shell script — so what it records is the path the
 // bootstrap executed and the arguments it passed.
 //
 // Why it matters: an ad-hoc-signed bundle's identity changes with every build,
@@ -26,7 +26,7 @@ import (
 // applications directory — to install the release just downloaded. Handing over
 // inside the verified directory makes the script and the binary one build.
 
-// handoverFixture builds an asset directory holding a Gropius.app whose binary
+// handoverFixture builds an asset directory holding a DessauServer.app whose binary
 // is the given shell stub, with the checksums beside it.
 type handoverFixture struct {
 	dir, assets, home, stubs, record, reached string
@@ -58,7 +58,7 @@ func newHandoverFixture(t *testing.T, stubBody string) *handoverFixture {
 }
 
 // newServerHandoverFixture builds the server's asset directory: one
-// Gropius.app.zip, in the shape asked for, with the checksums beside it.
+// DessauServer.app.zip, in the shape asked for, with the checksums beside it.
 func newServerHandoverFixture(t *testing.T, stubBody string, shape archiveShape) *handoverFixture {
 	t.Helper()
 	if runtime.GOOS != "darwin" {
@@ -82,10 +82,10 @@ func newServerHandoverFixture(t *testing.T, stubBody string, shape archiveShape)
 
 	// The bundle the asset directory carries, with a stub where the real binary
 	// would be. Everything else about it is what install.sh looks for: the
-	// bundle name, and an executable at Contents/MacOS/gropius.
-	staged := stageBundle(t, fx.dir, "Gropius", "gropius", stubBody, shape)
-	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", staged, filepath.Join(fx.assets, "Gropius.app.zip"))
-	sums := runIn(t, fx.assets, "shasum", "-a", "256", "Gropius.app.zip")
+	// bundle name, and an executable at Contents/MacOS/dessau.
+	staged := stageBundle(t, fx.dir, "Dessau", "dessau", stubBody, shape)
+	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", staged, filepath.Join(fx.assets, "DessauServer.app.zip"))
+	sums := runIn(t, fx.assets, "shasum", "-a", "256", "DessauServer.app.zip")
 	if err := os.WriteFile(filepath.Join(fx.assets, "SHA256SUMS.txt"), []byte(sums), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -129,12 +129,12 @@ func (fx *handoverFixture) runMode(t *testing.T, args ...string) (string, error)
 	root := repoRootDir(t)
 	cmd := exec.Command("bash", append([]string{filepath.Join(root, "install.sh")}, args...)...)
 	cmd.Dir = fx.dir
-	cmd.Env = append(envWithout(os.Environ(), "PATH", "HOME", "GROPIUS_ASSET_DIR", "GITHUB_ACTIONS"),
+	cmd.Env = append(envWithout(os.Environ(), "PATH", "HOME", "DESSAU_ASSET_DIR", "GITHUB_ACTIONS"),
 		"PATH="+fx.stubs+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"HOME="+fx.home,
-		"GROPIUS_ASSET_DIR="+fx.assets,
+		"DESSAU_ASSET_DIR="+fx.assets,
 		"GITHUB_ACTIONS=true",
-		"GROPIUS_HANDOVER_RECORD="+fx.record,
+		"DESSAU_HANDOVER_RECORD="+fx.record,
 	)
 	out, err := cmd.CombinedOutput()
 	if after := applicationsListing(t); !equalStrings(fx.appsBefore, after) {
@@ -176,9 +176,9 @@ func writeStub(t *testing.T, path, body string) {
 	}
 }
 
-// newClientHandoverFixture builds the CLIENT's asset directory: a GropiusChat
+// newClientHandoverFixture builds the CLIENT's asset directory: a DessauChat
 // bundle that is what it claims to be, and the placer archive — the server's
-// own Gropius.app.zip, which the client half downloads, verifies and execs to
+// own DessauServer.app.zip, which the client half downloads, verifies and execs to
 // place the bundle — in the shape asked for.
 func newClientHandoverFixture(t *testing.T, placerStub string, placerShape archiveShape) *handoverFixture {
 	t.Helper()
@@ -195,11 +195,11 @@ func newClientHandoverFixture(t *testing.T, placerStub string, placerShape archi
 	}
 	// The client half quits a running copy of the app before it downloads the
 	// placer, and the destination it picks is the real /Applications whenever
-	// that is writable. A developer running GropiusChat from there would have
+	// that is writable. A developer running DessauChat from there would have
 	// it quit by this test, so the test stands down instead: what it holds is
 	// checked in CI and on every Mac that is not using the app right now.
-	if exec.Command("/usr/bin/pgrep", "-qf", "/Applications/GropiusChat.app/Contents/MacOS/").Run() == nil {
-		t.Skip("a GropiusChat is running from /Applications and the client half would quit it")
+	if exec.Command("/usr/bin/pgrep", "-qf", "/Applications/DessauChat.app/Contents/MacOS/").Run() == nil {
+		t.Skip("a DessauChat is running from /Applications and the client half would quit it")
 	}
 
 	fx := &handoverFixture{dir: t.TempDir()}
@@ -210,13 +210,13 @@ func newClientHandoverFixture(t *testing.T, placerStub string, placerShape archi
 	fx.reached = filepath.Join(fx.dir, "network-was-reached")
 
 	// The client bundle carries no binary of its own — install.sh only checks
-	// that the archive holds GropiusChat.app — and the placer is the archive
+	// that the archive holds DessauChat.app — and the placer is the archive
 	// this test is about.
-	chat := stageBundle(t, fx.dir, "GropiusChat", "GropiusChat", "#!/usr/bin/env bash\nexit 0\n", plainBundle)
-	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", chat, filepath.Join(fx.assets, "GropiusChat.app.zip"))
-	placer := stageBundle(t, fx.dir, "Gropius", "gropius", placerStub, placerShape)
-	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", placer, filepath.Join(fx.assets, "Gropius.app.zip"))
-	sums := runIn(t, fx.assets, "shasum", "-a", "256", "GropiusChat.app.zip", "Gropius.app.zip")
+	chat := stageBundle(t, fx.dir, "DessauChat", "DessauChat", "#!/usr/bin/env bash\nexit 0\n", plainBundle)
+	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", chat, filepath.Join(fx.assets, "DessauChat.app.zip"))
+	placer := stageBundle(t, fx.dir, "Dessau", "dessau", placerStub, placerShape)
+	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", placer, filepath.Join(fx.assets, "DessauServer.app.zip"))
+	sums := runIn(t, fx.assets, "shasum", "-a", "256", "DessauChat.app.zip", "DessauServer.app.zip")
 	if err := os.WriteFile(filepath.Join(fx.assets, "SHA256SUMS.txt"), []byte(sums), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -233,8 +233,8 @@ func newClientHandoverFixture(t *testing.T, placerStub string, placerShape archi
 // the arguments it was given, then exits with the given status.
 func recordingStub(status int) string {
 	return "#!/usr/bin/env bash\n" +
-		"printf '%s\\n' \"$0\" >> \"$GROPIUS_HANDOVER_RECORD\"\n" +
-		"printf '%s\\n' \"$*\" >> \"$GROPIUS_HANDOVER_RECORD\"\n" +
+		"printf '%s\\n' \"$0\" >> \"$DESSAU_HANDOVER_RECORD\"\n" +
+		"printf '%s\\n' \"$*\" >> \"$DESSAU_HANDOVER_RECORD\"\n" +
 		"exit " + strconv.Itoa(status) + "\n"
 }
 
@@ -258,10 +258,10 @@ func TestTheBootstrapHandsOverToTheBinaryItVerified(t *testing.T) {
 	}
 	executed, args := lines[0], lines[1]
 
-	if !strings.Contains(executed, "/extract/Gropius.app/Contents/MacOS/gropius") {
+	if !strings.Contains(executed, "/extract/DessauServer.app/Contents/MacOS/dessau") {
 		t.Errorf("the bootstrap executed %q, which is not the binary inside the directory it verified", executed)
 	}
-	for _, installed := range []string{"/Applications/Gropius.app", filepath.Join(fx.home, "Applications")} {
+	for _, installed := range []string{"/Applications/DessauServer.app", filepath.Join(fx.home, "Applications")} {
 		if strings.HasPrefix(executed, installed) {
 			t.Errorf("the bootstrap executed %q — the INSTALLED bundle, which need not be the build it just "+
 				"verified; an ad-hoc signature's identity changes with every build and only one release is "+
@@ -271,7 +271,7 @@ func TestTheBootstrapHandsOverToTheBinaryItVerified(t *testing.T) {
 	if !strings.Contains(args, "install --bundle ") {
 		t.Errorf("the handover's arguments were %q, which do not ask the binary to install the verified bundle", args)
 	}
-	if !strings.Contains(args, "/extract/Gropius.app") {
+	if !strings.Contains(args, "/extract/DessauServer.app") {
 		t.Errorf("the handover named %q as the bundle to place, which is not the one that was verified", args)
 	}
 	// Under CI the handover places the bundle and stops: a runner has no
@@ -286,12 +286,12 @@ func TestTheBootstrapHandsOverToTheBinaryItVerified(t *testing.T) {
 		}
 	}
 	if _, err := os.Stat(fx.reached); err == nil {
-		t.Errorf("install.sh reached for the network although GROPIUS_ASSET_DIR named the assets:\n%s", out)
+		t.Errorf("install.sh reached for the network although DESSAU_ASSET_DIR named the assets:\n%s", out)
 	}
 }
 
 // A bundle whose binary predates the verbs refuses the handover with exit 2 —
-// the code cmd/gropius has always used for an argument it does not know — and
+// the code cmd/dessau has always used for an argument it does not know — and
 // the bootstrap reports a version mismatch. In no case does a handover start a
 // server.
 func TestTheBootstrapRefusesAnOldBinarysHandover(t *testing.T) {
@@ -316,15 +316,15 @@ func TestTheBootstrapRefusesAnOldBinarysHandover(t *testing.T) {
 //
 // `ditto -x -k` restores links at any path component, and both halves used to
 // test only the LEAF of the path they exec: `[ ! -L "$VERIFIED_BIN" ]` and
-// `[ ! -L "$PLACER" ]` on Contents/MacOS/gropius, with nothing said about
-// Gropius.app, Contents or MacOS. A link at any of those three sends the exec
+// `[ ! -L "$PLACER" ]` on Contents/MacOS/dessau, with nothing said about
+// DessauServer.app, Contents or MacOS. A link at any of those three sends the exec
 // outside the directory the checksum covered while the leaf test passes on an
 // ordinary executable file — one component of four, guarded as if it closed
 // the case (iss-2609190032572500).
 //
 // What closes it is the whole tree rather than the path: neither bundle this
 // product publishes contains a symbolic link, so an archive that carries one
-// anywhere is not a Gropius archive and nothing is run out of it.
+// anywhere is not a Dessau archive and nothing is run out of it.
 //
 // It takes a release whose bytes verify to plant one, so the checksum is the
 // control that really stands here. These two hold the belt-and-braces guard to
@@ -352,7 +352,7 @@ func TestTheServerHalfRefusesAnArchiveLinkedAtAnIntermediateComponent(t *testing
 }
 
 // The client half's placer is the same exec through the same four components,
-// out of a second archive, and it is refused the same way — before `gropius
+// out of a second archive, and it is refused the same way — before `dessau
 // place` is reached and so before anything is put anywhere.
 func TestTheClientHalfRefusesAPlacerLinkedAtAnIntermediateComponent(t *testing.T) {
 	fx := newClientHandoverFixture(t, recordingStub(0), linkedMacOSDir)

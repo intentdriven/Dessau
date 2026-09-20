@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // measuredGateway is a recording gateway over a model that declares a
@@ -20,7 +20,7 @@ import (
 func measuredGateway(t *testing.T, inFlight int, footprint int64) (*httptest.Server, *stats.Recorder) {
 	t.Helper()
 	const modelPath = "/models/" + testModelID
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "GROPIUS OK"})
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
 	models := &stubModels{models: []registry.Model{{
 		RepoID: testModelID, Path: modelPath, State: registry.StateReady, ContextLength: 131072,

@@ -65,7 +65,7 @@ const (
 	ClassUnreachable Class = "unreachable"
 	// ClassCancelled is a client that went away before the answer was done.
 	ClassCancelled Class = "cancelled"
-	// ClassGatewayError is Gropius's own failure: it could not re-encode the
+	// ClassGatewayError is Dessau's own failure: it could not re-encode the
 	// request, could not build the call to the model server, or ended a
 	// streamed answer on a limit of its own — a line that reached the relay's
 	// ceiling with no end to it. It is neither the client's fault nor the model

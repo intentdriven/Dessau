@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // stubModels is a fake registry.
@@ -160,11 +160,11 @@ var gatewayRequests = []gatewayRequest{
 	{name: "a completion with a wrong key", method: "POST", path: "/v1/chat/completions", key: "wrong",
 		body: `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`},
 	{name: "the models list from off this Mac with no key", method: "GET", path: "/v1/models",
-		host: "gropius.example:11535"},
+		host: "dessau.example:11535"},
 	{name: "the models list from off this Mac with a wrong key", method: "GET", path: "/v1/models",
-		key: "wrong", host: "gropius.example:11535"},
+		key: "wrong", host: "dessau.example:11535"},
 	{name: "a completion from off this Mac with no key", method: "POST", path: "/v1/chat/completions",
-		host: "gropius.example:11535",
+		host: "dessau.example:11535",
 		body: `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}]}`},
 	{name: "a route that is not there", method: "GET", path: "/v1/nope", key: "secret"},
 }
@@ -174,7 +174,7 @@ func newTestGateway(t *testing.T, cfg config.Config) (*httptest.Server, *stubPoo
 	t.Helper()
 
 	const modelPath = "/models/mlx-community/Qwen3-8B-4bit"
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "GROPIUS OK"})
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
 
 	models := &stubModels{models: []registry.Model{{
@@ -203,7 +203,7 @@ func TestMalformedRequestBodyIsBadRequest(t *testing.T) {
 	// "ZZZ" is not a valid chunk-size line, so the handler's body read fails
 	// with a framing error on the first chunk rather than a deadline.
 	fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\n"+
-		"Host: gropius.test\r\nContent-Type: application/json\r\n"+
+		"Host: dessau.test\r\nContent-Type: application/json\r\n"+
 		"Transfer-Encoding: chunked\r\n\r\nZZZ\r\n0\r\n\r\n")
 
 	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
@@ -271,7 +271,7 @@ func TestGatewayRewritesModelFieldToBackendPath(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Choices) == 0 || out.Choices[0].Message.Content != "GROPIUS OK" {
+	if len(out.Choices) == 0 || out.Choices[0].Message.Content != "DESSAU OK" {
 		t.Errorf("unexpected completion: %+v", out)
 	}
 }
@@ -305,7 +305,7 @@ func TestResponseModelFieldIsNotTheBackendPath(t *testing.T) {
 		t.Errorf("response model = %q, want the requested name, not the backend path %q",
 			out.Model, fake.ModelArg)
 	}
-	if len(out.Choices) == 0 || out.Choices[0].Message.Content != "GROPIUS OK" {
+	if len(out.Choices) == 0 || out.Choices[0].Message.Content != "DESSAU OK" {
 		t.Errorf("rewrite mangled the completion: %+v", out)
 	}
 }
@@ -385,7 +385,7 @@ func TestNonStreamingResponseBodyIsCapped(t *testing.T) {
 // Reproduces the leak the maxResponseBody cap introduced on its own: a
 // truncated body that still contains a literal, unredacted modelArg.
 func TestNonStreamingResponseBodyIsCappedWithoutLeakingBackendPath(t *testing.T) {
-	const modelArg = "/Users/alice/Library/Application Support/Gropius/models/mlx-community/Qwen3-8B-4bit"
+	const modelArg = "/Users/alice/Library/Application Support/Dessau/models/mlx-community/Qwen3-8B-4bit"
 	const requested = "mlx-community/Qwen3-8B-4bit"
 
 	// mlx-lm echoes "model" near the front of the object, well before a
@@ -411,7 +411,7 @@ func TestNonStreamingResponseBodyIsCappedWithoutLeakingBackendPath(t *testing.T)
 // all (not just when it merely lacks a "model" field), which is exactly what
 // a truncated or mid-read-interrupted body looks like.
 func TestRewriteModelFieldRedactsBackendPathEvenWhenTruncated(t *testing.T) {
-	const modelArg = "/Users/alice/Library/Application Support/Gropius/models/mlx-community/Qwen3-8B-4bit"
+	const modelArg = "/Users/alice/Library/Application Support/Dessau/models/mlx-community/Qwen3-8B-4bit"
 	const requested = "mlx-community/Qwen3-8B-4bit"
 
 	truncated := []byte(`{"id":"chatcmpl-fake","model":"` + modelArg + `","choices":[{"index":0,"message":{"role":"assistant","content":"partial tex`)
@@ -682,7 +682,7 @@ func TestLaunchErrorDoesNotLeakLocalPaths(t *testing.T) {
 	models := &stubModels{models: []registry.Model{
 		{RepoID: "org/m", State: registry.StateReady},
 	}}
-	leaky := fmt.Errorf("python runtime is not installed (/Users/carol/Library/Application Support/Gropius/venv/bin/python): file does not exist")
+	leaky := fmt.Errorf("python runtime is not installed (/Users/carol/Library/Application Support/Dessau/venv/bin/python): file does not exist")
 	pool := &stubPool{srv: fake, acquireErr: fmt.Errorf("start model server for org/m: %w", &runtime.LaunchError{Err: leaky})}
 	g := New(Options{Config: config.Default(), Pool: pool, Models: models})
 	srv := httptest.NewServer(g.Handler())
@@ -890,7 +890,7 @@ func TestLoopbackWithNoKeyIgnoresForeignOrigin(t *testing.T) {
 	}
 }
 
-// The client's token is Gropius' business; the model server has no use for it.
+// The client's token is Dessau' business; the model server has no use for it.
 func TestClientTokenIsNotForwardedUpstream(t *testing.T) {
 	cfg := config.Default()
 	cfg.APIKey = "bh_secret"
@@ -988,7 +988,7 @@ func TestLoopbackRebindingHostRequiresKey(t *testing.T) {
 	}
 }
 
-// Gropius's extensions to the OpenAI-shaped models list are top-level fields
+// Dessau's extensions to the OpenAI-shaped models list are top-level fields
 // with names already common elsewhere: context_length is what OpenRouter- and
 // Ollama-style listings publish, max_model_len what vLLM-derived clients read.
 // Both carry the same figure, and the four fields the list already served are
@@ -1367,7 +1367,7 @@ func TestListModelsReportsResidencyOnAKeyedInstall(t *testing.T) {
 		t.Errorf("last_used = %v for a model never used, want the field to be absent", v)
 	}
 	// The four fields the list served before this one are unchanged.
-	if cold["object"] != "model" || cold["owned_by"] != "gropius" {
+	if cold["object"] != "model" || cold["owned_by"] != "dessau" {
 		t.Errorf("the pre-existing fields changed: %+v", cold)
 	}
 	if n, ok := cold["created"].(float64); !ok || int64(n) != 1757145600 {
@@ -1773,7 +1773,7 @@ func TestResidencyReachesTheWireFromARealPool(t *testing.T) {
 		t.Errorf("launched %d model servers, want 1", launcher.launched)
 	}
 	// The pre-existing fields still come from the registry, unchanged.
-	if warm["id"] != "mlx-community/Qwen3-8B-4bit" || warm["owned_by"] != "gropius" {
+	if warm["id"] != "mlx-community/Qwen3-8B-4bit" || warm["owned_by"] != "dessau" {
 		t.Errorf("the pre-existing fields changed: %+v", warm)
 	}
 	if n, ok := warm["context_length"].(float64); !ok || int(n) != 40960 {

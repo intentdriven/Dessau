@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/capability"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/capability"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
 )
 
 // fakeSource resolves models without touching the filesystem.
@@ -1171,7 +1171,7 @@ func TestPinnedModelIgnoresTheIdleTimeout(t *testing.T) {
 }
 
 // SetPinned is the live seam: pinning in Settings protects a model that is
-// already loaded, without Gropius being restarted and without a new pool.
+// already loaded, without Dessau being restarted and without a new pool.
 func TestSetPinnedProtectsAModelWithoutANewPool(t *testing.T) {
 	l := newFakeLauncher()
 	src := &fakeSource{models: map[string]int64{"org/keep": 100, "org/spare": 100, "org/new": 100}}

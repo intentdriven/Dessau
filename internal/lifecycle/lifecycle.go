@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Env is the world a verb runs in, handed in rather than reached for, so a test
@@ -79,7 +79,7 @@ const (
 // the default one exits the process and prints a usage block this package did
 // not write.
 func flags(name string, err io.Writer) *flag.FlagSet {
-	fs := flag.NewFlagSet("gropius "+name, flag.ContinueOnError)
+	fs := flag.NewFlagSet("dessau "+name, flag.ContinueOnError)
 	fs.SetOutput(err)
 	return fs
 }
@@ -96,7 +96,7 @@ func runStatus(env Env, args []string, st StatusEnv) int {
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
-		writeLine(env.Err, "gropius status: unexpected argument "+Quote(fs.Arg(0)))
+		writeLine(env.Err, "dessau status: unexpected argument "+Quote(fs.Arg(0)))
 		return ExitUsage
 	}
 
@@ -104,13 +104,13 @@ func runStatus(env Env, args []string, st StatusEnv) int {
 	// operator did not choose, and a caller piping Out into a decoder must not
 	// have to parse around a warning.
 	if env.SettingsProblem != "" {
-		writeLine(env.Err, "gropius status: "+env.SettingsProblem)
+		writeLine(env.Err, "dessau status: "+env.SettingsProblem)
 	}
 
 	s := StatusOf(st)
 	if *asJSON {
 		if err := writeJSON(env.Out, s); err != nil {
-			writeLine(env.Err, "gropius status: "+err.Error())
+			writeLine(env.Err, "dessau status: "+err.Error())
 			return ExitFailed
 		}
 		return ExitOK
@@ -133,7 +133,7 @@ func writeLine(w io.Writer, s string) { fmt.Fprintln(w, s) }
 // Quote wraps a value for display and keeps it readable when it is empty or
 // carries spaces.
 //
-// Exported because cmd/gropius refuses command lines this package never sees —
+// Exported because cmd/dessau refuses command lines this package never sees —
 // an unknown verb, a verb after the server's flags — and it was spelling the
 // same two lines itself. One helper, so a refusal from the command and a
 // refusal from a verb quote a word the same way.
@@ -152,20 +152,20 @@ func runDoctor(env Env, args []string, d DoctorEnv, checks []Check) int {
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
-		writeLine(env.Err, "gropius doctor: unexpected argument "+Quote(fs.Arg(0)))
+		writeLine(env.Err, "dessau doctor: unexpected argument "+Quote(fs.Arg(0)))
 		return ExitUsage
 	}
 
 	r := Diagnose(d, checks)
 	if *asJSON {
 		if err := writeJSON(env.Out, r); err != nil {
-			writeLine(env.Err, "gropius doctor: "+err.Error())
+			writeLine(env.Err, "dessau doctor: "+err.Error())
 			return ExitFailed
 		}
 	} else {
 		RenderDoctor(env.Term, r)
 	}
 	// The severity is carried in the report; the code says only whether
-	// something Gropius verified is wrong.
+	// something Dessau verified is wrong.
 	return r.ExitCode()
 }
