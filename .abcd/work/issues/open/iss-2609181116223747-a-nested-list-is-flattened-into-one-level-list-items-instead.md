@@ -20,3 +20,7 @@ Left open for the maintainer: a flattened nested list may well read better than 
 ## Deferral 2026-09-19
 
 Waits on the maintainer: a flattened nested list versus the model's raw marks is a choice between the mechanism's promise and the delivered rendering; client/README.md says what is drawn.
+
+## Decision 2026-09-20
+
+Decided at the second interview of 2026-09-20; the lane builds it with a test. See the 2026-09-20 line in `.abcd/work/DECISIONS.md` that names this id.

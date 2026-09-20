@@ -1,10 +1,10 @@
 ---
 id: adr-2609061610102325
 slug: the-gateway-may-rewrite-prompt-content-only-to-merge-system
-status: accepted
+status: superseded by adr-2609201008470380, on the never-retain clause; the merging decision is restated there
 date: 2026-09-06
 supersedes: null
-superseded_by: null
+superseded_by: adr-2609201008470380
 related_intents: [itd-2609061441310453]
 related_rfcs: []
 related_adrs: [adr-2609061503319212]

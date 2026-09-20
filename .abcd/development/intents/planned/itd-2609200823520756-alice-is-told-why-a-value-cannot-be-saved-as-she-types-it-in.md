@@ -1,8 +1,8 @@
 ---
 id: itd-2609200823520756
 slug: alice-is-told-why-a-value-cannot-be-saved-as-she-types-it-in
-spec_id: null
-kind: null
+spec_id: spc-2609201007366798
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609081259493890]
@@ -123,29 +123,29 @@ cancels the settings submit on the page's own judgement.
 
 ## Scope Conditions
 
-- **Advisory only. It never gates.** **Save** stays live, no field is marked
+- **Advisory only. It never gates.** **Save** stays live, no field is marked <!-- cond: cond-2609201007360317 -->
   invalid, no submit is blocked on a client-side judgement, and the server remains
   the only authority on refusal (itd-2609081259493890). A message that appears
   beside a control is an explanation, and the operator may ignore it and save.
-- **The loopback control plane, one Mac, one operator.** The route lives on the
+- **The loopback control plane, one Mac, one operator.** The route lives on the <!-- cond: cond-2609201007365487 -->
   panel's control plane, which is loopback-only and bearer-exempt by
   adr-2609091123526871 §7 — so it is reachable by every account on this Mac and by
   nothing on the network. This intent does not change that reach; it accepts it,
   and designs for a caller who is not necessarily Alice.
-- **Purity is a scope condition, not an implementation detail.** Validation is
+- **Purity is a scope condition, not an implementation detail.** Validation is <!-- cond: cond-2609201007369976 -->
   computed from the posted document alone, or from a redacted clone of the stored
   document; it writes no file, starts and stops no process, applies nothing, and
   never returns or confirms a stored value it was not given.
-- **An adversarial security review is a precondition of landing.** Not a follow-up.
+- **An adversarial security review is a precondition of landing.** Not a follow-up. <!-- cond: cond-2609201007366101 -->
   The route is a new unauthenticated input surface on a declared trust boundary,
   and the oracle recorded in itd-2609081259493890's audit notes is the precedent
   that makes the review load-bearing rather than ceremonial.
-- **It ships into the panel as it stands.** The route and the per-field slots do
+- **It ships into the panel as it stands.** The route and the per-field slots do <!-- cond: cond-2609201007367527 -->
   not wait on the control-panel redesign (itd-2609100519003748), which is what
   makes this intent's value independent of that redesign's scope. What the redesign
   owes this intent is a per-field error slot beside every control; until then the
   slots this intent needs are added where its own controls are.
-- **`impact: additive`.** No stored format changes: no new `config.json` field, no
+- **`impact: additive`.** No stored format changes: no new `config.json` field, no <!-- cond: cond-2609201007369542 -->
   change to what a save writes. A new route and new markup only.
 
 ## Acceptance Criteria
@@ -198,3 +198,7 @@ _None recorded yet._
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: the maintainer answered every open question at the 2026-09-20 interview and the itd-1 sections were written from the answers; what would show this wrong is a criterion that cannot be held by the test it names

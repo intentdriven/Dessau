@@ -1,10 +1,10 @@
 ---
 id: adr-2609061503319212
 slug: no-public-telemetry-local-telemetry-only-as-a-strict-opt-in
-status: accepted
+status: superseded by adr-2609201008476813, which restates it with two named exceptions; narrowed in part by adr-2609201008477513, on the per-model diagnostic
 date: 2026-09-06
 supersedes: [itd-2609061521134968]
-superseded_by: null
+superseded_by: adr-2609201008476813
 related_intents: [itd-2609061521082551, itd-2609061521102742]
 related_rfcs: []
 related_adrs: []
