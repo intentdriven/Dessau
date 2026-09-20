@@ -137,8 +137,10 @@ and with the server's `chat` as its answer for a model that carries no words.
 ## The chat template
 
 `chat_template` says whether the model directory carries a chat template: a
-`chat_template` entry in its `tokenizer_config.json`, or a `chat_template.jinja`
-file beside it. Dessau reads it from the files on this Mac at every start and
+`chat_template` entry in its `tokenizer_config.json` that holds template text
+— as one string, or as a list of named templates of which at least one has
+text — or a non-empty `chat_template.jinja` file beside it. Dessau reads it
+from the files on this Mac at every start and
 whenever a model arrives, so it is a fact about the copy served here rather
 than a claim from the Hub, and it is present on every entry. It says nothing
 about whether the template renders well or what the model does with it; it

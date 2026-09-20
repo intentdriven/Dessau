@@ -134,6 +134,17 @@ const (
 // It returns a fresh slice, so what the registry holds is never the caller's
 // array — a download's decoded metadata, or a planted file's.
 func sanitizeCategory(m Model) Model {
+	m = sanitizeWords(m)
+	// HubSilent means the Hub answered and had no words, so it can never
+	// stand beside words: a caller sets it from "the Hub answered" and this
+	// is where "and had no words" is settled, after the bound has taken what
+	// it takes. A planted file that says both is repaired the same way.
+	m.HubSilent = m.HubSilent && !m.HasHubWord()
+	return m
+}
+
+// sanitizeWords bounds the two word fields alone.
+func sanitizeWords(m Model) Model {
 	m.PipelineTag = usableTag(m.PipelineTag)
 	if m.Tags == nil {
 		return m
@@ -880,8 +891,8 @@ func factsFrom(dir string, cfg map[string]any) ModelFacts {
 // oversized, not regular, or not JSON says "no template" rather than
 // anything else; the jinja file is not read at all, only opened as a regular
 // file and measured. Presence of any value is not enough — an empty string,
-// an empty array, null or a number is not a template — and nothing here
-// judges whether the template would render.
+// null, a number, or an array none of whose entries carries template text is
+// not a template — and nothing here judges whether the template would render.
 func hasChatTemplate(dir string) bool {
 	var tc struct {
 		ChatTemplate json.RawMessage `json:"chat_template"`
@@ -893,9 +904,18 @@ func hasChatTemplate(dir string) bool {
 				return true
 			}
 		} else {
-			var named []json.RawMessage
-			if json.Unmarshal(tc.ChatTemplate, &named) == nil && len(named) > 0 {
-				return true
+			// The named shape: [{"name": "default", "template": "…"}, …].
+			// At least one entry has to carry text; an array of empties is
+			// the same statement as no key.
+			var named []struct {
+				Template string `json:"template"`
+			}
+			if json.Unmarshal(tc.ChatTemplate, &named) == nil {
+				for _, n := range named {
+					if n.Template != "" {
+						return true
+					}
+				}
 			}
 		}
 	}
@@ -1220,8 +1240,8 @@ func (r *Registry) SetCategory(repoID, pipelineTag string, tags []string) error 
 	}
 	existing.PipelineTag = pipelineTag
 	existing.Tags = tags
+	existing.HubSilent = true // the Hub answered; sanitizeCategory keeps the mark only if it had no words
 	existing = sanitizeCategory(existing)
-	existing.HubSilent = !existing.HasHubWord()
 	r.models[key(repoID)] = existing
 	snapshot := r.listLocked()
 	err := r.saveLocked()

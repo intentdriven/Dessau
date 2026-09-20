@@ -56,6 +56,18 @@ func TestInspectModelDirReportsTheChatTemplate(t *testing.T) {
 		{"an empty array of templates", func(t *testing.T, dir string) {
 			writeTokenizerConfig(t, dir, `{"chat_template": []}`)
 		}, false},
+		{"an array of empty objects", func(t *testing.T, dir string) {
+			writeTokenizerConfig(t, dir, `{"chat_template": [{}]}`)
+		}, false},
+		{"a named template with no text", func(t *testing.T, dir string) {
+			writeTokenizerConfig(t, dir, `{"chat_template": [{"name": "default"}, {"name": "tool_use", "template": ""}]}`)
+		}, false},
+		{"an array of strings, which is not the named shape", func(t *testing.T, dir string) {
+			writeTokenizerConfig(t, dir, `{"chat_template": ["{{ messages }}"]}`)
+		}, false},
+		{"one named template with text among empties", func(t *testing.T, dir string) {
+			writeTokenizerConfig(t, dir, `{"chat_template": [{}, {"name": "default", "template": "{{ messages }}"}]}`)
+		}, true},
 		{"a null template", func(t *testing.T, dir string) {
 			writeTokenizerConfig(t, dir, `{"chat_template": null}`)
 		}, false},
@@ -293,5 +305,24 @@ func TestHasHubWord(t *testing.T) {
 	}
 	if !(Model{Tags: []string{"mlx"}}).HasHubWord() {
 		t.Error("a tag is a word")
+	}
+}
+
+// HubSilent means "the Hub answered and had no words", so it can never stand
+// beside words: a record that carries both — a planted file, or a caller that
+// set the mark from "answered" alone — is repaired on the way in.
+func TestHubSilentNeverStandsBesideWords(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	if err := r.Put(Model{RepoID: "org/worded", Path: dir, State: StateReady, HubSilent: true, PipelineTag: "text-generation"}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := r.Get("org/worded"); m.HubSilent {
+		t.Error("HubSilent survived beside a pipeline tag")
+	}
+	if err := r.Put(Model{RepoID: "org/bare", Path: dir, State: StateReady, HubSilent: true, Tags: []string{"\x00"}}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := r.Get("org/bare"); !m.HubSilent {
+		t.Error("HubSilent was cleared although every word was dropped as unusable")
 	}
 }
