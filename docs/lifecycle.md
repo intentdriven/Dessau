@@ -40,7 +40,7 @@ From there the binary does the work, in this order:
 5. **Opens the application** and waits for it to answer, then says whether it
    is serving.
 
-When the command returns, Dessau is in the menu bar. Click its icon for the
+When the command returns, Dessau Server is in the menu bar. Click its icon for the
 control panel, and carry on at
 [Getting started](getting-started.md#3-download-a-model).
 

@@ -172,7 +172,7 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 		if err := installedAt(ie.Dest); err != nil {
 			writeLine(env.Err, "dessau install: there is nothing to repair at "+redact(ie.Dest, ie.Home)+
 				" — "+redact(err.Error(), ie.Home)+".")
-			writeLine(env.Err, "Install Dessau first: "+bootstrapCommand)
+			writeLine(env.Err, "Install Dessau Server first: "+bootstrapCommand)
 			return ExitFailed
 		}
 	}
@@ -246,19 +246,19 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 		return ExitOK
 	}
 	if waitUntil(ie.Serving, ie.Poll, 30*time.Second) {
-		writeLine(env.Out, "Dessau is serving.")
+		writeLine(env.Out, "Dessau Server is serving.")
 	} else {
 		// Said rather than assumed: the terminal's verdict is what was true
 		// when it exited, and the app's own check on the next launch may still
 		// finish what this run could not.
-		writeLine(env.Out, "Dessau was opened; it was not answering yet when this command returned. Run dessau status to see.")
+		writeLine(env.Out, "Dessau Server was opened; it was not answering yet when this command returned. Run dessau status to see.")
 	}
 	// What the bootstrap used to print at the end of its own run. It is said
 	// here because this is what finishes an install now, and a person who has
 	// just watched a runtime install should not have to go and find the
 	// documentation to learn where the application went.
 	writeLine(env.Out, "")
-	writeLine(env.Out, "Dessau is in the menu bar. Click its icon to open the control panel, download a model,")
+	writeLine(env.Out, "Dessau Server is in the menu bar. Click its icon to open the control panel, download a model,")
 	writeLine(env.Out, "and copy the address other machines should point at.")
 	return ExitOK
 }

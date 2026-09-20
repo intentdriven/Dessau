@@ -54,11 +54,11 @@ import (
 // being asked, which is the stated reason the criteria require.
 const (
 	firewallGrantScript = `do shell script fw & " --add " & p & " && " & fw & " --unblockapp " & p ` +
-		`with prompt "Dessau needs administrator rights to allow itself through the macOS firewall, ` +
+		`with prompt "Dessau Server needs administrator rights to allow itself through the macOS firewall, ` +
 		`so other machines on your network can reach it." with administrator privileges`
 
 	firewallRemoveScript = `do shell script fw & " --remove " & p ` +
-		`with prompt "Dessau needs administrator rights to remove its own entry from the macOS firewall. ` +
+		`with prompt "Dessau Server needs administrator rights to remove its own entry from the macOS firewall. ` +
 		`This is the last step of uninstalling it." with administrator privileges`
 )
 

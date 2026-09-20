@@ -137,7 +137,7 @@ func runUpdate(env Env, args []string, ue UpdateEnv) int {
 	if sentence, refused := belowFloor(ue.HostMacOSVersion()); refused {
 		writeLine(env.Err, "dessau update: "+sentence)
 		writeLine(env.Err, "Nothing was downloaded and nothing was replaced. The installed "+
-			"Dessau is untouched and still runs.")
+			"Dessau Server is untouched and still runs.")
 		return ExitFailed
 	}
 
