@@ -6,7 +6,7 @@ kind: null
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609091412177263]
-severity: minor
+severity: major
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
@@ -23,12 +23,31 @@ production_mode: hand-written
 
 ## Press Release
 
-> _Seeded from a quoted-text intent capture. Expand into the full press-release narrative before planning._
+> _Seeded from a quoted-text intent capture. Expanded briefly once the three
+> open questions were answered on 2026-09-20; the narrative below is the
+> answers, not a substitute for them._
 
-Not expanded. The narrative turns on the three open questions below: whether
-this may record a client's prompts at all, which of the two shapes writes the
-log, and what ends it. Writing the press release now would settle them by
-prose.
+A model answers strangely and Alice wants to see the traffic. She opens the
+control panel, finds the model, and arms debug logging for it. The panel says
+in plain words what that means: from the model's next start until the one
+after, its own log holds every request sent to it and every answer it
+produced — prompts and completions, whoever sent them, exactly as the model
+server writes them. Arming it changes nothing about the run that is going on
+now; the panel says that too, and offers the Unload that starts the next run.
+While a model is armed or running at debug, the panel shows it.
+
+The run after that is back at INFO, because the level is a launch flag and the
+mark is spent at launch. When the run ends, its log is kept rather than
+emptied, so the restart that ends the mode leaves Alice the evidence. The file
+is bounded, because a client on the network chooses the bytes in it.
+
+This is one model, chosen by the operator, never on by default, and never
+reachable from the statistics switch or from `log_level`. Bob receives exactly
+what he received before and is told nothing about it — the honest cost, stated
+in the ADR that narrows adr-2609061503319212 rather than designed around,
+because a stateless server has nowhere to tell him. A model whose transcript
+exception says nothing of it is ever written down refuses the arm and says
+why. Nothing is sent anywhere either way.
 
 ## Why This Matters
 
@@ -70,15 +89,181 @@ What the title claims, corrected:
 
 ## Mechanism
 
-> _Prompted (the claim-recording gradient): why the authors expect this to work, as a falsifiable "we expect X because Y" — not the outcome restated. Replace this line with the claim, or with the exact token `None stated.` alone on its line to record the claim as considered and declined._
+We expect a launch flag to be the only level switch we need, because the
+pinned model server sets its level once — `logging.basicConfig(level=...)` from
+`--log-level`, at `main()` — and exposes no runtime control over it. Falsified
+if a request, a signal or an environment variable can change a running model
+server's level, in which case arm-then-restart is a self-inflicted constraint
+and the mode could start where the title says it does.
+
+We expect arming to be safe because the mark is consumed at launch, not read
+per request: the launcher composes `launchArgs` once, takes the level from the
+mark, and clears it in the same step, so the process that starts is at DEBUG
+and the next one is at INFO with nothing to remember. Falsified if a launch can
+consume the mark without starting — a failed spawn, a provisioning error, a
+port already taken — and leave Alice thinking she is armed when she is not, or
+armed twice; the acceptance criteria name the case.
+
+We expect the separation from the statistics switch to hold because a readers'
+list plus a liveness rule is the instrument that already holds it in one
+direction, and this adds the mirror: the mark is its own field, derived from
+neither `Statistics` nor `log_level`, and its only reader in
+`internal/runtime` is the launcher's level argument. Falsified the moment the
+mark's value can reach the launcher under another name — which the scan cannot
+see and a review of the diff must, which is why the list is a file that has to
+be edited rather than a comment.
+
+We expect the rename at launch to keep the evidence because truncation is the
+only thing that destroys it: every launch opens the per-model log
+`O_CREATE|O_TRUNC`, so a launch that renames the previous file first leaves
+exactly one run's record behind it. Falsified if the rename can lose the file
+instead of moving it — a rename across the account boundary the shared-cache
+install creates, or a second launch racing the first — and the acceptance
+criterion is the rename, not the intention.
+
+We expect a size bound to hold against a looping client because the bound is
+ours and applies to bytes written, not to requests served: the server itself
+has no `maxBytes`, no `FileHandler` and no truncation of either body, so a
+client that repeats one request writes until the bound stops the writing. It
+is the same instrument `gropius.log` already uses. Falsified if a single
+request can exceed the bound before it is checked — one 200,000-character
+context probe body is a single `logging.debug` call — so the bound has to hold
+per write and not only per file.
 
 ## Scope Conditions
 
-> _Required (the claim-recording gradient): the population, platform, scale, or assumptions this claim holds under, one per top-level bullet — `abcd intent plan` stamps each with a persistent identity. Replace this line with those bullets, or with the exact token `None stated.` alone on its line._
+- **The pinned model server, and what it writes at DEBUG.** `mlx-lm==0.31.3`
+  (`internal/runtime/mlx-requirements.txt`, `mlxLMVersion` in
+  `internal/runtime/provision.go`). At DEBUG that version writes the whole
+  request body including every message, every generation step's text, and the
+  whole non-streaming response object — verified against the pinned wheel in
+  `.abcd/development/research/notes/2026-09-20-mlx-lm-0.31.3-debug-logging.md`,
+  which is the precondition finding 1 named. Nothing in it is redacted,
+  sampled or truncated, so an API key a client puts in a message is written
+  verbatim. This scope condition is void at the next pin bump: what the level
+  writes is the server's to change, and the note is the fixture to re-read.
+- **Per model, one process lifetime.** The mark is armed against one model,
+  and the run it buys ends when that model server next stops, for whatever
+  reason. The reasons are not Alice's to choose: the pool evicts under memory
+  pressure and the idle reaper unloads where an idle timeout is set, so any
+  client on the network can end the run at a moment she cannot predict. The
+  only operator-driven restart is the panel's existing per-model Unload.
+- **Operator-invoked only.** Never on by default, never on for a model Alice
+  did not arm, never derived from the statistics switch and never from
+  `log_level`. An arm is an action on one model in a panel Alice is already
+  authenticated to; there is no client-facing surface that arms it, and no
+  client-facing surface that reveals it.
+- **The shared-cache install's exposure, as a cost.** Where the file lives and
+  what mode it has are settled and unchanged (`internal/runtime/launcher.go`:
+  the logs folder through the account directory, 0600, `O_NOFOLLOW`,
+  `O_NONBLOCK`, a regular-file check on the handle). Under
+  `make install-shared` the added exposure is not another local account reading
+  the file — it is that network clients' prompts and the models' answers land
+  in the serving account's directory tree, under the deliberate `3775`
+  semantics the Makefile explains. That is the cost, stated; "readable by
+  nobody else" is the phrase that failed in the sibling and is not used here.
+- **Nothing leaves the Mac, by the records that already own it.**
+  adr-2609061503319212 (no public telemetry, local telemetry strictly opt-in),
+  the shipped statistics intents, and itd-2609091412177263 (the server's own
+  log) own that invariant between them. This record does not re-promise it; it
+  links it, and the ADR that narrows adr-2609061503319212 is where the one
+  exception this makes is written down.
+- **A no-transcript model refuses the arm.** itd-2609091715089488's 2026-09-20
+  answer: a model carrying the transcript exception refuses a debug arm with
+  the reason, and both panels say so — the exception means no prompts on disk,
+  not "not in this one file". This record holds that refusal, not a carve-out
+  from it.
+- **The log also holds the traffic Gropius's own probes send.** The context
+  probe posts a generated filler prompt sized to the window under test
+  (`internal/contextprobe/probe.go`) and the self-test and readiness paths send
+  their own requests. At DEBUG those bodies are written like any other, and the
+  filler is the largest single body the server ever sees — which is why the
+  size bound has to hold per write. The panel's plain words must not say the
+  file holds only what clients sent.
 
 ## Acceptance Criteria
 
-> _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
+- **Arming alone changes no running process.** Given a model server that is
+  running at INFO, when Alice arms debug logging for that model, then no
+  signal, no argument and no file reaches that process, its log gains no line
+  of prompt content, and the panel says the mode begins at the model's next
+  start. *Held by:* a runtime test that arms the mark against a running fake
+  and asserts the process was neither restarted nor written to.
+- **The next launch runs at DEBUG and the one after at INFO.** Given a model
+  armed and then unloaded, when the pool launches it, then `launchArgs` carries
+  `--log-level DEBUG` exactly once and the mark is cleared in the same step, so
+  that when the model is launched again it carries `--log-level INFO`. *Held
+  by:* a launcher test over two consecutive launches asserting the two
+  argument lists, and a third asserting that a launch which fails to spawn
+  leaves the mark armed rather than spent.
+- **The panel says in plain words what this writes down.** Given the control
+  panel's card for a model, when Alice is about to arm debug logging, then the
+  panel states that the model's own log will hold every request sent to it and
+  every answer it produced, prompts and completions included, whoever sent
+  them, and that this begins at the model's next start. *Held by:* an
+  architecture test over `internal/ui/static/` asserting the sentence is
+  present at the control, in the shape the logging docs test already uses for
+  `docs/logging.md`.
+- **A model at debug is visibly at debug.** Given a model that is armed or
+  running at DEBUG, when Alice looks at the panel, then that model is shown as
+  such — armed and running distinguished, since they are different runs — and a
+  model that is neither shows nothing. *Held by:* a control-endpoint test that
+  the per-model state is served, plus the static-surface test that it is drawn.
+  *Hand check:* arm a model in the web panel, confirm the indication appears
+  without a reload, unload it, confirm the indication moves from armed to
+  running.
+- **The mark never comes from the statistics switch, in either direction.**
+  Given the tree, when the architecture tests run, then no file outside the
+  new readers' list names the debug mark, the mark's value is derived from
+  neither `Statistics` nor `log_level` anywhere, and arming it writes nothing
+  to `Statistics`. *Held by:* the mirror of `statistics_switch_test.go` — a
+  `debugMarkReaders` list with the reason per entry, a scan that fails a build
+  which adds a reader, and a liveness rule in the shape of
+  `TestStatisticsSwitchReadersAllExist` so a renamed reader cannot leave its
+  exemption behind for the next file to inherit.
+- **`TestTheModelServerIsAlwaysLaunchedAtInfo` is amended, not deleted.**
+  Given the amended test, when the launcher names DEBUG for any reason other
+  than the per-model mark — from `log_level`, from the statistics switch, or as
+  a second spelling of the level — then the test fails; and it still fails if
+  the level is named in more than the one place, or if an unarmed launch is not
+  at INFO. *Held by:* the amended test itself, renamed to say what it now
+  protects, with the comment block carrying why the exception exists and the id
+  of the ADR that narrows adr-2609061503319212.
+- **The file is bounded.** Given a model running at DEBUG, when a client loops
+  a request, or when the context probe sends one filler body larger than the
+  bound, then the per-model log stops at its bound rather than filling the
+  disk, and the bound is stated in `docs/logging.md`. *Held by:* a test in the
+  shape of `rotating_writer_test.go` over the per-model log's writer, with a
+  case for a single write larger than the bound.
+- **The ending restart leaves Alice the file.** Given a model server that ran
+  at DEBUG and has stopped, when it is launched again, then the previous run's
+  log is present under its own name and the new run's log is a new, empty file
+  — the truncation that the docs describe today no longer destroys the run
+  Alice armed. *Held by:* a launcher test asserting the rename happens before
+  the `O_TRUNC` open and that the renamed file's content survives, plus a case
+  for a second consecutive launch not accumulating without bound.
+- **The documentation sentence is corrected.** Given `docs/logging.md`, when
+  the docs tests run, then the page no longer says the model servers' debug
+  level is something "no setting in Gropius asks for it", and instead says
+  which per-model action asks for it, what it writes, what bounds it, and that
+  the previous run's file is kept. *Held by:* the shipped
+  `internal/archtest/logging_docs_test.go`, extended with the new claims.
+- **A no-transcript model refuses the arm.** Given a model carrying
+  itd-2609091715089488's transcript exception, when Alice arms debug logging
+  for it, then the arm is refused, the reason is returned in the refusal, and
+  both panels say so at the control rather than only on the failure. *Held by:*
+  a control-endpoint test for the refusal and its reason, and the
+  static-surface test for the sentence.
+- **The exception is written down before it ships.** Given the shipped change,
+  when the record is read, then the ADR that narrows adr-2609061503319212
+  exists, is ratified, states the narrowing in the terms of the maintainer's
+  2026-09-20 answer — one model, one process lifetime, operator-invoked, never
+  on by default, never reachable from the statistics switch or `log_level`,
+  named on the panel while it is on, bounded in size — and states plainly that
+  the client is not told; adr-2609061503319212 links forward to it and
+  adr-2609061610102325 is untouched, because shape (i) makes Gropius no reader
+  of prompt content. *Held by:* the ADR link-integrity check, and a hand check
+  that the amended architecture test and this record both cite that ADR's id.
 
 ## Review 2026-09-19
 
@@ -270,8 +455,25 @@ research note. The answer changes which shape is even available.
 ## Open Questions
 
 Three, and each is the maintainer's: a privacy posture, a choice between two
-credible shapes, and a product choice about what ends the mode. The draft is
-held until they are answered.
+credible shapes, and a product choice about what ends the mode. All three were
+answered at the 2026-09-20 interview and the draft is no longer held; the
+questions and their options stay below as the record of what was weighed, each
+with the line saying where its answer lives.
+
+- **Question 1 is answered:** (a). `.abcd/work/DECISIONS.md`, 2026-09-20; the
+  narrowing ADR is named in the Acceptance Criteria as the ADR that narrows
+  adr-2609061503319212.
+- **Question 2 is answered:** (i), and its condition is met — the pinned
+  0.31.3 does write both bodies at DEBUG, verified in
+  `.abcd/development/research/notes/2026-09-20-mlx-lm-0.31.3-debug-logging.md`.
+  `.abcd/work/DECISIONS.md`, 2026-09-20.
+- **Question 3 is answered:** (i), plus a size bound, plus keeping the previous
+  run's file. `.abcd/work/DECISIONS.md`, 2026-09-20; all three are acceptance
+  criteria above.
+- **Finding 18 is answered by the answers:** `severity` is now `major` — the
+  change amends a ratified ADR's reach and writes third parties' content to
+  disk — and `impact` stays `additive`, since nothing existing changes
+  behaviour for anyone who does not arm it.
 
 **Question 1 — May an operator-invoked diagnostic record prompts and answers a
 client never consented to, and under which record?**
@@ -339,3 +541,7 @@ empty one.
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+**Answer 2026-09-20 (Question 1):** (a) — a new ADR narrowing the telemetry ADR; the client is not told, and the record says so. Recorded in `.abcd/work/DECISIONS.md`.
+
+**Answer 2026-09-20 (Question 2):** (i) the child's level, conditional on the 0.31.3 verification. **(Question 3):** (i) next restart, plus a size bound, plus keeping the previous run's file. Recorded in `.abcd/work/DECISIONS.md`.
