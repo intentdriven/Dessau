@@ -143,10 +143,17 @@ func firewallRemoveCommand(binary, home string) string {
 // A quit request rather than a signal: the app is a menu-bar application, and
 // this is the message Launch Services already sends it. The name is a literal,
 // so nothing is interpolated into the script.
+//
+// The name is the BUNDLE name from build/Info.plist's CFBundleName, not the
+// display name a person reads: that is what Launch Services resolves, and a
+// name it matches nothing to is not an error anything here can see — osascript
+// answers, the old process keeps serving, and the update reports success over
+// the top of it. TestTheServersBundleNameIsSpelledTheSameOnEverySurface holds
+// this literal to the plist.
 func quitRunningCopy() error {
 	ctx, cancel := context.WithTimeout(context.Background(), quitTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/usr/bin/osascript", "-e", `quit app "Dessau"`)
+	cmd := exec.CommandContext(ctx, "/usr/bin/osascript", "-e", `quit app "DessauServer"`)
 	cmd.Stdin = nil
 	out, err := cmd.CombinedOutput()
 	return toolError(ctx, "/usr/bin/osascript", quitTimeout, out, err)
