@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -77,5 +78,25 @@ func TestComputerNameFallsBackToTheHostName(t *testing.T) {
 	if ComputerName() == "" && LocalHostName() != "" {
 		t.Error("ComputerName() returned empty although this Mac has a LocalHostName; " +
 			"the advertisement would carry no instance name at all")
+	}
+
+	// The chain itself, driven through the seam: an empty answer and a failed
+	// call both fall back to the host name, and a real answer is trimmed and
+	// returned as is.
+	real := scutilGet
+	defer func() { scutilGet = real }()
+	host := LocalHostName()
+	for name, stub := range map[string]func(string) ([]byte, error){
+		"empty":  func(string) ([]byte, error) { return []byte("\n"), nil },
+		"failed": func(string) ([]byte, error) { return nil, errors.New("configd is not answering") },
+	} {
+		scutilGet = stub
+		if got := resolveComputerName(); got != host {
+			t.Errorf("%s scutil answer: resolveComputerName() = %q, want the LocalHostName %q", name, got, host)
+		}
+	}
+	scutilGet = func(string) ([]byte, error) { return []byte("Alice's Mac\n"), nil }
+	if got := resolveComputerName(); got != "Alice's Mac" {
+		t.Errorf("resolveComputerName() = %q, want the Computer Name exactly as scutil spells it", got)
 	}
 }

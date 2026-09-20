@@ -28,7 +28,15 @@
   // tag is immutable. Residual, plainly: whoever can merge to main can change
   // the workflow and have it run with these secrets — this repository's
   // ordinary review boundary, not a new one.
-  "name": "dessau",
+  // The Worker's own name is a dashboard identifier nobody reads, and it is
+  // deliberately NOT the family name: a Worker is addressed by name, so a new
+  // name is a new Worker, and the old one would go on holding the superseded
+  // route while the new one's deploy is refused the same pattern — a failed
+  // site deploy inside every release until someone deletes the old Worker by
+  // hand. Keeping the name makes the deploy an update in place: this one
+  // Worker holds both routes and nothing races it. Renaming it is a dashboard
+  // act, taken with this line, whenever the maintainer chooses.
+  "name": "gropius",
   "compatibility_date": "2026-09-06",
   // PATH ROUTES, not a custom domain: the apex is the organization's own site
   // and only these two paths belong to this project. The deploy asserts the
@@ -39,10 +47,8 @@
   // no Worker is attached to is not a 301, it is the apex's own 404: the
   // _redirects file in the assets root can only rewrite a request this Worker
   // is already handed. So the old path is routed here in order to be sent
-  // away again. The Worker that used to serve it, named for the superseded
-  // family, is removed from the Cloudflare dashboard by hand — nothing in this
-  // repository deletes a Worker, and two Workers claiming one path is a race
-  // whichever way it resolves.
+  // away again. Both routes belong to this one Worker (see its name above),
+  // so nothing else on the zone claims either path.
   "routes": [
     { "pattern": "intentdriven.sh/Dessau*", "zone_name": "intentdriven.sh" },
     { "pattern": "intentdriven.sh/Gropius*", "zone_name": "intentdriven.sh" }

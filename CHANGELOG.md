@@ -29,6 +29,12 @@ GitHub release notes.
   pairs his clients again, once each. A server is announced under its own Mac's
   name — "Alice's Mac", the name System Settings gives it — with no product
   name in front of it, the service type being what says which service it is.
+  A Mac running the previous build keeps it, since nothing here knows the old
+  bundle: quit that build and remove it with its own `uninstall` verb before
+  installing this one, or the two contend for port 11535 and neither reads the
+  other's settings. The data-root variable is `DESSAU_ROOT`, the command link
+  is `~/.local/bin/dessau`, and the landing page is at intentdriven.sh/Dessau/,
+  the old path redirecting to it.
   The superseded name is refused in user-facing content by the name guard from
   this change on (decided in [an architecture
   decision](.abcd/development/decisions/adrs/2609200729102059-dessau-replaces-gropius-as-the-family-name-components-are-na.md)).

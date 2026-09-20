@@ -53,6 +53,26 @@ func TestTheServersBundleNameIsSpelledTheSameOnEverySurface(t *testing.T) {
 			why:     "the application `quit app` asks to quit before the bundle is replaced",
 			pattern: regexp.MustCompile("`quit app \"([^\"]+)\"`"),
 		},
+		{
+			file:    "internal/lifecycle/install.go",
+			why:     "the bundle `dessau install` looks for and places",
+			pattern: regexp.MustCompile(`(?m)bundleName\s*=\s*"([^"]+)\.app"`),
+		},
+		{
+			file:    "internal/lifecycle/updatefetch.go",
+			why:     "the release asset `dessau update` downloads; a name that misses is a 404 on every update",
+			pattern: regexp.MustCompile(`(?m)updateArchiveName\s*=\s*"([^"]+)\.app\.zip"`),
+		},
+		{
+			file:    "install.sh",
+			why:     "the release asset the bootstrap downloads for the server (the first ASSET= line; the client's follows it)",
+			pattern: regexp.MustCompile(`(?m)^\tASSET="([^"]+)\.app\.zip"$`),
+		},
+		{
+			file:    "install.sh",
+			why:     "the release asset the bootstrap downloads to place the client with",
+			pattern: regexp.MustCompile(`(?m)^\tPLACER_ASSET="([^"]+)\.app\.zip"`),
+		},
 	} {
 		m := surface.pattern.FindStringSubmatch(readRepoFile(t, root, surface.file))
 		if m == nil {

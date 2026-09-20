@@ -718,6 +718,37 @@ func TestTheRenderWritesTheRedirectsFileAtTheAssetsRoot(t *testing.T) {
 		t.Errorf("the redirects file carries no rule at all:\n%s", b)
 	}
 
+	// A rule only fires for a request this Worker is handed, so every path a
+	// rule redirects must be routed here in wrangler.jsonc; and a bare
+	// superseded path needs its splat twin, or the old page's deep links land
+	// on the apex's 404 while the old root redirects.
+	routes := regexp.MustCompile(`"pattern":\s*"([^"]+)"`).FindAllStringSubmatch(readRepoText(t, filepath.Join(repoRoot, "wrangler.jsonc")), -1)
+	patterns := map[string]bool{}
+	for _, m := range routes {
+		patterns[m[1]] = true
+	}
+	sources := map[string]bool{}
+	for _, line := range strings.Split(string(b), "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+		sources[fields[0]] = true
+		seg := strings.SplitN(strings.TrimPrefix(fields[0], "/"), "/", 2)[0]
+		want := "intentdriven.sh/" + seg + "*"
+		if !patterns[want] {
+			t.Errorf("the rule for %q needs the route %q in wrangler.jsonc, and the routes are %v", fields[0], want, patterns)
+		}
+	}
+	for src := range sources {
+		if !strings.HasSuffix(src, "/*") && !sources[src+"/*"] {
+			t.Errorf("the rule for %q has no %q twin, so a deep link under the old path is not redirected", src, src+"/*")
+		}
+	}
+	if !patterns["intentdriven.sh/"+outSubdir(t)+"*"] {
+		t.Errorf("wrangler.jsonc routes %v, none of which is the page's own path /%s", patterns, outSubdir(t))
+	}
+
 	// And the render must put it where the host reads it: the root of the
 	// assets directory, not beside the page.
 	var man struct {
@@ -727,4 +758,14 @@ func TestTheRenderWritesTheRedirectsFileAtTheAssetsRoot(t *testing.T) {
 	if man.Redirects != "site-src/_redirects" {
 		t.Errorf("the manifest names %q as the redirects file; the committed one is site-src/_redirects", man.Redirects)
 	}
+}
+
+// readRepoText reads one committed file whole, failing the test if it cannot.
+func readRepoText(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

@@ -47,8 +47,8 @@ func LocalHostName() string {
 // makes one machine one identity.
 //
 // Memoized behind its own sync.Once, and for the same reason LocalHostName is:
-// it forks a subprocess, and the advertiser re-derives its configuration on
-// every refresh tick.
+// it forks a subprocess, and more than one caller reads it (the advertiser at
+// start, the control panel's snapshot on every request).
 var (
 	computerOnce sync.Once
 	computerVal  string
@@ -102,7 +102,7 @@ func resolveLocalHostName() string {
 // memoized, but the advertiser calls them under its own lock at start, so a
 // wedged configd must not hold that lock for ever: a few seconds is longer
 // than scutil ever takes and short enough that Stop is not blocked behind it.
-func scutilGet(key string) ([]byte, error) {
+var scutilGet = func(key string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return exec.CommandContext(ctx, "/usr/sbin/scutil", "--get", key).Output()

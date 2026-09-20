@@ -120,8 +120,8 @@ func macOSBranchLines(src string) []bool {
 // by a pattern: a new sentence about the device the person is holding must
 // fail this guard rather than slip past a loose rule.
 var serverMacSentences = map[string]bool{
-	"A Dessau server's address: the Mac's .local name or LAN address, port 11535. " +
-		"Servers on your network are offered in the model picker without typing anything.": true,
+	// Empty today: every sentence about the server's machine says "the
+	// server" or "Dessau Server" and names no device.
 }
 
 // TestChatClientNamesTheDeviceThePersonIsHolding holds every sentence the

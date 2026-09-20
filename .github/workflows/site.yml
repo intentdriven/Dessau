@@ -483,9 +483,11 @@ jobs:
           # The superseded path is answered by the _redirects rule, not by a
           # page: a 301 is the expected answer, and anything else says the
           # rule was not read from the assets directory root.
-          old="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${BASE}/Gropius/" || echo 000)"
-          echo "/Gropius/ -> ${old}"
-          [ "$old" = 301 ] || fail=1
+          for suffix in /Gropius /Gropius/; do
+            old="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${BASE}${suffix}" || echo 000)"
+            echo "${suffix} -> ${old}"
+            [ "$old" = 301 ] || fail=1
+          done
           # The whole argument for shipping site-src/headers is enforcement at
           # SERVE time. Every other check on it stops at the file: the tests read
           # it, the render copies it, the deploy asserts it survived the

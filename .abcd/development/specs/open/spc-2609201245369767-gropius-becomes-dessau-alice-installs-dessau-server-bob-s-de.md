@@ -129,5 +129,34 @@ of the whole diff; a docs-currency review of `docs/` and README.
 
 ## Departures
 
-None at the time of writing. Any departure found during the lanes is
-recorded here before the PR opens.
+- **The Cloudflare Worker keeps its old name.** The Approach said the Worker
+  is named `dessau`; a Worker is addressed by name, so that is a new Worker,
+  and the old one would keep the superseded route while the new one's deploy
+  is refused the same pattern, failing the site deploy inside every release
+  until a dashboard deletion the run does not hold the credential for.
+  Keeping the name makes the release's deploy an update in place holding both
+  routes. The name is a dashboard identifier nobody reads; renaming it is the
+  maintainer's dashboard act, with `wrangler.jsonc` following.
+- **`NAME` beside `APP`** in the Makefile and `install.sh`: `APP` must stay
+  the bundle name (what `pgrep`, `ditto`, `osascript` and `/Applications`
+  need) while the sentences a person reads say "Dessau Server" or "Dessau
+  Chat"; one variable could not be both.
+- **A fourth architecture test**, `TestTheServersBundleNameIsSpelledTheSameOnEverySurface`,
+  holds the bundle name in `build/Info.plist` against the Makefile, the
+  installer's `APP`, `ASSET` and `PLACER_ASSET`, the update verb's archive
+  name, the install verb's bundle name and the `quit app` call. It was written
+  because the update verb's `quit app` under the old name quit nothing and
+  reported success.
+- **The redirect source is named in `.abcd/site.json`** (`"redirects"`), the
+  manifest the site generator reads, rather than in `site-src/ui.json` as the
+  Approach guessed; the destination file name `_redirects` stays fixed in code.
+- **The Posture tab's snapshot gained `computer_name`** beside `hostname`, so
+  the panel can name the Computer Name the service is announced under while
+  the addresses keep the `.local` host label.
+- **The name guard's roots stay `docs` and `README.md`**: `client/README.md`
+  and `CHANGELOG.md` are not covered, the changelog because its released
+  history keeps the old name by design. Whether the client README joins the
+  roots is a decision for the maintainer before 1.0.
+- **The dated record is untouched**, including two wontfix captures and the
+  empirically verified constraints record that a rename-detection merge had
+  carried the sweep into; they were restored to main.

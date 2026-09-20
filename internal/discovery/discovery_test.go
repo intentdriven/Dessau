@@ -3,6 +3,7 @@ package discovery
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/intentdriven/Dessau/internal/config"
 )
@@ -87,6 +88,17 @@ func TestServiceNamesStayWithinOneDNSLabel(t *testing.T) {
 	}
 	if got := serviceName(long); len(got) > 63 {
 		t.Errorf("serviceName(63 chars) = %q (%d octets), over the 63-octet DNS label limit", got, len(got))
+	}
+	// The instance name is arbitrary UTF-8, so the cut must land between
+	// runes: a label of two-byte runes is clamped to whole runes and stays
+	// valid, and a cut that lands after a word leaves no trailing space.
+	wide := strings.Repeat("\u00e9", 40)
+	if got := serviceName(wide); !utf8.ValidString(got) || len(got) > maxDNSLabel-labelHeadroom {
+		t.Errorf("serviceName(40 two-byte runes) = %q (%d octets, valid=%v); the clamp must cut between runes and stay within %d octets", got, len(got), utf8.ValidString(got), maxDNSLabel-labelHeadroom)
+	}
+	spaced := strings.Repeat("a", 58) + " Pro"
+	if got := serviceName(spaced); strings.HasSuffix(got, " ") {
+		t.Errorf("serviceName(%q) = %q, ends in a space", spaced, got)
 	}
 	trailing := strings.Repeat("a", 50) + "--bbbb"
 	if got := serviceHost(trailing); strings.HasSuffix(got, "-") {

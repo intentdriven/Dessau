@@ -102,7 +102,9 @@ func serviceHost(localHostName string) string {
 // conflict rename. A Mac called "Studio (2)" is therefore announced as
 // "Studio", and gets its " (2)" back only if a "Studio" is already on the link.
 func serviceName(computerName string) string {
-	name := clampLabel(computerName, maxDNSLabel-labelHeadroom)
+	// A cut can land after a word, and a name ending in a space reads as a
+	// mistake in every browser; trailing spaces carry no meaning in a name.
+	name := strings.TrimRight(clampLabel(computerName, maxDNSLabel-labelHeadroom), " ")
 	if name == "" {
 		// A Mac that answers neither its Computer Name nor its host name is
 		// still advertised, under the family name, rather than under nothing.
