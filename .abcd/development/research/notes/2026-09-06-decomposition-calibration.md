@@ -633,3 +633,30 @@ offered for clicking, so every link in a response comes from the model.
 
 Verdict proposed: FILE-AS-IS. Verdict adopted: filed at the maintainer's
 ask, replacing the held proposal above. Grade: routing survived.
+
+## 2026-09-20 — up to three optional follow-up questions to click
+
+Proposal (the maintainer): an optional up to three follow-up questions the
+user can click on instead of typing.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| Up to three optional follow-ups offered for clicking | duplicates | itd-2609201338120342, filed minutes earlier from the same conversation; its seeded criteria already say up to three, sent as the person's own turn |
+
+Verdict proposed: HOLD, a duplicate of the draft just filed. Verdict adopted:
+nothing filed; the number three is already in the earlier draft. Grade:
+routing survived (duplicate recognised, no second record).
+
+## 2026-09-20 — store/export an entire conversation
+
+Proposal (the maintainer): an option to store/export an entire conversation.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| Export a whole conversation to a file Bob chooses (save panel on the Mac, share sheet on the iPad) | capability | itd-2609201355512965, `builds_on` itd-2609151701196720 |
+| "Store": the client already keeps every conversation and reopens it | already covered | the shipped client; the draft says so |
+| Format, what travels with the turns, an all-conversations archive | open questions | the draft |
+| Distinct from the server-side transcript recording itd-2609091707499248 | stated in scope | the draft |
+
+Verdict proposed: FILE-AS-IS. Verdict adopted: filed, confirmed by the
+maintainer. Grade: routing survived.
