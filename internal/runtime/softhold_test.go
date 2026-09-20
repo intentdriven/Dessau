@@ -178,3 +178,36 @@ func TestAHoldIsNotTakenWhenTakingItWouldStillNotFit(t *testing.T) {
 	default:
 	}
 }
+
+// A resident-only acquisition is the tool-call probe's: it holds a model the
+// pool already has and never becomes a load. A model the pool is not
+// holding is refused with ErrNotResident, from inside the pool's own
+// critical section, and no launcher is started — so a model that went
+// between a caller's residency check and its Acquire is not loaded back,
+// and nothing is evicted to make room for it.
+func TestAResidentOnlyAcquireNeverLoads(t *testing.T) {
+	l := newFakeLauncher()
+	p := newTestPool(t, l, graceModels(), PoolOptions{MaxResidentBytes: graceBudget})
+
+	_, _, err := p.Acquire(WithResidentOnly(context.Background()), "org/a")
+	if !errors.Is(err, ErrNotResident) {
+		t.Fatalf("Acquire of a model the pool is not holding = %v, want ErrNotResident", err)
+	}
+	if n := len(l.launched); n != 0 {
+		t.Errorf("a resident-only acquire launched %d model server(s)", n)
+	}
+	// Held ordinarily, the model is there to be acquired resident-only.
+	_, release, err := p.Acquire(context.Background(), "org/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	_, release2, err := p.Acquire(WithResidentOnly(context.Background()), "org/a")
+	if err != nil {
+		t.Fatalf("a resident-only acquire of a resident model was refused: %v", err)
+	}
+	release2()
+	if ids := residentIDs(p); !slices.Equal(ids, []string{"org/a"}) {
+		t.Errorf("resident = %v", ids)
+	}
+}

@@ -159,28 +159,34 @@ func (r *Registry) SetProbeIncomplete(repoID string, on bool) error {
 	return err
 }
 
-// RefreshStaleness compares every measurement with what is in force now for
-// its model — the served window is a per-model setting, so the provenance is
-// asked per model — writes the verdict onto each, and returns the ids of the
-// models whose verdict changed. It is called at start and after every save,
-// so staleness is a stored fact rather than an assumption.
+// RefreshStaleness compares every measurement, and every tool-call verdict,
+// with what is in force now for its model — the served window is a per-model
+// setting, so the provenance is asked per model — writes the verdict onto
+// each, and returns the ids of the models whose verdict changed. It is called
+// at start and after every save, so staleness is a stored fact rather than an
+// assumption.
 //
 // The registry's lock is not held while inForce runs: the callback reads the
 // pool and the configuration, and the pool already reads the registry under
 // its own lock (Resolve, under p.mu), so holding r.mu across it would be the
 // inversion adr-2609091239058072 exists to prevent. Instead the models are
 // snapshotted, judged lock-free, and written back only where the measurement
-// is still the one that was judged.
+// or the verdict is still the one that was judged.
 func (r *Registry) RefreshStaleness(inForce func(m Model) Provenance) []string {
 	type judged struct {
-		key   string
-		was   *Measurement
-		stale string
+		key string
+		// was and stale are the measurement judged and its verdict; tcWas
+		// and tcStale the tool-call verdict's. A nil was or tcWas means that
+		// side was not judged.
+		was     *Measurement
+		stale   string
+		tcWas   *ToolCalling
+		tcStale string
 	}
 	r.mu.RLock()
 	var snapshot []Model
 	for _, m := range r.models {
-		if m.Measured != nil {
+		if m.Measured != nil || m.ToolCalling != nil {
 			snapshot = append(snapshot, m)
 		}
 	}
@@ -188,9 +194,20 @@ func (r *Registry) RefreshStaleness(inForce func(m Model) Provenance) []string {
 
 	var verdicts []judged
 	for _, m := range snapshot {
-		stale := m.Measured.StaleAgainst(inForce(m))
-		if stale != m.Measured.Stale {
-			verdicts = append(verdicts, judged{key: key(m.RepoID), was: m.Measured, stale: stale})
+		p := inForce(m)
+		j := judged{key: key(m.RepoID)}
+		if m.Measured != nil {
+			if stale := m.Measured.StaleAgainst(p); stale != m.Measured.Stale {
+				j.was, j.stale = m.Measured, stale
+			}
+		}
+		if m.ToolCalling != nil {
+			if stale := m.ToolCalling.StaleAgainst(p.Runtime); stale != m.ToolCalling.Stale {
+				j.tcWas, j.tcStale = m.ToolCalling, stale
+			}
+		}
+		if j.was != nil || j.tcWas != nil {
+			verdicts = append(verdicts, j)
 		}
 	}
 	if len(verdicts) == 0 {
@@ -201,12 +218,25 @@ func (r *Registry) RefreshStaleness(inForce func(m Model) Provenance) []string {
 	var changed []string
 	for _, v := range verdicts {
 		m, ok := r.models[v.key]
-		if !ok || m.Measured != v.was {
+		if !ok {
+			continue
+		}
+		moved := false
+		if v.was != nil && m.Measured == v.was {
+			copied := *m.Measured
+			copied.Stale = v.stale
+			m.Measured = &copied
+			moved = true
+		}
+		if v.tcWas != nil && m.ToolCalling == v.tcWas {
+			copied := *m.ToolCalling
+			copied.Stale = v.tcStale
+			m.ToolCalling = &copied
+			moved = true
+		}
+		if !moved {
 			continue // replaced meanwhile; the next refresh judges the new one
 		}
-		copied := *m.Measured
-		copied.Stale = v.stale
-		m.Measured = &copied
 		r.models[v.key] = m
 		changed = append(changed, m.RepoID)
 	}

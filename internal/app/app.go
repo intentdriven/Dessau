@@ -24,6 +24,7 @@ import (
 	"github.com/intentdriven/Dessau/internal/runtime"
 	"github.com/intentdriven/Dessau/internal/selftest"
 	"github.com/intentdriven/Dessau/internal/stats"
+	"github.com/intentdriven/Dessau/internal/toolprobe"
 )
 
 // App holds everything the daemon needs.
@@ -48,7 +49,12 @@ type App struct {
 	// Probe measures each model's servable context window as a job of that
 	// same loop (itd-2609091301112705); see internal/contextprobe.
 	Probe *contextprobe.Probe
-	Log   *slog.Logger
+	// ToolProbe asks each model once, at its first serve under this
+	// runtime, whether it calls tools (itd-2609201445423499); see
+	// internal/toolprobe. It is queued by the pool's observer and reaches
+	// the pool only through toolProbeSources.
+	ToolProbe *toolprobe.Probe
+	Log       *slog.Logger
 	// idleQuiet is Options.Idle.Quiet: a cadence a test fixed, which a save
 	// must not replace with the configured threshold.
 	idleQuiet time.Duration
@@ -309,7 +315,7 @@ func New(opts Options) (*App, error) {
 		// The pool reports loads and removals to the recorder, which ignores
 		// them while recording is off. Adapting here keeps internal/stats a
 		// leaf package that imports nothing of ours.
-		Observer:        poolObserver{rec: a.Stats, log: opts.Log},
+		Observer:        poolObserver{rec: a.Stats, log: opts.Log, loaded: a.modelLoaded},
 		Pinned:          a.cfg.PinnedIDs(),
 		EvictionGrace:   grace,
 		MaxEvictionWait: maxWait,
@@ -329,6 +335,10 @@ func New(opts Options) (*App, error) {
 		MemoryMargin: a.machineRAM * 3 / 16,
 		StepTimeout:  opts.Idle.StepTimeout,
 		UnloadWait:   opts.Idle.UnloadWait,
+	})
+	a.ToolProbe = toolprobe.New(toolprobe.Options{
+		Sources: toolProbeSources{a},
+		Log:     opts.Log,
 	})
 	a.SelfTest = selftest.New(selftest.Options{
 		Server:   selfTestServer{a},
@@ -899,6 +909,10 @@ func (a *App) ClearStats() error {
 type poolObserver struct {
 	rec *stats.Recorder
 	log *slog.Logger
+	// loaded, when set, is told a model server reached loaded: the tool-call
+	// probe's queue (App.modelLoaded). Nil in a test that builds the
+	// observer alone.
+	loaded func(repoID string)
 }
 
 func (o poolObserver) LoadStarted(repoID string) { o.rec.LoadStarted(repoID) }
@@ -953,6 +967,9 @@ func (o poolObserver) LoadFinished(repoID string, took time.Duration, err error,
 	}
 	o.log.Info("model loaded", "model", repoID)
 	o.log.Debug("model loaded", "model", repoID, "took", took)
+	if o.loaded != nil {
+		o.loaded(repoID)
+	}
 }
 
 func (o poolObserver) EntryStopped(repoID string, reason runtime.StopReason) {
@@ -1748,6 +1765,9 @@ func (a *App) Close() error {
 	// The self-test before the pool: a run in progress holds a model, and the
 	// pool's close would otherwise wait on a release that is on its way.
 	a.SelfTest.Close()
+	// The tool-call probe before the pool, for the same reason: a probe in
+	// flight holds a model.
+	a.ToolProbe.Close()
 	// The bridge before the pool: it holds an outbound connection and may
 	// have an answer in flight against a model the pool is about to stop.
 	err := a.closeBridge()

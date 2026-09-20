@@ -102,14 +102,15 @@ func (a *App) applyIdleJobs(c config.Config) {
 	a.SelfTest.SetEnabled(c.SelfTest || c.ContextProbe || len(a.Probe.Queued()) > 0)
 }
 
-// refreshStaleness compares every measurement with what is in force now and
-// records the verdict, at start and after every save.
+// refreshStaleness compares every measurement, and every tool-call verdict,
+// with what is in force now and records the verdict, at start and after
+// every save.
 func (a *App) refreshStaleness() {
 	src := probeSources{a}
 	if changed := a.Registry.RefreshStaleness(func(m registry.Model) registry.Provenance {
 		return src.provenanceFor(m.RepoID, m.ContextLength)
 	}); len(changed) > 0 {
-		a.Log.Info("context measurements re-judged against the settings in force", "models", changed)
+		a.Log.Info("measurements re-judged against the settings in force", "models", changed)
 	}
 }
 

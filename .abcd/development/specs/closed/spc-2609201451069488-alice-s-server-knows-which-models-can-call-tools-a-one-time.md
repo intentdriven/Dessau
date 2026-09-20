@@ -179,4 +179,38 @@ and a docs-currency review of `docs/models-list.md`.
 
 ## Departures
 
-None at the time of writing.
+Recorded at the close, from the implementer's report and the three reviews.
+
+- **`registry.ToolCalling` carries a fourth field, `Stale`** (`""` or
+  `StaleRuntime`), written by `RefreshStaleness` beside the measurement's own
+  mark, and `ToolCalling.Current()` is what the gateway, the observer and the
+  panel read. The panel renders the card from `registry.Model` as JSON and has
+  no runtime string to compare against, and the repository's rule for
+  measurements is that staleness is a stored fact a reader learns rather than
+  infers; the verdict takes the same shape rather than a second mechanism.
+- **`Sources` has one method beyond Acquire, Save and the runtime:
+  `Resident(repoID) (loaded bool, inFlight int)`**, because "never loads a
+  model" and "after the request that caused the load has been served" both
+  need the pool's view. After the security review the acquisition also
+  carries `runtime.WithResidentOnly`, a context tag beside `WithSoftHold`
+  that makes `Pool.Acquire` refuse a model it is not holding
+  (`ErrNotResident`) under its own lock: the pre-check alone left a window
+  in which the probe could have loaded, and evicted for, a model. This is
+  the one change in `internal/runtime`, outside the Scope list.
+- **The probe's hold is yielded through `selftest.WithYield`**, so
+  `internal/toolprobe` imports `internal/selftest`; one context governs the
+  acquisition and the request, as a self-test run's does. The first cut
+  handed the pool a cancel nothing observed; both Sonnet reviews found it.
+- **The queue lives in `internal/toolprobe`** (`Enqueue`, a drain goroutine
+  the app owns) and the decision "no current verdict" in `internal/app`,
+  called from the existing pool observer; one at a time and after the
+  loading request, as specified. A head-of-queue model that never falls
+  quiet within `Options.MaxQuietWait` (five minutes) goes to the back of
+  the queue rather than parking it (security review, finding 2).
+- **`handleListModels` computes the word inline**, because the spec's own
+  scan test refuses any other function in the package naming the field.
+- **`docs/context-probe.md` is edited** beside `docs/models-list.md`: the
+  card's line is documented on the measurements page, which the Scope list
+  did not name; `CHANGELOG.md` gains one additive entry. Values the spec left
+  open: `max_tokens` 256, request timeout two minutes, the prompt "What is
+  the time in Paris right now?".

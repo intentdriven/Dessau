@@ -30,6 +30,7 @@ var promptContentReaders = map[string]string{
 	"internal/mlxtest/fake.go":        "the fake mlx server tests relay to, which answers requests rather than making them",
 	"internal/selftest/request.go":    "builds the self-test's own requests from two constants in that file; reads nothing from a client (itd-2609100457007827)",
 	"internal/contextprobe/probe.go":  "builds the context probe's own requests from filler it generates; reads nothing from a client, and keeps nothing of the answer but the server's count of the prompt (itd-2609091301112705)",
+	"internal/toolprobe/probe.go":     "builds the tool-call probe's own one-line conversation from a constant in that file; reads nothing from a client (itd-2609201445423499)",
 	"internal/bridge/discord/":        "the Discord bridge, admitted by name under adr-2609181004167097 condition 4: a bridge is by its nature a reader of the message it relays, because building the request IS the relaying. It is the second such reader beside the merge. What it may do with what it reads is unchanged — no prompt reaches a log line, a record or the disk, which TestTheBridgeWritesNoMessageContent holds separately",
 }
 
@@ -61,6 +62,7 @@ var generatedContentReaders = map[string]string{
 	"internal/gateway/gateway.go":  "the relay: it reads whether an event carries a choice, to tell a chunk of the answer from the counts-only event and to time the first token — never what is inside one",
 	"internal/mlxtest/fake.go":     "the fake mlx server tests relay to, which produces the answers rather than reading them",
 	"internal/selftest/request.go": "times the first chunk of the self-test's own answer and counts the chunks; keeps nothing of what they say (itd-2609100457007827)",
+	"internal/toolprobe/probe.go":  "reads whether the choice carries a tool call, and keeps nothing of what the answer says (itd-2609201445423499)",
 	"internal/bridge/discord/":     "the Discord bridge, the other half of the same admission: it reads the generated text out of each streamed event because posting it into the Discord message IS the bridging (adr-2609181004167097 condition 4). Nothing of the answer is logged, recorded or kept",
 }
 

@@ -470,6 +470,27 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 			entry["tags"] = m.Tags
 		}
 		entry["chat"] = chatRule.Matches(m.PipelineTag, m.Tags)
+		// And whether the model calls tools, as the tool-call probe found on
+		// this runtime (itd-2609201445423499): one of three words, always
+		// present, for the reason chat is always present. An absent key
+		// would read as an older Dessau that cannot say either way, and a
+		// bare boolean would turn "not yet asked" into "no". unknown covers
+		// both the unprobed model and a verdict taken under another
+		// runtime. Like chat it says what a model IS, so it goes to every
+		// client, and like chat it decides nothing: nothing on the
+		// completions path reads it, and a request carrying tools for a
+		// model recorded as unable is relayed as it is.
+		//
+		// The verdict's own fields — when, under what — stay on the registry;
+		// the wire carries the word.
+		switch tc := m.ToolCalling; {
+		case !tc.Current():
+			entry["tool_calling"] = "unknown"
+		case tc.Can:
+			entry["tool_calling"] = "yes"
+		default:
+			entry["tool_calling"] = "no"
+		}
 		if residency != nil {
 			addResidency(entry, residency[config.FoldRepoID(m.RepoID)], pinned[config.FoldRepoID(m.RepoID)])
 		}
