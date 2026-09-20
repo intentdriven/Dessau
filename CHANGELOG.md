@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-20
+
 ### Added
 
 - **Dessau Server knows which models call tools, and tells every client.**
