@@ -12,7 +12,7 @@ origin: researcher-authored
 production_mode: hand-written
 ---
 
-# An intuitive control panel for the Dessau server: Alice configures the server from a page that shows what is on before it asks what to change, finds each setting by the task it serves rather than by its key in the file, and is told in the server's own words, as she types, why a value cannot be saved — a state-of-the-art site that stays a page served from this Mac alone, reachable by every account on it and by nothing on the network, so that Bob at the next desk and Carol on the mesh see the API and never the panel
+# An intuitive control panel for Dessau Server: Alice configures the server from a page that shows what is on before it asks what to change, finds each setting by the task it serves rather than by its key in the file, and is told in the server's own words, as she types, why a value cannot be saved — a state-of-the-art site that stays a page served from this Mac alone, reachable by every account on it and by nothing on the network, so that Bob at the next desk and Carol on the mesh see the API and never the panel
 
 ## Press Release
 
