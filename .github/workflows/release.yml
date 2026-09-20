@@ -491,6 +491,17 @@ jobs:
             *) prerelease=false ;;
             esac
 
+            # The release TITLE carries the codename of the major line, read
+            # from build/CODENAME on the tagged tree; the tag, the assets and
+            # every identifier carry the version alone. One codename names a
+            # whole major line (every 0.x release is the first one), so the
+            # file changes when the major does, never per release. A tree with
+            # no such file titles the release by its tag.
+            title="$TAG"
+            if [ -s build/CODENAME ]; then
+              title="$TAG $(tr -d '\n' < build/CODENAME)"
+            fi
+
             if [ "$prerelease" = true ]; then
               # A candidate is never the release install.sh fetches. Two things
               # went wrong here and either alone still leaves the hole. It was
@@ -502,7 +513,7 @@ jobs:
               # pre-release tag closes the second by construction.
               echo "Publishing $TAG as a pre-release; releases/latest is left alone."
               gh release create "$TAG" $assets \
-                --verify-tag --title "$TAG" --prerelease --latest=false --generate-notes
+                --verify-tag --title "$title" --prerelease --latest=false --generate-notes
             else
               released="$(gh release list --exclude-drafts --exclude-pre-releases \
                 --json tagName --jq '.[].tagName')"
@@ -534,7 +545,7 @@ jobs:
               if [ "$newest" = "$TAG" ]; then latest=true; else latest=false; fi
               echo "Marking $TAG with --latest=$latest (newest released tag: $newest)."
               gh release create "$TAG" $assets \
-                --verify-tag --title "$TAG" --latest="$latest" --generate-notes
+                --verify-tag --title "$title" --latest="$latest" --generate-notes
             fi
           fi
 
