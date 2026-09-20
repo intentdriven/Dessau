@@ -1,8 +1,8 @@
 ---
 id: itd-2609091707499248
 slug: gropius-can-record-every-prompt-and-answer-and-every-client
-spec_id: null
-kind: null
+spec_id: spc-2609201007360569
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: []
@@ -151,41 +151,41 @@ show it wrong.
 
 ## Scope Conditions
 
-- **Gropius's own loopback callers are not recorded.** The pool's readiness
+- **Gropius's own loopback callers are not recorded.** The pool's readiness <!-- cond: cond-2609201007367156 -->
   probe, the self-test and the context probe each compose their own conversations
   and post them straight to a model server on loopback, never through the gateway
   — the shipped condition `cond-2609061822382803`. Nothing they send or receive
   enters the transcript, so the transcript is not a record of what Gropius itself
   asked, only of what clients asked.
 
-- **The client's built-in on-device model is never recorded and is never shown a
+- **The client's built-in on-device model is never recorded and is never shown a <!-- cond: cond-2609201007369668 -->
   notice.** Gropius's chat client can answer on the device without the server
   (`client/GropiusChat/Backends.swift`, `Picker.swift`). No request leaves the
   device, the server never sees the turn, and a recording notice drawn over it
   would be a lie in the other direction.
 
-- **Third-party clients are told, not shown.** The server publishes the fact on
+- **Third-party clients are told, not shown.** The server publishes the fact on <!-- cond: cond-2609201007369925 -->
   every path a program can see; whether a person ever reads it is that client's
   choice. This intent makes no promise about a client Gropius did not write, and
   the heading is narrowed to say so.
 
-- **The pinned mlx-lm server.** The transcript is composed by Gropius out of what
+- **The pinned mlx-lm server.** The transcript is composed by Gropius out of what <!-- cond: cond-2609201007369251 -->
   it relays, not by the model server, so the pin (mlx-lm 0.31.3) does not bear on
   what is written or where. Any claim about what the *child* writes belongs to the
   debug-logging sibling itd-2609062346072707, not here.
 
-- **The size cap is a product number, not an engineering one.** The default is
+- **The size cap is a product number, not an engineering one.** The default is <!-- cond: cond-2609201007361219 -->
   512 MB, chosen so the transcript is an archive an operator can keep, search and
   delete. A cap the size of the log's own (5 MB across 5 files) would make it a
   rolling window of minutes under a day of agent traffic and useless for the
   purpose. If 512 MB turns out to be that window under real traffic, the number
   is wrong, not the design.
 
-- **The word is "transcript" on every surface — Go, the panel, `config.json`,
+- **The word is "transcript" on every surface — Go, the panel, `config.json`, <!-- cond: cond-2609201007361803 -->
   the docs and the client** — because "recording" is already the panel's word for
   the statistics store, which records no content.
 
-- **The models-list field is optional to call, so the header is the guarantee.**
+- **The models-list field is optional to call, so the header is the guarantee.** <!-- cond: cond-2609201007367978 -->
   A curl and a pinned-model agent never fetch `/v1/models`. The per-entry
   `recording` field is the per-model detail and the thing a picker draws from; the
   unconditional header is what carries "every client is told".
@@ -687,3 +687,7 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 **Answers 2026-09-20:** Q1 (a) header + models-list field, heading narrowed as stated; Q2 (a) always; Q3 (a) size cap (default 512 MB), off keeps, Delete transcript removes. Recorded in `.abcd/work/DECISIONS.md`.
 
 **Answers 2026-09-20 (cont.):** Q4 (a) global + exceptions; Q5 (a) refuse under shared cache; Q6 (b) recorded, notice in the first bridged answer per channel; severity major, two superseding ADRs. Recorded in `.abcd/work/DECISIONS.md`.
+
+## Grounds
+
+- pursued: the maintainer answered every open question at the 2026-09-20 interview and the itd-1 sections were written from the answers; what would show this wrong is a criterion that cannot be held by the test it names

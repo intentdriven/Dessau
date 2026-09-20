@@ -20,3 +20,7 @@ Left open for the maintainer: a cache keyed by message id and text length has to
 ## Deferral 2026-09-19
 
 Waits on the maintainer: a bounded, evicted parse cache above the rows is a design call (where it lives, how big).
+
+## Decision 2026-09-20
+
+Decided at the second interview of 2026-09-20; the lane builds it with a test. See the 2026-09-20 line in `.abcd/work/DECISIONS.md` that names this id.

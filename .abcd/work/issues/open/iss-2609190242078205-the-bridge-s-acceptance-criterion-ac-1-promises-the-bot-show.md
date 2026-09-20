@@ -12,3 +12,7 @@ found_at: "internal/bridge/discord/session.go"
 ---
 
 The bridge's acceptance criterion ac-1 promises the bot shows typing within two seconds, but the answering path is bounded by two workers and a queue, so a message that arrives while both workers are busy shows nothing at all until one frees. internal/bridge/discord/session.go admits the message to a bounded work queue before anything is posted, and the typing indicator is the answering job's first act rather than the dispatcher's. In a busy channel the two-second promise is therefore not held, and a third asker sees silence rather than typing. Either the typing indicator moves ahead of the queue, so that acceptance is acknowledged immediately, or the criterion is narrowed to say it holds while a worker is free.
+
+## Decision 2026-09-20
+
+Decided at the second interview of 2026-09-20; the lane builds it with a test. See the 2026-09-20 line in `.abcd/work/DECISIONS.md` that names this id.

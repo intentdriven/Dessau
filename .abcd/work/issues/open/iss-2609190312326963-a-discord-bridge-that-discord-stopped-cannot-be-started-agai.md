@@ -27,3 +27,7 @@ the only routes back from a fatal stop are changing the token, switching the
 bridge off and on, or restarting the app. That is a correctness wedge rather
 than a privacy one, and it is what a reader of the title alone would miss.
 
+
+## Decision 2026-09-20
+
+Decided at the second interview of 2026-09-20; the lane builds it with a test. See the 2026-09-20 line in `.abcd/work/DECISIONS.md` that names this id.

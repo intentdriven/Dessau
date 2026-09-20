@@ -1,8 +1,8 @@
 ---
 id: itd-2609091715089488
 slug: some-models-keep-no-transcript-even-while-recording-is-on-al
-spec_id: null
-kind: null
+spec_id: spc-2609201007367486
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609091707499248]
@@ -118,7 +118,7 @@ kept and practically broken that itd-2609062346072707 would otherwise create.
 
 ## Scope Conditions
 
-- **The exception is a field on `config.ModelSettings`, off by default.** Not a
+- **The exception is a field on `config.ModelSettings`, off by default.** Not a <!-- cond: cond-2609201007367769 -->
   list, not a second map keyed by model id:
   `internal/archtest/per_model_settings_test.go` holds the count of per-model
   maps at one, and the project already paid a settings-file migration to get
@@ -126,30 +126,30 @@ kept and practically broken that itd-2609062346072707 would otherwise create.
   what is stored. It excepts from the recording mode the parent defines, which
   under the shared-cache install is unavailable altogether — where there is no
   recording there is nothing to except from.
-- **A model is matched folded**, through `config.FoldRepoID`, on every path that
+- **A model is matched folded**, through `config.FoldRepoID`, on every path that <!-- cond: cond-2609201007366437 -->
   reads the exception, as the registry, the pool and the models listing already
   do.
-- **An exception is settable on a model that has not been downloaded**, and
+- **An exception is settable on a model that has not been downloaded**, and <!-- cond: cond-2609201007362675 -->
   bites from the first request that model ever serves. The panel already allows
   settings on a model that does not exist yet, and a flag that begins working
   after the first download is the kind of thing discovered after the first leak.
-- **A request naming a model the registry does not hold is refused before
+- **A request naming a model the registry does not hold is refused before <!-- cond: cond-2609201007367665 -->
   anything is written**, so there is no unknown-model hole beside the exception.
-- **An excepted model is not offered over a bridge.** The bridge's `/model`
+- **An excepted model is not offered over a bridge.** The bridge's `/model` <!-- cond: cond-2609201007365982 -->
   listing omits it and a bridged request naming it is refused in the channel
   with the reason, because adr-2609181004167097 admits the platform as a reader
   and keeper of the message and the answer: Gropius would write no transcript
   while Discord kept one, and a panel saying "no transcript" beside that model
   would state what the product cannot honour.
-- **Arming the per-model debug log on an excepted model is refused**, with the
+- **Arming the per-model debug log on an excepted model is refused**, with the <!-- cond: cond-2609201007364816 -->
   reason, and both panels say so. A debug log of every prompt and completion is
   a transcript; the exception is about transcripts, not about one file's name.
-- **A request served by a recorded model is recorded whole, including an
+- **A request served by a recorded model is recorded whole, including an <!-- cond: cond-2609201007364849 -->
   excepted model's earlier turns carried as prior context**, and the
   user-facing documentation states this plainly rather than leaving it to be
   discovered. The exception is a fact about the model that serves, not about
   text that has passed through another one.
-- **The client's built-in on-device model is outside this.** It reaches no
+- **The client's built-in on-device model is outside this.** It reaches no <!-- cond: cond-2609201007366686 -->
   server, so there is no server-side transcript to keep or to except from, and
   the picker's icon says nothing about it beyond what it already says.
 
@@ -541,3 +541,7 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 **Answers 2026-09-20:** unentitled models-list field; the exception refuses a debug arm; not offered over a bridge; merge-save for every per-model field; severity major; heading rewritten; recording decided on the serving model, prior context recorded whole. Recorded in `.abcd/work/DECISIONS.md`.
 
 **Addition 2026-09-20:** the transcript state is shown as an icon wherever a person picks a model (client picker, panel model cards; a word in the bridge's `/model` listing). Recorded in `.abcd/work/DECISIONS.md`.
+
+## Grounds
+
+- pursued: the maintainer answered every open question at the 2026-09-20 interview and the itd-1 sections were written from the answers; what would show this wrong is a criterion that cannot be held by the test it names

@@ -9,6 +9,7 @@ found_during: "manual context-probe check 2026-09-16"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/research/evidence/2026-09-06-model-bench/"
+wontfix_reason: "probe-check.sh stays the maintainer's hand tool and is not committed; nothing in the product is missing (maintainer, 2026-09-20)"
 ---
 
 probe-check.sh's preflight does not check that the model can fit the budget before it quits the menu-bar Gropius for hours. The 2026-09-16 run started against a snapshot whose warnings already said the budget was smaller than the smallest model, then polled a queue that could never start until the Mac froze. The preflight should read /api/state's warnings and the model's charge against the budget and refuse to start a model that cannot fit, naming the served window and batched-requests count that would.
@@ -63,3 +64,7 @@ One caveat that bites any fit check written against the snapshot, including
 this one: the concurrency on `/api/state` is the saved figure, not the one the
 pool is running with, while the budget beside it is the one in force. That is
 captured separately as iss-2609190021445846.
+
+## Grounds
+
+- declined: probe-check.sh stays the maintainer's hand tool and is not committed; nothing in the product is missing (maintainer, 2026-09-20)

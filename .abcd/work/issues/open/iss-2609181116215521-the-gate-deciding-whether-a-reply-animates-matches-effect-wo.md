@@ -20,3 +20,7 @@ Left open for the maintainer: making the gate agree with the renderer means matc
 ## Deferral 2026-09-19
 
 Waits on the maintainer: matching the animation gate over parsed blocks puts a markdown parse in AppModel's stream path, a placement decision; the disagreement is one-sided and harmless today.
+
+## Decision 2026-09-20
+
+Decided at the second interview of 2026-09-20; the lane builds it with a test. See the 2026-09-20 line in `.abcd/work/DECISIONS.md` that names this id.
