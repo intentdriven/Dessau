@@ -677,3 +677,17 @@ Verdict proposed: FILE-AS-IS, one intent (client-held). Verdict adopted:
 SPLIT into two — the maintainer wants the sidecar too, shared with some
 paired clients rather than all. Grade: the routing widened by one record at
 the maintainer's confirmation.
+
+## 2026-09-20 — the number of follow-ups clicked per model over time
+
+Proposal (the maintainer): record the number of follow-ups clicked per model over time.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| A count of clicked follow-ups per model per day in the statistics store, shown in the Statistics tab | capability | itd-2609201824151758, `builds_on` itd-2609201338120342 and the statistics store itd-2609061521102742 |
+| One request mark the gateway reads and counts | trust-boundary read, no ADR reversed | the draft's criteria; security review at build |
+| The bridge and the on-device model send no mark | scope condition | the draft |
+
+Verdict proposed: FILE-AS-IS with the location open. Verdict adopted: filed
+with the location decided (the server's statistics). Grade: routing survived,
+narrowed by the maintainer's choice of location.
