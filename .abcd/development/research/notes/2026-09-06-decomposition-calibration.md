@@ -562,3 +562,49 @@ for chats; selectable are the macOS system backgrounds.
 Verdict proposed: FILE-AS-IS, one intent with four open questions. Verdict
 adopted: filed at the maintainer's ask. Grade: pending the maintainer's
 confirmation of the reading of "system backgrounds".
+
+## 2026-09-20 — a copy button per chat response
+
+Proposal (the maintainer): a copy button per chat response.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| A visible copy button on every reply, reusing the pasteboard code the context menu already has | capability | itd-2609201332162031, `builds_on` itd-2609151701196720 (the native client) |
+| The context-menu Copy stays as it is | already covered | the shipped client; the draft says so |
+| Placement, what is copied (text, never the reasoning; rendered or raw), a "Copied" confirmation | open questions | the draft; decided at the interview |
+
+Verdict proposed: FILE-AS-IS, one intent with three open questions. Verdict
+adopted: FILE-AS-IS, confirmed by the maintainer. Grade: the initial routing
+survived unchanged.
+
+## 2026-09-20 — key-term links in replies
+
+Proposal (the maintainer): an option in Settings to scan responses for key
+terms and turn them into links that ask "Tell me more about <term>." as a
+follow-up.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| Term links in replies that send a follow-up question, behind a Settings switch | capability | a new intent, `builds_on` itd-2609151701196720 |
+| How terms are found (on-device tagger vs model-marked), link styling against the model's own links, send-or-prefill, the iPad | open questions | the draft |
+
+Verdict proposed: FILE-AS-IS. Verdict adopted: HOLD — the maintainer
+changed their mind: no automatic links, because every link embedded in a
+response should come from the model; the shape they want instead is
+optional follow-up questions offered for clicking. Grade: the initial
+routing did not survive; the proposal itself was withdrawn.
+
+## 2026-09-20 — follow-up questions the model offers
+
+Proposal (the maintainer, in place of the held key-term scan): follow-up
+questions are requested from the model when a Settings option is on, and
+offered for clicking, so every link in a response comes from the model.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| Optional follow-up questions asked of the model and offered under each reply, behind a Settings switch off by default; a click sends the question as Bob's turn | capability | itd-2609201338120342, `builds_on` itd-2609151701196720 and itd-2609200850330402 (the wire shape the styles decided) |
+| No client-side scanning turns reply text into links | standing stance | the press release states it; a decision line if it recurs |
+| Wire marking, the Square style's "no questions back", storage, the bridge and the on-device model | open questions | the draft |
+
+Verdict proposed: FILE-AS-IS. Verdict adopted: filed at the maintainer's
+ask, replacing the held proposal above. Grade: routing survived.
