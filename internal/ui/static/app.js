@@ -368,12 +368,14 @@ function renderModels() {
 
     const info = modelInfoLine(m, state.config);
     const measured = measurementText(m, state.idle_jobs, state.probe_queue);
+    const tools = m.state === 'ready' ? toolCallText(m) : '';
 
     card.innerHTML = `
       <div class="meta">
         <div class="name">${escapeHtml(m.repo_id)}${pill}</div>
         <div class="info">${info}</div>
         ${measured ? `<div class="info measured">${escapeHtml(measured)}</div>` : ''}
+        ${tools ? `<div class="info toolcalls">${escapeHtml(tools)}</div>` : ''}
         ${m.state === 'downloading'
           ? `<div class="bar"><i style="width:${m.progress}%"></i></div>` : ''}
       </div>
@@ -465,6 +467,16 @@ function measurementText(m, jobs, queue) {
   }
   if (m.probe_incomplete) return 'Measurement incomplete: the last probe was interrupted; press Measure now to run it again';
   return '';
+}
+
+// toolCallText is the card's line about the tool-call probe: whether the
+// model answered Dessau's one question with a tool call. A verdict taken
+// under another runtime is not measured, the same as none: the probe asks
+// again at the next serve. A pure function a test holds.
+function toolCallText(m) {
+  const tc = m.tool_calling;
+  if (!tc || tc.stale) return 'Tool calls: not measured';
+  return tc.can ? 'Tool calls: yes' : 'Tool calls: no';
 }
 
 function btn(label, cls, onClick) {
