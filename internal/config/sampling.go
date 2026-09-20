@@ -76,7 +76,7 @@ type samplingParam struct {
 // breaks every request that omits the parameter, which is the whole population
 // this feature exists for. Dessau must never accept a value wider than the
 // table below.
-// MaxTopK is Dessau' own ceiling on top-k, deliberately narrower than the
+// MaxTopK is Dessau's own ceiling on top-k, deliberately narrower than the
 // request check, which accepts any non-negative integer.
 //
 // The sampler imposes a second limit the request check does not: it refuses a
@@ -89,7 +89,7 @@ type samplingParam struct {
 // than a thousand candidates is indistinguishable from keeping all of them.
 const MaxTopK = 1024
 
-// MaxCompletionTokens is Dessau' own ceiling on the completion-token default.
+// MaxCompletionTokens is Dessau's own ceiling on the completion-token default.
 //
 // The model server sets none: it takes any non-negative integer. But this is a
 // default applied to every request that omits the parameter, so a figure above

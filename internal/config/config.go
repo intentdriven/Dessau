@@ -1,4 +1,4 @@
-// Package config holds Dessau' on-disk layout and user settings.
+// Package config holds Dessau's on-disk layout and user settings.
 //
 // Everything Dessau creates lives under a single root directory so the whole
 // installation — including its private Python interpreter — can be removed by

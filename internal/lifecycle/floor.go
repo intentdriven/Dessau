@@ -44,17 +44,17 @@ func hostMacOSVersion() (string, error) {
 // as the bootstrap's `[ "${macos_major:-0}" -ge … ]` does.
 func belowFloor(version string, err error) (string, bool) {
 	if err != nil || strings.TrimSpace(version) == "" {
-		return "Dessau requires macOS " + strconv.Itoa(minMacOSMajor) +
+		return "Dessau Server requires macOS " + strconv.Itoa(minMacOSMajor) +
 			", and this Mac's version could not be read.", true
 	}
 	major, _, _ := strings.Cut(version, ".")
 	n, convErr := strconv.Atoi(major)
 	if convErr != nil {
-		return "Dessau requires macOS " + strconv.Itoa(minMacOSMajor) +
+		return "Dessau Server requires macOS " + strconv.Itoa(minMacOSMajor) +
 			" (this Mac reports " + Quote(version) + ", which is not a version this can read).", true
 	}
 	if n < minMacOSMajor {
-		return "Dessau requires macOS " + strconv.Itoa(minMacOSMajor) +
+		return "Dessau Server requires macOS " + strconv.Itoa(minMacOSMajor) +
 			" (this Mac runs " + version + ").", true
 	}
 	return "", false
