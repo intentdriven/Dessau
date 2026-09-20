@@ -1,8 +1,8 @@
 ---
 id: itd-2609062346072707
 slug: debug-logging-for-one-model-until-it-is-restarted-alice-pick
-spec_id: null
-kind: null
+spec_id: spc-2609201007359229
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609091412177263]
@@ -132,7 +132,7 @@ per write and not only per file.
 
 ## Scope Conditions
 
-- **The pinned model server, and what it writes at DEBUG.** `mlx-lm==0.31.3`
+- **The pinned model server, and what it writes at DEBUG.** `mlx-lm==0.31.3` <!-- cond: cond-2609201007358534 -->
   (`internal/runtime/mlx-requirements.txt`, `mlxLMVersion` in
   `internal/runtime/provision.go`). At DEBUG that version writes the whole
   request body including every message, every generation step's text, and the
@@ -142,18 +142,18 @@ per write and not only per file.
   sampled or truncated, so an API key a client puts in a message is written
   verbatim. This scope condition is void at the next pin bump: what the level
   writes is the server's to change, and the note is the fixture to re-read.
-- **Per model, one process lifetime.** The mark is armed against one model,
+- **Per model, one process lifetime.** The mark is armed against one model, <!-- cond: cond-2609201007350925 -->
   and the run it buys ends when that model server next stops, for whatever
   reason. The reasons are not Alice's to choose: the pool evicts under memory
   pressure and the idle reaper unloads where an idle timeout is set, so any
   client on the network can end the run at a moment she cannot predict. The
   only operator-driven restart is the panel's existing per-model Unload.
-- **Operator-invoked only.** Never on by default, never on for a model Alice
+- **Operator-invoked only.** Never on by default, never on for a model Alice <!-- cond: cond-2609201007357647 -->
   did not arm, never derived from the statistics switch and never from
   `log_level`. An arm is an action on one model in a panel Alice is already
   authenticated to; there is no client-facing surface that arms it, and no
   client-facing surface that reveals it.
-- **The shared-cache install's exposure, as a cost.** Where the file lives and
+- **The shared-cache install's exposure, as a cost.** Where the file lives and <!-- cond: cond-2609201007353261 -->
   what mode it has are settled and unchanged (`internal/runtime/launcher.go`:
   the logs folder through the account directory, 0600, `O_NOFOLLOW`,
   `O_NONBLOCK`, a regular-file check on the handle). Under
@@ -162,18 +162,18 @@ per write and not only per file.
   in the serving account's directory tree, under the deliberate `3775`
   semantics the Makefile explains. That is the cost, stated; "readable by
   nobody else" is the phrase that failed in the sibling and is not used here.
-- **Nothing leaves the Mac, by the records that already own it.**
+- **Nothing leaves the Mac, by the records that already own it.** <!-- cond: cond-2609201007354397 -->
   adr-2609061503319212 (no public telemetry, local telemetry strictly opt-in),
   the shipped statistics intents, and itd-2609091412177263 (the server's own
   log) own that invariant between them. This record does not re-promise it; it
   links it, and the ADR that narrows adr-2609061503319212 is where the one
   exception this makes is written down.
-- **A no-transcript model refuses the arm.** itd-2609091715089488's 2026-09-20
+- **A no-transcript model refuses the arm.** itd-2609091715089488's 2026-09-20 <!-- cond: cond-2609201007351874 -->
   answer: a model carrying the transcript exception refuses a debug arm with
   the reason, and both panels say so — the exception means no prompts on disk,
   not "not in this one file". This record holds that refusal, not a carve-out
   from it.
-- **The log also holds the traffic Gropius's own probes send.** The context
+- **The log also holds the traffic Gropius's own probes send.** The context <!-- cond: cond-2609201007352211 -->
   probe posts a generated filler prompt sized to the window under test
   (`internal/contextprobe/probe.go`) and the self-test and readiness paths send
   their own requests. At DEBUG those bodies are written like any other, and the
@@ -545,3 +545,7 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 **Answer 2026-09-20 (Question 1):** (a) — a new ADR narrowing the telemetry ADR; the client is not told, and the record says so. Recorded in `.abcd/work/DECISIONS.md`.
 
 **Answer 2026-09-20 (Question 2):** (i) the child's level, conditional on the 0.31.3 verification. **(Question 3):** (i) next restart, plus a size bound, plus keeping the previous run's file. Recorded in `.abcd/work/DECISIONS.md`.
+
+## Grounds
+
+- pursued: the maintainer answered every open question at the 2026-09-20 interview and the itd-1 sections were written from the answers; what would show this wrong is a criterion that cannot be held by the test it names

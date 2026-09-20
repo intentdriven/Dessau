@@ -1,8 +1,8 @@
 ---
 id: itd-2609100519003748
 slug: an-intuitive-control-panel-for-the-gropius-server-alice-conf
-spec_id: null
-kind: null
+spec_id: spc-2609201007368529
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609081259493890, itd-2609081718534201, itd-2609091903463596, itd-2609200823520756]
@@ -118,7 +118,7 @@ a redesign requirement that needs a fetched subresource to render.
 
 ## Scope Conditions
 
-- **No build step, no framework, and nothing fetched to render.** The panel stays
+- **No build step, no framework, and nothing fetched to render.** The panel stays <!-- cond: cond-2609201007368809 -->
   plain markup, stylesheet and script under `internal/ui/static`, served from the
   embedded file system. The property that holds this is testable and is stated as
   such: the page renders and every control works with this Mac offline. The
@@ -126,30 +126,30 @@ a redesign requirement that needs a fetched subresource to render.
   operator clicks — they are navigation, not subresources — and a link is the only
   form an outbound host may take. Answers Open Question 1 with option A
   (DECISIONS.md, 2026-09-20).
-- **The resources block stays at the head of the Models tab.** The placement
+- **The resources block stays at the head of the Models tab.** The placement <!-- cond: cond-2609201007367668 -->
   decided at interview on 2026-09-09 (itd-2609091903463596) is re-affirmed rather
   than re-opened: the redesign does not move it to a tab of its own, however it
   reorganises everything else.
-- **The tabs are the panel's seven, by name: My Models, Find Models, Statistics,
+- **The tabs are the panel's seven, by name: My Models, Find Models, Statistics, <!-- cond: cond-2609201007367077 -->
   Connect, Clients, Posture, Settings.** The redesign re-homes controls within and
   between these; it adds no eighth tab and removes none. The usage dashboard is
   the **Statistics** tab — there is no Usage tab — and the posture page
   (itd-2609081718534201) is inside the scope of what is reorganised.
-- **The as-you-type refusal is not this intent's to build.** It is
+- **The as-you-type refusal is not this intent's to build.** It is <!-- cond: cond-2609201007367883 -->
   itd-2609200823520756, the sibling this intent `builds_on`. What this intent owes
   it is the place the message goes: a per-field error slot beside each control,
   present in the markup and addressable by the script, which the panel does not
   have today. The route, the purity argument and the security review are the
   sibling's.
-- **The panel stays reachable over loopback only, and every account on this Mac
+- **The panel stays reachable over loopback only, and every account on this Mac <!-- cond: cond-2609201007364804 -->
   reaches it.** That is not a property this intent changes or defends; it is the
   accepted cost recorded in adr-2609091123526871 §7 and documented in
   `docs/bind-address.md`. The redesign adds no route and no reach.
-- **The Settings pane exemption table stays at two entries.** `preload` and
+- **The Settings pane exemption table stays at two entries.** `preload` and <!-- cond: cond-2609201007362808 -->
   `upstream_header_timeout_sec` keep their written exemptions
   (spc-2609111941481833); the redesign does not add a third, which would mean a
   setting losing its control under cover of a reorganisation.
-- **One operator, one Mac, one page.** No multi-user panel, no remote
+- **One operator, one Mac, one page.** No multi-user panel, no remote <!-- cond: cond-2609201007366571 -->
   administration, no accounts. `impact: additive`: no stored format changes — but
   the redesign does invalidate navigation instructions in `docs/` and `README.md`,
   which is why the documentation sweep is an acceptance criterion rather than a
@@ -585,3 +585,7 @@ is the precondition.
 _Empty. Populated by intent-auditor when intent moves to shipped/._
 
 **Answers 2026-09-20:** Q1 A; Q2 A with the resources block staying at the head of Models; Q3 C, as-you-type carved out as a sibling intent that never gates; severity major. Recorded in `.abcd/work/DECISIONS.md`.
+
+## Grounds
+
+- pursued: the maintainer answered every open question at the 2026-09-20 interview and the itd-1 sections were written from the answers; what would show this wrong is a criterion that cannot be held by the test it names
