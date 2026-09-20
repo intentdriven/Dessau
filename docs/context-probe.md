@@ -80,6 +80,24 @@ The figure is also published on the models list as `measured_context` and
 `measured_bound`, beside `context_length` and `served_context`:
 [The models list](models-list.md) says what each means.
 
+## Whether the model calls tools
+
+Beside the measured window, the card carries one more line Dessau found
+for itself: **Tool calls: yes**, **no**, or **not measured**. The first time
+a model is served, once the request that loaded it has been answered, Dessau
+asks the model one fixed question with one small tool declared and records
+whether it answered with a tool call. The question is Dessau's own and goes
+to the model's own server rather than through the OpenAI endpoint, so it
+costs one short answer, runs without the idle threshold, needs no switch,
+and appears in no request statistic and no request log line.
+
+The line reads **not measured** while the model has not been asked under
+the runtime in force: a model downloaded again, or a Dessau update that
+changes the runtime, is asked again the next time it is served. It refuses
+nothing — a client may still send tools to a model marked **no**, and Dessau
+relays them as it does today. The same answer is published on the models
+list as `tool_calling`.
+
 ## Adopt the figure
 
 A measurement changes nothing on its own: no memory charge, no refusal.
