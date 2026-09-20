@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/intentdriven/Dessau/internal/mlxtest"
 	"github.com/intentdriven/Dessau/internal/registry"
 	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/toolprobe"
 )
 
 // toolLauncher stands up a fake model server that answers with a tool call,
@@ -20,6 +22,11 @@ import (
 type toolLauncher struct {
 	mu      sync.Mutex
 	servers map[string]*mlxtest.Server
+	// hangAbove, when set, makes every server hang a prompt counted above
+	// that many tokens: the readiness probe's "hi" is a handful, the tool
+	// probe's question is a dozen, so a bound between them hangs the probe
+	// alone.
+	hangAbove int
 }
 
 type toolProcess struct {
@@ -39,7 +46,10 @@ func (p *toolProcess) Pid() int              { return 4242 }
 func (l *toolLauncher) Precheck(runtime.Spec) error { return nil }
 
 func (l *toolLauncher) Launch(_ context.Context, spec runtime.Spec) (runtime.Process, error) {
-	srv := mlxtest.Start(mlxtest.Options{ModelArg: spec.ModelPath, Port: spec.Port, ToolCall: true})
+	srv := mlxtest.Start(mlxtest.Options{
+		ModelArg: spec.ModelPath, Port: spec.Port, ToolCall: true,
+		PromptTokensFromBody: l.hangAbove > 0, HangAbove: l.hangAbove,
+	})
 	l.mu.Lock()
 	l.servers[spec.RepoID] = srv
 	l.mu.Unlock()
@@ -165,5 +175,101 @@ func TestAModelReachingLoadedWithoutACurrentVerdictQueuesOneProbe(t *testing.T) 
 	}
 	if l.server("org/c") != nil {
 		t.Error("the probe loaded a model that was not resident")
+	}
+}
+
+// The probe's hold is the self-test's: a client whose load needs the memory
+// takes the model, the pool cancels the probe's request to get it, and the
+// probe lets go promptly — well under its request timeout — recording
+// nothing. The model is asked again the next time it is served.
+func TestAClientsLoadTakesTheModelFromUnderTheProbe(t *testing.T) {
+	paths := config.NewPaths(t.TempDir())
+	l := &toolLauncher{servers: map[string]*mlxtest.Server{}, hangAbove: 6}
+	cfg := config.Default()
+	// Room for one of the two models below and not both: each is charged
+	// 1.2 times its size.
+	cfg.MaxResidentBytes = 250 << 20
+	a, err := New(Options{Paths: paths, Config: cfg, Launcher: l, PhysicalMemory: func() int64 { return 1 << 30 }})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { a.Close() })
+	for _, id := range []string{"org/a", "org/b"} {
+		dir := paths.ModelDir(id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "weights.safetensors"), []byte("w"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := a.Registry.Put(registry.Model{RepoID: id, Path: dir, State: registry.StateReady, Bytes: 200 << 20}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// org/a is served once; the probe follows and hangs in its request,
+	// holding the model.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_, release, err := a.Pool.Acquire(ctx, "org/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	waitFor(t, "the probe to hold the model", func() bool {
+		for _, r := range a.Pool.Resident() {
+			if r.RepoID == "org/a" && r.InFlight == 1 {
+				return true
+			}
+		}
+		return false
+	})
+
+	// A client's load that needs the memory: served, not refused, and
+	// promptly.
+	arrived := time.Now()
+	_, releaseB, err := a.Pool.Acquire(ctx, "org/b")
+	if err != nil {
+		t.Fatalf("a client's load was refused the memory the probe was holding: %v", err)
+	}
+	defer releaseB()
+	if took := time.Since(arrived); took > 5*time.Second {
+		t.Errorf("the client waited %v for the probe to let go", took)
+	}
+	waitFor(t, "org/a to be gone", func() bool {
+		for _, r := range a.Pool.Resident() {
+			if r.RepoID == "org/a" {
+				return false
+			}
+		}
+		return true
+	})
+	if m, _ := a.Registry.Get("org/a"); m.ToolCalling != nil {
+		t.Errorf("a yielded probe recorded %+v", m.ToolCalling)
+	}
+	// org/a leaves the queue; org/b, held by this test, is queued behind it
+	// and waits for the hold to go, which is the ordinary case.
+	waitFor(t, "org/a to leave the queue", func() bool {
+		for _, q := range a.ToolProbe.Queued() {
+			if q == "org/a" {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+// The probe's acquisition holds a resident model and never becomes a load:
+// a model that went between the probe's residency check and its Acquire is
+// reported gone, and no model server is launched for it.
+func TestTheProbesAcquireNeverLoadsAModelThatHasGone(t *testing.T) {
+	a, l := newToolProbeApp(t)
+	src := toolProbeSources{a}
+	_, _, err := src.Acquire(context.Background(), "org/a")
+	if !errors.Is(err, toolprobe.ErrGone) {
+		t.Fatalf("Acquire of a model the pool is not holding = %v, want ErrGone", err)
+	}
+	if l.server("org/a") != nil {
+		t.Error("the probe's acquisition launched a model server")
 	}
 }

@@ -1,15 +1,18 @@
 package toolprobe
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/Dessau/internal/mlxtest"
 	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/selftest"
 )
 
 // fakeSources is the app as the probe sees it: one model server, resident or
@@ -24,19 +27,27 @@ type fakeSources struct {
 	mu       sync.Mutex
 	loaded   bool
 	inFlight int
+	// busy names models that never fall quiet, whatever inFlight says.
+	busy     map[string]bool
 	held     int
 	acquired int
 	saved    map[string]*registry.ToolCalling
 	saveErr  error
+	// lastYield is the yield the last acquisition carried, as the app's
+	// adapter would hand it to the pool.
+	lastYield func()
 }
 
 func newSources(srv *mlxtest.Server) *fakeSources {
 	return &fakeSources{srv: srv, runtime: "0.31.3", loaded: true, saved: map[string]*registry.ToolCalling{}}
 }
 
-func (s *fakeSources) Resident(string) (bool, int) {
+func (s *fakeSources) Resident(repoID string) (bool, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.busy[repoID] {
+		return s.loaded, 1
+	}
 	return s.loaded, s.inFlight
 }
 
@@ -48,6 +59,7 @@ func (s *fakeSources) Acquire(ctx context.Context, repoID string) (Upstream, fun
 	}
 	s.acquired++
 	s.held++
+	s.lastYield = selftest.YieldFrom(ctx)
 	arg := s.srv.ModelArg
 	if s.modelArg != "" {
 		arg = s.modelArg
@@ -75,6 +87,12 @@ func (s *fakeSources) verdict(repoID string) *registry.ToolCalling {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.saved[repoID]
+}
+
+func (s *fakeSources) yield() func() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastYield
 }
 
 func (s *fakeSources) counts() (acquired, held int) {
@@ -335,5 +353,100 @@ func TestCloseStopsTheQueue(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if srv.Completions() != 0 {
 		t.Error("a probe ran after Close")
+	}
+}
+
+// The hold is the self-test's: when the pool takes it back for a client's
+// load, the yield it calls aborts the request in flight, the model is
+// released promptly, and nothing is recorded.
+func TestThePoolTakingTheHoldBackAbortsTheRequest(t *testing.T) {
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: "/models/org/m", ToolCall: true, ResponseDelay: 5 * time.Second})
+	t.Cleanup(srv.Close)
+	src := newSources(srv)
+	p := New(Options{
+		Sources: src, Log: slog.New(slog.DiscardHandler),
+		RequestTimeout: 30 * time.Second, Poll: 5 * time.Millisecond,
+	})
+	t.Cleanup(p.Close)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := p.Run(context.Background(), "org/m")
+		done <- err
+	}()
+	waitFor(t, "the acquisition to carry a yield", func() bool { return src.yield() != nil })
+	asked := time.Now()
+	src.yield()()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("a yielded run recorded a verdict")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the request outlived the pool's yield; the hold was not let go")
+	}
+	if took := time.Since(asked); took > 500*time.Millisecond {
+		t.Errorf("the run took %v to let go after the pool asked", took)
+	}
+	if src.verdict("org/m") != nil {
+		t.Errorf("a yielded run recorded %+v", src.verdict("org/m"))
+	}
+	if _, held := src.counts(); held != 0 {
+		t.Error("the model is still held after the pool asked for it back")
+	}
+}
+
+// A model at the head of the queue that never falls quiet does not park the
+// queue: after the bounded wait it goes to the back, the next model is
+// probed, and it is tried again in its turn.
+func TestAModelThatNeverFallsQuietDoesNotStarveTheQueue(t *testing.T) {
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: "/models/org/m", ToolCall: true})
+	t.Cleanup(srv.Close)
+	src := newSources(srv)
+	src.busy = map[string]bool{"org/busy": true}
+	p := New(Options{
+		Sources: src, Log: slog.New(slog.DiscardHandler),
+		Poll: 5 * time.Millisecond, MaxQuietWait: 50 * time.Millisecond,
+	})
+	t.Cleanup(p.Close)
+	p.Enqueue("org/busy")
+	p.Enqueue("org/m")
+	waitFor(t, "the model behind the busy one to be probed", func() bool { return src.verdict("org/m") != nil })
+	if src.verdict("org/busy") != nil {
+		t.Error("a model that never fell quiet was probed while busy")
+	}
+	waitFor(t, "the busy model to be back at the head", func() bool {
+		q := p.Queued()
+		return len(q) == 1 && q[0] == "org/busy"
+	})
+	if acquired, _ := src.counts(); acquired != 1 {
+		t.Errorf("acquired %d times, want once: the busy model was never held", acquired)
+	}
+}
+
+// A verdict the registry could not write is still the verdict the registry
+// now holds in memory and publishes for this session, so the log says that
+// — held for the session, not written, asked again after a restart — rather
+// than that nothing was recorded.
+func TestAFailedSaveIsLoggedAsHeldForTheSession(t *testing.T) {
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: "/models/org/m", ToolCall: true})
+	t.Cleanup(srv.Close)
+	src := newSources(srv)
+	src.saveErr = errors.New("disk full")
+	var logged bytes.Buffer
+	p := New(Options{Sources: src, Log: slog.New(slog.NewTextHandler(&logged, nil))})
+	t.Cleanup(p.Close)
+	got, err := p.Run(context.Background(), "org/m")
+	if err != nil || got == nil || !got.Can {
+		t.Fatalf("Run = %+v, %v; want the verdict, which the registry holds for this session", got, err)
+	}
+	out := logged.String()
+	for _, want := range []string{"not written", "after a restart"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the log does not say %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "recorded nothing") || strings.Contains(out, "could not record") {
+		t.Errorf("the log says the verdict was not recorded, which is not what happened:\n%s", out)
 	}
 }
