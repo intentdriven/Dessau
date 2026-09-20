@@ -645,7 +645,7 @@ final class AppModel: ObservableObject {
             }
         } catch {
             connected = false
-            status = "Could not reach \(serverHost). Is Dessau running and on the same network?"
+            status = "Could not reach \(serverHost). Is the server running and on the same network?"
         }
     }
 
@@ -1186,7 +1186,7 @@ struct ChatDetail: View {
                     }
                     .labelStyle(.titleAndIcon)
                 }
-                .help("Choose who answers: this \(BuiltInBackend.deviceNoun), or a Dessau server on your network")
+                .help("Choose who answers: this \(BuiltInBackend.deviceNoun), or a server on your network")
                 .popover(isPresented: $pickerShown) {
                     ModelPickerView(model: model)
                 }
@@ -1631,7 +1631,7 @@ struct SettingsView: View {
         Form {
             Section("Server") {
                 TextField("Address", text: typedAddress, prompt: Text("http://alices-mac.local:11535"))
-                Text("A Dessau server's address: the Mac's .local name or LAN address, port 11535. Servers on your network are offered in the model picker without typing anything.")
+                Text("The server's address: its .local name or LAN address, port 11535 for Dessau Server. Servers on your network are offered in the model picker without typing anything.")
                     .font(.caption).foregroundStyle(.secondary)
                 SecureField("API key", text: $key, prompt: Text("Only if that server requires one"))
                     // Saved only when the person changed it: the initial load
@@ -1672,7 +1672,7 @@ struct SettingsView: View {
                     if let failure = pairingFailure {
                         Text(failure).font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("Pairing gives this \(BuiltInBackend.deviceNoun) a key of its own on that server. Once paired it never asks for an API key, and what passes between them is no longer readable by everything on your network. Anything on the network can pair with a Dessau server, so whoever runs it should check the list on its control panel.")
+                    Text("Pairing gives this \(BuiltInBackend.deviceNoun) a key of its own on that server. Once paired it never asks for an API key, and what passes between them is no longer readable by everything on your network. Anything on the network can pair with a Dessau Server, so whoever runs it should check the list on its control panel.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
