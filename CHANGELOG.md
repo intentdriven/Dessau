@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Gropius are recorded here. The format follows
+All notable changes to Dessau are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -13,13 +13,32 @@ GitHub release notes.
 
 ### Changed
 
+- **The family name is Dessau, and every name the product speaks carries it.**
+  `impact: breaking`. The menu-bar server is **Dessau Server** and the chat
+  client is **Dessau Chat**. The repository is `intentdriven/Dessau` and the Go
+  module `github.com/intentdriven/Dessau`; the bundles are `DessauServer.app`
+  and `DessauChat.app` and the release assets `DessauServer.app.zip` and
+  `DessauChat.app.zip`; the binary is `dessau` and the bundle identifiers
+  `sh.intentdriven.dessau.server` and `sh.intentdriven.dessau.chat`; settings
+  live in `~/Library/Application Support/Dessau` and the shared model cache in
+  `/Users/Shared/Dessau`; the Bonjour service type is `_dessau._tcp`, the queue
+  headers are `X-Dessau-State` and `X-Dessau-Queue-Time`, and every model's
+  `owned_by` reads `dessau`. Nothing is migrated and nothing is advertised
+  twice: the old service type is not announced beside the new one and the old
+  settings directory is not read, so Alice re-creates her server state and Bob
+  pairs his clients again, once each. A server is announced under its own Mac's
+  name — "Alice's Mac", the name System Settings gives it — with no product
+  name in front of it, the service type being what says which service it is.
+  The superseded name is refused in user-facing content by the name guard from
+  this change on (decided in [an architecture
+  decision](.abcd/development/decisions/adrs/2609200729102059-dessau-replaces-gropius-as-the-family-name-components-are-na.md)).
 - **The product floor is macOS 27 on Apple Silicon, for the server and the
   chat client alike.** `impact: breaking`. Both bundles declare macOS 27 as
   their minimum, and `install.sh` checks the version and the architecture
   before it downloads anything, and a Mac below the floor is refused in one
   sentence naming it. Since macOS 27 runs on no Intel Mac, that is the sentence
   an Intel Mac sees; the architecture refusal behind it names Apple Silicon.
-  `gropius update` refuses the same Mac too, before it downloads anything and
+  `dessau update` refuses the same Mac too, before it downloads anything and
   before it quits the running server — the route that goes through neither the
   installer nor Launch Services. Support for macOS 26 and for Intel Macs is
   dropped and nothing is kept for either: the installer has one floor, one
