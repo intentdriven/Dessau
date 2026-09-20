@@ -35,10 +35,10 @@ changelog.
 Out of scope: the iPad client's floor (`client/Info-iPad.plist`), which is
 its own; `client/build.sh`'s deployment target, which is already 27 and
 already one slice; `internal/runtime`'s pinned `uv` table, which still
-carries an `amd64` entry keyed on `GOARCH` — the server is never built for
-that arch, the entry is unreachable, and removing it is a change inside a
-trust boundary with no user-visible effect, so it is left with this note
-rather than taken along; deleting the v0.6.0 release, which is never an
+carries an `amd64` entry keyed on `GOARCH` — reachable by a `go build` on
+darwin/amd64 but unreached by any shipped build, and removing it is a change
+inside a trust boundary with no user-visible effect, so it is left with this
+note and a follow-on issue rather than taken along; deleting the v0.6.0 release, which is never an
 agent's act.
 
 ## Approach

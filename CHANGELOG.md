@@ -16,14 +16,17 @@ GitHub release notes.
 - **The product floor is macOS 27 on Apple Silicon, for the server and the
   chat client alike.** `impact: breaking`. Both bundles declare macOS 27 as
   their minimum, and `install.sh` checks the version and the architecture
-  before it downloads anything: a Mac on an older macOS is refused in one
-  sentence naming the floor, and an Intel Mac is refused in one naming Apple
-  Silicon. Support for macOS 26 and for Intel Macs is dropped and nothing is
-  kept for either — the installer has one floor, one release path and one
-  checksums file per run, and no build is fetched for a Mac that cannot run
-  it. Release v0.6.0 stays published and its tag stays, but nothing points at
-  it any more: there is one release again, with no exception. Every page
-  states one requirement.
+  before it downloads anything, and a Mac below the floor is refused in one
+  sentence naming it. Since macOS 27 runs on no Intel Mac, that is the sentence
+  an Intel Mac sees; the architecture refusal behind it names Apple Silicon.
+  `gropius update` refuses the same Mac too, before it downloads anything and
+  before it quits the running server — the route that goes through neither the
+  installer nor Launch Services. Support for macOS 26 and for Intel Macs is
+  dropped and nothing is kept for either: the installer has one floor, one
+  release path and one checksums file per run, and no build is fetched for a
+  Mac that cannot run it. Nothing points at release v0.6.0 any more, and its
+  tag stays; there is one release again, with no exception. Every page states
+  one requirement.
 
 ## [0.7.2] - 2026-09-19
 

@@ -1245,7 +1245,9 @@ func withoutComments(block string) string {
 
 func hostMacOSMajor(t *testing.T) int {
 	t.Helper()
-	out, err := exec.Command("sw_vers", "-productVersion").Output()
+	// By absolute path, which is the rule install.sh itself is held to: a
+	// PATH-resolved sw_vers that errors turns this whole guard into a skip.
+	out, err := exec.Command("/usr/bin/sw_vers", "-productVersion").Output()
 	if err != nil {
 		t.Skipf("sw_vers: %v", err)
 	}

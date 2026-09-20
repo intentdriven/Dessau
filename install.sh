@@ -2,7 +2,7 @@
 #
 # One-line installer for Gropius.
 #
-#   Server (menu-bar, Apple Silicon only):
+#   Server (menu-bar, Apple Silicon, macOS 27):
 #     curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash
 #
 #   Client (GropiusChat, Apple Silicon, macOS 27 — the same floor as the server):
@@ -173,7 +173,7 @@ fi
 # verified against the one checksums file published with it. Neither can skip
 # the checks around the other, and no run verifies two origins.
 fetch() {
-	local name="$1" dest="$2" release="$RELEASE_PATH"
+	local name="$1" dest="$2"
 	if [ -n "$ASSET_DIR" ]; then
 		/bin/cp "$ASSET_DIR/$name" "$dest" ||
 			die "could not read $name from $ASSET_DIR."
@@ -183,8 +183,8 @@ fetch() {
 	# URL still reads github.com; --proto pins HTTPS end to end, redirects
 	# included. The asset and the checksums that verify it come from this same
 	# origin, so the transport is the thing to pin.
-	/usr/bin/curl -q --proto =https --proto-redir =https -fsSL -o "$dest" "https://github.com/$REPO/releases/$release/$name" ||
-		die "could not download $name from releases/$release. Check your network and retry, or build from source (see the README)."
+	/usr/bin/curl -q --proto =https --proto-redir =https -fsSL -o "$dest" "https://github.com/$REPO/releases/$RELEASE_PATH/$name" ||
+		die "could not download $name from releases/$RELEASE_PATH. Check your network and retry, or build from source (see the README)."
 }
 
 echo "Downloading ${APP}…"

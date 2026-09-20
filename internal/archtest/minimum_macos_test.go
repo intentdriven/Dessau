@@ -96,6 +96,22 @@ func TestEverySurfaceDeclaresTheSameMacOSFloor(t *testing.T) {
 		}
 	})
 
+	t.Run("update verb floor", func(t *testing.T) {
+		// The third route onto a Mac. install.sh refuses below the floor and
+		// Launch Services refuses to open the bundle; `gropius update` goes
+		// through neither, and it quits the server and swaps the bundle aside
+		// before the system is asked anything. Its constant is a fourth copy of
+		// this number and is held here with the rest.
+		raw := readRepoFile(t, root, filepath.Join("internal", "lifecycle", "floor.go"))
+		m := regexp.MustCompile(`(?m)^const minMacOSMajor = ([0-9]+)$`).FindStringSubmatch(raw)
+		if m == nil {
+			t.Fatal("internal/lifecycle/floor.go declares no minMacOSMajor; `gropius update` would replace a working install on a Mac that cannot open the new bundle")
+		}
+		if m[1] != major {
+			t.Errorf("internal/lifecycle declares minMacOSMajor = %s; the plists declare major %q", m[1], major)
+		}
+	})
+
 	t.Run("user-facing prose", func(t *testing.T) {
 		// Each page states the requirement in the same words, so a reader who
 		// meets it twice meets one number. \b keeps "macOS 27" from being
@@ -122,7 +138,9 @@ func TestEverySurfaceDeclaresTheSameMacOSFloor(t *testing.T) {
 		withdrawn := []*regexp.Regexp{
 			regexp.MustCompile(`macOS 26\b`),
 			regexp.MustCompile(`v0\.6\.0`),
-			regexp.MustCompile(`(?i)universal`),
+			// Narrow on purpose: "Universal Clipboard" is a true thing this
+			// client does, and it is not a build that was withdrawn.
+			regexp.MustCompile(`(?i)universal (build|binary|client|slice)`),
 		}
 		for _, rel := range []string{
 			"README.md",
@@ -165,12 +183,44 @@ func TestTheInstallerKeepsNoSecondReleasePath(t *testing.T) {
 	}
 }
 
+// macOSRunnerFloors maps every runner label this repository may use for a
+// macOS job onto the macOS major that image runs. It is an ALLOW-LIST and the
+// test below fails on a label that is not in it, because the failure being
+// guarded against is a label whose macOS major is lower than the floor OR
+// unknown -- `macos-latest` lags the newest system by a year or more, and a new
+// preview label says nothing about its system at all. A label's major is a
+// claim about GitHub's image that the checkout cannot verify, so each entry
+// names how it was verified.
+var macOSRunnerFloors = map[string]int{
+	// Verified in this repository's own release run of 2026-09-19, whose job
+	// log reports "Image: xcode-27-arm64" under "Operating System: macOS 27.0".
+	"xcode-27": 27,
+	// GitHub's dated images, whose label carries the major.
+	"macos-26": 26,
+	"macos-15": 15,
+	"macos-14": 14,
+}
+
+// nonMacOSRunners are the labels that run no macOS job, so the floor says
+// nothing about them.
+var nonMacOSRunners = map[string]bool{"ubuntu-latest": true, "ubuntu-24.04": true, "ubuntu-22.04": true}
+
+// macOSGatedJobs are the workflow jobs that must run on a Mac at or above the
+// floor, named as "<workflow>:<job>". Each one runs the Go suite, and the
+// installer gate inside it is the ONLY thing anywhere that executes install.sh
+// -- on a runner below the floor that guard skips itself, and on a runner that
+// is not a Mac at all it skips even earlier, before the fatality that is meant
+// to make the skip loud. Naming the jobs here is what stops the guard being
+// removed by editing one label.
+var macOSGatedJobs = []string{"ci.yml:check", "release.yml:verify", "release.yml:release", "release.yml:rehearsal"}
+
 // TestEveryMacOSRunnerIsAtOrAboveTheFloor closes the coupling the installer
 // gate's own comment records: that gate is the only thing that executes
 // install.sh, and a runner image below the bundle's floor turns it into a
 // silent no-op -- reported, if at all, as a message about runner provisioning
-// rather than about the floor that was raised. A macos-<major> label below the
-// floor is caught here instead, in the suite, beside the plist that moved.
+// rather than about the floor that was raised. Here it is caught in the suite,
+// beside the plist that moved, and a label nobody has checked is a failure
+// rather than a shrug.
 func TestEveryMacOSRunnerIsAtOrAboveTheFloor(t *testing.T) {
 	root := repoRootDir(t)
 	floor := plistString(t, filepath.Join(root, "build", "Info.plist"), minimumSystemVersionKey)
@@ -179,43 +229,88 @@ func TestEveryMacOSRunnerIsAtOrAboveTheFloor(t *testing.T) {
 		t.Fatalf("build/Info.plist declares %s %q, which is not a major.minor version", minimumSystemVersionKey, floor)
 	}
 
-	workflows, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	runners := workflowRunners(t, root)
+	if len(runners) == 0 {
+		t.Fatal(".github/workflows names no runner, so this guard reads nothing")
+	}
+
+	// Every label, whatever job it belongs to: an unknown one is a failure,
+	// because this test cannot say whether it is a Mac at all.
+	seen := map[string]bool{}
+	for job, label := range runners {
+		if nonMacOSRunners[label] {
+			continue
+		}
+		known, ok := macOSRunnerFloors[label]
+		if !ok {
+			t.Errorf("%s runs on %q, a label this test knows nothing about: add it to macOSRunnerFloors with how its macOS major was verified, or to nonMacOSRunners", job, label)
+			continue
+		}
+		seen[label] = true
+		if known < major {
+			t.Errorf("%s runs on %s (macOS %d), below the bundle floor of %s: the installer gate is the only thing that executes install.sh, and it would be skipped silently there",
+				job, label, known, floor)
+		}
+	}
+
+	// And the jobs that must be on such a Mac are, by name. A label edit that
+	// moved one of them to Linux would otherwise pass the loop above.
+	for _, job := range macOSGatedJobs {
+		label, ok := runners[job]
+		if !ok {
+			t.Errorf("%s is not in .github/workflows any more; it runs the Go suite, whose installer gate is the only thing that executes install.sh", job)
+			continue
+		}
+		known, ok := macOSRunnerFloors[label]
+		if !ok || known < major {
+			t.Errorf("%s runs on %q, which is not a Mac at or above the floor of %s", job, label, floor)
+		}
+	}
+	if len(seen) == 0 {
+		t.Errorf("no workflow job runs on a macOS runner, so nothing executes install.sh in CI")
+	}
+}
+
+// workflowRunners reads every job's runs-on out of .github/workflows, keyed
+// "<file>:<job>". The workflows here are plain enough to read with an indent
+// rule -- a job is a two-space key under `jobs:` and its `runs-on:` is four
+// spaces in -- which keeps a YAML parser out of the test suite for one field.
+func workflowRunners(t *testing.T, root string) map[string]string {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(workflows) == 0 {
+	if len(paths) == 0 {
 		t.Fatal(".github/workflows holds no workflow, so this guard reads nothing")
 	}
-	labelled := 0
-	for _, path := range workflows {
+	jobHeading := regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*$`)
+	runsOn := regexp.MustCompile(`^    runs-on:\s*(\S+)\s*$`)
+	out := map[string]string{}
+	for _, path := range paths {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range regexp.MustCompile(`(?m)^\s*runs-on:\s*(\S+)`).FindAllStringSubmatch(string(raw), -1) {
-			label := m[1]
-			labelled++
-			named := regexp.MustCompile(`^macos-([0-9]+)`).FindStringSubmatch(label)
-			if named == nil {
-				// An image whose label does not carry a macOS major (ubuntu, or
-				// the xcode-27 preview image) says nothing here. The installer
-				// gate still refuses to be skipped on a CI runner below the
-				// floor, which is what catches a label that lies.
+		file, job, inJobs := filepath.Base(path), "", false
+		for _, line := range strings.Split(string(raw), "\n") {
+			if line == "jobs:" {
+				inJobs = true
 				continue
 			}
-			runner, err := strconv.Atoi(named[1])
-			if err != nil {
-				t.Fatalf("%s: unreadable runner major in %q", filepath.Base(path), label)
+			if !inJobs {
+				continue
 			}
-			if runner < major {
-				t.Errorf("%s runs a job on %s, below the bundle floor of %s: the installer gate is the only thing that executes install.sh, and it would be skipped silently there",
-					filepath.Base(path), label, floor)
+			if m := jobHeading.FindStringSubmatch(line); m != nil {
+				job = m[1]
+				continue
+			}
+			if m := runsOn.FindStringSubmatch(line); m != nil && job != "" {
+				out[file+":"+job] = m[1]
 			}
 		}
 	}
-	if labelled == 0 {
-		t.Fatal("no workflow names a runner, so this guard reads nothing")
-	}
+	return out
 }
 
 // repoRootDir is the checkout root, two levels up from internal/archtest.

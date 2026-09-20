@@ -61,6 +61,11 @@ type fakeUpdate struct {
 	linkMissing bool
 	// answering is whether the launched copy answers before the deadline.
 	answering bool
+	// macOS is what this Mac reports as its product version, and macOSErr the
+	// failure to read it. The default is the floor, so every other test runs on
+	// a Mac the verb will serve.
+	macOS    string
+	macOSErr error
 }
 
 func newFakeUpdate(t *testing.T) *fakeUpdate {
@@ -81,6 +86,7 @@ func newFakeUpdate(t *testing.T) *fakeUpdate {
 		holders:   []instance.Holder{instance.HolderOurs, instance.HolderOurs},
 		serving:   "0.5.0",
 		answering: true,
+		macOS:     strconv.Itoa(minMacOSMajor) + ".0",
 	}
 	f.env = UpdateEnv{
 		Home: home,
@@ -94,8 +100,9 @@ func newFakeUpdate(t *testing.T) *fakeUpdate {
 			}
 			return f.holders[len(f.holders)-1]
 		},
-		PortBusy:       func() bool { return f.busy },
-		ServingVersion: func() (string, error) { return f.serving, f.servingErr },
+		HostMacOSVersion: func() (string, error) { return f.macOS, f.macOSErr },
+		PortBusy:         func() bool { return f.busy },
+		ServingVersion:   func() (string, error) { return f.serving, f.servingErr },
 		Staging: func() (string, func(), error) {
 			dir := t.TempDir()
 			return dir, func() {}, nil
@@ -162,6 +169,68 @@ func (f *fakeUpdate) run(t *testing.T, args ...string) (code int, out, errOut st
 	env.Port = f.env.Port
 	code = runUpdate(env, args, f.env)
 	return code, o.String(), e.String()
+}
+
+// A Mac below the product floor is refused BEFORE the download and before the
+// quit — the ending that matters most, because this verb is the one that can
+// destroy a working installation.
+//
+// The other two routes onto a Mac already refuse: install.sh checks the version
+// before it downloads, and Launch Services will not open a bundle whose
+// minimum is above the running system. This verb had neither check, and its
+// order of operations is quit, swap, then launch: without the refusal below, a
+// Mac under the floor lost the only bundle it could run, gained one that will
+// not open, and was told the new version was installed — because the staged
+// binary answers its own version verb when it is run directly.
+func TestAMacBelowTheFloorIsRefusedBeforeAnythingIsDownloadedOrQuit(t *testing.T) {
+	for _, tc := range []struct {
+		name, version, wantIn string
+		err                   error
+	}{
+		{name: "one major below", version: "26.5.2", wantIn: "requires macOS 27"},
+		{name: "far below", version: "15.0", wantIn: "this Mac runs 15.0"},
+		{name: "unreadable", version: "", err: errors.New("sysctl: nope"), wantIn: "could not be read"},
+		{name: "not a version", version: "twenty-seven", wantIn: "not a version this can read"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeUpdate(t)
+			f.macOS, f.macOSErr = tc.version, tc.err
+			code, _, errOut := f.run(t)
+
+			if code != ExitFailed {
+				t.Errorf("exit = %d, want %d", code, ExitFailed)
+			}
+			if !strings.Contains(errOut, tc.wantIn) {
+				t.Errorf("the refusal does not say %q:\n%s", tc.wantIn, errOut)
+			}
+			if !strings.Contains(errOut, "Nothing was downloaded and nothing was replaced.") {
+				t.Errorf("the refusal does not say what was not done:\n%s", errOut)
+			}
+			// The whole point: no side effect of any kind, and the port is not
+			// even asked about — the refusal is the first thing the verb does.
+			if got := *f.calls; got.fetched != nil || got.verified != 0 || got.unpacked != 0 ||
+				got.quit != 0 || got.placed != nil || got.launched != nil || got.holderAsk != 0 {
+				t.Errorf("the run reached the Mac: %+v", got)
+			}
+		})
+	}
+}
+
+// And a Mac at or above the floor is not refused: the gate is a floor, not a
+// pin, so a later macOS updates like any other.
+func TestAMacAtOrAboveTheFloorUpdatesNormally(t *testing.T) {
+	for _, version := range []string{"27.0", "27.3.1", "28.0"} {
+		t.Run(version, func(t *testing.T) {
+			f := newFakeUpdate(t)
+			f.macOS = version
+			if code, _, errOut := f.run(t); code != ExitOK {
+				t.Errorf("exit = %d, want %d on macOS %s:\n%s", code, ExitOK, version, errOut)
+			}
+			if len(f.calls.placed) != 1 {
+				t.Errorf("the bundle was placed %d times, want once", len(f.calls.placed))
+			}
+		})
+	}
 }
 
 // A port holder that answers the identity challenge wrongly — or a data root no
