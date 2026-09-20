@@ -12,8 +12,8 @@
     "on the network."
   ],
   "headline_accent": "on the network.",
-  "mark_label": "The Dessau app icon: a yellow triangle beside a grey square, above a blue square and a red circle",
-  "install_label": "Install Dessau",
+  "mark_label": "The Dessau Server app icon: a yellow triangle beside a grey square, above a blue square and a red circle",
+  "install_label": "Install Dessau Server",
   "install_note": "one line in Terminal",
   "repository_label": "View the source",
   "fact_requires": "Requires",

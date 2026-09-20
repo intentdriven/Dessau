@@ -1,0 +1,22 @@
+# Redirects for the landing page.
+#
+# cmd/dessau-site copies this file to the ROOT of the output directory as
+# `_redirects`, beside `_headers`, which is where the host reads it: one list
+# for the whole assets directory, while the page itself is served from a path
+# under it.
+#
+# A superseded path that no Worker is attached to cannot be redirected at all —
+# the request is answered by the apex before anything here sees it. So
+# wrangler.jsonc routes the old path to this Worker for no reason but these two
+# lines: it is claimed in order to be given away again.
+#
+# 301 and not 302: the old path is not coming back, and a permanent code is
+# what lets a browser and a search index stop asking for it.
+#
+# Two rules and not one, because a splat does not match the empty string: on
+# its own the second rule leaves the bare path unredirected, which is the
+# spelling a person types. `:splat` carries whatever followed the slash to the
+# same place under the current path, so a deep link keeps its destination.
+
+/Gropius        /Dessau/        301
+/Gropius/*      /Dessau/:splat  301

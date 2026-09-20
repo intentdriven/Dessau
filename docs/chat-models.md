@@ -8,7 +8,7 @@ message sent to one is wasted.
 Dessau records what HuggingFace says each model is when you download it, and
 publishes those words on the models list. A rule decides which of them count as
 able to chat. There are two places to change it: the server, which is what every
-client is told, and the DessauChat client, which applies its own.
+client is told, and Dessau Chat, which applies its own.
 
 ## On the server
 
@@ -41,7 +41,7 @@ than the server refusing to start.
 
 ## In the chat client
 
-DessauChat applies its own rule to the same words, so the models it offers are
+Dessau Chat applies its own rule to the same words, so the models it offers are
 its user's decision rather than the server's. Open **Settings** (Cmd-,) and
 edit the two fields under **Models to offer**. They ship with the server's own
 default. The Mac's own model — the client's "On this Mac" — is not a served

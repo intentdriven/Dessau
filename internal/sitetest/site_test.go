@@ -438,7 +438,7 @@ func fixtureTree(t *testing.T, mutate func(path, content string) string) string 
 	// Every "file": in the manifest, plus the template, the strings and the
 	// static inputs.
 	raw := read(t, filepath.Join(repoRoot, manifest))
-	for _, m := range regexp.MustCompile(`"(?:file|ui_strings|template|headers)"\s*:\s*"([^"]+)"`).FindAllStringSubmatch(raw, -1) {
+	for _, m := range regexp.MustCompile(`"(?:file|ui_strings|template|headers|redirects)"\s*:\s*"([^"]+)"`).FindAllStringSubmatch(raw, -1) {
 		files = append(files, filepath.FromSlash(m[1]))
 	}
 	var man struct {

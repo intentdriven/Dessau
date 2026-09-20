@@ -37,7 +37,7 @@ and nothing else changed.
 
 Every range but two is the model server's own: temperature is at least 0,
 top-p and min-p are between 0 and 1, and top-k and the token budget are whole
-numbers of at least 0. Two ceilings are Dessau' own. Top-k has an upper limit
+numbers of at least 0. Two ceilings are Dessau's own. Top-k has an upper limit
 of 1024, because the model server refuses a top-k as large as the model's
 vocabulary and Dessau cannot tell what that is at the moment you save; a
 top-k above a few hundred keeps every plausible token anyway. The maximum

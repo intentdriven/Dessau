@@ -16,7 +16,7 @@ production_mode: hand-written
 
 ## Press Release
 
-Bob opens a chat in the Dessau chat client and, in the top right of the
+Bob opens a chat in Dessau Chat and, in the top right of the
 window, finds three small marks: a square, a circle and a triangle. They are
 the three forms of the product's own mark, and each one is a way of
 answering. Square is direct, and the one a new chat starts on: short answers, code

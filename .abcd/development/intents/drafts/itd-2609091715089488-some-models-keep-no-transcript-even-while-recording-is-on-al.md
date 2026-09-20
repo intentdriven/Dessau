@@ -18,7 +18,7 @@ production_mode: dictated-and-formatted
 
 Some models keep no transcript, even while recording is on.
 
-Alice runs a Dessau server for her household and has turned recording on, so
+Alice runs a Dessau Server for her household and has turned recording on, so
 that every prompt and every answer is written down on her Mac. Some of what
 passes through that server is nobody's business but the person typing it. In
 Settings she opens the model she keeps for those conversations and switches its
@@ -218,7 +218,7 @@ kept and practically broken that itd-2609062346072707 would otherwise create.
   `TestModelsListReferenceDocumentsEveryFieldServed`, which holds
   `docs/models-list.md` to the field set served.
 - **Given** a server offering one excepted and one recorded model, **when**
-  Alice opens the Dessau chat client's model picker and the control panel's
+  Alice opens Dessau Chat's model picker and the control panel's
   Models tab, **then** each model shows an icon of its transcript state, read
   from the models-list field and carrying an accessible label, so the state is
   visible before the model is chosen.
@@ -465,7 +465,7 @@ the recording mode, and this record could only inherit the answer.
   If the parent settles on a per-answer notice, an excepted model's answers carry
   what instead — a different notice, or none, which is itself a signal.
   **Answered 2026-09-20:** the notice is an unconditional response header, whose
-  name carries the family-name prefix, plus a `recording` field per models-list
+  name carries the `X-Dessau-` prefix, plus a `recording` field per models-list
   entry, so the header states the truth for the model that answered and the
   listing states it per model before anything is asked
   (`.abcd/work/DECISIONS.md`, 2026-09-20, itd-2609091707499248 Question 1).
@@ -524,7 +524,7 @@ Decisions that were the maintainer's, not a reviewer's or an implementer's.
 And one addition the maintainer made rather than a question they answered.
 
 - **A model's transcript state is shown as an icon wherever a person picks a
-  model** — the Dessau chat client's picker and the control panel's model
+  model** — Dessau Chat's picker and the control panel's model
   cards, and as a word in the bridge's `/model` prose — read from the models-list
   field, so the person knows before choosing rather than after asking
   (`.abcd/work/DECISIONS.md`, 2026-09-20). This is the client-side half of "the

@@ -96,8 +96,8 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
   each line. Neither level writes a prompt, an answer, a key or the address of
   the client that sent a request ([reference](docs/logging.md)).
 - **Network-shared** — bind the LAN, discoverable over Bonjour (the chat client
-  lists the servers it finds, so nobody has to guess an address), optional API
-  key. A mesh VPN reaches it from further away, with the same steps and a
+  lists the servers it finds, each under the name of the Mac it runs on, so
+  nobody has to guess an address), optional API key. A mesh VPN reaches it from further away, with the same steps and a
   different address ([how to](docs/mesh-vpn.md)) — or bind that network alone,
   so the local one cannot reach the server at all. Every bind includes this
   Mac, so narrowing one never costs you the control panel
@@ -141,9 +141,9 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
 
 ## Install
 
-One line — installs `DessauServer.app` (the menu-bar server) to `/Applications`, or to
-your own `~/Applications` when your account is not an administrator, allows it
-through the firewall, and launches it:
+One line — installs `DessauServer.app`, the Dessau Server menu-bar app, to
+`/Applications`, or to your own `~/Applications` when your account is not an
+administrator, allows it through the firewall, and launches it:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/intentdriven/Dessau/main/install.sh | bash
@@ -180,11 +180,12 @@ so no one edits the page to keep it current.
 client alike. Both bundles declare that minimum, and the installer checks the
 version and the architecture before it downloads anything, so a Mac that
 cannot run Dessau is turned away rather than half-installed. There is no
-build for an older macOS and none for an Intel Mac. The native chat client
-(`DessauChat.app`) chats with the Mac's own model out of the box and offers a
-Dessau server's models when it finds one on the network. Installing it
-downloads the server's archive too: both bundles are put in place by a Dessau
-binary, because a shell cannot replace an application directory safely.
+build for an older macOS and none for an Intel Mac. Dessau Chat
+(`DessauChat.app`), the native chat client, chats with the Mac's own model out
+of the box and offers a Dessau Server's models when it finds one on the
+network, listed under the name of the Mac it runs on. Installing it downloads
+the server's archive too: both bundles are put in place by the `dessau` binary,
+because a shell cannot replace an application directory safely.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/intentdriven/Dessau/main/install.sh | bash -s -- client
