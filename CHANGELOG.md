@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-20
+
 ### Changed
 
 - **One batched request by default.** `impact: breaking`. The default decode
