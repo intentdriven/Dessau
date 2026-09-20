@@ -119,6 +119,26 @@ func loadModel(t *testing.T, a *app.App, repoID string) {
 		t.Fatalf("Acquire(%s): %v", repoID, err)
 	}
 	release()
+	// A first serve is followed by the tool-call probe's one request, which
+	// holds the model for the moment it takes; a test that unloads straight
+	// after the load would find the model busy with it. Wait for the verdict
+	// the fake server's answer produces and for the model to fall quiet,
+	// which is what an operator's Unload finds a moment later.
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		m, _ := a.Registry.Get(repoID)
+		quiet := m.ToolCalling != nil
+		for _, r := range a.Pool.Resident() {
+			if r.RepoID == repoID && r.InFlight > 0 {
+				quiet = false
+			}
+		}
+		if quiet {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("%s did not fall quiet after its load", repoID)
 }
 
 // The chain from a saved setting to a model server's command line runs through
