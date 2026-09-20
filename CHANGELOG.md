@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-20
+
 ### Changed
 
 - **The family name is Dessau, and every name the product speaks carries it.**
