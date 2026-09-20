@@ -349,6 +349,10 @@ type State struct {
 	// TLS listener.
 	TLSPort  int    `json:"tls_port,omitempty"`
 	Hostname string `json:"hostname"`
+	// ComputerName is the name the Bonjour service is announced under: the
+	// Mac's Computer Name as System Settings shows it (internal/discovery),
+	// which is a different setting from the DNS label in Hostname.
+	ComputerName string `json:"computer_name"`
 	// Version is the build this server is, as the binary reports it about
 	// itself. It is what makes `dessau update`'s report truthful: the version
 	// just installed and the version still being served are two facts, and
@@ -495,6 +499,7 @@ func (c *Control) snapshot() State {
 		Endpoints:  Endpoints(cfg, c.App.Bind()),
 		Bind:       bindState(cfg, c.App.Bind()),
 		Hostname:   hostname(),
+		ComputerName: config.ComputerName(),
 		Version:    c.Version,
 		IdleJobs:   c.App.SelfTest.Status(),
 		ProbeQueue: c.App.Probe.Queued(),

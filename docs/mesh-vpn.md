@@ -94,8 +94,9 @@ settings, and the four things below all live there.
 3. **Encryption.** The mark says nothing about encryption. Whatever a mesh VPN
    does to protect traffic between two machines, the VPN is doing it, and
    Dessau neither performs it nor observes it.
-4. **Dessau speaks plain HTTP.** There is no TLS, on the local network or on
-   the mesh address. So whatever protection the traffic has comes from the VPN
+4. **Dessau speaks plain HTTP on the ordinary port.** There is no TLS on it,
+   on the local network or on the mesh address; only the paired-client port
+   carries TLS. So whatever protection the traffic has comes from the VPN
    and stops where the VPN stops — at a relay you route through, at a proxy in
    front of the server, or at the far end of a share.
 

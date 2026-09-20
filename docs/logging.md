@@ -12,7 +12,7 @@ account can read another's. The file is created owner-only.
 
 The first line of every run says where it is, so if you are not sure, start
 Dessau from a terminal and read the `log=` field on the `dessau starting`
-line — or open Settings, where the same path is named.
+line — or open Settings, which says which folder it is in.
 
 Dessau writes to standard error as well, with the same lines. That is what you
 see when you run the server from a terminal. It is not what you see when you

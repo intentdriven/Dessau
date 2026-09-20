@@ -11,7 +11,7 @@ production_mode: hand-written
 wontfix_reason: "the official WhatsApp API needs a Meta business account and a public webhook, ruled out by adr-2609181004167097 condition 6, and none is planned (maintainer, 2026-09-20)"
 ---
 
-WhatsApp as a way of messaging Dessau, held: the official Cloud API needs a Meta business account, verification and a public HTTPS webhook, and the unofficial libraries breach its terms; to be filed as its own intent with those prerequisites answered, after the Discord bridge and its egress ADR.
+WhatsApp as a way of messaging Gropius, held: the official Cloud API needs a Meta business account, verification and a public HTTPS webhook, and the unofficial libraries breach its terms; to be filed as its own intent with those prerequisites answered, after the Discord bridge and its egress ADR.
 
 ## Deferral 2026-09-19
 

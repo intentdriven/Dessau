@@ -21,7 +21,7 @@ stored configuration, which a save changes before a restart applies it.
 | --- | --- | --- |
 | **Who can reach it** | What the running bind acquired. Under the wildcard, that the server answers on every address this Mac holds, followed by the ones Dessau can name, a name ending in `.local` being this Mac's name on the local network rather than an address. Under a bind to one address, that address and this Mac, followed by the addresses clients can use; where the bound address cannot be written as a URL, that one more address is answered on. Under a loopback bind, this Mac and no other address. Whether the bind narrowed to this Mac, in the resolver's words. | The bind's reach, wildcard flag and bound address; the endpoint list; the bind's refusal. |
 | **The private network** | Present when an address is on a private network, or the private-network bind is chosen, or it is the bind in force. Which addresses are on one; that the mark is read from the interface and the address range and not from the network itself; that sharing the network with other people's machines, or a feature of the network publishing this port to the internet, changes who reaches the address without changing the address or the mark. Under the private-network choice, which address it selected, or that the choice is saved and not in force until the next start. | The endpoint list's marks; the bind's chosen mode, the mode in force, and the selection. |
-| **What carries a request** | That every address is plain HTTP, with no TLS. | A fact about Dessau, not of this server. |
+| **What carries a request** | That every address on the ordinary port is plain HTTP, with no TLS; the paired-client port is the one exception. | A fact about Dessau, not of this server. |
 | **This control panel** | That the panel and its own API answer on this Mac alone on every bind, and that every account on this Mac can open it. | A fact about Dessau, not of this server. |
 | **A request from another machine** | Whether a request arriving from another machine has to carry the API key, whether one is set, and, when the bind reaches no other machine, that nothing arrives from one. | Whether a key is set; the bind's reach. |
 | **A request from this Mac** | That a request from this Mac to a loopback address is served without the key, including a request from another account on this Mac. | Whether a key is set. |
@@ -64,7 +64,8 @@ is true of the network and false of this Mac.
   page reports what is running and the change takes effect at the next start.
 - **The service name exactly as published.** The announcement's service name
   is this Mac's Computer Name, shortened when the name is too long for one DNS
-  label; the page shows the name it was built from.
+  label; the page shows the Computer Name it was built from, which is a
+  different setting from the `.local` host name the addresses use.
 - **Where the log goes.** The request log is written to the server's own
   output; where the process running Dessau sends that output is the launcher's
   business.

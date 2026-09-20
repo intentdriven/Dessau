@@ -48,13 +48,13 @@ measurement, one model at a time. A model you download later is measured
 the next time the Mac is idle. In `config.json` the switch is
 `"context_probe": true` and the threshold `"idle_threshold_sec"`.
 
-To measure one model without switching the probe on, open the **Models** tab
+To measure one model without switching the probe on, open the **My Models** tab
 and press **Measure now** on its card. The run starts at the next idle
 minute.
 
 ## Read the result
 
-The model's card on the Models tab shows the measured window beside the
+The model's card on the My Models tab shows the measured window beside the
 declared and the served ones, with what stopped the step above it:
 
 - **the model** — the server refused or crashed above this size. The figure

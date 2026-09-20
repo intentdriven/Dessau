@@ -822,8 +822,9 @@ function postureLines(state) {
   }
 
   lines.push({ id: 'transport', heading: 'What carries a request', reads: [],
-    text: 'Every address is plain HTTP. Dessau does no TLS: whatever protection a request has on its way ' +
-      'here comes from the network it travelled, and Dessau does not see that either.' });
+    text: 'Every address on the ordinary port is plain HTTP, and the paired-client port carries TLS. ' +
+      'Whatever other protection a request has on its way here comes from the network it travelled, ' +
+      'and Dessau does not see that either.' });
 
   lines.push({ id: 'panel', heading: 'This control panel', reads: [],
     text: 'This panel, and the API it is drawn from, answer on this Mac alone whichever bind is chosen. ' +
@@ -852,15 +853,16 @@ function postureLines(state) {
       : 'A request from this Mac is served without a key, as every request is.' });
 
   // The announcement: the one thing Dessau sends to every machine on the
-  // local network, and what it carries. The service is named after this Mac
-  // and published under a name of Dessau's own, never the Mac's own .local
-  // name (internal/discovery); with no name to read, the advert says dessau.
+  // local network, and what it carries. The service is named after this Mac's
+  // Computer Name, and its address records are published under a name of
+  // Dessau's own, never the Mac's own .local name (internal/discovery); with
+  // no name to read, the advert says dessau.
   const off = advertising(state);
-  const name = state.hostname || 'dessau';
+  const name = state.computer_name || state.hostname || 'dessau';
   let announce;
   if (!off) {
     announce = 'Dessau is announcing this server to every machine on the local network, as a Bonjour ' +
-      `service named after this Mac's name, ${name}, shortened where it is too long for a service name. ` +
+      `service named after this Mac's Computer Name, ${name}, shortened where it is too long for a service name. ` +
       `The announcement carries this Mac's addresses, port ${bind.port}, how many models are ready, whether ` +
       'a key is required, and the fixed words saying it speaks the OpenAI API under /v1. It carries no ' +
       'model names and no key.';
@@ -876,7 +878,7 @@ function postureLines(state) {
     'force; a setting changed since then takes effect at the next start, and an announcement that failed to ' +
     'start is reported in the log and not here.';
   lines.push({ id: 'announce', heading: 'The local network', text: announce,
-    reads: ['bind.advertising', 'bind.port', 'bind.mode_in_force', 'bind.reaches_other_machines', 'hostname'] });
+    reads: ['bind.advertising', 'bind.port', 'bind.mode_in_force', 'bind.reaches_other_machines', 'computer_name', 'hostname'] });
 
   // The level is applied live — a save moves it on the next line — so the
   // stored setting is the level in force, unlike the bind and the advert.

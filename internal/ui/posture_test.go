@@ -33,7 +33,8 @@ const baseSnapshot = `{
                 {"url":"http://127.0.0.1:11535/v1"}],
   "bind": {"mode":"","candidates":[],"mode_in_force":"","wildcard":true,"reaches_other_machines":true,
            "port":11535,"advertising":true},
-  "hostname": "alices-mac"
+  "hostname": "alices-mac",
+  "computer_name": "Alice's Mac"
 }`
 
 // The snapshot of a server that binds this Mac and nothing else.
@@ -161,7 +162,7 @@ func TestThePostureLinesStateWhatIsOn(t *testing.T) {
 	wants(t, lines, "key-network", "A request arriving from another machine has to carry the API key. A key is set.")
 	wants(t, lines, "key-local", "A request from this Mac to a loopback address is served without the key")
 	wants(t, lines, "announce",
-		"Dessau is announcing this server to every machine on the local network, as a Bonjour service named after this Mac's name, alices-mac,",
+		"Dessau is announcing this server to every machine on the local network, as a Bonjour service named after this Mac's Computer Name, Alice's Mac,",
 		"this Mac's addresses", "port 11535", "no model names and no key")
 	wants(t, lines, "log", "Each request to the API's endpoints", "method, path, status and duration", "no client address",
 		"at the sparse level", "logs folder")
@@ -346,7 +347,11 @@ func TestTheAnnouncementLineNamesWhyItIsOff(t *testing.T) {
 	// The port announced is the one the listeners took, not a port saved since.
 	wants(t, posture(t, edited(t, `{"config":{"port":12000}}`)), "announce", "port 11535")
 	wants(t, posture(t, baseSnapshot), "announce", "failed to start", "log", "takes effect at the next start")
-	wants(t, posture(t, edited(t, `{"hostname":""}`)), "announce", "name, dessau,")
+	// The announce line names the Computer Name the service is announced under,
+	// never the DNS label the address records use.
+	wants(t, posture(t, baseSnapshot), "announce", "Computer Name, Alice's Mac,")
+	wants(t, posture(t, edited(t, `{"computer_name":""}`)), "announce", "Computer Name, alices-mac,")
+	wants(t, posture(t, edited(t, `{"computer_name":"","hostname":""}`)), "announce", "Computer Name, dessau,")
 }
 
 // Criterion 3, mechanised as far as it can be: every line names the snapshot

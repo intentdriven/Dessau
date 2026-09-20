@@ -30,7 +30,7 @@ leaves the models you downloaded.
 ## Status
 
 Experimental. Runs and is tested end-to-end on macOS 27 / Apple Silicon.
-Cross-machine LAN use works; TLS and notarised distribution are not yet included.
+Cross-machine LAN use works. The ordinary port is plain HTTP; only the paired-client port carries TLS. Notarised distribution is not included.
 
 ## Features
 

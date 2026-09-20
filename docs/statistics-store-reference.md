@@ -197,7 +197,7 @@ It is a separate file rather than a line in these because a run is not a
 request: it has no class, no client and no served window, and the readings a
 run carries are of a model rather than of something somebody asked for. Folding
 it in would put lines in these files that every reader of them — the dashboard,
-the Usage tab, a person's own `jq` — would have to learn to skip.
+the Statistics tab, a person's own `jq` — would have to learn to skip.
 
 Its fields are on the [self-test reference page](self-test-reference.md), which
 is where the retention it is under is described too: the cap, and nothing else.

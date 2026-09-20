@@ -116,7 +116,7 @@ server.
 ### Shortcuts and Spotlight
 
 The client declares its actions as App Intents, so Shortcuts lists **Ask
-Dessau** (a prompt in, the reply out as text, kept as a new chat), **New Chat**
+Dessau Chat** (a prompt in, the reply out as text, kept as a new chat), **New Chat**
 and **Open Chat** (by title) under the app, and Spotlight offers them. Chats are
 looked up when you pick one; nothing is added to the system's index.
 
@@ -191,7 +191,7 @@ downloaded. On the receiving Mac, either:
   ```
 
 For friction-free distribution to Macs you don't control, you'd sign and
-**notarize** the app with an Apple Developer ID — out of scope here.
+**notarise** the app with an Apple Developer ID — out of scope here.
 
 The app talks plain HTTP to a LAN address; its `Info.plist` allows that
 (`NSAllowsLocalNetworking`) and declares Local Network access, which macOS asks
