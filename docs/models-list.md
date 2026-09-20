@@ -25,6 +25,7 @@ curl http://localhost:11535/v1/models
       "pipeline_tag": "text-generation",
       "tags": ["mlx", "conversational"],
       "chat": true,
+      "chat_template": true,
       "tool_calling": "yes",
       "context_length": 40960,
       "max_model_len": 40960,
@@ -44,7 +45,8 @@ curl http://localhost:11535/v1/models
 | `owned_by` | Always `dessau`. |
 | `pipeline_tag` | What HuggingFace says the model does — `text-generation`, `automatic-speech-recognition`, and so on. Absent when the Hub has no tag for that repository. See below. |
 | `tags` | The repository's HuggingFace tags, as they are written there. Absent when the Hub has none. See below. |
-| `chat` | Whether the model counts as able to hold a conversation, under the rule this server runs. Always present. See below. |
+| `chat` | Whether the model counts as able to hold a conversation: under the rule this server runs when `pipeline_tag` or `tags` is present, and from `chat_template` when both are absent. Always present. See below. |
+| `chat_template` | Whether the model's own files carry a chat template — the text a conversation is rendered through before the model sees it — as Dessau found in the model's directory. Always present. See below. |
 | `tool_calling` | Whether the model answers with a tool call when one is declared, as Dessau found by asking it once on this Mac: `yes`, `no`, or `unknown` while it has not been asked under the runtime in force. Always present. See below. |
 | `context_length` | The model's maximum context, in tokens. See below. |
 | `max_model_len` | The same figure again, under the name vLLM-derived clients read. |
@@ -68,12 +70,22 @@ release.
 **When they are absent.** Either field is omitted, rather than sent empty, when:
 
 - The Hub carries no tag of that kind for the repository.
-- The model was downloaded by a Dessau that predates these fields. Nothing on
-  disk says what kind of model it is, so a rescan cannot fill them in —
-  download the model again to give it its words.
+- This account did not download the model: it found it in the
+  [shared cache](getting-started.md#9-sharing-across-user-accounts-optional),
+  put there by another account on this Mac, or it was recorded by a Dessau
+  that predates these fields. Nothing on disk says what the Hub calls the
+  model.
 - HuggingFace could not be reached for the repository's metadata when the
   download finished. The model is complete and served as normal; only the words
   are missing.
+
+In the last two cases Dessau asks the Hub for the words in the background
+after each start, one model at a time, and records what it hears; a model the
+Hub cannot be reached for keeps its fields absent until a start on which it
+can, and one the Hub has no words for is asked once and then left alone. The
+request is the server's own and appears in no request statistic. Until the
+words arrive, the model's chat template stands in for them in the `chat` flag
+below.
 
 Treat an absent field as "not known", never as an answer about the model.
 
@@ -89,12 +101,12 @@ any other: name it in a request's `model` field and it answers. The flag exists
 so a chat application can leave a speech or OCR model out of its picker while
 every model stays callable over the API.
 
-**The rule behind it.** A model counts as able to chat when its pipeline tag is
-one of a list, and its tags include every word of a second list. As shipped, the
-lists are `text-generation` and `image-text-to-text`, and `conversational` —
-which makes `chat` false for a model with no tags. Both lists are settings:
-**Settings → Which models can chat** in the control panel, and `chat_rule` in
-`config.json`:
+**The rule behind it.** When the Hub has said what the model is — when
+`pipeline_tag` or `tags` is present — a model counts as able to chat when its
+pipeline tag is one of a list, and its tags include every word of a second
+list. As shipped, the lists are `text-generation` and `image-text-to-text`,
+and `conversational`. Both lists are settings: **Settings → Which models can
+chat** in the control panel, and `chat_rule` in `config.json`:
 
 ```json
 "chat_rule": {
@@ -108,9 +120,32 @@ that half, so a rule with both lists empty marks every model as able to chat; no
 `chat_rule` key at all means the shipped rule. See
 [Choose which models are offered for chat](chat-models.md).
 
+**When the Hub has said nothing** — both `pipeline_tag` and `tags` absent —
+the rule has no words to test and is not consulted. The model's own files
+decide instead: `chat` is `true` when `chat_template` is, and `false` when it
+is not. A chat template is what the model's server renders a conversation
+through, so a model without one cannot hold a conversation whatever a rule
+might say, and a model with one can. This is what makes a model another
+account downloaded into the shared cache usable for chat on this account
+before, or without, the Hub's words arriving.
+
 **The flag is this server's answer, not the last word.** A client is free to
 read `pipeline_tag` and `tags` and apply its own rule — which is what Dessau
-Chat does, with the same rule as its own default, changeable in its Settings.
+Chat does, with the same rule as its own default, changeable in its Settings,
+and with the server's `chat` as its answer for a model that carries no words.
+
+## The chat template
+
+`chat_template` says whether the model directory carries a chat template: a
+`chat_template` entry in its `tokenizer_config.json` that holds template text
+— as one string, or as a list of named templates of which at least one has
+text — or a non-empty `chat_template.jinja` file beside it. Dessau reads it
+from the files on this Mac at every start and
+whenever a model arrives, so it is a fact about the copy served here rather
+than a claim from the Hub, and it is present on every entry. It says nothing
+about whether the template renders well or what the model does with it; it
+says the model's server has one to render a conversation through, which is
+what the `chat` flag rests on when the Hub's words are absent.
 
 ## Tool calling
 

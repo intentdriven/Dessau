@@ -1021,7 +1021,7 @@ func TestListModelsPublishesContextLengthUnderBothNames(t *testing.T) {
 	// that cannot, so an absent key would read as a server that cannot say.
 	want := map[string]bool{"id": true, "object": true, "created": true, "owned_by": true,
 		"context_length": true, "max_model_len": true, "served_context": true, "served_context_default": true,
-		"chat": true, "tool_calling": true}
+		"chat": true, "chat_template": true, "tool_calling": true}
 	for k := range entry {
 		if !want[k] {
 			t.Errorf("unexpected field %q on the models list", k)
@@ -1424,7 +1424,7 @@ func TestListModelsCarriesNoResidencyWithoutAnAPIKey(t *testing.T) {
 		// withholds is what this Mac is doing right now.
 		// tool_calling is the same class of fact: what the model does with a
 		// tool declared, found once on this runtime.
-		want := map[string]bool{"id": true, "object": true, "created": true, "owned_by": true, "chat": true, "tool_calling": true}
+		want := map[string]bool{"id": true, "object": true, "created": true, "owned_by": true, "chat": true, "chat_template": true, "tool_calling": true}
 		for k := range entry {
 			if !want[k] {
 				t.Errorf("an unkeyed listing carries %q; it must be exactly today's list", k)

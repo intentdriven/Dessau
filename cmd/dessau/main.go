@@ -371,6 +371,13 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 		}
 		log.Info("MLX runtime ready")
 	}()
+	// And ask the Hub what the models the rescan adopted are, in the
+	// background for the same reason: a second account's install has every
+	// model of the shared cache and the Hub's word for none of them, and a
+	// start that waited on one request per model would be a start that
+	// waited on the network. Once per process; a.Close cancels it and waits
+	// for it (iss-2609202237468921).
+	a.StartCompletingCategories()
 
 	mux := http.NewServeMux()
 	var tlsSrv *http.Server

@@ -155,3 +155,37 @@ func TestAModelOutsideTheChatRuleIsStillServed(t *testing.T) {
 		t.Errorf("upstream saw model=%q, want the backend path %q", got, modelPath)
 	}
 }
+
+// A model adopted from disk carries no Hub word, and the chat verdict is then
+// the directory's: a model with a chat template is listed as able to chat and
+// one with neither a word nor a template is not (iss-2609202237468921). The
+// fact itself is published beside the verdict, always present like chat, so a
+// client can see what the verdict rests on.
+func TestTheChatFlagFallsBackToTheChatTemplateWhenTheHubSaidNothing(t *testing.T) {
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: "/m"})
+	defer fake.Close()
+
+	models := &stubModels{models: []registry.Model{
+		{RepoID: "org/adopted-chatty", State: registry.StateReady, ChatTemplate: true},
+		{RepoID: "org/adopted-base", State: registry.StateReady},
+		// The Hub's word, when present, is not overruled by a template.
+		{RepoID: "org/speech", State: registry.StateReady, PipelineTag: "automatic-speech-recognition", ChatTemplate: true},
+	}}
+	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})
+
+	entries, _ := listModelsEntriesFrom(t, g.Handler(), "", "203.0.113.50:9999")
+	byID := map[string]map[string]any{}
+	for _, e := range entries {
+		byID[e["id"].(string)] = e
+	}
+	for id, want := range map[string]bool{"org/adopted-chatty": true, "org/adopted-base": false, "org/speech": false} {
+		if got := byID[id]["chat"]; got != want {
+			t.Errorf("%s: chat = %v, want %v", id, got, want)
+		}
+	}
+	for id, want := range map[string]bool{"org/adopted-chatty": true, "org/adopted-base": false, "org/speech": true} {
+		if got := byID[id]["chat_template"]; got != want {
+			t.Errorf("%s: chat_template = %v, want %v", id, got, want)
+		}
+	}
+}

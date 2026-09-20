@@ -11,6 +11,21 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A model found in the shared cache can be talked to.** `impact: fix`. A
+  model adopted from disk rather than downloaded — every model a second
+  account on the Mac sees in the shared cache — carried no HuggingFace
+  pipeline tag and no tags, so the chat rule marked every one of them
+  `chat: false` and Dessau Chat offered none. The model's own files now
+  answer when the Hub's words are absent: a model with a chat template in
+  its `tokenizer_config.json`, or a `chat_template.jinja` beside it, counts
+  as able to chat, and the models list carries that fact as `chat_template`.
+  The rule decides exactly as before for a model the Hub has words for, and
+  the missing words are fetched from the Hub in the background after each
+  start, one model at a time, so the rule takes over as they arrive. No
+  setting changes.
+
 ## [0.9.0] - 2026-09-20
 
 ### Changed

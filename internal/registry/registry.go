@@ -80,6 +80,23 @@ type Model struct {
 	// empty word a client would read as an answer.
 	PipelineTag string   `json:"pipeline_tag,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
+	// HubSilent says the Hub was asked about this repository after the
+	// download, answered, and had no pipeline tag and no tags for it. It is
+	// what stops the completion job asking again at every start for a repo
+	// the Hub simply has no words for; a model the Hub was never heard for
+	// carries no mark, and is asked at the next start. Cleared by an answer
+	// that carries words. Never published (iss-2609202237468921).
+	HubSilent bool `json:"hub_silent,omitempty"`
+	// ChatTemplate says the model's own files carry a chat template: a
+	// non-empty chat_template in tokenizer_config.json, or a
+	// chat_template.jinja beside it. It is what the runtime renders a
+	// conversation through, so it is what says a model can hold one when the
+	// Hub's word above is absent — a model adopted from the shared cache by
+	// a second account, which never downloaded it and so never heard the Hub.
+	// A fact about the directory, re-derived at every rescan like the
+	// context length, and never a value the Hub supplies
+	// (iss-2609202237468921).
+	ChatTemplate bool `json:"chat_template,omitempty"`
 	// Measured is what the context probe found for this model on this Mac,
 	// or nil while nothing has been measured. It is a fact about these files
 	// on this machine: a re-download's Put carries none, so the figure goes
@@ -117,6 +134,17 @@ const (
 // It returns a fresh slice, so what the registry holds is never the caller's
 // array — a download's decoded metadata, or a planted file's.
 func sanitizeCategory(m Model) Model {
+	m = sanitizeWords(m)
+	// HubSilent means the Hub answered and had no words, so it can never
+	// stand beside words: a caller sets it from "the Hub answered" and this
+	// is where "and had no words" is settled, after the bound has taken what
+	// it takes. A planted file that says both is repaired the same way.
+	m.HubSilent = m.HubSilent && !m.HasHubWord()
+	return m
+}
+
+// sanitizeWords bounds the two word fields alone.
+func sanitizeWords(m Model) Model {
 	m.PipelineTag = usableTag(m.PipelineTag)
 	if m.Tags == nil {
 		return m
@@ -678,6 +706,7 @@ func (r *Registry) Rescan(modelsDir string) error {
 				Bytes:            size,
 				ContextLength:    facts.ContextLength,
 				KVChargePerToken: facts.KVChargePerToken,
+				ChatTemplate:     facts.ChatTemplate,
 				State:            StateReady,
 				AddedAt:          time.Now(),
 			}
@@ -698,11 +727,14 @@ func (r *Registry) Rescan(modelsDir string) error {
 			// next startup rescan rather than only on a re-download.
 			existing.ContextLength = m.ContextLength
 			existing.KVChargePerToken = m.KVChargePerToken
+			existing.ChatTemplate = m.ChatTemplate
 			// The category is deliberately NOT re-derived. It is the Hub's
 			// word, fetched when the model was downloaded, and nothing in the
 			// directory can tell us it again — so a rescan that assigned it,
 			// the way it assigns everything else here, would clear it at every
-			// start-up.
+			// start-up. A model with none is asked for it in the background
+			// after the start (app.CompleteCategories), and answers for chat
+			// from its template until then (Model.CanChat).
 			existing.State = StateReady
 			existing.Err = ""
 			r.models[key(repoID)] = existing
@@ -811,15 +843,16 @@ func inspectModelDir(dir string) (complete bool, size int64, facts ModelFacts) {
 	if err != nil || !plausibleConfig(cfg) || CheckShards(dir) != nil {
 		return false, size, ModelFacts{}
 	}
-	return true, size, factsFrom(cfg)
+	return true, size, factsFrom(dir, cfg)
 }
 
-// ModelFacts is what one decode of config.json says about a model beyond
-// whether it is one: the window it declares, and what a token of prompt costs
-// its attention cache.
+// ModelFacts is what a model directory says about the model beyond whether it
+// is one: the window its config.json declares, what a token of prompt costs
+// its attention cache, and whether its tokenizer carries a chat template.
 type ModelFacts struct {
 	ContextLength    int64
 	KVChargePerToken int64
+	ChatTemplate     bool
 }
 
 // ReadModelFacts reads both figures out of the model configuration in dir, in
@@ -832,15 +865,66 @@ func ReadModelFacts(dir string) ModelFacts {
 	if err != nil {
 		return ModelFacts{}
 	}
-	return factsFrom(cfg)
+	return factsFrom(dir, cfg)
 }
 
-// factsFrom reads both figures out of one decoded configuration.
-func factsFrom(cfg map[string]any) ModelFacts {
+// factsFrom reads both figures out of one decoded configuration, and the
+// template out of the directory beside it.
+func factsFrom(dir string, cfg map[string]any) ModelFacts {
 	return ModelFacts{
 		ContextLength:    contextLengthFrom(cfg),
 		KVChargePerToken: kvChargePerTokenFrom(cfg),
+		ChatTemplate:     hasChatTemplate(dir),
 	}
+}
+
+// hasChatTemplate reports whether dir carries a chat template: a non-empty
+// chat_template in tokenizer_config.json — the string most repositories
+// write, or the array of named templates some do — or a non-empty
+// chat_template.jinja file, which is where newer tokenizers keep it.
+//
+// It is the offline answer to "can this model hold a conversation": the
+// template is what the runtime renders the messages through, so a model
+// without one cannot, whatever the Hub might say. Both files are, in the
+// shared cache, files another account can write, so tokenizer_config.json is
+// read under the cap every manifest is read under and a file that is
+// oversized, not regular, or not JSON says "no template" rather than
+// anything else; the jinja file is not read at all, only opened as a regular
+// file and measured. Presence of any value is not enough — an empty string,
+// null, a number, or an array none of whose entries carries template text is
+// not a template — and nothing here judges whether the template would render.
+func hasChatTemplate(dir string) bool {
+	var tc struct {
+		ChatTemplate json.RawMessage `json:"chat_template"`
+	}
+	if err := readManifest(dir, "tokenizer_config.json", &tc); err == nil && len(tc.ChatTemplate) > 0 {
+		var s string
+		if json.Unmarshal(tc.ChatTemplate, &s) == nil {
+			if s != "" {
+				return true
+			}
+		} else {
+			// The named shape: [{"name": "default", "template": "…"}, …].
+			// At least one entry has to carry text; an array of empties is
+			// the same statement as no key.
+			var named []struct {
+				Template string `json:"template"`
+			}
+			if json.Unmarshal(tc.ChatTemplate, &named) == nil {
+				for _, n := range named {
+					if n.Template != "" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	f, info, err := config.OpenRegular(filepath.Join(dir, "chat_template.jinja"))
+	if err != nil {
+		return false
+	}
+	f.Close()
+	return info.Size() > 0
 }
 
 // maxManifestJSON caps how much of config.json or the shard index we read. A
@@ -1137,4 +1221,57 @@ func CheckShards(dir string) error {
 		}
 	}
 	return nil
+}
+
+// SetCategory records what the Hub says a model is — its pipeline tag and its
+// tags — for a model whose download never heard it: one adopted from the
+// shared cache by an account that did not download it, or downloaded while the
+// Hub was unreachable. The words are bounded exactly as a download's are.
+//
+// An answer with nothing usable in it is recorded too, as HubSilent: the Hub
+// was asked and had no words, so there is nothing to ask for again. An answer
+// with words clears that mark.
+func (r *Registry) SetCategory(repoID, pipelineTag string, tags []string) error {
+	r.mu.Lock()
+	existing, ok := r.models[key(repoID)]
+	if !ok {
+		r.mu.Unlock()
+		return fmt.Errorf("registry: %s: %w", repoID, ErrNotFound)
+	}
+	existing.PipelineTag = pipelineTag
+	existing.Tags = tags
+	existing.HubSilent = true // the Hub answered; sanitizeCategory keeps the mark only if it had no words
+	existing = sanitizeCategory(existing)
+	r.models[key(repoID)] = existing
+	snapshot := r.listLocked()
+	err := r.saveLocked()
+	r.mu.Unlock()
+	r.broadcast(snapshot)
+	return err
+}
+
+// HasHubWord reports whether the Hub has said anything about this model: a
+// pipeline tag, or any tag at all. It is what tells the two halves of CanChat
+// apart, and what the completion job walks the registry by.
+func (m Model) HasHubWord() bool { return m.PipelineTag != "" || len(m.Tags) > 0 }
+
+// CanChat is the one answer to whether a model counts as able to hold a
+// conversation, and every surface that says so — the models list's `chat`
+// field, the bridge's choice of models — reads it from here; a test in
+// internal/archtest holds that the rule is consulted nowhere else.
+//
+// When the Hub's word is present, the operator's rule decides, exactly as it
+// always has: a model the Hub calls a speech model is not a chat model
+// however its tokenizer is written. When the Hub's word is absent — a model
+// adopted from the shared cache by an account that never downloaded it, or
+// downloaded while the Hub was unreachable — the directory decides: a model
+// with a chat template can hold a conversation, and one without cannot. The
+// rule is not consulted then, because it would be asked about words nobody
+// has, and its shipped form would say no to every such model
+// (iss-2609202237468921).
+func (m Model) CanChat(rule config.ChatRule) bool {
+	if m.HasHubWord() {
+		return rule.Matches(m.PipelineTag, m.Tags)
+	}
+	return m.ChatTemplate
 }
