@@ -358,11 +358,11 @@ func New(opts Options) (*App, error) {
 
 	// The fit check cannot refuse a file — a hand-edited one can pin anything —
 	// so an over-budget set reaches the pool whatever this says. Passing the
-	// same list as both the incoming and the current set is what says "nothing
-	// was added here": every problem it finds is warned about, none refused.
+	// same settings as both the incoming and the current ones is what says
+	// "nothing was added here": every problem it finds is warned about, none
+	// refused.
 	budget := a.Pool.MemoryBudget()
-	pinned := a.cfg.PinnedIDs()
-	_ = a.checkPinnedFit(pinned, pinned, budget, budget)
+	_ = a.checkPinnedFit(a.cfg, a.cfg, budget, budget)
 
 	// The ceiling cannot refuse a file, so a budget larger than this Mac is
 	// applied and said out loud — the one place a headless install says
@@ -487,7 +487,7 @@ func (a *App) SetConfig(c config.Config) error {
 		return err
 	}
 	budget := a.enforcedBudget(c.MaxResidentBytes)
-	if err := a.checkPinnedFit(c.PinnedIDs(), a.Config().PinnedIDs(), budget, a.Pool.MemoryBudget()); err != nil {
+	if err := a.checkPinnedFit(c, a.Config(), budget, a.Pool.MemoryBudget()); err != nil {
 		return err
 	}
 	if err := config.Save(a.Paths.Config, c); err != nil {
@@ -811,18 +811,22 @@ func (a *App) smallestChargeableModel() (int64, registry.Model) {
 // it fits, because the fit is a fact about this Mac and the set may have
 // arrived from another one — and a settings page that will not save an API key
 // until an unrelated setting is fixed is the wedge adoptModels exists to
-// prevent. The budget is judged at its incoming value, so one save that changes
-// both the pins and the budget is measured on what it is asking for.
+// prevent. The budget and the per-model settings are judged at their incoming
+// values, so one save that changes the pins and the budget, or the pins and a
+// model's served context, is measured on what it is asking for — judged on
+// the served context still in force, a save pinning a model at a window that
+// does not fit read as fitting and was accepted, and the pool refused the
+// model later.
 //
 // A pin that names a model this Mac cannot measure is refused as it is added,
 // for the same reason: a fit check that silently skips a model is a promise it
 // cannot keep. One already in the set is warned about, not refused.
-func (a *App) checkPinnedFit(incoming, current []string, budget, currentBudget int64) error {
-	problem := a.pinnedFitProblem(incoming, budget)
+func (a *App) checkPinnedFit(incoming, current config.Config, budget, currentBudget int64) error {
+	problem := a.pinnedFitProblem(incoming.PinnedIDs(), incoming, budget)
 	if problem == nil {
 		return nil
 	}
-	if addsAPin(incoming, current) || a.lowersUnderAFittingSet(incoming, budget, currentBudget) {
+	if addsAPin(incoming.PinnedIDs(), current.PinnedIDs()) || a.lowersUnderAFittingSet(incoming, current, budget, currentBudget) {
 		return problem
 	}
 	a.Log.Warn("the pinned models cannot all be kept in memory as configured", "err", problem)
@@ -836,16 +840,17 @@ func (a *App) checkPinnedFit(incoming, current []string, budget, currentBudget i
 // posting a figure a few bytes under the one in force (it renders gigabytes) is
 // not the operator asking for less. Judging on the bare comparison turned both
 // into refusals of every settings change there is, which is the wedge again.
-func (a *App) lowersUnderAFittingSet(incoming []string, budget, currentBudget int64) bool {
-	return budget < currentBudget && a.pinnedFitProblem(incoming, currentBudget) == nil
+func (a *App) lowersUnderAFittingSet(incoming, current config.Config, budget, currentBudget int64) bool {
+	return budget < currentBudget && a.pinnedFitProblem(incoming.PinnedIDs(), current, currentBudget) == nil
 }
 
 // pinnedFitProblem says why a pinned set cannot be held, or nil when it can.
 //
 // A model it cannot measure is reported before the sum, because a sum with a
-// model missing from it is not a figure to act on.
-func (a *App) pinnedFitProblem(pinned []string, budget int64) error {
-	sum, unsized := a.pinnedCharge(pinned, budget)
+// model missing from it is not a figure to act on. The settings are the ones
+// the served windows are read from — the incoming ones at a save.
+func (a *App) pinnedFitProblem(pinned []string, cfg config.Config, budget int64) error {
+	sum, unsized := a.pinnedCharge(pinned, cfg, budget)
 	if len(unsized) > 0 {
 		return fmt.Errorf(
 			"cannot measure %s against the memory budget — this Mac does not record how large it is",
@@ -1025,7 +1030,8 @@ var stopReasons = map[runtime.StopReason]string{
 // re-downloaded at a larger quantization grows. Nothing refuses either, so the
 // panel says so instead, beside the warning about an open LAN endpoint.
 func (a *App) PinnedFitWarning() string {
-	problem := a.pinnedFitProblem(a.Config().PinnedIDs(), a.Pool.MemoryBudget())
+	cfg := a.Config()
+	problem := a.pinnedFitProblem(cfg.PinnedIDs(), cfg, a.Pool.MemoryBudget())
 	if problem == nil {
 		return ""
 	}
@@ -1085,9 +1091,10 @@ func (a *App) adoptModelSpelling() {
 }
 
 // pinnedCharge is what a pinned set costs the memory budget, and the names of
-// any pinned models this Mac cannot measure. The budget is a parameter because
-// a default served window is derived from it (ServedWindow), and a save is
-// judged on the budget it asks for rather than the one in force.
+// any pinned models this Mac cannot measure. The settings and the budget are
+// parameters because a served window is read from the one and derived from
+// the other (ServedWindow), and a save is judged on what it asks for rather
+// than what is in force.
 //
 // Only a model the pool could actually load is charged: one that is ready, and
 // one that is still downloading, which is charged the size it declares —
@@ -1097,7 +1104,7 @@ func (a *App) adoptModelSpelling() {
 // ready, so it can never occupy a byte however large it declared itself. A pin
 // naming a model this Mac does not have at all is not counted either; it
 // protects nothing until something loads it.
-func (a *App) pinnedCharge(pinned []string, budget int64) (sum int64, unsized []string) {
+func (a *App) pinnedCharge(pinned []string, cfg config.Config, budget int64) (sum int64, unsized []string) {
 	for _, id := range pinned {
 		m, err := a.Registry.Get(id)
 		if err != nil || !chargeable(m) {
@@ -1108,7 +1115,7 @@ func (a *App) pinnedCharge(pinned []string, budget int64) (sum int64, unsized []
 			unsized = append(unsized, m.RepoID)
 			continue
 		}
-		sum += a.chargeAt(m, size, budget)
+		sum += a.chargeAt(m, size, cfg, budget)
 	}
 	return sum, unsized
 }
@@ -1121,13 +1128,14 @@ func (a *App) pinnedCharge(pinned []string, budget int64) (sum int64, unsized []
 // The size is a parameter because a model still downloading is charged the
 // size it declares rather than the bytes so far.
 func (a *App) chargeOf(m registry.Model, size int64) int64 {
-	return a.chargeAt(m, size, a.memoryBudget())
+	return a.chargeAt(m, size, a.Config(), a.memoryBudget())
 }
 
-// chargeAt is chargeOf against a budget of the caller's: the one a save is
-// asking for, which the default served window is derived from.
-func (a *App) chargeAt(m registry.Model, size int64, budget int64) int64 {
-	window, _ := a.servedWindowAt(m, budget)
+// chargeAt is chargeOf against settings and a budget of the caller's: the
+// ones a save is asking for, which the served window is read from and the
+// default derived from.
+func (a *App) chargeAt(m registry.Model, size int64, cfg config.Config, budget int64) int64 {
+	window, _ := a.servedWindowAt(m, cfg, budget)
 	return capability.LoadCostOf(capability.Load{
 		DiskBytes:        size,
 		KVChargePerToken: m.KVChargePerToken,
@@ -1169,12 +1177,13 @@ const MinServedWindow = 4096
 // than it costs: the charge still uses the served window; the window is what
 // moved.
 func (a *App) ServedWindow(m registry.Model) (window int64, isDefault bool) {
-	return a.servedWindowAt(m, a.memoryBudget())
+	return a.servedWindowAt(m, a.Config(), a.memoryBudget())
 }
 
-// servedWindowAt is ServedWindow against a budget of the caller's.
-func (a *App) servedWindowAt(m registry.Model, budget int64) (window int64, isDefault bool) {
-	if set := a.Config().ServedContextSetting(m.RepoID, m.ContextLength); set > 0 {
+// servedWindowAt is ServedWindow against settings and a budget of the
+// caller's.
+func (a *App) servedWindowAt(m registry.Model, cfg config.Config, budget int64) (window int64, isDefault bool) {
+	if set := cfg.ServedContextSetting(m.RepoID, m.ContextLength); set > 0 {
 		return set, false
 	}
 	declared := m.ContextLength
@@ -1183,11 +1192,14 @@ func (a *App) servedWindowAt(m registry.Model, budget int64) (window int64, isDe
 	}
 	floor := min(int64(MinServedWindow), declared)
 	perToken := capability.MulSaturating(m.KVChargePerToken, int64(a.Pool.DecodeConcurrency()))
-	room := budget - capability.LoadCost(chargedSize(m))
-	if perToken <= 0 || room <= 0 {
+	// Bounded rather than plain subtraction, like the rest of the charge
+	// arithmetic: weights that leave no room yield the floor, never a room
+	// that wrapped.
+	flat := max(capability.LoadCost(chargedSize(m)), 0)
+	if perToken <= 0 || flat >= budget {
 		return floor, true
 	}
-	window = room / perToken
+	window = (budget - flat) / perToken
 	if window > declared {
 		return declared, true
 	}

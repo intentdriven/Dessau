@@ -228,3 +228,35 @@ func TestTheTooSmallWarningNamesTheKnobs(t *testing.T) {
 		t.Errorf("warning %q still says the budget is the knob", w)
 	}
 }
+
+// A save is judged on what it asks for, the served context included. One
+// that pins a model and raises its served context past what fits must be
+// refused on the figure it is saving, not on the setting still in force —
+// judged on the old setting it read as fitting, was accepted, and the pool
+// refused the model later. One that pins and lowers the window into fit is
+// accepted.
+func TestAPinIsJudgedAtTheServedContextTheSaveAsksFor(t *testing.T) {
+	a := newBudgetApp(t, 128*gb, captureConfig())
+	putModel(t, a, captureModel("org/long"))
+
+	c := a.Config()
+	c.Models = map[string]config.ModelSettings{"org/long": {Pinned: true, ServedContext: 131072}}
+	if err := a.SetConfig(c); err == nil {
+		t.Error("a save pinning a model at a served context that does not fit was accepted")
+	} else if !strings.Contains(err.Error(), "pinned models need about") {
+		t.Errorf("refused for the wrong reason: %v", err)
+	}
+	if a.Config().Models["org/long"].Pinned {
+		t.Error("the refused save left the pin in force")
+	}
+
+	c = a.Config()
+	c.Models = map[string]config.ModelSettings{"org/long": {Pinned: true, ServedContext: 32768}}
+	if err := a.SetConfig(c); err != nil {
+		t.Errorf("a save pinning a model at a served context that fits was refused: %v", err)
+	}
+	m, _ := a.Registry.Get("org/long")
+	if window, isDefault := a.ServedWindow(m); window != 32768 || isDefault {
+		t.Errorf("ServedWindow = %d (default %v) after the save, want the saved 32768", window, isDefault)
+	}
+}
