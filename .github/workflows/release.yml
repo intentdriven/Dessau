@@ -64,7 +64,9 @@ jobs:
   # gate exercises exactly the commit that will ship.
   verify:
     timeout-minutes: 15
-    runs-on: macos-26
+    # The image that carries the product floor, macOS 27; the same one the build
+    # job below uses. A runner under the floor would skip the installer guard.
+    runs-on: xcode-27
     permissions:
       contents: read
     steps:
@@ -125,9 +127,9 @@ jobs:
     # workflow_call (auto-release) entry points are unaffected.
     if: github.event_name != 'workflow_dispatch'
     timeout-minutes: 30
-    # The client's floor is macOS 27 and its SDK's SwiftUI needs Xcode 27's macro
-    # plugin, which the macos-26 image does not carry; this preview label is the
-    # one GitHub image with Xcode 27 (the maintainer's decision, 2026-09-17).
+    # The product floor is macOS 27 and the SDK's SwiftUI needs Xcode 27's macro
+    # plugin; this preview label is the one GitHub image with Xcode 27 (the
+    # maintainer's decision, 2026-09-17), and it runs macOS 27.0.
     runs-on: xcode-27
     permissions:
       contents: write       # create the Release and upload its assets (no branch push)
@@ -189,9 +191,9 @@ jobs:
         run: VERSION="$TAG" client/build.sh
 
       # Sanity-check the architectures before shipping: both must be arm64 — the
-      # server because MLX is Metal-only, the client because macOS 27, its floor,
-      # runs on no Intel Mac. A wrong-arch binary that still zips fine would
-      # otherwise ship silently.
+      # server because MLX is Metal-only, and both because macOS 27, the product
+      # floor, runs on no Intel Mac. A wrong-arch binary that still zips fine
+      # would otherwise ship silently.
       - name: Verify binary architectures
         run: |
           set -euo pipefail
@@ -624,7 +626,7 @@ jobs:
   rehearsal:
     if: github.event_name == 'workflow_dispatch'
     timeout-minutes: 15
-    runs-on: macos-26
+    runs-on: xcode-27
     permissions:
       contents: read
     steps:

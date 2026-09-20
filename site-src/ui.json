@@ -24,7 +24,7 @@
   "install_heading": "Install from the terminal",
   "install_comments": [
     "# server (Apple Silicon)",
-    "# native chat client (universal, runs on Intel too)"
+    "# native chat client (Apple Silicon)"
   ],
   "release_heading": "The current release",
   "release_published": "published",
@@ -37,7 +37,7 @@
     },
     {
       "file": "GropiusChat.app.zip",
-      "note": "chat client, universal"
+      "note": "chat client, Apple Silicon"
     },
     {
       "file": "SHA256SUMS.txt",

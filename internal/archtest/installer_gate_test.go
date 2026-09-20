@@ -766,7 +766,9 @@ func installerFixture(t *testing.T) *fixture {
 		// Loud in CI. This guard is the only thing that executes install.sh,
 		// and a runner image below the bundle's floor turns it into a silent
 		// no-op — the failure mode the release gate exists to prevent, one
-		// level up. ci.yml pins macos-26 for exactly this reason.
+		// level up. ci.yml pins the image that carries the floor for exactly
+		// this reason, and TestEveryMacOSRunnerIsAtOrAboveTheFloor holds it
+		// there.
 		//
 		// COUPLING, recorded rather than removed. Keying the fatality on
 		// GITHUB_ACTIONS ties the Go suite to the runner image: raise
@@ -1243,7 +1245,9 @@ func withoutComments(block string) string {
 
 func hostMacOSMajor(t *testing.T) int {
 	t.Helper()
-	out, err := exec.Command("sw_vers", "-productVersion").Output()
+	// By absolute path, which is the rule install.sh itself is held to: a
+	// PATH-resolved sw_vers that errors turns this whole guard into a skip.
+	out, err := exec.Command("/usr/bin/sw_vers", "-productVersion").Output()
 	if err != nil {
 		t.Skipf("sw_vers: %v", err)
 	}

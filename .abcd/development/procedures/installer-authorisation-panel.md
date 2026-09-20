@@ -22,7 +22,7 @@ written down rather than left to be remembered.
 
 ## Preconditions
 
-- An Apple Silicon Mac running macOS 26 or later.
+- An Apple Silicon Mac running macOS 27 or later.
 - Two accounts on it: one administrator (Alice) and one standard account with no
   administrator rights (Bob). The second is not optional — it is the account the
   panel exists for, and the one a `sudo` prompt could never serve.

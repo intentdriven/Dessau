@@ -465,6 +465,9 @@ func fixtureTree(t *testing.T, mutate func(path, content string) string) string 
 //
 // "Given the platform requirement printed on the page, when it is compared with
 // the minimum the shipped app bundle declares, then both say macOS 26."
+//
+// The criterion is quoted as it was ratified; the test derives the number from
+// the plist, so it reads whatever the floor is now.
 
 func TestPageAndBundleAgreeOnTheMinimumMacOS(t *testing.T) {
 	plist := read(t, filepath.Join(repoRoot, "build", "Info.plist"))
@@ -706,7 +709,7 @@ func TestOneClickSelectsAWholeCommand(t *testing.T) {
 		}
 	}
 	// Every command the page shows is selectable, not just the first: the
-	// client install is the one a visitor on an Intel Mac needs.
+	// client install is the one a visitor who wants only the chat app needs.
 	commands := strings.Count(page, `<span class="cmd">`)
 	steps := strings.Count(page, `<span class="c">`)
 	if commands != steps || commands == 0 {

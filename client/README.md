@@ -7,9 +7,8 @@ is on your network it offers that server's MLX models in the same picker:
 streaming replies, no browser, no configuration.
 
 **Requires macOS 27** and Apple Silicon, which is every Mac that runs macOS 27.
-The server it can talk to keeps its own floor, macOS 26. A Mac on macOS 26
-gets the last client built for it, from release v0.6.0, which stays published
-and is not updated; `install.sh` picks it by the Mac's version.
+The server it talks to has the same floor, so one requirement covers both; a
+Mac below it is refused by `install.sh` before anything is downloaded.
 
 ## Build
 

@@ -46,6 +46,10 @@ type UpdateEnv struct {
 	// challenge — the same primitive the singleton election uses, asked rather
 	// than re-implemented.
 	Holder func() instance.Holder
+	// HostMacOSVersion reads this Mac's product version, for the floor refusal
+	// that stands in front of everything else this verb does. A seam rather
+	// than a direct read, so the refusal is a test with no Mac.
+	HostMacOSVersion func() (string, error)
 	// PortBusy says whether anything is accepting connections on the port. It
 	// is the ONE bit instance folds away: "nothing is there" and "something is
 	// there that did not answer" are one classification to the election and two
@@ -123,6 +127,18 @@ func runUpdate(env Env, args []string, ue UpdateEnv) int {
 		}
 		writeLine(env.Err, "gropius update: unexpected argument "+Quote(arg))
 		return ExitUsage
+	}
+
+	// ZERO: the product floor. Before the port is even asked about, because
+	// what follows quits the running server and swaps the installed bundle
+	// aside — and on a Mac under the floor the bundle that replaces it is one
+	// Launch Services will not open. The bootstrap refuses the same Mac in the
+	// same words; this is the route that does not go through the bootstrap.
+	if sentence, refused := belowFloor(ue.HostMacOSVersion()); refused {
+		writeLine(env.Err, "gropius update: "+sentence)
+		writeLine(env.Err, "Nothing was downloaded and nothing was replaced. The installed "+
+			"Gropius is untouched and still runs.")
+		return ExitFailed
 	}
 
 	// ONE: who holds the port, before anything is fetched. A holder that
@@ -366,12 +382,13 @@ func liveUpdateEnv(env Env) (UpdateEnv, error) {
 	}
 	dest := installDest(home)
 	return UpdateEnv{
-		Home:           home,
-		Dest:           dest,
-		Port:           env.Port,
-		Holder:         func() instance.Holder { return instance.ProbeExisting(env.Paths, env.Port) },
-		PortBusy:       func() bool { return portAccepts(env.Port) },
-		ServingVersion: func() (string, error) { return fetchServingVersion(env.Port) },
+		Home:             home,
+		Dest:             dest,
+		Port:             env.Port,
+		Holder:           func() instance.Holder { return instance.ProbeExisting(env.Paths, env.Port) },
+		HostMacOSVersion: hostMacOSVersion,
+		PortBusy:         func() bool { return portAccepts(env.Port) },
+		ServingVersion:   func() (string, error) { return fetchServingVersion(env.Port) },
 		Staging: func() (string, func(), error) {
 			dir, err := os.MkdirTemp("", "gropius-update-")
 			if err != nil {
