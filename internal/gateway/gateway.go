@@ -464,29 +464,34 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 			entry["measured_context"] = mm.Window
 			entry["measured_bound"] = mm.Bound
 		}
-		// What HuggingFace says this model is, in HuggingFace's own words, and
-		// what this server makes of them. The two tag fields are absent when
-		// the Hub said nothing — an empty string or an empty list would read as
-		// an answer — and `chat` is always present, because the whole value of
-		// the flag is telling a model that can hold a conversation from one
-		// that cannot, and an absent key would be read as an older Dessau that
-		// cannot say either way.
+		// What HuggingFace says this model is, in HuggingFace's own words,
+		// whether its own files carry a chat template, and what this server
+		// makes of the two. The two tag fields are absent when the Hub said
+		// nothing — an empty string or an empty list would read as an answer
+		// — and `chat` and `chat_template` are always present, because the
+		// whole value of the flag is telling a model that can hold a
+		// conversation from one that cannot, and an absent key would be read
+		// as an older Dessau that cannot say either way.
 		//
-		// All three go to every client, keyed or not, loopback or not. They say
+		// All four go to every client, keyed or not, loopback or not. They say
 		// what a model IS, which is the same class of fact as its context
 		// length; the residency fields below say what this Mac is doing, which
 		// is the class an open server withholds.
 		//
-		// The flag decides nothing about what is served. Every model stays
-		// callable by name whatever the rule says of it: this is a hint for a
-		// picker, not a filter, and nothing on the completions path reads it.
+		// The flag is read from the registry's one home for it (Model.CanChat):
+		// the operator's rule over the Hub's words when there are any, the
+		// template when there are none. It decides nothing about what is
+		// served. Every model stays callable by name whatever the rule says of
+		// it: this is a hint for a picker, not a filter, and nothing on the
+		// completions path reads it.
 		if m.PipelineTag != "" {
 			entry["pipeline_tag"] = m.PipelineTag
 		}
 		if len(m.Tags) > 0 {
 			entry["tags"] = m.Tags
 		}
-		entry["chat"] = chatRule.Matches(m.PipelineTag, m.Tags)
+		entry["chat_template"] = m.ChatTemplate
+		entry["chat"] = m.CanChat(chatRule)
 		// And whether the model calls tools, as the tool-call probe found on
 		// this runtime (itd-2609201445423499): one of three words, always
 		// present, for the reason chat is always present. An absent key

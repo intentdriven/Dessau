@@ -32,10 +32,11 @@ func newDiscordBridge(a *app.App, g *gateway.Gateway, log *slog.Logger) app.Brid
 }
 
 // chatModels is the models a channel may be answered by: the ready models this
-// Mac holds that the chat rule calls conversational, in a stable order.
+// Mac holds that count as able to chat, in a stable order.
 //
-// The same rule /v1/models publishes `chat` from, read live so a model
-// downloaded while the bridge is running is offered without a restart. Sorted
+// The same verdict /v1/models publishes as `chat` (registry.Model.CanChat),
+// read live so a model downloaded while the bridge is running is offered
+// without a restart. Sorted
 // by repo id rather than left in the registry's order, because the first
 // entry is the default a channel starts on and a default that moved when an
 // unrelated model finished downloading would be a default nobody chose.
@@ -43,7 +44,7 @@ func chatModels(a *app.App) []string {
 	rule := a.Config().EffectiveChatRule()
 	var out []string
 	for _, m := range a.Registry.Ready() {
-		if rule.Matches(m.PipelineTag, m.Tags) {
+		if m.CanChat(rule) {
 			out = append(out, m.RepoID)
 		}
 	}
