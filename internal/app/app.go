@@ -130,6 +130,14 @@ type App struct {
 	// download is on its way in.
 	dlWG sync.WaitGroup
 
+	// jobsCtx is what the background jobs the app starts of its own accord
+	// — today the category completion — run under; Close cancels it and
+	// then waits on jobsWG, so a stop joins them the way it joins downloads
+	// rather than exiting mid-write.
+	jobsCtx  context.Context
+	stopJobs context.CancelFunc
+	jobsWG   sync.WaitGroup
+
 	// bridge is the Discord bridge, wired after the gateway exists and nil in
 	// every build and every test that carries none. See bridge.go.
 	bridge bridges
@@ -267,6 +275,7 @@ func New(opts Options) (*App, error) {
 		measureDir:  dirSize,
 		idleQuiet:   opts.Idle.Quiet,
 	}
+	a.jobsCtx, a.stopJobs = context.WithCancel(context.Background())
 
 	launcher := opts.Launcher
 	if launcher == nil {
@@ -1568,7 +1577,10 @@ func (a *App) Download(repoID string) error {
 			// whether it transcribes speech or holds a conversation — so it is
 			// read from the Hub, once, at the only moment we are certain to be
 			// talking to it about this repo.
-			pipelineTag, tags, _ := a.repoCategory(ctx, repoID)
+			pipelineTag, tags, answered := a.repoCategory(ctx, repoID)
+			// HubSilent is kept by the registry only when the answer had no
+			// words: a repo the Hub is silent about is not asked again at the
+			// next start, and one the Hub was not heard for is.
 			var perr error
 			a.finishDownload(dl, func() {
 				perr = a.Registry.Put(registry.Model{
@@ -1580,6 +1592,7 @@ func (a *App) Download(repoID string) error {
 					ChatTemplate:     facts.ChatTemplate,
 					PipelineTag:      pipelineTag,
 					Tags:             tags,
+					HubSilent:        answered,
 					State:            registry.StateReady,
 					Progress:         100,
 					AddedAt:          addedAt,
@@ -1668,11 +1681,16 @@ const repoCategoryTimeout = 15 * time.Second
 // beside it: dlMu is on the model-load path, and a network request under it
 // would let a slow Hub decide how long every other model's load waits.
 func (a *App) repoCategory(ctx context.Context, repoID string) (pipelineTag string, tags []string, answered bool) {
+	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, repoCategoryTimeout)
 	defer cancel()
 	info, err := a.Hub.RepoInfo(ctx, repoID)
 	if err != nil {
-		a.Log.Info("the hub did not say what kind of model this is", "model", repoID, "err", err)
+		// A caller that left — a cancelled download, a stopping app — is not
+		// a Hub that did not answer, and earns no line.
+		if parent.Err() == nil {
+			a.Log.Info("the hub did not say what kind of model this is", "model", repoID, "err", err)
+		}
 		return "", nil, false
 	}
 	return info.PipelineTag, info.Tags, true
@@ -1868,6 +1886,11 @@ func (a *App) Close() error {
 	a.dlMu.Unlock()
 
 	a.dlWG.Wait()
+	// The category completion next, for the same reason downloads are
+	// waited for: an answer in flight is recorded or abandoned before the
+	// process goes, never left half-written.
+	a.stopJobs()
+	a.jobsWG.Wait()
 	// The pool first: shutting it down produces a removal record for every
 	// model still resident, and closing the store before that would throw
 	// those away. Closing the store then flushes whatever the last few seconds

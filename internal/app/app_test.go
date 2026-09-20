@@ -1454,12 +1454,16 @@ func TestDownloadRecordsTheHubsCategory(t *testing.T) {
 // simply carries no category. The category must never be able to fail a
 // download of gigabytes that has already succeeded.
 func TestADownloadWithoutACategoryIsStillReady(t *testing.T) {
+	// The two are told apart on the record, though, so that the completion
+	// job asks again at the next start only for the one the Hub was not
+	// heard for: a repo the Hub answered for with no words is marked silent.
 	for _, c := range []struct {
-		name string
-		body string
+		name   string
+		body   string
+		silent bool
 	}{
-		{name: "the Hub tags the repo with nothing", body: `{"id":"org/repo"}`},
-		{name: "the Hub does not answer for the repo at all", body: ""},
+		{name: "the Hub tags the repo with nothing", body: `{"id":"org/repo"}`, silent: true},
+		{name: "the Hub does not answer for the repo at all", body: "", silent: false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			a := newTestApp(t)
@@ -1478,6 +1482,9 @@ func TestADownloadWithoutACategoryIsStillReady(t *testing.T) {
 			}
 			if m.ContextLength != 40960 {
 				t.Errorf("ContextLength = %d — the rest of the record must be unaffected", m.ContextLength)
+			}
+			if m.HubSilent != c.silent {
+				t.Errorf("HubSilent = %v, want %v", m.HubSilent, c.silent)
 			}
 		})
 	}
