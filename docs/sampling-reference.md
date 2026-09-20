@@ -83,13 +83,14 @@ its system messages are merged, and the context window it is served at:
 ```
 
 `served_context` is a token count, at most 8,388,608 and never more than the
-model's own declared window, which is what it falls back to when the field is
-absent or larger. It is the window a request is held to and the window the
-memory budget charges — see
-[Why there is a memory budget](memory-budget-explained.md) — and
+model's own declared window, which is what a larger figure is held down to.
+When the field is absent the window is the default: the largest that fits the
+memory budget at the batched requests in force, up to the declared window. It
+is the window a request is held to and the window the memory budget charges —
+see [Why there is a memory budget](memory-budget-explained.md) — and
 **Settings → Served context** is the same field in the panel.
 
-A model with no entry is served with the machine-wide set at its own declared
+A model with no entry is served with the machine-wide set at the default
 window, is evictable, and has its messages passed on as they arrive. At most
 256 models are held.
 

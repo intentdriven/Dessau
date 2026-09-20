@@ -48,7 +48,8 @@ curl http://localhost:11535/v1/models
 | `tool_calling` | Whether the model answers with a tool call when one is declared, as Dessau found by asking it once on this Mac: `yes`, `no`, or `unknown` while it has not been asked under the runtime in force. Always present. See below. |
 | `context_length` | The model's maximum context, in tokens. See below. |
 | `max_model_len` | The same figure again, under the name vLLM-derived clients read. |
-| `served_context` | The window this Mac will actually serve the model at, in tokens. A request estimated to be larger is refused. See below. |
+| `served_context` | The window this Mac will actually serve the model at, in tokens: the operator's setting, or the default derived to fit the memory budget. A request estimated to be larger is refused. See below. |
+| `served_context_default` | Whether `served_context` is the derived default rather than a figure the operator set. Present with `served_context`. See below. |
 | `measured_context` | The largest prompt, in tokens, that the model's server on this Mac verifiably accepted when Dessau measured it. Absent until a measurement exists and while it is stale. See below. |
 | `measured_bound` | What stopped the measurement's step above `measured_context`: `model`, `prefill_deadline`, `served_window` or `memory_guard`. Only `model` makes the figure the model's limit; the others make it a floor. Present with `measured_context`. |
 | `state` | Whether the model is loaded, still loading, or not loaded. Only for a client connecting over loopback, or on an install with an API key. See below. |
@@ -170,11 +171,18 @@ context".
 ## The served window
 
 `served_context` is the window Dessau serves the model at on this Mac, and it
-is the figure to size prompts to. It is the operator's per-model setting, or
-the declared figure above when they have set none, and it is enforced: a
-request whose prompt plus `max_tokens` is estimated to be larger is refused
-with a 400 in the OpenAI error shape, naming both the window and the estimate,
-before any model is loaded.
+is the figure to size prompts to. It is the operator's per-model setting, or,
+when they have set none, the default: the largest window whose attention cache
+fits the memory budget beside the model's weights at the batched requests in
+force, capped at the declared figure above and never below 4,096 tokens.
+`served_context_default` is `true` for the derived default and `false` for a
+figure the operator set. The default is worked out from the budget and the
+concurrency at the time of the listing, not stored, so it moves when they do; a
+client that sizes prompts to it should list again after the operator changes
+either. Whichever it is, it is enforced: a request whose prompt plus
+`max_tokens` is estimated to be larger is refused with a 400 in the OpenAI
+error shape, naming both the window and the estimate, before any model is
+loaded.
 
 The estimate is made from the size of the request body at four bytes to the
 token rather than by tokenising it, so it is approximate and it over-counts:
@@ -183,13 +191,14 @@ window may therefore be refused when an exact count would have let it through.
 Send a shorter prompt, a smaller `max_tokens`, or raise the window in
 **Settings**.
 
-Lowering the window is also how a model that will not otherwise fit this Mac's
-memory budget is made to fit: the budget charges the attention cache the served
-window costs, so a smaller window is a smaller charge. See
+The window is also what the memory budget charges: the budget charges the
+attention cache the served window costs, so a smaller window is a smaller
+charge, which is why the default is derived from the budget and why a setting
+of the operator's own trades the window against the memory it takes. See
 [Why there is a memory budget](memory-budget-explained.md).
 
-The field is absent for a model that declares no window and has been given no
-setting — there is nothing to serve it at, and nothing is enforced.
+Both fields are absent for a model that declares no window and has been given
+no setting — there is nothing to serve it at, and nothing is enforced.
 
 **On the model card.** The control panel shows the figure on each model's
 card, labelled `max context`. From 1,024 tokens upwards the card abbreviates
@@ -354,14 +363,16 @@ rules.
   [Set how much memory models may use](memory-budget.md) and
   [Why there is a memory budget](memory-budget-explained.md).
 - Each loaded model is charged its weights plus a fifth for the working set a
-  running model needs, plus the attention cache its declared context window
-  costs — the window above, worked out from the model's own configuration, once
-  for every sequence its server may decode at once. That cache is what makes a
-  long-context model expensive: the cost per token is a property of the
-  architecture and varies more than thirtyfold between models. One model is
-  never charged more than the whole budget, so a model whose window fills the
-  budget by itself loads alone rather than not at all. A model whose
-  configuration cannot be read is charged a flat 1.2 times its size.
+  running model needs, plus the attention cache the window it is served at
+  costs — `served_context` above, at a cost per token worked out from the
+  model's own configuration, once for every sequence its server may decode at
+  once. That cache is what makes a long-context model expensive: the cost per
+  token is a property of the architecture and varies more than thirtyfold
+  between models, which is why the default served window is the largest that
+  fits the budget rather than the one the model declares. A model whose charge
+  does not fit the budget is refused with a message naming what would fit; it
+  is never charged less than it costs. A model whose configuration cannot be
+  read is charged a flat 1.2 times its size.
 - A request for a model that does not fit in what is left unloads the
   least-recently-used idle model, at once, to make room. The memory is not free
   until that model's server process has gone, so the request waits those

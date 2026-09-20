@@ -11,6 +11,25 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A fresh install serves the models it downloaded.** `impact: fix`. A model
+  with no served context of its own is served at the largest window that fits
+  the memory budget at the batched requests in force — up to the window the
+  model declares, and never below 4,096 tokens — instead of at its declared
+  window, which for every current long-context model costs more cache than any
+  Mac holds at the default concurrency, so a fresh install refused every model
+  it had. The window is derived, never written to `config.json`, and follows
+  the budget and the concurrency as they change; a model that does not fit
+  even at 4,096 tokens is refused as before, with the message that names what
+  to change. An explicit served context is honoured exactly as it was. The
+  models list carries the window in force as `served_context` and says whether
+  it is the default in `served_context_default`; the model's card and the
+  Served context field show the derived figure and what it fits. The warning
+  for a budget too small for the smallest model names the served window, the
+  batched requests and a smaller quantization as the things to change, rather
+  than the budget alone.
+
 ## [0.8.1] - 2026-09-20
 
 ### Added
