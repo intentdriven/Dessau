@@ -35,7 +35,7 @@ func TestTheCardIsBuiltFromTheToolCallLine(t *testing.T) {
 	body := extractFunction(t, readPanelSource(t), "renderModels")
 	for _, fragment := range []string{
 		"const tools = m.state === 'ready' ? toolCallText(m) : '';",
-		`${tools ? `+"`"+`<div class="info toolcalls">${escapeHtml(tools)}</div>`+"`"+` : ''}`,
+		`${tools ? ` + "`" + `<div class="info toolcalls">${escapeHtml(tools)}</div>` + "`" + ` : ''}`,
 	} {
 		if !strings.Contains(body, fragment) {
 			t.Errorf("renderModels no longer contains %s — the card's tool-call line is then asserted by nothing", fragment)

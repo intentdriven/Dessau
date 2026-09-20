@@ -228,8 +228,16 @@ func (p *Probe) serve(model string) {
 			return
 		}
 	}
-	if _, err := p.Run(p.ctx, model); err != nil && p.ctx.Err() == nil {
-		p.opts.Log.Info("tool-call probe recorded nothing: the model server did not answer", "model", model)
+	_, err := p.Run(p.ctx, model)
+	switch {
+	case err == nil, p.ctx.Err() != nil:
+	case errors.Is(err, ErrGone):
+		p.opts.Log.Debug("tool-call probe dropped: the model is no longer loaded; it is queued again at its next serve", "model", model)
+	default:
+		// The server did not answer, or a client's load took the model
+		// from under the probe: no evidence either way, and the model is
+		// asked again the next time it is served.
+		p.opts.Log.Info("tool-call probe recorded nothing; the model is asked again at its next serve", "model", model)
 		p.opts.Log.Debug("tool-call probe failed", "model", model, "err", err)
 	}
 }

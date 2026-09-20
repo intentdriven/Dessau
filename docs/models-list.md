@@ -124,9 +124,9 @@ through the OpenAI endpoint, so it appears in no request statistic and no
 request log line. The answer is kept once per model per runtime version and
 asked again only when the model is downloaded again or Dessau's runtime
 changes; until then the field reads `unknown`, which means not asked, never
-no. Bob's Dessau Chat reads it to know whether search will come from the
-model's own tool calls; the [model card](context-probe.md) shows the same
-answer.
+no. A client that wants tools reads it before it asks, instead of finding
+out for itself once per model; the [model card](context-probe.md) shows the
+same answer.
 
 **It refuses nothing.** A request carrying `tools` for a model marked `no` is
 relayed to the model exactly as sent and answered as the model answers it;
