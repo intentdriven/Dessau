@@ -2,12 +2,16 @@ package app
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/intentdriven/Dessau/internal/config"
 	"github.com/intentdriven/Dessau/internal/registry"
 )
 
@@ -177,5 +181,93 @@ func TestCompleteCategoriesWithNothingToDoAsksNothing(t *testing.T) {
 
 	if got := hub.total(); got != 0 {
 		t.Errorf("the Hub saw %d requests with nothing to complete", got)
+	}
+}
+
+// gatedHandler is a log handler that holds the job's completion line until
+// the test lets it go, so the job's goroutine is provably still running when
+// Close is called.
+type gatedHandler struct {
+	slog.Handler
+	reached chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (h *gatedHandler) Handle(ctx context.Context, r slog.Record) error {
+	if strings.HasPrefix(r.Message, "recorded what the hub says") {
+		h.once.Do(func() { close(h.reached) })
+		<-h.release
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+// Close joins the completion job the way it joins every other background
+// job: a start that is shutting down waits for the answer in flight to be
+// recorded or abandoned rather than exiting mid-write.
+func TestCloseWaitsForTheCompletionJob(t *testing.T) {
+	// A text handler to io.Discard rather than slog.DiscardHandler, whose
+	// Enabled says no and so is never handed the record.
+	gate := &gatedHandler{Handler: slog.NewTextHandler(io.Discard, nil), reached: make(chan struct{}), release: make(chan struct{})}
+	paths := config.NewPaths(t.TempDir())
+	a, err := New(Options{Paths: paths, Config: config.Default(), Log: slog.New(gate)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := newCompletionHub(t, map[string]string{
+		"org/adopted": `{"pipeline_tag":"text-generation","tags":["conversational"]}`,
+	})
+	a.Hub.BaseURL = hub.srv.URL
+	putReadyModel(t, a, registry.Model{RepoID: "org/adopted"})
+
+	a.StartCompletingCategories()
+	select {
+	case <-gate.reached:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the job never reached its completion line")
+	}
+
+	closed := make(chan struct{})
+	go func() {
+		a.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+		t.Fatal("Close returned while the completion job was still running")
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(gate.release)
+	select {
+	case <-closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close did not return once the job finished")
+	}
+	if m, _ := a.Registry.Get("org/adopted"); m.PipelineTag != "text-generation" {
+		t.Errorf("the answer in flight was not recorded: %+v", m)
+	}
+}
+
+// Stopping cuts a job short: a start that is shutting down does not sit out
+// the pause between two models, and does not ask for the next one.
+func TestCloseCancelsTheCompletionJobsPause(t *testing.T) {
+	a := newTestApp(t)
+	hub := newCompletionHub(t, map[string]string{
+		"org/first":  `{"pipeline_tag":"text-generation"}`,
+		"org/second": `{"pipeline_tag":"text-generation"}`,
+	})
+	a.Hub.BaseURL = hub.srv.URL
+	putReadyModel(t, a, registry.Model{RepoID: "org/first"})
+	putReadyModel(t, a, registry.Model{RepoID: "org/second"})
+
+	a.StartCompletingCategories()
+	waitFor(t, "the first model to be asked", func() bool { return hub.total() >= 1 })
+	start := time.Now()
+	a.Close()
+	if took := time.Since(start); took >= categoryPause {
+		t.Errorf("Close took %v, so it sat out the job's pause instead of cutting it short", took)
+	}
+	if got := hub.total(); got != 1 {
+		t.Errorf("the Hub saw %d requests after Close, want the one before it", got)
 	}
 }

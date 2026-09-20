@@ -375,11 +375,9 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 	// background for the same reason: a second account's install has every
 	// model of the shared cache and the Hub's word for none of them, and a
 	// start that waited on one request per model would be a start that
-	// waited on the network. Once per process; cancelled when the server
-	// stops (iss-2609202237468921).
-	jobsCtx, stopJobs := context.WithCancel(context.Background())
-	defer stopJobs()
-	go a.CompleteCategories(jobsCtx)
+	// waited on the network. Once per process; a.Close cancels it and waits
+	// for it (iss-2609202237468921).
+	a.StartCompletingCategories()
 
 	mux := http.NewServeMux()
 	var tlsSrv *http.Server

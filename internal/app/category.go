@@ -19,8 +19,9 @@ const categoryPause = time.Second
 // operator's rule from then on (iss-2609202237468921).
 //
 // It is started once per process, in the background, after the startup
-// rescan has adopted whatever is on disk; it is never triggered by a client
-// and nothing waits on it — not the start, not a load, not a request. One
+// rescan has adopted whatever is on disk (StartCompletingCategories); it is
+// never triggered by a client and nothing waits on it — not the start, not a
+// load, not a request — except Close, which joins it like every other job. One
 // model at a time with a pause between, through repoCategory, which bounds
 // each request and logs the one line a Hub that does not answer earns. A Hub
 // that does not answer for a model leaves it as it was, to be asked again at
@@ -41,8 +42,13 @@ func (a *App) CompleteCategories(ctx context.Context) {
 		if i > 0 {
 			select {
 			case <-ctx.Done():
-				return
+				// Cut short, not abandoned: what was completed is still
+				// counted below.
+				todo = nil
 			case <-time.After(categoryPause):
+			}
+			if todo == nil {
+				break
 			}
 		}
 		pipelineTag, tags, answered := a.repoCategory(ctx, repoID)
@@ -60,4 +66,15 @@ func (a *App) CompleteCategories(ctx context.Context) {
 	if completed > 0 {
 		a.Log.Info("recorded what the hub says about models that had no word", "models", completed)
 	}
+}
+
+// StartCompletingCategories runs CompleteCategories in the background under
+// the app's own job context, once per process: the caller is runServer, after
+// New has adopted whatever is on disk. Close cancels the job and waits for it.
+func (a *App) StartCompletingCategories() {
+	a.jobsWG.Add(1)
+	go func() {
+		defer a.jobsWG.Done()
+		a.CompleteCategories(a.jobsCtx)
+	}()
 }
