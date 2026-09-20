@@ -11,7 +11,7 @@ import Foundation
 /// reply as text; the exchange is kept as a new chat. Long-running, so a slow
 /// model on a server does not hit the system's default limit.
 struct AskIntent: AppIntent, LongRunningIntent {
-    static let title: LocalizedStringResource = "Ask Dessau"
+    static let title: LocalizedStringResource = "Ask Dessau Chat"
     static let description = IntentDescription("Sends a prompt to the current model and returns the reply as text. The exchange is kept as a new chat.")
 
     @Parameter(title: "Prompt") var prompt: String
@@ -32,7 +32,7 @@ struct AskIntent: AppIntent, LongRunningIntent {
 /// Starts a new chat and brings the client forward.
 struct NewChatIntent: AppIntent {
     static let title: LocalizedStringResource = "New Chat"
-    static let description = IntentDescription("Opens DessauChat on a new chat.")
+    static let description = IntentDescription("Opens Dessau Chat on a new chat.")
     static let openAppWhenRun = true
 
     func perform() async throws -> some IntentResult {
@@ -44,7 +44,7 @@ struct NewChatIntent: AppIntent {
 /// Opens an existing chat, chosen by its title.
 struct OpenChatIntent: AppIntent {
     static let title: LocalizedStringResource = "Open Chat"
-    static let description = IntentDescription("Opens DessauChat on one of its chats.")
+    static let description = IntentDescription("Opens Dessau Chat on one of its chats.")
     static let openAppWhenRun = true
 
     @Parameter(title: "Chat") var chat: ChatEntity
