@@ -16,3 +16,7 @@ The Thoughts row is pinned to animate false and additionally styled callout, ita
 ## Deferral 2026-09-19
 
 Waits on the maintainer: the Thoughts row's italic, secondary, callout styling was their manual-test ask on 2026-09-18; dropping the italic to fix italic-in-italic is a look they should choose. Nitpick.
+
+## Decision 2026-09-20
+
+Maintainer's decision at interview: drop the italic; keep secondary and callout. Recorded in `.abcd/work/DECISIONS.md`.

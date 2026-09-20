@@ -20,3 +20,10 @@ the bridge's surfaces to the Settings pane, `docs/discord-bridge.md` and the
 changelog, and what the Posture tab is for — inbound reach, or everything that
 is on — is a decision about that page rather than about the bridge. It needs
 the maintainer to say which, and the wording that follows from it.
+
+## Decision 2026-09-20
+
+Maintainer's decision at interview: the Posture tab is about inbound reach and
+does not state that a bridge is on. The README's "one page that says what is
+on" is tightened to match. Wontfix with this reason; recorded in
+`.abcd/work/DECISIONS.md`.

@@ -20,3 +20,7 @@ Left open for the maintainer: either the client stops reading availability or th
 ## Deferral 2026-09-19
 
 Waits on the maintainer: a choice between two shipped promises (the client stops reading availability, or the text-intelligence intent stops promising it does not).
+
+## Decision 2026-09-20
+
+Maintainer's decision at interview: keep the delivered behaviour; the shipped promise is corrected by a decision line in `.abcd/work/DECISIONS.md`. Resolved on that grounds.

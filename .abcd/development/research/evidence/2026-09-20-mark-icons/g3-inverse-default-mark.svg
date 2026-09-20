@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The default mark, "G3 inverse" (maintainer's decision 2026-09-20): a tilted dark cube, one form cut into each visible face and filled with its colour. macOS applies its own corner mask; the tile is full-bleed. -->
+  <rect width="1024" height="1024" fill="#17181d"/>
+  <g transform="translate(512,540) rotate(-8)">
+    <polygon points="0,-300 260,-150 0,0 -260,-150" fill="#3d3e46"/>
+    <polygon points="-260,-150 0,0 0,300 -260,150" fill="#26272d"/>
+    <polygon points="0,0 260,-150 260,150 0,300" fill="#2f3037"/>
+    <g transform="translate(0,-150) matrix(0.866,0.5,-0.866,0.5,0,0)"><polygon points="0,-105 95,60 -95,60" fill="#F5C518"/></g>
+    <g transform="translate(-130,75) matrix(0.866,0.5,0,1,0,0)"><rect x="-78" y="-78" width="156" height="156" fill="#E63329"/></g>
+    <g transform="translate(130,75) matrix(0.866,-0.5,0,1,0,0)"><circle cx="0" cy="0" r="86" fill="#2B5DAA"/></g>
+  </g>
+</svg>

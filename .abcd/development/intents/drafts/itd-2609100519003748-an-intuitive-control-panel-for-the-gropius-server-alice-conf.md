@@ -5,8 +5,8 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
-severity: minor
+builds_on: [itd-2609081259493890, itd-2609081718534201, itd-2609091903463596, itd-2609200823520756]
+severity: major
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
@@ -16,23 +16,216 @@ production_mode: hand-written
 
 ## Press Release
 
-> _Seeded from a quoted-text intent capture. Expand into the full press-release narrative before planning._
+Alice runs Gropius on the Mac under her desk. She opens the control panel and the
+first thing the page tells her is what is true right now: which models are
+resident and what they are charging against the memory budget, who can reach this
+server and by which addresses, whether anything is being recorded. Only then does
+it ask her what she would like to change. When she goes looking for a setting she
+looks for the job it does — how long a model stays loaded, how much of this Mac
+models may use, who may connect — and finds it under that job, not under the name
+it happens to carry in `config.json`. When she types a figure the server will not
+accept, the page tells her why in the server's own words, beside the control she
+is typing into, and **Save** stays live: the page never refuses on its own
+authority, because the server is the only thing that knows whether a save holds.
+
+She reaches the panel over loopback, from this Mac. Bob at the next desk points
+his editor at the API and gets answers; Carol, on the mesh, does the same from her
+laptop in the other room. Neither of them can open the panel, and neither of them
+needs to: the panel is the operator's surface and the API is everybody's. The page
+itself is three files served from inside the binary — markup, a stylesheet and a
+script. It needs no toolchain to build, no framework to run, and nothing from
+anywhere else on the internet to render, which is why it still works on a Mac that
+has been taken off the network entirely.
 
 ## Why This Matters
 
-An intuitive control panel for the Gropius server: Alice configures the server from a page that shows what is on before it asks what to change, finds each setting by the task it serves rather than by its key in the file, and is told in the server's own words, as she types, why a value cannot be saved — a state-of-the-art site that stays a page served from this Mac alone, reachable by every account on it and by nothing on the network, so that Bob at the next desk and Carol on the mesh see the API and never the panel
+The panel is the only interactive surface this product has, and it is the surface
+that decides whether an operator who is not its author can run this server. Today
+it loses that argument on evidence rather than on taste. Seven hundred lines of
+markup carry one accessibility attribute. The tab strip is a row of buttons with
+no `role="tablist"`, no `aria-selected`, no arrow-key navigation and no focus move
+on switch, so a person using a keyboard or a screen reader cannot work the primary
+navigation of the page. The panel re-renders live from an event stream with no live
+region anywhere, so a download that finishes or a model that loads is announced to
+nobody. Errors arrive through `alert()`. The stylesheet's only media queries are
+`prefers-color-scheme`; there is no responsive breakpoint, so the page an operator
+reaches from a phone on her own network is the desktop layout, scrolled. None of
+this is architecture. All of it is authoring.
+
+The second half of the argument is about finding things. The Settings pane is
+ordered the way `config.json` is ordered, which is the order the fields were
+added, so an operator looking for "how long does a model stay loaded" must already
+know it is called an idle timeout. The repository has a guard that proves every
+setting is *named* by the pane — it cannot prove that the control is where a person
+would look, still posts the right key, or has not been demoted to a read-only
+line. That gap is the whole risk of a redesign, and closing it is what makes the
+redesign safe to attempt rather than a coin toss.
+
+The third half is trust. The page's job is to state facts about exposure, not to
+warn about them: who can reach this Mac, what is announced, what is written down.
+An operator who is told the truth plainly can decide; one who is nagged learns to
+click past the nagging. That stance — state before settings, facts not warnings,
+nothing interrupts the task — has lived in this draft as prose since 2026-09-10.
+Prose that no test can fail is the one kind of promise this repository does not
+otherwise accept, which is why it becomes acceptance criteria here.
 
 ## Mechanism
 
-> _Prompted (the claim-recording gradient): why the authors expect this to work, as a falsifiable "we expect X because Y" — not the outcome restated. Replace this line with the claim, or with the exact token `None stated.` alone on its line to record the claim as considered and declined._
+We expect the redesign to work in plain files, with no build step and no
+framework, **because** every defect the 2026-09-19 review found is a defect of
+authoring rather than of architecture: aria attributes, a tab list with arrow
+keys, a live region, a defined focus order, per-field error slots, a visible focus
+ring and a responsive breakpoint are each expressible in the markup, stylesheet and
+script that already ship. The falsifier is a named defect from that review that
+cannot be fixed without a toolchain.
+
+We expect the existing three-surfaces guard to keep working **because** the guard
+is a string scan coupled to the authoring format in six ways — the paths of
+`index.html` and `app.js`, the literal `$('someId')` lookup form, `id="…"` present
+as literal markup, three named source markers, `<section id="tab-settings"` as the
+Settings pane's boundary, and lower snake case object keys — and choosing plain
+files changes none of the six. The same argument covers the `internal/ui` tests
+that lift functions out of `app.js` and run them under node: the scanned and lifted
+source stays the served source. The falsifier is a change to the redesigned page
+that makes `internal/archtest/settings_surface_test.go` or any `internal/ui` test
+need rewriting to stay green.
+
+We expect the inventory in the spec, rather than the guard, to be what makes a lost
+control detectable **because** the guard proves only that a setting is named
+somewhere in the Settings pane: a control moved to a pane nobody looks in, demoted
+to a read-only line, or left posting the wrong key all pass it. An inventory that
+names every control, roll-up block and read-only line with its destination — and
+lists anything deliberately dropped with a reason — is a document a reviewer can
+diff the delivered panel against, and a test can hold the delivered markup to it
+id by id. The falsifier is a control that goes missing while both the inventory
+test and the guard stay green.
+
+We expect mechanical accessibility bars to deliver what "intuitive" and "state of
+the art" cannot **because** those two phrases have no failing case: no test can be
+written that they fail, so they constrain nothing. Keyboard reachability of every
+control, a defined focus order, `role=tablist` with `aria-selected` and
+`aria-controls` and arrow keys, a live region for state changes, a programmatic
+label per control and a visible focus ring each have a failing case that an
+assertion over the markup or a node-lifted test can find. The falsifier is a bar
+from that list that cannot be asserted without driving a real browser.
+
+We expect the offline constraint to be statable as a testable property **because**
+the line that matters is between an automatic subresource fetch and a link the
+operator clicks: the page currently carries six links out to documentation on the
+forge, so "no outbound host" is already false, while "the page renders and every
+control works with this Mac offline" is true today and checkable. The falsifier is
+a redesign requirement that needs a fetched subresource to render.
 
 ## Scope Conditions
 
-> _Required (the claim-recording gradient): the population, platform, scale, or assumptions this claim holds under, one per top-level bullet — `abcd intent plan` stamps each with a persistent identity. Replace this line with those bullets, or with the exact token `None stated.` alone on its line._
+- **No build step, no framework, and nothing fetched to render.** The panel stays
+  plain markup, stylesheet and script under `internal/ui/static`, served from the
+  embedded file system. The property that holds this is testable and is stated as
+  such: the page renders and every control works with this Mac offline. The
+  documentation links the panel already carries out to the forge stay as links an
+  operator clicks — they are navigation, not subresources — and a link is the only
+  form an outbound host may take. Answers Open Question 1 with option A
+  (DECISIONS.md, 2026-09-20).
+- **The resources block stays at the head of the Models tab.** The placement
+  decided at interview on 2026-09-09 (itd-2609091903463596) is re-affirmed rather
+  than re-opened: the redesign does not move it to a tab of its own, however it
+  reorganises everything else.
+- **The tabs are the panel's seven, by name: My Models, Find Models, Statistics,
+  Connect, Clients, Posture, Settings.** The redesign re-homes controls within and
+  between these; it adds no eighth tab and removes none. The usage dashboard is
+  the **Statistics** tab — there is no Usage tab — and the posture page
+  (itd-2609081718534201) is inside the scope of what is reorganised.
+- **The as-you-type refusal is not this intent's to build.** It is
+  itd-2609200823520756, the sibling this intent `builds_on`. What this intent owes
+  it is the place the message goes: a per-field error slot beside each control,
+  present in the markup and addressable by the script, which the panel does not
+  have today. The route, the purity argument and the security review are the
+  sibling's.
+- **The panel stays reachable over loopback only, and every account on this Mac
+  reaches it.** That is not a property this intent changes or defends; it is the
+  accepted cost recorded in adr-2609091123526871 §7 and documented in
+  `docs/bind-address.md`. The redesign adds no route and no reach.
+- **The Settings pane exemption table stays at two entries.** `preload` and
+  `upstream_header_timeout_sec` keep their written exemptions
+  (spc-2609111941481833); the redesign does not add a third, which would mean a
+  setting losing its control under cover of a reorganisation.
+- **One operator, one Mac, one page.** No multi-user panel, no remote
+  administration, no accounts. `impact: additive`: no stored format changes — but
+  the redesign does invalidate navigation instructions in `docs/` and `README.md`,
+  which is why the documentation sweep is an acceptance criterion rather than a
+  follow-up.
 
 ## Acceptance Criteria
 
-> _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
+- **Given** the spec, **when** a reviewer opens it, **then** it carries an
+  inventory naming every control, roll-up block and read-only line on the panel
+  today, each with its destination in the new arrangement, and anything
+  deliberately dropped listed with its reason. *Held by:* the spec section itself,
+  plus a test that every element id the inventory names exists in the delivered
+  markup and, for a control, that the script posts the `config.json` key the
+  inventory names for it.
+- **Given** any pane, **when** its markup is read in document order, **then** the
+  state it reports comes before the controls that change it. *Held by:* an
+  ordering assertion per pane over `internal/ui/static/index.html`.
+- **Given** a refusal from the server or a notice the panel raises, **when** its
+  text is read, **then** it states what is true rather than warning about what
+  might be. *Held by:* a rule over the refusal and notice strings in the markup
+  and script, of the kind `TestTheBindModeLabelsNameNoVendorAndPromiseNothing`
+  already applies to the bind labels.
+- **Given** the panel's script, **when** it is scanned, **then** it contains no
+  `alert()` and no `confirm()` call. *Held by:* an assertion over `app.js`. The
+  two `confirm()`/`alert()` sites that exist today are the statistics-clear
+  confirmation and `alertErr`. Separately, the existing `confirmBtn` two-click
+  arming is replaced by an inline affordance that does not depend on a timed
+  three-second window, since a timed interaction is an interruption for anyone
+  working the page by keyboard or screen reader. *Held by:* a node-lifted test on
+  the replacement.
+- **Given** the panel, **when** it is worked by keyboard alone, **then** every
+  control is reachable and the focus order is the one the spec defines. *Held by:*
+  an assertion over the markup that no control is unreachable (no anchor doing a
+  button's work, no positive `tabindex`) plus the spec's stated order asserted in
+  document order.
+- **Given** the tab strip, **when** its markup is read, **then** it carries
+  `role="tablist"`, each tab `role="tab"` with `aria-selected` and `aria-controls`
+  naming its pane, each pane `role="tabpanel"`, and the script moves the selection
+  on Left/Right arrow keys and moves focus to the newly selected tab. *Held by:*
+  an assertion over the markup plus a node-lifted test on the key handler.
+- **Given** a state change an operator did not initiate on the page — a download
+  finishing, a model loading or unloading — **when** it arrives on the event
+  stream, **then** its sentence is written into a live region. *Held by:* an
+  assertion that the live region exists in the markup and a node-lifted test that
+  the render path writes those sentences into it.
+- **Given** any control on the panel, **when** its markup is read, **then** it has
+  a programmatic label — a `<label for>`, an `aria-label` or an
+  `aria-labelledby` — and no control relies on adjacent text alone. *Held by:* an
+  assertion over the markup, enumerated the way
+  `TestEveryNumericSettingsControlIsProbed` enumerates today.
+- **Given** the stylesheet, **when** a focusable element has focus, **then** a
+  visible focus ring is drawn and no rule removes it without replacing it. *Held
+  by:* an assertion over `internal/ui/static/style.css` that no `outline: none`
+  or `outline: 0` stands without a replacement indicator in the same rule.
+- **Given** a viewport at phone width, **when** the panel is rendered, **then** the
+  layout reflows rather than scrolling horizontally: the tab strip, the tables and
+  the Settings form each fit. *Held by:* a responsive breakpoint asserted present
+  in the stylesheet for the named selectors, plus one recorded hand check at phone
+  width in the shipping record — a hand check named as a hand check, in the way
+  the 2026-09-20 ledger line records two other checks as owed.
+- **Given** `internal/archtest/settings_surface_test.go` and the `internal/ui`
+  node-lifted tests, **when** the redesign lands, **then** they are green and
+  unchanged — no path, marker, lookup form or exemption edited to accommodate the
+  new markup. *Held by:* `make test` plus the diff over those files being empty.
+- **Given** `docs/`, **when** the redesign lands, **then** there is one page about
+  the control panel — a single Diátaxis type, reference or how-to, not both — and
+  every existing page whose navigation instructions the re-homing changes has been
+  swept. *Held by:* the new page plus a listed sweep in the shipping record naming
+  each page checked; the twenty existing pages that mention the panel or its
+  address are the candidate set.
+- **Given** any value Alice types into any control, **when** she types it,
+  **then** **Save** is never disabled, no field is marked invalid and no submit is
+  blocked on a judgement the page made. *Held by:*
+  `TestNoSettingsControlIsNarrowerThanValidate` staying green, plus a new test
+  that the script contains no path which disables the submit control or cancels
+  the settings submit event on its own validation.
 
 ## Review 2026-09-19
 
@@ -268,6 +461,10 @@ recommendation it would defend. None of them is decided here.
 
 ### 1. May the panel take a build step, a UI framework, or any asset fetched from outside the Mac?
 
+**Answered 2026-09-20 — option A.** No build step, no framework, nothing fetched to
+render. Recorded in `.abcd/work/DECISIONS.md` (2026-09-20) and carried as the first
+scope condition above, where the offline property is stated as the testable form.
+
 Opened as a decision to take before this draft is planned (DECISIONS.md, 2026-09-10). It
 is two decisions in one — a dependency sign-off, which AGENTS.md requires before any new
 dependency, and a boundary decision, since an asset fetched from a content network is a
@@ -305,6 +502,11 @@ otherwise. Choosing A also keeps the guard that makes the redesign safe to attem
 
 ### 2. What does the redesign re-home rather than rebuild?
 
+**Answered 2026-09-20 — option A.** An inventory in the spec, with the resources
+block staying at the head of the Models tab. Recorded in `.abcd/work/DECISIONS.md`
+(2026-09-20) and carried as the first and second acceptance criteria and the second
+and third scope conditions above.
+
 The waiting clause this question carried is satisfied: itd-2609081259493890 (the sync
 test), itd-2609091903463596 (the resources block) and itd-2609091712141073 (the usage
 measurement) are all shipped, and the sync test exists. The live question is how the
@@ -340,6 +542,13 @@ it is the surface the "shows what is on" promise is about.
 
 ### 3. Does "intuitive" need a written principle?
 
+**Answered 2026-09-20 — option C.** No principle is written; the stance becomes
+falsifiable acceptance criteria plus mechanical accessibility bars, and the
+as-you-type refusal is carved out as itd-2609200823520756, which never gates.
+Recorded in `.abcd/work/DECISIONS.md` (2026-09-20) and carried as the ordering,
+facts-not-warnings, no-modal-interruption, keyboard, tab-strip, live-region,
+label, focus-ring and Save-stays-live criteria above.
+
 DECISIONS.md, 2026-09-10, already answered this once: the stance — state before settings,
 facts not warnings, nothing interrupts the task — stays in the draft's press release
 rather than becoming a principle. Re-asking it is either stale or a deliberate
@@ -374,3 +583,5 @@ is the precondition.
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+**Answers 2026-09-20:** Q1 A; Q2 A with the resources block staying at the head of Models; Q3 C, as-you-type carved out as a sibling intent that never gates; severity major. Recorded in `.abcd/work/DECISIONS.md`.

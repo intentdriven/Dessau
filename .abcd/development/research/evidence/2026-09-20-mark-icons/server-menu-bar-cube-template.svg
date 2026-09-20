@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
+  <!-- The server's menu-bar icon: the solid cube as a single-colour template glyph, the top face lighter by opacity (maintainer's decision 2026-09-20). Rendered by the system in the menu bar's own colour. -->
+  <g transform="translate(22,23) rotate(-8) scale(0.062)">
+    <polygon points="0,-300 260,-150 0,0 -260,-150" fill="#000000"/>
+    <polygon points="-260,-150 0,0 0,300 -260,150" fill="#000000"/>
+    <polygon points="0,0 260,-150 260,150 0,300" fill="#000000"/>
+    <polygon points="0,-300 260,-150 0,0 -260,-150" fill="#ffffff" opacity="0.35"/>
+  </g>
+</svg>

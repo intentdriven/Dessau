@@ -20,3 +20,7 @@ Left open for the maintainer: the delivered behaviour is the safer one — a key
 ## Deferral 2026-09-19
 
 Waits on the maintainer: sending a stored credential to a newly found server is a policy call; the acceptance criterion is the likelier thing to change.
+
+## Decision 2026-09-20
+
+Maintainer's decision at interview: keep the delivered behaviour; the shipped promise is corrected by a decision line in `.abcd/work/DECISIONS.md`. Resolved on that grounds.

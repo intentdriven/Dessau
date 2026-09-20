@@ -23,3 +23,11 @@ product decision: whether a bridge may hold 256 channels at all, and whether a
 turn should be bounded in bytes rather than runes — which would cut a message
 in a script where a rune is three bytes to a third of what a Latin one keeps.
 
+
+## Decision 2026-09-20
+
+Maintainer's decision at interview: bytes AND lower counts. A per-turn byte
+bound replaces the rune bound, a total byte budget across the whole store
+evicts the oldest turns across channels, and the channel and turn counts come
+down from 256 × 64. Figures are the implementer's, stated with the arithmetic
+beside the constants. Recorded in `.abcd/work/DECISIONS.md`.
