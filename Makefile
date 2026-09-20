@@ -1,4 +1,10 @@
-APP     := Dessau
+# APP is the BUNDLE name (dist/DessauServer.app, /Applications/DessauServer.app);
+# NAME is the display name a person reads. They differ on purpose: a bundle name
+# carries no space, and the component is called "Dessau Server" everywhere it is
+# spoken to a person (adr-2609200729102059). The executable inside the bundle is
+# neither of them — it is $(BIN)'s basename, `dessau`.
+APP     := DessauServer
+NAME    := Dessau Server
 BUNDLE  := dist/$(APP).app
 BIN     := bin/dessau
 PKG     := ./cmd/dessau
@@ -93,9 +99,9 @@ app:
 	cp $(BIN)           $(BUNDLE)/Contents/MacOS/dessau
 	cp build/AppIcon.icns $(BUNDLE)/Contents/Resources/AppIcon.icns
 	# A stable signing identifier matters: Go's linker ad-hoc-signs every binary
-	# with the identifier "a.out", so without this every Dessau build looks like
-	# a different app to the firewall and to Local Network Privacy — which means a
-	# fresh permission prompt on every rebuild.
+	# with the identifier "a.out", so without this every Dessau Server build
+	# looks like a different app to the firewall and to Local Network Privacy —
+	# which means a fresh permission prompt on every rebuild.
 	codesign --force --deep \
 		--identifier sh.intentdriven.dessau.server \
 		--sign - $(BUNDLE)
@@ -113,39 +119,40 @@ icon:
 ## version serving while claiming success.
 install: app
 	@if pgrep -qf "/Applications/$(APP).app/Contents/MacOS/" 2>/dev/null; then \
-		echo "Quitting the running $(APP)…"; \
+		echo "Quitting the running $(NAME)…"; \
 		osascript -e 'quit app "$(APP)"' >/dev/null 2>&1 || true; \
 		for i in $$(seq 1 20); do \
 			pgrep -qf "/Applications/$(APP).app/Contents/MacOS/" || break; \
 			sleep 0.5; \
 		done; \
 		if pgrep -qf "/Applications/$(APP).app/Contents/MacOS/" 2>/dev/null; then \
-			echo "warning: $(APP) is still running; quit it and relaunch to finish the upgrade." >&2; \
+			echo "warning: $(NAME) is still running; quit it and relaunch to finish the upgrade." >&2; \
 		fi; \
 	fi
 	rm -rf /Applications/$(APP).app
 	cp -R $(BUNDLE) /Applications/
 	$(MAKE) allow-firewall APP_BIN=/Applications/$(APP).app/Contents/MacOS/dessau
 	open /Applications/$(APP).app
-	@echo "Dessau is running in the menu bar."
+	@echo "$(NAME) is running in the menu bar."
 
 ## allow-firewall: let the macOS Application Firewall accept LAN connections to
-## Dessau. Without this, a locally-built (non-Developer-ID) binary is blocked:
-## the firewall accepts the TCP handshake but drops the data, so other machines
-## see an empty response while loopback still works. Loopback never needs this.
+## Dessau Server. Without this, a locally-built (non-Developer-ID) binary is
+## blocked: the firewall accepts the TCP handshake but drops the data, so other
+## machines see an empty response while loopback still works. Loopback never
+## needs this.
 ## Needs sudo; it modifies a security setting, so it prompts for your password.
 APP_BIN ?= $(PWD)/$(BIN)
 allow-firewall:
-	@echo "Allowing Dessau through the macOS firewall (needs your password)…"
+	@echo "Allowing $(NAME) through the macOS firewall (needs your password)…"
 	sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add "$(APP_BIN)"
 	sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$(APP_BIN)"
-	@echo "Done. Other machines on your network can now reach Dessau."
+	@echo "Done. Other machines on your network can now reach $(NAME)."
 
 ## install-shared: let every macOS account on this Mac share one model cache.
 ##
 ## Without this, each user account keeps its own copy of every model — a 70B at
-## 4-bit costs 40 GB twice. Dessau uses /Users/Shared/Dessau automatically once
-## it exists and is writable.
+## 4-bit costs 40 GB twice. Dessau Server uses /Users/Shared/Dessau
+## automatically once it exists and is writable.
 ##
 ## The directory mode is 3775, and both special bits matter:
 ##   • setgid (the 2) makes new files inherit the `staff` group, so a model one
@@ -169,7 +176,7 @@ install-shared:
 	sudo chgrp -R staff /Users/Shared/Dessau
 	sudo find /Users/Shared/Dessau -type d -exec chmod 3775 {} +
 	@echo "Shared model cache ready at /Users/Shared/Dessau."
-	@echo "Restart Dessau; every account on this Mac will now share one set of models."
+	@echo "Restart $(NAME); every account on this Mac will now share one set of models."
 
 ## run: run headless in the foreground (for development)
 run: build

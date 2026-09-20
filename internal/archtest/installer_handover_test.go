@@ -83,7 +83,7 @@ func newServerHandoverFixture(t *testing.T, stubBody string, shape archiveShape)
 	// The bundle the asset directory carries, with a stub where the real binary
 	// would be. Everything else about it is what install.sh looks for: the
 	// bundle name, and an executable at Contents/MacOS/dessau.
-	staged := stageBundle(t, fx.dir, "Dessau", "dessau", stubBody, shape)
+	staged := stageBundle(t, fx.dir, "DessauServer", "dessau", stubBody, shape)
 	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", staged, filepath.Join(fx.assets, "DessauServer.app.zip"))
 	sums := runIn(t, fx.assets, "shasum", "-a", "256", "DessauServer.app.zip")
 	if err := os.WriteFile(filepath.Join(fx.assets, "SHA256SUMS.txt"), []byte(sums), 0o644); err != nil {
@@ -214,7 +214,7 @@ func newClientHandoverFixture(t *testing.T, placerStub string, placerShape archi
 	// this test is about.
 	chat := stageBundle(t, fx.dir, "DessauChat", "DessauChat", "#!/usr/bin/env bash\nexit 0\n", plainBundle)
 	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", chat, filepath.Join(fx.assets, "DessauChat.app.zip"))
-	placer := stageBundle(t, fx.dir, "Dessau", "dessau", placerStub, placerShape)
+	placer := stageBundle(t, fx.dir, "DessauServer", "dessau", placerStub, placerShape)
 	runIn(t, fx.dir, "ditto", "-c", "-k", "--keepParent", placer, filepath.Join(fx.assets, "DessauServer.app.zip"))
 	sums := runIn(t, fx.assets, "shasum", "-a", "256", "DessauChat.app.zip", "DessauServer.app.zip")
 	if err := os.WriteFile(filepath.Join(fx.assets, "SHA256SUMS.txt"), []byte(sums), 0o644); err != nil {

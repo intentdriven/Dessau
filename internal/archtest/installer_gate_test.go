@@ -263,7 +263,7 @@ func TestTheReleaseGateRunsTheTaggedTreesInstallerBeforeItPublishes(t *testing.T
 	// green having never touched the tagged artefacts, which is this gate's own
 	// failure mode one level up.
 	for _, bind := range []struct{ pattern, why string }{
-		{`(?m)^[ \t]*built="dist/Dessau\.app/Contents/MacOS/dessau"[ \t]*$`, "the built server executable"},
+		{`(?m)^[ \t]*built="dist/DessauServer\.app/Contents/MacOS/dessau"[ \t]*$`, "the built server executable"},
 		{`(?m)^[ \t]*built="client/dist/DessauChat\.app/Contents/MacOS/DessauChat"[ \t]*$`, "the built client executable"},
 	} {
 		if !regexp.MustCompile(bind.pattern).MatchString(live) {

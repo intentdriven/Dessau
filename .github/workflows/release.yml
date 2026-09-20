@@ -357,14 +357,14 @@ jobs:
           # widened) or a standard user created on the runner. The loop looks
           # in both places so its failure message stays accurate, not because
           # both are covered.
-          for app in Dessau DessauChat; do
+          for app in DessauServer DessauChat; do
             # The executable inside a bundle is not the bundle's name: the
             # server's is lowercase, from build/Info.plist's CFBundleExecutable
             # and the Makefile's `cp $(BIN) …/MacOS/dessau`. Spelling it "$app"
             # only ever passed because the runner's volume is case-insensitive;
             # on a case-sensitive one every release would fail here.
             case "$app" in
-              Dessau)
+              DessauServer)
                 built="dist/DessauServer.app/Contents/MacOS/dessau"
                 exe="dessau"
                 ;;

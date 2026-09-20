@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>Dessau</string>
+	<string>DessauServer</string>
 	<key>CFBundleDisplayName</key>
-	<string>Dessau</string>
+	<string>Dessau Server</string>
 	<key>CFBundleIdentifier</key>
 	<string>sh.intentdriven.dessau.server</string>
 	<key>CFBundleExecutable</key>
@@ -31,7 +31,7 @@
 	     this string the system denies LAN access and the server is unreachable
 	     from other machines. -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Dessau serves your local MLX models to other devices on your network.</string>
+	<string>Dessau Server serves your local MLX models to other devices on your network.</string>
 
 	<!-- Mandatory for Bonjour inside an app bundle. If this list does not include
 	     the service type we advertise, mDNS registration fails SILENTLY: the
