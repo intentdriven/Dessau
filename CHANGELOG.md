@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-21
+
 ### Fixed
 
 - **A model found in the shared cache can be talked to.** `impact: fix`. A
