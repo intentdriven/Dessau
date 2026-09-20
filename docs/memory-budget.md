@@ -52,6 +52,16 @@ an unrelated setting. Models are still held to the memory this Mac has, and the
 panel and the start-up log show the figure being enforced. Change the field to
 put your own figure back in charge.
 
+## Batched requests
+
+**Settings → Batched requests** is how many requests one model server answers
+at once, and it is one by default. Each batched request holds its own attention
+cache, so the default served window — the largest that fits the budget — is
+worked out per request: at one it is as wide as the budget allows, at four a
+quarter of that. Raise it on a Mac that serves several clients at once; the
+figure reaches the model servers at the next start, and every charge shown in
+the meantime uses the figure in force.
+
 ## What a change does not do
 
 Lowering the budget unloads nothing. The models in memory stay, and the panel

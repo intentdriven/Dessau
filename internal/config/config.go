@@ -579,7 +579,12 @@ type Config struct {
 	IdleTimeoutSec int `json:"idle_timeout_sec"`
 
 	// DecodeConcurrency maps to mlx_lm's --decode-concurrency: how many
-	// requests get batched together during token generation.
+	// requests get batched together during token generation. The default is
+	// one, because each sequence holds its own attention cache and the
+	// default served window is derived from what the budget has left per
+	// sequence: at one a 128 GB Mac serves its long-context models at
+	// windows of over 100k tokens, at four at a quarter of that. A saved
+	// figure is the operator's and a change of default never rewrites it.
 	DecodeConcurrency int `json:"decode_concurrency"`
 
 	// HFToken authenticates against gated HuggingFace repos.
@@ -1313,7 +1318,7 @@ func Default() Config {
 		UpstreamHeaderTimeoutSec: 0,
 		Advertise:                true,
 		IdleTimeoutSec:           0,
-		DecodeConcurrency:        4,
+		DecodeConcurrency:        1,
 		StatsMonths:              DefaultStatsMonths,
 		StatsMaxBytes:            DefaultStatsMaxBytes,
 		// Stored even though the feature is off, so that switching it on in

@@ -84,7 +84,7 @@ func TestClientSamplingValuesReachTheModelServerUnchanged(t *testing.T) {
 func TestSettingsSavesSamplingDefaults(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 
-	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"sampling":{"temperature":0.7,"top_p":0.95,"top_k":40,"min_p":0.05,"max_tokens":8192}}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -100,7 +100,7 @@ func TestSettingsSavesSamplingDefaults(t *testing.T) {
 	}
 
 	// A blank field is sent as null and must land as unset, not as zero.
-	resp2 := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp2 := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"sampling":{"temperature":null,"top_p":null,"top_k":null,"min_p":null,"max_tokens":null}}`)
 	defer resp2.Body.Close()
 	if resp2.StatusCode != http.StatusOK {
@@ -117,7 +117,7 @@ func TestSettingsSavesSamplingDefaults(t *testing.T) {
 func TestOutOfRangeSamplingIsRefusedAndChangesNothing(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 
-	ok := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	ok := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"sampling":{"temperature":0.7}}`)
 	ok.Body.Close()
 
@@ -130,7 +130,7 @@ func TestOutOfRangeSamplingIsRefusedAndChangesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"sampling":{"temperature":-3}}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -192,7 +192,7 @@ func TestSamplingReloadsNamesOnlyTheModelsWhoseValueMoved(t *testing.T) {
 func TestSettingsResponseCarriesReloadModels(t *testing.T) {
 	srv, _ := newTestControlApp(t, config.Default())
 
-	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"sampling":{"temperature":0.7}}`)
 	defer resp.Body.Close()
 
@@ -215,14 +215,14 @@ func TestSettingsResponseCarriesReloadModels(t *testing.T) {
 func TestRemovingAPerModelOverrideRemovesIt(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 
-	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"models":{"org/a":{"sampling":{"temperature":0.1}},"org/b":{"sampling":{"temperature":0.2}}}}`)
 	resp.Body.Close()
 	if n := len(a.Config().Models); n != 2 {
 		t.Fatalf("saved %d overrides, want 2", n)
 	}
 
-	resp = postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp = postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"models":{"org/a":{"sampling":{"temperature":0.1}}}}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -236,7 +236,7 @@ func TestRemovingAPerModelOverrideRemovesIt(t *testing.T) {
 		t.Errorf("org/a was removed too: %+v", got)
 	}
 
-	resp2 := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp2 := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"models":{}}`)
 	defer resp2.Body.Close()
 	if n := len(a.Config().Models); n != 0 {
@@ -249,11 +249,11 @@ func TestRemovingAPerModelOverrideRemovesIt(t *testing.T) {
 func TestSettingsWithoutModelSamplingKeepsTheOverrides(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 
-	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"models":{"org/a":{"sampling":{"temperature":0.1}}}}`)
 	resp.Body.Close()
 
-	resp = postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4}`)
+	resp = postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1}`)
 	defer resp.Body.Close()
 	if _, ok := a.Config().Models["org/a"]; !ok {
 		t.Error("an override was dropped by a save that never mentioned models")
@@ -265,7 +265,7 @@ func TestSettingsWithoutModelSamplingKeepsTheOverrides(t *testing.T) {
 func TestCaseVariantOverrideKeysAreRefused(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 
-	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"models":{"org/Model":{"sampling":{"temperature":0.1}},"ORG/model":{"sampling":{"temperature":0.9}}}}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -285,7 +285,7 @@ func TestASaveCannotWriteAConfigTheNextStartRefuses(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 
 	// A body larger than the file may be.
-	huge := `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,"api_key":"` +
+	huge := `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,"api_key":"` +
 		strings.Repeat("k", config.MaxConfigBytes) + `"}`
 	resp := postJSON(t, srv, "/api/settings", huge)
 	resp.Body.Close()
@@ -331,11 +331,11 @@ func TestASaveCannotWriteAConfigTheNextStartRefuses(t *testing.T) {
 func TestOverrideRemovalIsNotDefeatedByKeyCase(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 
-	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"models":{"org/a":{"sampling":{"temperature":0.1}},"org/b":{"sampling":{"temperature":0.2}}}}`)
 	resp.Body.Close()
 
-	resp = postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp = postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"Models":{"org/a":{"sampling":{"temperature":0.1}}}}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

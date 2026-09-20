@@ -23,7 +23,7 @@ func TestSettingsAcceptsAStoredHostThePanelNowPostsBack(t *testing.T) {
 			cfg.Host = host
 			srv, a := newTestControlApp(t, cfg)
 
-			body := `{"host":"` + host + `","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0}`
+			body := `{"host":"` + host + `","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0}`
 			resp := postJSON(t, srv, "/api/settings", body)
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
@@ -49,7 +49,7 @@ func TestSettingsCarriesTheBindModeWithoutDisturbingTheHost(t *testing.T) {
 	cfg.Host = "192.0.2.5"
 	srv, a := newTestControlApp(t, cfg)
 
-	const settings = `"port":11535,"api_key":"a-key","decode_concurrency":4,"idle_timeout_sec":0`
+	const settings = `"port":11535,"api_key":"a-key","decode_concurrency":1,"idle_timeout_sec":0`
 
 	resp := postJSON(t, srv, "/api/settings", `{"host":"192.0.2.5","bind_mode":"private-network",`+settings+`}`)
 	resp.Body.Close()
@@ -63,7 +63,7 @@ func TestSettingsCarriesTheBindModeWithoutDisturbingTheHost(t *testing.T) {
 		t.Errorf("Host = %q — choosing the mode changed a field the operator did not touch, so switching it off would not put their bind back", got)
 	}
 
-	resp = postJSON(t, srv, "/api/settings", `{"host":"192.0.2.5","port":11535,"api_key":"a-key","decode_concurrency":4,"idle_timeout_sec":30}`)
+	resp = postJSON(t, srv, "/api/settings", `{"host":"192.0.2.5","port":11535,"api_key":"a-key","decode_concurrency":1,"idle_timeout_sec":30}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("an unrelated save = %d, want 200", resp.StatusCode)
@@ -89,7 +89,7 @@ func TestABindModeSaveSaysARestartIsNeeded(t *testing.T) {
 	cfg := config.Default()
 	srv, _ := newTestControlApp(t, cfg)
 
-	resp := postJSON(t, srv, "/api/settings", `{"host":"0.0.0.0","bind_mode":"private-network","port":11535,"api_key":"a-key","decode_concurrency":4,"idle_timeout_sec":0}`)
+	resp := postJSON(t, srv, "/api/settings", `{"host":"0.0.0.0","bind_mode":"private-network","port":11535,"api_key":"a-key","decode_concurrency":1,"idle_timeout_sec":0}`)
 	defer resp.Body.Close()
 	var body struct {
 		Restart bool `json:"restart"`

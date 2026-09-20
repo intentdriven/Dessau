@@ -132,7 +132,7 @@ func TestLoweringTheBudgetLeavesTheModelsAndReportsOverBudget(t *testing.T) {
 	}
 	charge := 2 * capability.LoadCost(4*gb)
 
-	body := fmt.Sprintf(`{"host":"127.0.0.1","port":11535,"api_key":"","decode_concurrency":4,`+
+	body := fmt.Sprintf(`{"host":"127.0.0.1","port":11535,"api_key":"","decode_concurrency":1,`+
 		`"idle_timeout_sec":0,"max_resident_bytes":%d}`, charge-gb)
 	resp := postJSON(t, srv, "/api/settings", body)
 	defer resp.Body.Close()
@@ -160,7 +160,7 @@ func TestLoweringTheBudgetLeavesTheModelsAndReportsOverBudget(t *testing.T) {
 func TestSavingTheMemoryBudgetNeedsNoRestart(t *testing.T) {
 	a, srv := newBudgetControl(t, config.Default(), 128*gb, nil)
 
-	body := `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,` +
+	body := `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,` +
 		`"idle_timeout_sec":0,"max_resident_bytes":103079215104}` // 96 GB
 	resp := postJSON(t, srv, "/api/settings", body)
 	defer resp.Body.Close()
@@ -190,7 +190,7 @@ func TestSavingTheMemoryBudgetNeedsNoRestart(t *testing.T) {
 func TestSettingsRefusesABudgetLargerThanThisMac(t *testing.T) {
 	_, srv := newBudgetControl(t, config.Default(), 16*gb, nil)
 
-	body := `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,` +
+	body := `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,` +
 		`"idle_timeout_sec":0,"max_resident_bytes":549755813888}` // 512 GB
 	resp := postJSON(t, srv, "/api/settings", body)
 	defer resp.Body.Close()
@@ -213,7 +213,7 @@ func TestSettingsRefusesABudgetLargerThanThisMac(t *testing.T) {
 func TestAHighBudgetIsSavedWithAWarning(t *testing.T) {
 	_, srv := newBudgetControl(t, config.Default(), 100*gb, nil)
 
-	body := `{"host":"127.0.0.1","port":11535,"api_key":"","decode_concurrency":4,` +
+	body := `{"host":"127.0.0.1","port":11535,"api_key":"","decode_concurrency":1,` +
 		`"idle_timeout_sec":0,"max_resident_bytes":102005473280}` // 95 GB
 	resp := postJSON(t, srv, "/api/settings", body)
 	defer resp.Body.Close()
@@ -298,7 +298,7 @@ func TestSearchFollowsTheConfiguredBudget(t *testing.T) {
 		t.Errorf("the model is hidden for %q, want the memory budget", reason)
 	}
 
-	body := `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,` +
+	body := `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,` +
 		`"idle_timeout_sec":0,"max_resident_bytes":1073741824}` // 1 GB
 	resp := postJSON(t, srv, "/api/settings", body)
 	resp.Body.Close()

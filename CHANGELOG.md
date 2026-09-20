@@ -11,6 +11,18 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **One batched request by default.** `impact: breaking`. The default decode
+  concurrency is 1, so that a model with no served context of its own is
+  served at the largest window the memory budget allows: each batched request
+  holds its own attention cache, and the default window is what the budget has
+  room for per request — on a 128 GB Mac, over 100,000 tokens for the
+  long-context models at one request and a quarter of that at four. A
+  `config.json` that says 4 keeps 4: a change of default never rewrites a
+  saved value. Raise **Settings → Batched requests** on a Mac that serves
+  several clients at once; it reaches the model servers at the next start.
+
 ### Fixed
 
 - **A fresh install serves the models it downloaded.** `impact: fix`. A model

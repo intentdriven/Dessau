@@ -20,6 +20,15 @@ func captureModel(id string) registry.Model {
 	}
 }
 
+// captureConfig is the shipped defaults at the capture's concurrency of four:
+// the tests below are about the derivation, and they state the figure it
+// divides by rather than inherit the default.
+func captureConfig() config.Config {
+	cfg := config.Default()
+	cfg.DecodeConcurrency = 4
+	return cfg
+}
+
 func putModel(t *testing.T, a *App, m registry.Model) registry.Model {
 	t.Helper()
 	if err := a.Registry.Put(m); err != nil {
@@ -37,7 +46,7 @@ func putModel(t *testing.T, a *App, m registry.Model) registry.Model {
 // weights, the charge per token and the concurrency in force — and its charge
 // at that window fits. A fresh install serves what it downloaded.
 func TestTheDefaultServedWindowIsTheLargestThatFitsTheBudget(t *testing.T) {
-	a := newBudgetApp(t, 128*gb, config.Default())
+	a := newBudgetApp(t, 128*gb, captureConfig())
 	m := putModel(t, a, captureModel("org/long"))
 	budget := a.Pool.MemoryBudget()
 	sequences := int64(a.Pool.DecodeConcurrency())
@@ -76,7 +85,7 @@ func TestTheDefaultServedWindowIsTheLargestThatFitsTheBudget(t *testing.T) {
 // A model that fits at its declared window is served at it: the derivation
 // is capped at what the model declares, never above.
 func TestTheDefaultServedWindowIsCappedAtTheDeclaredWindow(t *testing.T) {
-	a := newBudgetApp(t, 128*gb, config.Default())
+	a := newBudgetApp(t, 128*gb, captureConfig())
 	m := captureModel("org/fits")
 	m.KVChargePerToken = 64
 	m = putModel(t, a, m)
@@ -90,7 +99,7 @@ func TestTheDefaultServedWindowIsCappedAtTheDeclaredWindow(t *testing.T) {
 // served at the floor and refused by the pool, whose refusal names the knobs;
 // it is never handed a window too small to be useful.
 func TestTheDefaultServedWindowHasAFloor(t *testing.T) {
-	a := newBudgetApp(t, 128*gb, config.Default())
+	a := newBudgetApp(t, 128*gb, captureConfig())
 	m := captureModel("org/huge")
 	m.KVChargePerToken = 10 << 20 // 10 MiB a token: 4,096 tokens at 4 sequences is 160 GiB
 	m = putModel(t, a, m)
@@ -114,7 +123,7 @@ func TestTheDefaultServedWindowHasAFloor(t *testing.T) {
 // An explicit setting is what it always was: honoured as typed, capped at the
 // declared window, and reported as the operator's rather than the default.
 func TestAnExplicitServedContextIsHonoredAsBefore(t *testing.T) {
-	cfg := config.Default()
+	cfg := captureConfig()
 	cfg.Models = map[string]config.ModelSettings{
 		"org/set":  {ServedContext: 32768},
 		"org/over": {ServedContext: 300000},
@@ -146,7 +155,7 @@ func TestAnExplicitServedContextIsHonoredAsBefore(t *testing.T) {
 // A model whose configuration gives no cache charge, or declares no window,
 // keeps the behaviour it had: the declared window, and the flat charge.
 func TestAModelWithNoCacheChargeKeepsItsDeclaredWindow(t *testing.T) {
-	a := newBudgetApp(t, 128*gb, config.Default())
+	a := newBudgetApp(t, 128*gb, captureConfig())
 	nokv := captureModel("org/nokv")
 	nokv.KVChargePerToken = 0
 	nokv = putModel(t, a, nokv)
@@ -167,7 +176,7 @@ func TestAModelWithNoCacheChargeKeepsItsDeclaredWindow(t *testing.T) {
 // The derivation follows the budget: a raise widens the default window, and
 // the pool is charged again from the new figure at the save.
 func TestTheDefaultServedWindowFollowsTheBudget(t *testing.T) {
-	a := newBudgetApp(t, 128*gb, config.Default())
+	a := newBudgetApp(t, 128*gb, captureConfig())
 	m := putModel(t, a, captureModel("org/long"))
 	before, _ := a.ServedWindow(m)
 
@@ -190,7 +199,7 @@ func TestTheDefaultServedWindowFollowsTheBudget(t *testing.T) {
 // batched requests, a smaller quantization — not the budget alone, which on
 // the Mac from the capture could not be raised far enough.
 func TestTheTooSmallWarningNamesTheKnobs(t *testing.T) {
-	a := newBudgetApp(t, 128*gb, config.Default())
+	a := newBudgetApp(t, 128*gb, captureConfig())
 	putModel(t, a, captureModel("org/long"))
 	if w := a.MemoryBudgetWarning(); w != "" {
 		t.Errorf("MemoryBudgetWarning() = %q for a model that fits at its default window, want none", w)
@@ -204,7 +213,7 @@ func TestTheTooSmallWarningNamesTheKnobs(t *testing.T) {
 	if w := a.MemoryBudgetWarning(); w != "" {
 		t.Errorf("MemoryBudgetWarning() = %q while a model on this Mac fits, want none", w)
 	}
-	alone := newBudgetApp(t, 128*gb, config.Default())
+	alone := newBudgetApp(t, 128*gb, captureConfig())
 	putModel(t, alone, huge)
 	w := alone.MemoryBudgetWarning()
 	if w == "" {

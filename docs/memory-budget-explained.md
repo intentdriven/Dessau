@@ -78,12 +78,14 @@ long-context model declares a window of that order; served at what fits, it is
 a model this Mac can hold beside another rather than one it cannot hold at all.
 A figure of your own in the field is honoured as typed, up to the declared
 window: type one to serve a model longer than the default and pay the memory
-for it, or shorter to make room beside it. Lowering **Batched requests (decode
-concurrency)** widens the default window in proportion: each sequence that may
-run at once holds its own cache. That one is not immediate — the model servers
-take the concurrency when Dessau starts, so a change to it is charged from the
-next start, and every figure Dessau shows in the meantime is worked out from
-the concurrency in force.
+for it, or shorter to make room beside it. **Batched requests (decode
+concurrency)** is the other term: each sequence that may run at once holds its
+own cache, so the default window is what the budget has room for per sequence.
+It is one by default, which gives each model its widest window; raising it to
+serve several clients at once narrows the default window in proportion. That
+one is not immediate — the model servers take the concurrency when Dessau
+starts, so a change to it is charged from the next start, and every figure
+Dessau shows in the meantime is worked out from the concurrency in force.
 
 A model whose charge does not fit the budget even at 4,096 tokens is refused
 rather than loaded on a smaller figure. The refusal names the window and the

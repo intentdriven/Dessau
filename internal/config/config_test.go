@@ -1125,3 +1125,26 @@ func TestLoadTrimsAnOversizePreloadList(t *testing.T) {
 		t.Errorf("the loaded config does not validate: %v", err)
 	}
 }
+
+// The default decode concurrency is one batched request, so that a model with
+// no served context of its own is served at the largest window the budget
+// allows: the derived window shrinks in proportion to the sequences charged,
+// and at four a 128 GB Mac serves the long-context models it holds at a
+// quarter of what it serves them at one. A saved figure is a figure of the
+// operator's and is never rewritten by a change of default.
+func TestTheDefaultDecodeConcurrencyIsOneAndASavedFigureIsKept(t *testing.T) {
+	if got := Default().DecodeConcurrency; got != 1 {
+		t.Errorf("Default().DecodeConcurrency = %d, want 1", got)
+	}
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"decode_concurrency": 4}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DecodeConcurrency != 4 {
+		t.Errorf("DecodeConcurrency = %d after loading a file that says 4, want 4 kept", cfg.DecodeConcurrency)
+	}
+}
