@@ -73,3 +73,36 @@ func TestTheFakeCanHangAndDelayOnTheNonStreamingPath(t *testing.T) {
 		t.Errorf("a prompt above HangAbove was answered with %d", resp.StatusCode)
 	}
 }
+
+// The fake can answer a non-streaming request the way a model that calls
+// tools does — a tool_calls array on the message and a finish_reason of
+// tool_calls — and the way the pinned runtime answers for some families: an
+// empty message. Both are what a probe of the capability reads.
+func TestTheFakeCanAnswerWithAToolCallOrAnEmptyMessage(t *testing.T) {
+	calls := Start(Options{ModelArg: "/models/m", ToolCall: true})
+	t.Cleanup(calls.Close)
+	_, out := post(t, context.Background(), calls.URL(), chat("what time is it in Paris?"))
+	choice, _ := out["choices"].([]any)[0].(map[string]any)
+	msg, _ := choice["message"].(map[string]any)
+	if choice["finish_reason"] != "tool_calls" {
+		t.Errorf("finish_reason = %v, want tool_calls", choice["finish_reason"])
+	}
+	if tc, _ := msg["tool_calls"].([]any); len(tc) != 1 {
+		t.Errorf("tool_calls = %v, want one call", msg["tool_calls"])
+	}
+
+	empty := Start(Options{ModelArg: "/models/m", EmptyMessage: true})
+	t.Cleanup(empty.Close)
+	_, out = post(t, context.Background(), empty.URL(), chat("what time is it in Paris?"))
+	choice, _ = out["choices"].([]any)[0].(map[string]any)
+	msg, _ = choice["message"].(map[string]any)
+	if msg["content"] != "" {
+		t.Errorf("content = %q, want an empty message", msg["content"])
+	}
+	if _, ok := msg["tool_calls"]; ok {
+		t.Errorf("an empty message carries tool_calls: %v", msg)
+	}
+	if choice["finish_reason"] != "stop" {
+		t.Errorf("finish_reason = %v, want stop", choice["finish_reason"])
+	}
+}

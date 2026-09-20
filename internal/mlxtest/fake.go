@@ -51,6 +51,9 @@ type Server struct {
 	RefuseAbove          int
 	HangAbove            int
 	ResponseDelay        time.Duration
+	// ToolCall and EmptyMessage shape the non-streaming answer; see Options.
+	ToolCall     bool
+	EmptyMessage bool
 
 	httpSrv   *httptest.Server
 	readyAt   time.Time
@@ -107,6 +110,16 @@ type Options struct {
 	// prefill on that path the way FirstTokenDelay does for the streaming
 	// one.
 	ResponseDelay time.Duration
+	// ToolCall makes the non-streaming answer the one a model that calls
+	// tools gives: a tool_calls array on the message, no content, and a
+	// finish_reason of "tool_calls" — the shape mlx-lm 0.31.3 returns when
+	// the chat template renders the request's tools and the model takes one.
+	// The streaming path is unchanged; nothing here probes it.
+	ToolCall bool
+	// EmptyMessage makes the non-streaming answer a message with empty
+	// content and no tool call, which is what the pinned runtime returns for
+	// some families asked with tools declared.
+	EmptyMessage bool
 }
 
 // Start launches a fake server. It is closed automatically via t.Cleanup by the
@@ -122,6 +135,8 @@ func Start(opts Options) *Server {
 		RefuseAbove:          opts.RefuseAbove,
 		HangAbove:            opts.HangAbove,
 		ResponseDelay:        opts.ResponseDelay,
+		ToolCall:             opts.ToolCall,
+		EmptyMessage:         opts.EmptyMessage,
 		readyAt:              time.Now().Add(opts.LoadDelay),
 	}
 	if s.Reply == "" {
@@ -265,17 +280,31 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	choice := map[string]any{
+		"index":         0,
+		"finish_reason": "stop",
+		"message":       map[string]any{"role": "assistant", "content": s.Reply},
+	}
+	switch {
+	case s.ToolCall:
+		choice["finish_reason"] = "tool_calls"
+		choice["message"] = map[string]any{
+			"role": "assistant", "content": nil,
+			"tool_calls": []any{map[string]any{
+				"id": "call_fake", "type": "function",
+				"function": map[string]any{"name": "get_time", "arguments": `{"city": "Paris"}`},
+			}},
+		}
+	case s.EmptyMessage:
+		choice["message"] = map[string]any{"role": "assistant", "content": ""}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"id":     "chatcmpl-fake",
-		"object": "chat.completion",
-		"model":  s.ModelArg,
-		"choices": []any{map[string]any{
-			"index":         0,
-			"finish_reason": "stop",
-			"message":       map[string]any{"role": "assistant", "content": s.Reply},
-		}},
-		"usage": map[string]any{"prompt_tokens": promptTokens, "completion_tokens": 4, "total_tokens": promptTokens + 4},
+		"id":      "chatcmpl-fake",
+		"object":  "chat.completion",
+		"model":   s.ModelArg,
+		"choices": []any{choice},
+		"usage":   map[string]any{"prompt_tokens": promptTokens, "completion_tokens": 4, "total_tokens": promptTokens + 4},
 	})
 }
 
