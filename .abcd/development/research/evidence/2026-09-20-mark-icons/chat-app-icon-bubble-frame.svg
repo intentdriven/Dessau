@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The chat client's icon: the default mark inside a bubble drawn as a frame, kept small (maintainer's decision 2026-09-20, "smaller bubble frame"). -->
+  <rect width="1024" height="1024" fill="#17181d"/>
+  <path d="M172 170 h680 a90 90 0 0 1 90 90 v470 a90 90 0 0 1 -90 90 H520 l-160 140 v-140 H172 a90 90 0 0 1 -90 -90 V260 a90 90 0 0 1 90 -90 Z" fill="none" stroke="#ffffff" stroke-width="28" stroke-linejoin="round"/>
+  <g transform="translate(512,500) rotate(-8) scale(0.66)">
+    <polygon points="0,-300 260,-150 0,0 -260,-150" fill="#3d3e46"/>
+    <polygon points="-260,-150 0,0 0,300 -260,150" fill="#26272d"/>
+    <polygon points="0,0 260,-150 260,150 0,300" fill="#2f3037"/>
+    <g transform="translate(0,-150) matrix(0.866,0.5,-0.866,0.5,0,0)"><polygon points="0,-105 95,60 -95,60" fill="#F5C518"/></g>
+    <g transform="translate(-130,75) matrix(0.866,0.5,0,1,0,0)"><rect x="-78" y="-78" width="156" height="156" fill="#E63329"/></g>
+    <g transform="translate(130,75) matrix(0.866,-0.5,0,1,0,0)"><circle cx="0" cy="0" r="86" fill="#2B5DAA"/></g>
+  </g>
+</svg>
