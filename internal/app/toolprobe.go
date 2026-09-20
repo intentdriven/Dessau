@@ -6,6 +6,7 @@ import (
 	"github.com/intentdriven/Dessau/internal/config"
 	"github.com/intentdriven/Dessau/internal/registry"
 	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/selftest"
 	"github.com/intentdriven/Dessau/internal/toolprobe"
 )
 
@@ -34,24 +35,22 @@ func (s toolProbeSources) Resident(repoID string) (bool, int) {
 	return false, 0
 }
 
-// Acquire is the pool's ordinary Acquire under the probe's identity and a
-// soft hold: a client whose load needs the memory takes the model, and the
-// pool cancels the probe's request to get it — the same acquisition the
-// self-test takes, so nothing is evicted underneath the probe and the probe
-// evicts nothing. The probe asks Resident first; a model that is not loaded
-// is never acquired, since the pool's Acquire would load it.
+// Acquire is the pool's ordinary Acquire with two tags on the context, as
+// selfTestServer.Acquire has: the probe's identity, and the run's own way
+// of being told to let go, which the probe attached to the context that
+// also governs its request (selftest.WithYield). That is what makes the
+// hold a soft one — a client whose load needs the memory takes the model,
+// the pool calls the yield, and the request in flight is cancelled with it
+// — so nothing is evicted underneath the probe and the probe evicts
+// nothing. The probe asks Resident first; a model that is not loaded is
+// never acquired, since the pool's Acquire would load it.
 func (s toolProbeSources) Acquire(ctx context.Context, repoID string) (toolprobe.Upstream, func(), error) {
-	ctx, yield := context.WithCancel(ctx)
-	poolCtx := runtime.WithSoftHold(runtime.WithSource(ctx, toolProbeSource), yield)
+	poolCtx := runtime.WithSoftHold(runtime.WithSource(ctx, toolProbeSource), selftest.YieldFrom(ctx))
 	up, release, err := s.a.Pool.Acquire(poolCtx, repoID)
 	if err != nil {
-		yield()
 		return toolprobe.Upstream{}, nil, err
 	}
-	return toolprobe.Upstream{BaseURL: up.BaseURL, ModelArg: up.ModelArg}, func() {
-		release()
-		yield()
-	}, nil
+	return toolprobe.Upstream{BaseURL: up.BaseURL, ModelArg: up.ModelArg}, release, nil
 }
 
 func (s toolProbeSources) Runtime() string { return runtime.MLXLMVersion() }

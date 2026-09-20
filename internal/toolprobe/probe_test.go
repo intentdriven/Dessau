@@ -10,6 +10,7 @@ import (
 
 	"github.com/intentdriven/Dessau/internal/mlxtest"
 	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/selftest"
 )
 
 // fakeSources is the app as the probe sees it: one model server, resident or
@@ -28,6 +29,9 @@ type fakeSources struct {
 	acquired int
 	saved    map[string]*registry.ToolCalling
 	saveErr  error
+	// lastYield is the yield the last acquisition carried, as the app's
+	// adapter would hand it to the pool.
+	lastYield func()
 }
 
 func newSources(srv *mlxtest.Server) *fakeSources {
@@ -48,6 +52,7 @@ func (s *fakeSources) Acquire(ctx context.Context, repoID string) (Upstream, fun
 	}
 	s.acquired++
 	s.held++
+	s.lastYield = selftest.YieldFrom(ctx)
 	arg := s.srv.ModelArg
 	if s.modelArg != "" {
 		arg = s.modelArg
@@ -75,6 +80,12 @@ func (s *fakeSources) verdict(repoID string) *registry.ToolCalling {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.saved[repoID]
+}
+
+func (s *fakeSources) yield() func() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastYield
 }
 
 func (s *fakeSources) counts() (acquired, held int) {
@@ -335,5 +346,45 @@ func TestCloseStopsTheQueue(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if srv.Completions() != 0 {
 		t.Error("a probe ran after Close")
+	}
+}
+
+// The hold is the self-test's: when the pool takes it back for a client's
+// load, the yield it calls aborts the request in flight, the model is
+// released promptly, and nothing is recorded.
+func TestThePoolTakingTheHoldBackAbortsTheRequest(t *testing.T) {
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: "/models/org/m", ToolCall: true, ResponseDelay: 5 * time.Second})
+	t.Cleanup(srv.Close)
+	src := newSources(srv)
+	p := New(Options{
+		Sources: src, Log: slog.New(slog.DiscardHandler),
+		RequestTimeout: 30 * time.Second, Poll: 5 * time.Millisecond,
+	})
+	t.Cleanup(p.Close)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := p.Run(context.Background(), "org/m")
+		done <- err
+	}()
+	waitFor(t, "the acquisition to carry a yield", func() bool { return src.yield() != nil })
+	asked := time.Now()
+	src.yield()()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("a yielded run recorded a verdict")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the request outlived the pool's yield; the hold was not let go")
+	}
+	if took := time.Since(asked); took > 500*time.Millisecond {
+		t.Errorf("the run took %v to let go after the pool asked", took)
+	}
+	if src.verdict("org/m") != nil {
+		t.Errorf("a yielded run recorded %+v", src.verdict("org/m"))
+	}
+	if _, held := src.counts(); held != 0 {
+		t.Error("the model is still held after the pool asked for it back")
 	}
 }

@@ -42,6 +42,7 @@ import (
 
 	"github.com/intentdriven/Dessau/internal/config"
 	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/selftest"
 )
 
 // Name is the probe's name, as the log carries it.
@@ -86,9 +87,13 @@ type Sources interface {
 	// holding is (false, 0).
 	Resident(repoID string) (loaded bool, inFlight int)
 	// Acquire holds the model until the release function is called, the way
-	// the self-test's own acquisition does: a soft hold a client's load may
-	// take back. The probe asks Resident first and never acquires a model
-	// that is not loaded, since the pool's acquisition would load it.
+	// the self-test's own acquisition does: ctx carries the run's way of
+	// being told to let go (selftest.YieldFrom), which the implementation
+	// hands to the pool as a soft hold, so a client whose load needs the
+	// memory takes the model and the probe's request, made under the same
+	// context, is cancelled. The probe asks Resident first and never
+	// acquires a model that is not loaded, since the pool's acquisition
+	// would load it.
 	Acquire(ctx context.Context, repoID string) (Upstream, func(), error)
 	// Runtime is the runtime version in force, stamped on the verdict.
 	Runtime() string
@@ -186,9 +191,14 @@ func (p *Probe) Queued() []string {
 }
 
 // Close stops the queue where it stands and waits for the goroutine. A probe
-// in flight is cancelled and records nothing.
+// in flight is cancelled and records nothing. The cancel is taken under the
+// queue's lock so that an Enqueue — a late report from the pool's observer,
+// say — either ran whole before it, with its goroutine counted before the
+// wait, or sees the probe closed and starts nothing.
 func (p *Probe) Close() {
+	p.mu.Lock()
 	p.cancel()
+	p.mu.Unlock()
 	p.wg.Wait()
 }
 
@@ -263,12 +273,18 @@ func (p *Probe) Run(ctx context.Context, model string) (*registry.ToolCalling, e
 	if loaded, _ := p.opts.Sources.Resident(model); !loaded {
 		return nil, ErrGone
 	}
-	up, release, err := p.opts.Sources.Acquire(ctx, model)
+	// One context for the hold and the request, as the self-test's run has:
+	// the yield the pool is handed cancels it, so a client's load that takes
+	// the model back aborts the request in flight and the release follows
+	// at once rather than at the request timeout.
+	runCtx, preempt := context.WithCancel(ctx)
+	defer preempt()
+	up, release, err := p.opts.Sources.Acquire(selftest.WithYield(runCtx, preempt), model)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	can, err := p.request(ctx, up)
+	can, err := p.request(runCtx, up)
 	if err != nil {
 		return nil, err
 	}
