@@ -801,6 +801,15 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 			e = held
 			break
 		}
+		// A resident-only caller holds what the pool has and never becomes a
+		// load: decided here, under p.mu, so a model that went between the
+		// caller's own residency check and this call is refused rather than
+		// loaded back — and nothing is evicted to make room for it.
+		if residentOnlyFrom(ctx) {
+			p.leaveQueueLocked(w)
+			p.mu.Unlock()
+			return nil, nil, fmt.Errorf("%s: %w", repoID, ErrNotResident)
+		}
 
 		// A caller that will not wait honours neither the grace nor the queue.
 		// There is no point protecting a model from a load that is going to
@@ -2147,6 +2156,10 @@ func (p *Pool) Residency() Residency {
 // ErrNotLoaded is returned by Unload when the model is not resident.
 var ErrNotLoaded = errors.New("model is not loaded")
 
+// ErrNotResident is returned by Acquire under WithResidentOnly when the pool
+// is not holding the model: the caller asked for a hold, not a load.
+var ErrNotResident = errors.New("model is not resident")
+
 // ErrBusy marks every refusal that is about the machine being occupied rather
 // than about the caller's request: Unload of a model that is serving one,
 // Acquire past a model's queue ceiling, and Acquire when nothing in memory can
@@ -2508,6 +2521,30 @@ func WithSoftHold(ctx context.Context, yield func()) context.Context {
 func softHoldFrom(ctx context.Context) func() {
 	y, _ := ctx.Value(softHoldKey{}).(func())
 	return y
+}
+
+// residentOnlyKey types the context value marking an acquisition that must
+// not load.
+type residentOnlyKey struct{}
+
+// WithResidentOnly marks every acquisition made under ctx as a hold on a
+// model the pool already has: Acquire returns ErrNotResident, and starts
+// nothing, when the model is not resident.
+//
+// It is the tool-call probe's promise made enforceable: that it never loads
+// a model and never evicts one (internal/toolprobe). A caller's own check
+// of Resident before Acquire cannot keep it — the model can go in the gap —
+// so the refusal is made where the pool looks its entries up, under its own
+// lock. It is carried in the context, like the two tags beside it, because
+// a LAN client cannot reach one.
+func WithResidentOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, residentOnlyKey{}, true)
+}
+
+// residentOnlyFrom reports whether ctx carries the mark.
+func residentOnlyFrom(ctx context.Context) bool {
+	v, _ := ctx.Value(residentOnlyKey{}).(bool)
+	return v
 }
 
 // sourceFrom returns the caller identity tagged onto ctx, or "" for a caller

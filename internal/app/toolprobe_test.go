@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/intentdriven/Dessau/internal/mlxtest"
 	"github.com/intentdriven/Dessau/internal/registry"
 	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/toolprobe"
 )
 
 // toolLauncher stands up a fake model server that answers with a tool call,
@@ -255,4 +257,19 @@ func TestAClientsLoadTakesTheModelFromUnderTheProbe(t *testing.T) {
 		}
 		return true
 	})
+}
+
+// The probe's acquisition holds a resident model and never becomes a load:
+// a model that went between the probe's residency check and its Acquire is
+// reported gone, and no model server is launched for it.
+func TestTheProbesAcquireNeverLoadsAModelThatHasGone(t *testing.T) {
+	a, l := newToolProbeApp(t)
+	src := toolProbeSources{a}
+	_, _, err := src.Acquire(context.Background(), "org/a")
+	if !errors.Is(err, toolprobe.ErrGone) {
+		t.Fatalf("Acquire of a model the pool is not holding = %v, want ErrGone", err)
+	}
+	if l.server("org/a") != nil {
+		t.Error("the probe's acquisition launched a model server")
+	}
 }

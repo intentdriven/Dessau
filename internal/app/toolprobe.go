@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 
 	"github.com/intentdriven/Dessau/internal/config"
 	"github.com/intentdriven/Dessau/internal/registry"
@@ -42,11 +43,18 @@ func (s toolProbeSources) Resident(repoID string) (bool, int) {
 // hold a soft one — a client whose load needs the memory takes the model,
 // the pool calls the yield, and the request in flight is cancelled with it
 // — so nothing is evicted underneath the probe and the probe evicts
-// nothing. The probe asks Resident first; a model that is not loaded is
-// never acquired, since the pool's Acquire would load it.
+// nothing. The third tag, WithResidentOnly, is what keeps the first half
+// of that promise: the probe asks Resident before it comes here, but the
+// model can go in the gap, and an ordinary Acquire would then load it back
+// — evicting, if it had to, a model a client wanted. The pool refuses
+// instead, under its own lock, and the probe reads the refusal as the
+// model having gone.
 func (s toolProbeSources) Acquire(ctx context.Context, repoID string) (toolprobe.Upstream, func(), error) {
-	poolCtx := runtime.WithSoftHold(runtime.WithSource(ctx, toolProbeSource), selftest.YieldFrom(ctx))
+	poolCtx := runtime.WithResidentOnly(runtime.WithSoftHold(runtime.WithSource(ctx, toolProbeSource), selftest.YieldFrom(ctx)))
 	up, release, err := s.a.Pool.Acquire(poolCtx, repoID)
+	if errors.Is(err, runtime.ErrNotResident) {
+		return toolprobe.Upstream{}, nil, toolprobe.ErrGone
+	}
 	if err != nil {
 		return toolprobe.Upstream{}, nil, err
 	}

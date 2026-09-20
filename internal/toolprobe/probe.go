@@ -91,9 +91,9 @@ type Sources interface {
 	// being told to let go (selftest.YieldFrom), which the implementation
 	// hands to the pool as a soft hold, so a client whose load needs the
 	// memory takes the model and the probe's request, made under the same
-	// context, is cancelled. The probe asks Resident first and never
-	// acquires a model that is not loaded, since the pool's acquisition
-	// would load it.
+	// context, is cancelled. It never loads: a model the pool is not
+	// holding is ErrGone, decided by the pool itself, because the probe's
+	// own Resident check cannot cover the gap before the acquisition.
 	Acquire(ctx context.Context, repoID string) (Upstream, func(), error)
 	// Runtime is the runtime version in force, stamped on the verdict.
 	Runtime() string
