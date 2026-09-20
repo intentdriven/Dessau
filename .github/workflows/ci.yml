@@ -52,8 +52,11 @@ jobs:
     # below it, so a `latest` that lags the floor would drop the installer guard
     # out of CI silently — and it would go on passing while doing nothing. That
     # guard now fails rather than skips when it finds itself under-provisioned
-    # in Actions, and this pin is what keeps it provisioned.
-    runs-on: macos-26
+    # in Actions, and this pin is what keeps it provisioned. The floor is macOS
+    # 27 and `xcode-27` is the image that carries it (macOS 27.0, as its own run
+    # log reports); TestEveryMacOSRunnerIsAtOrAboveTheFloor holds the pin to the
+    # bundles' declared minimum.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

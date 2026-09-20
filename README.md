@@ -29,7 +29,7 @@ leaves the models you downloaded.
 
 ## Status
 
-Experimental. Runs and is tested end-to-end on macOS 26 / Apple Silicon.
+Experimental. Runs and is tested end-to-end on macOS 27 / Apple Silicon.
 Cross-machine LAN use works; TLS and notarised distribution are not yet included.
 
 ## Features
@@ -176,18 +176,15 @@ latest, lists every file it carries with its size, and links the checksums to
 verify a download against; the release run renders it from the release itself,
 so no one edits the page to keep it current.
 
-**Requires macOS 26** for the server, which declares that minimum and **needs
-Apple Silicon** (MLX runs on Metal); the installer checks both, so an
-unsupported Mac is turned away before anything is installed. The native chat
-client (`GropiusChat.app`) **Requires macOS 27** and runs on Apple Silicon,
-which is every Mac that runs macOS 27. It chats with the Mac's own model out
-of the box and offers a Gropius server's models when it finds one on the
-network. A Mac on macOS 26 gets the last client built for it, from release
-v0.6.0, which stays published beside the current release for that purpose and
-is not updated; the same command picks the right one. The installer needs Apple
-Silicon for either app: both bundles are put in place by a Gropius binary,
-because a shell cannot replace an application directory safely, so installing
-the client downloads the server's archive too for the binary inside it.
+**Requires macOS 27** and **Apple Silicon**, for the server and the chat
+client alike. Both bundles declare that minimum, and the installer checks the
+version and the architecture before it downloads anything, so a Mac that
+cannot run Gropius is turned away rather than half-installed. There is no
+build for an older macOS and none for an Intel Mac. The native chat client
+(`GropiusChat.app`) chats with the Mac's own model out of the box and offers a
+Gropius server's models when it finds one on the network. Installing it
+downloads the server's archive too: both bundles are put in place by a Gropius
+binary, because a shell cannot replace an application directory safely.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash -s -- client

@@ -766,7 +766,9 @@ func installerFixture(t *testing.T) *fixture {
 		// Loud in CI. This guard is the only thing that executes install.sh,
 		// and a runner image below the bundle's floor turns it into a silent
 		// no-op — the failure mode the release gate exists to prevent, one
-		// level up. ci.yml pins macos-26 for exactly this reason.
+		// level up. ci.yml pins the image that carries the floor for exactly
+		// this reason, and TestEveryMacOSRunnerIsAtOrAboveTheFloor holds it
+		// there.
 		//
 		// COUPLING, recorded rather than removed. Keying the fatality on
 		// GITHUB_ACTIONS ties the Go suite to the runner image: raise

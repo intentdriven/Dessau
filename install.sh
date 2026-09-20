@@ -5,7 +5,7 @@
 #   Server (menu-bar, Apple Silicon only):
 #     curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash
 #
-#   Client (GropiusChat, Apple Silicon, macOS 27; a macOS 26 Mac gets the kept 26 build):
+#   Client (GropiusChat, Apple Silicon, macOS 27 — the same floor as the server):
 #     curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash -s -- client
 #
 # This is a BOOTSTRAP, and only a bootstrap: it does what has to happen before a
@@ -92,20 +92,14 @@ die() {
 
 [ "$(/usr/bin/uname -s)" = "Darwin" ] || die "Gropius is macOS only."
 
-# The two bundles declare different minimums, so Launch Services refuses each
-# on anything older. Refuse here instead — before the download and before
-# anything is written — so an unsupported Mac is turned away rather than
-# half-installed. Each major lives in this one place; build/Info.plist is the
-# value the server's must match and client/Info.plist the client's, and a test
-# in the server's suite holds all of them together.
-MIN_MACOS_MAJOR=26
-MIN_MACOS_MAJOR_CLIENT=27
-# A Mac on the server's floor but below the client's is not turned away from
-# the client: it gets the last client built for macOS 26, from the one release
-# that stays published beside the current one for exactly this purpose (the
-# written exception to the one-release rule, DECISIONS.md 2026-09-15). The tag
-# is named here and in README.md, and a test holds the two together.
-KEPT_CLIENT_TAG=v0.6.0
+# Both bundles declare the same minimum, so Launch Services refuses either on
+# anything older. Refuse here instead — before the download and before anything
+# is written — so an unsupported Mac is turned away rather than half-installed.
+# The major lives in this one place; build/Info.plist and client/Info.plist are
+# the values it must match, and a test in the server's suite holds the three
+# together. There is one floor for both apps and nothing below it: a Mac under
+# it is refused, not served an older build (DECISIONS.md 2026-09-20).
+MIN_MACOS_MAJOR=27
 # `|| macos_version=""` is load-bearing: under `set -e` a bare assignment takes
 # the command substitution's status, so a missing sw_vers would abort the script
 # with no message at all instead of reaching the refusal below. An unreadable or
@@ -115,39 +109,23 @@ macos_version="$(/usr/bin/sw_vers -productVersion 2>/dev/null)" || macos_version
 macos_major="${macos_version%%.*}"
 [ "${macos_major:-0}" -ge "$MIN_MACOS_MAJOR" ] ||
 	die "$APP requires macOS $MIN_MACOS_MAJOR (this Mac runs ${macos_version:-an unreadable version})."
-# Which release the assets come from: the latest, or the kept one.
+# Where every asset comes from: the latest release, and only ever that one. The
+# client's bundle and the placer that puts it in place are both fetched from
+# here, so the SHA256SUMS.txt fetched once below is the checksums file for
+# everything this run verifies — one origin per run, and an integrity control
+# that cannot differ from itself because it is not written twice.
 RELEASE_PATH="latest/download"
-# Where the client's placer comes from, and it is always the CURRENT release.
-# The placer is a tool this script RUNS rather than something it installs, and
-# only the current release carries the verb that places a bundle; the kept macOS
-# 26 build predates it. Both archives are still verified against the checksums
-# published with the release each one came from.
-PLACER_RELEASE_PATH="latest/download"
-if [ "$mode" = "client" ] && [ "${macos_major:-0}" -lt "$MIN_MACOS_MAJOR_CLIENT" ]; then
-	RELEASE_PATH="download/$KEPT_CLIENT_TAG"
-	# Said only when the assets really come from the forge; the release
-	# workflow's gate installs from a local directory and would be misled.
-	if [ -z "${GROPIUS_ASSET_DIR:-}" ]; then
-		echo "This Mac runs macOS ${macos_version}; the current $APP needs macOS $MIN_MACOS_MAJOR_CLIENT." >&2
-		echo "Installing the last $APP built for macOS $MIN_MACOS_MAJOR instead, from release $KEPT_CLIENT_TAG. It is not updated." >&2
-	fi
-fi
 
-# Apple Silicon, for either mode. The server needs it because MLX runs on Metal,
-# and the current client needs it because macOS 27 runs on no Intel Mac. The
-# kept macOS 26 client is itself universal — but the thing that PUTS it in place
-# is not: this script hands the placement to a `gropius` binary, which is an
-# Apple Silicon build, because a shell cannot place a bundle safely. So an Intel
-# Mac is turned away here, before anything is downloaded, with the manual route
+# Apple Silicon, for either mode, and there is no build for anything else: the
+# floor above runs on no Intel Mac, the server needs Metal for MLX, and both
+# bundles are placed by a `gropius` binary that is an Apple Silicon build. So an
+# Intel Mac is turned away here, before anything is downloaded, with the floor
 # named rather than being left half-installed.
 # `uname -m` reports x86_64 in a Rosetta-translated shell (common with x86_64
 # Homebrew), so also ask the kernel whether the hardware is Apple Silicon.
 if [ "$(/usr/bin/uname -m)" != "arm64" ] &&
 	[ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" != "1" ]; then
-	if [ "$mode" = "server" ]; then
-		die "the Gropius server needs Apple Silicon (this Mac is $(/usr/bin/uname -m))."
-	fi
-	die "installing $APP needs Apple Silicon (this Mac is $(/usr/bin/uname -m)): the bundle is put in place by a Gropius binary, which is an Apple Silicon build. Download $ASSET from https://github.com/$REPO/releases, unpack it, and move $APP.app into your Applications folder by hand."
+	die "$APP requires macOS $MIN_MACOS_MAJOR on Apple Silicon (this Mac is $(/usr/bin/uname -m)). macOS $MIN_MACOS_MAJOR runs on no Intel Mac, and there is no build for one."
 fi
 
 tmp="$(/usr/bin/mktemp -d)"
@@ -190,12 +168,12 @@ fi
 # helped a private fork and a transient error. Building from source and `make
 # install` cover both, and neither is a script the README tells people to pipe
 # into bash.
-# The release the assets come from is the third argument, defaulting to the one
-# chosen above: the client's placer comes from a different release to the client
-# bundle when the bundle is the kept macOS 26 build, and the two are fetched by
-# the same function so neither can skip the checks around it.
+# Every asset comes from the one release named in RELEASE_PATH: the bundle and
+# the placer are fetched by the same function, from the same release, and
+# verified against the one checksums file published with it. Neither can skip
+# the checks around the other, and no run verifies two origins.
 fetch() {
-	local name="$1" dest="$2" release="${3:-$RELEASE_PATH}"
+	local name="$1" dest="$2" release="$RELEASE_PATH"
 	if [ -n "$ASSET_DIR" ]; then
 		/bin/cp "$ASSET_DIR/$name" "$dest" ||
 			die "could not read $name from $ASSET_DIR."
@@ -484,15 +462,10 @@ fi
 # half keeps.
 echo "Downloading the placer…"
 placer_zip="$tmp/$PLACER_ASSET"
-fetch "$PLACER_ASSET" "$placer_zip" "$PLACER_RELEASE_PATH"
-# The checksums from the release the PLACER came from, which is the same file
-# already fetched whenever the client bundle came from that release too.
-placer_sums="$tmp/SHA256SUMS.txt"
-if [ "$PLACER_RELEASE_PATH" != "$RELEASE_PATH" ]; then
-	placer_sums="$tmp/SHA256SUMS.placer.txt"
-	fetch "SHA256SUMS.txt" "$placer_sums" "$PLACER_RELEASE_PATH"
-fi
-verify "$PLACER_ASSET" "$placer_sums" "$tmp"
+fetch "$PLACER_ASSET" "$placer_zip"
+# The checksums already fetched: the placer comes from the same release as the
+# bundle, so the file that verified one verifies the other.
+verify "$PLACER_ASSET" "$tmp/SHA256SUMS.txt" "$tmp"
 /usr/bin/ditto -x -k "$placer_zip" "$tmp/placer" || die "could not unpack $PLACER_ASSET."
 # The same rule as the bundle above, and for the same reason: the exec below is
 # four components deep in a directory a downloaded archive laid out.

@@ -6,57 +6,67 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-// build/Info.plist's LSMinimumSystemVersion is the SERVER's one declaration of
-// the macOS floor it supports, and client/Info.plist's is the CLIENT's: the two
-// apps have different floors (the client moved to macOS 27 on 2026-09-17, the
-// server stays on 26), so every other surface that names a minimum is checked
-// against the plist of the app it belongs to. The server's floor holds the
-// installer's server refusal and the requirement sentence in the README and the
-// guide; the client's holds its build script's deployment target, the
-// installer's client refusal, and the client README's sentence. A second copy
-// of either number cannot drift from its plist unnoticed. Prose that names the
-// version some other way is not read here and still needs a human edit when a
-// floor moves. Drift is the failure this guard exists to prevent:
+// build/Info.plist's LSMinimumSystemVersion is the SERVER's declaration of the
+// macOS floor and client/Info.plist's is the CLIENT's, and the product has ONE
+// floor: macOS 27 on Apple Silicon, for both apps (the maintainer's decision,
+// 2026-09-20). So the two plists must declare the same value, and every other
+// surface that names a minimum is checked against it -- the installer's refusal,
+// the client build script's deployment target, and the requirement sentence on
+// each page. A second copy of the number cannot drift from the plists
+// unnoticed. Prose that names the version some other way is not read here and
+// still needs a human edit when the floor moves. Drift is the failure this
+// guard exists to prevent:
 //
 //   - a bundle minimum below the floor lets an unsupported Mac install the app
 //     and discover the problem at runtime, instead of being refused at launch;
 //   - a deployment target above the bundle minimum is worse, because then
 //     Launch Services admits a supported Mac and dyld kills the app at exec;
-//   - a page stating a different number sends the reader to the wrong Mac.
+//   - a page stating a different number sends the reader to the wrong Mac;
+//   - a CI runner below the floor turns the installer gate -- the only thing
+//     that executes install.sh -- into a silent skip.
 //
-// So raising a floor is one edit to that app's Info.plist plus whatever this
-// test then reports as out of step. Keep each value a plain "26.0"-style
-// string: other tests read them from here as the source of truth.
+// So raising the floor is one edit to each Info.plist plus whatever this test
+// then reports as out of step. Keep each value a plain "27.0"-style string:
+// other tests read them from here as the source of truth.
 
 const (
 	minimumSystemVersionKey = "LSMinimumSystemVersion"
-	// installerFloorAssignment names the shell variable install.sh gates the
-	// server on; installerClientFloorAssignment the one it gates the client on.
-	installerFloorAssignment       = "MIN_MACOS_MAJOR"
-	installerClientFloorAssignment = "MIN_MACOS_MAJOR_CLIENT"
-	// installerKeptClientTag names the release install.sh fetches the client
-	// from on a Mac below the client's floor: the one kept 26-floor release.
-	installerKeptClientTag = "KEPT_CLIENT_TAG"
+	// installerFloorAssignment names the one shell variable install.sh gates
+	// both installs on.
+	installerFloorAssignment = "MIN_MACOS_MAJOR"
 )
 
-// TestEverySurfaceDeclaresTheSameMacOSFloor holds every declared minimum to
-// the plist of the app it belongs to.
+// withdrawnInstallerNames are the names the two-floor era needed: a
+// client-specific floor, the tag of the one older release a Mac between the
+// floors was served from, and the separate release the placer came from. One
+// floor needs none of them, and each is listed here so the concept cannot come
+// back by halves -- a name reintroduced without the rest is a second release
+// path with nothing holding its checksums to it.
+var withdrawnInstallerNames = []string{
+	"MIN_MACOS_MAJOR_CLIENT",
+	"KEPT_CLIENT_TAG",
+	"PLACER_RELEASE_PATH",
+}
+
+// TestEverySurfaceDeclaresTheSameMacOSFloor holds every declared minimum to the
+// one floor the two plists agree on.
 func TestEverySurfaceDeclaresTheSameMacOSFloor(t *testing.T) {
 	root := repoRootDir(t)
 
 	serverFloor := plistString(t, filepath.Join(root, "build", "Info.plist"), minimumSystemVersionKey)
-	serverMajor, _, found := strings.Cut(serverFloor, ".")
-	if !found || serverMajor == "" {
-		t.Fatalf("build/Info.plist declares %s %q, which is not a major.minor version", minimumSystemVersionKey, serverFloor)
-	}
 	clientFloor := plistString(t, filepath.Join(root, "client", "Info.plist"), minimumSystemVersionKey)
-	clientMajor, _, found := strings.Cut(clientFloor, ".")
-	if !found || clientMajor == "" {
-		t.Fatalf("client/Info.plist declares %s %q, which is not a major.minor version", minimumSystemVersionKey, clientFloor)
+	if serverFloor != clientFloor {
+		t.Fatalf("build/Info.plist declares %s %q and client/Info.plist %q; the product has one floor for both apps",
+			minimumSystemVersionKey, serverFloor, clientFloor)
+	}
+	major, _, found := strings.Cut(serverFloor, ".")
+	if !found || major == "" {
+		t.Fatalf("the bundles declare %s %q, which is not a major.minor version", minimumSystemVersionKey, serverFloor)
 	}
 
 	t.Run("chat client deployment target", func(t *testing.T) {
@@ -68,67 +78,144 @@ func TestEverySurfaceDeclaresTheSameMacOSFloor(t *testing.T) {
 		for _, m := range targets {
 			// A target above the bundle minimum is the dangerous direction: the
 			// bundle admits the Mac and the binary then refuses to start on it.
-			if m[1] != clientMajor+".0" {
-				t.Errorf("client/build.sh compiles against %s; client/Info.plist declares %q", m[0], clientFloor)
+			if m[1] != major+".0" {
+				t.Errorf("client/build.sh compiles against %s; the bundles declare %q", m[0], serverFloor)
 			}
 		}
 	})
 
-	t.Run("installer refusals", func(t *testing.T) {
+	t.Run("installer refusal", func(t *testing.T) {
 		raw := readRepoFile(t, root, "install.sh")
-		for _, c := range []struct {
-			name, want string
-		}{
-			{installerFloorAssignment, serverMajor},
-			{installerClientFloorAssignment, clientMajor},
-		} {
-			gates := regexp.MustCompile(`(?m)^`+c.name+`=([0-9]+)`).FindAllStringSubmatch(raw, -1)
-			if len(gates) == 0 {
-				t.Fatalf("install.sh sets no %s; an unsupported Mac is downloaded to before Launch Services refuses the app", c.name)
-			}
-			for _, m := range gates {
-				if m[1] != c.want {
-					t.Errorf("install.sh gates on %s; the plist declares major %q", m[0], c.want)
-				}
-			}
+		gates := regexp.MustCompile(`(?m)^`+installerFloorAssignment+`=([0-9]+)`).FindAllStringSubmatch(raw, -1)
+		if len(gates) != 1 {
+			t.Fatalf("install.sh makes %d %s assignments, want exactly one: an unsupported Mac is downloaded to before Launch Services refuses the app, and two floors are how the second release path grew",
+				len(gates), installerFloorAssignment)
 		}
-	})
-
-	t.Run("kept client release", func(t *testing.T) {
-		// A Mac between the two floors installs the client from the kept
-		// release; the tag named in the installer is the one the README names.
-		// Whether that release is still published is the forge's state, not
-		// the checkout's, and is not read here.
-		raw := readRepoFile(t, root, "install.sh")
-		m := regexp.MustCompile(`(?m)^` + installerKeptClientTag + `=(v[0-9]+\.[0-9]+\.[0-9]+)`).FindStringSubmatch(raw)
-		if m == nil {
-			t.Fatalf("install.sh sets no %s; a Mac on macOS %s has no client to install", installerKeptClientTag, serverMajor)
-		}
-		tag := m[1]
-		if !strings.Contains(readRepoFile(t, root, "README.md"), tag) {
-			t.Errorf("README.md does not name the kept client release %s that install.sh fetches from", tag)
+		if gates[0][1] != major {
+			t.Errorf("install.sh gates on %s; the plists declare major %q", gates[0][0], major)
 		}
 	})
 
 	t.Run("user-facing prose", func(t *testing.T) {
-		// Each page states its app's requirement in the same words, so a reader
-		// who meets it twice meets one number. \b keeps "macOS 26" from being
-		// satisfied by "macOS 265".
-		for _, c := range []struct {
-			rel, major string
-		}{
-			{"README.md", serverMajor},
-			{filepath.Join("docs", "getting-started.md"), serverMajor},
-			{"README.md", clientMajor},
-			{filepath.Join("client", "README.md"), clientMajor},
+		// Each page states the requirement in the same words, so a reader who
+		// meets it twice meets one number. \b keeps "macOS 27" from being
+		// satisfied by "macOS 275".
+		phrase := "Requires macOS " + major
+		stated := regexp.MustCompile(regexp.QuoteMeta(phrase) + `\b`)
+		for _, rel := range []string{
+			"README.md",
+			filepath.Join("docs", "getting-started.md"),
+			filepath.Join("client", "README.md"),
 		} {
-			phrase := "Requires macOS " + c.major
-			stated := regexp.MustCompile(regexp.QuoteMeta(phrase) + `\b`)
-			if !stated.MatchString(readRepoFile(t, root, c.rel)) {
-				t.Errorf("%s does not state %q", c.rel, phrase)
+			if !stated.MatchString(readRepoFile(t, root, rel)) {
+				t.Errorf("%s does not state %q", rel, phrase)
 			}
 		}
 	})
+
+	t.Run("no withdrawn floor on any page", func(t *testing.T) {
+		// What the one floor withdrew must not survive as a sentence: a page
+		// naming the old floor, the release a Mac below it was served from, or
+		// a universal client, sends a reader to a Mac this product refuses --
+		// and site-src/ui.json is read here too, because the labels it carries
+		// are printed on the landing page.
+		withdrawn := []*regexp.Regexp{
+			regexp.MustCompile(`macOS 26\b`),
+			regexp.MustCompile(`v0\.6\.0`),
+			regexp.MustCompile(`(?i)universal`),
+		}
+		for _, rel := range []string{
+			"README.md",
+			filepath.Join("docs", "getting-started.md"),
+			filepath.Join("client", "README.md"),
+			filepath.Join("site-src", "ui.json"),
+		} {
+			raw := readRepoFile(t, root, rel)
+			for _, re := range withdrawn {
+				if m := re.FindString(raw); m != "" {
+					t.Errorf("%s names %q; the floor is macOS %s on Apple Silicon and nothing is kept below it", rel, m, major)
+				}
+			}
+		}
+	})
+}
+
+// TestTheInstallerKeepsNoSecondReleasePath is what makes "no fallback" a
+// checkable claim rather than a sentence. Two floors gave install.sh a second
+// release to fetch a bundle from, which meant a second SHA256SUMS.txt fetched
+// in the same run -- the one place where one run verified two origins. One
+// floor means one release path, one checksums file, and no name left over that
+// could quietly reintroduce either.
+func TestTheInstallerKeepsNoSecondReleasePath(t *testing.T) {
+	raw := readRepoFile(t, repoRootDir(t), "install.sh")
+
+	for _, name := range withdrawnInstallerNames {
+		if strings.Contains(raw, name) {
+			t.Errorf("install.sh still names %s; the kept-client release path is withdrawn (DECISIONS.md 2026-09-20)", name)
+		}
+	}
+	if got := len(regexp.MustCompile(`(?m)^RELEASE_PATH=`).FindAllString(raw, -1)); got != 1 {
+		t.Errorf("install.sh assigns RELEASE_PATH %d times, want exactly one: the bundle and the placer come from the same release", got)
+	}
+	if strings.Contains(raw, "download/$") {
+		t.Error("install.sh builds a release path from a tag; every asset comes from the latest release")
+	}
+	if got := len(regexp.MustCompile(`fetch "SHA256SUMS\.txt"`).FindAllString(raw, -1)); got != 1 {
+		t.Errorf("install.sh fetches SHA256SUMS.txt %d times, want exactly one: a second checksums file is a second origin verified in one run", got)
+	}
+}
+
+// TestEveryMacOSRunnerIsAtOrAboveTheFloor closes the coupling the installer
+// gate's own comment records: that gate is the only thing that executes
+// install.sh, and a runner image below the bundle's floor turns it into a
+// silent no-op -- reported, if at all, as a message about runner provisioning
+// rather than about the floor that was raised. A macos-<major> label below the
+// floor is caught here instead, in the suite, beside the plist that moved.
+func TestEveryMacOSRunnerIsAtOrAboveTheFloor(t *testing.T) {
+	root := repoRootDir(t)
+	floor := plistString(t, filepath.Join(root, "build", "Info.plist"), minimumSystemVersionKey)
+	major, err := strconv.Atoi(strings.SplitN(floor, ".", 2)[0])
+	if err != nil {
+		t.Fatalf("build/Info.plist declares %s %q, which is not a major.minor version", minimumSystemVersionKey, floor)
+	}
+
+	workflows, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(workflows) == 0 {
+		t.Fatal(".github/workflows holds no workflow, so this guard reads nothing")
+	}
+	labelled := 0
+	for _, path := range workflows {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range regexp.MustCompile(`(?m)^\s*runs-on:\s*(\S+)`).FindAllStringSubmatch(string(raw), -1) {
+			label := m[1]
+			labelled++
+			named := regexp.MustCompile(`^macos-([0-9]+)`).FindStringSubmatch(label)
+			if named == nil {
+				// An image whose label does not carry a macOS major (ubuntu, or
+				// the xcode-27 preview image) says nothing here. The installer
+				// gate still refuses to be skipped on a CI runner below the
+				// floor, which is what catches a label that lies.
+				continue
+			}
+			runner, err := strconv.Atoi(named[1])
+			if err != nil {
+				t.Fatalf("%s: unreadable runner major in %q", filepath.Base(path), label)
+			}
+			if runner < major {
+				t.Errorf("%s runs a job on %s, below the bundle floor of %s: the installer gate is the only thing that executes install.sh, and it would be skipped silently there",
+					filepath.Base(path), label, floor)
+			}
+		}
+	}
+	if labelled == 0 {
+		t.Fatal("no workflow names a runner, so this guard reads nothing")
+	}
 }
 
 // repoRootDir is the checkout root, two levels up from internal/archtest.
