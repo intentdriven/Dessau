@@ -1,9 +1,11 @@
 package toolprobe
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -419,5 +421,32 @@ func TestAModelThatNeverFallsQuietDoesNotStarveTheQueue(t *testing.T) {
 	})
 	if acquired, _ := src.counts(); acquired != 1 {
 		t.Errorf("acquired %d times, want once: the busy model was never held", acquired)
+	}
+}
+
+// A verdict the registry could not write is still the verdict the registry
+// now holds in memory and publishes for this session, so the log says that
+// — held for the session, not written, asked again after a restart — rather
+// than that nothing was recorded.
+func TestAFailedSaveIsLoggedAsHeldForTheSession(t *testing.T) {
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: "/models/org/m", ToolCall: true})
+	t.Cleanup(srv.Close)
+	src := newSources(srv)
+	src.saveErr = errors.New("disk full")
+	var logged bytes.Buffer
+	p := New(Options{Sources: src, Log: slog.New(slog.NewTextHandler(&logged, nil))})
+	t.Cleanup(p.Close)
+	got, err := p.Run(context.Background(), "org/m")
+	if err != nil || got == nil || !got.Can {
+		t.Fatalf("Run = %+v, %v; want the verdict, which the registry holds for this session", got, err)
+	}
+	out := logged.String()
+	for _, want := range []string{"not written", "after a restart"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the log does not say %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "recorded nothing") || strings.Contains(out, "could not record") {
+		t.Errorf("the log says the verdict was not recorded, which is not what happened:\n%s", out)
 	}
 }

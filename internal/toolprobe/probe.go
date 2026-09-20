@@ -327,8 +327,14 @@ func (p *Probe) Run(ctx context.Context, model string) (*registry.ToolCalling, e
 	}
 	tc := &registry.ToolCalling{Can: can, At: p.opts.Now().Unix(), Runtime: p.opts.Sources.Runtime()}
 	if err := p.opts.Sources.Save(model, tc); err != nil {
-		p.opts.Log.Warn("tool-call probe: could not record the verdict", "model", model, "err", err)
-		return nil, err
+		// The registry takes the verdict into memory, and publishes it, before
+		// it writes the file (SetToolCalling, on SetMeasurement's shape): a
+		// failed write leaves the verdict in force for this session and
+		// absent from registry.json, so the next start asks again. The log
+		// says that, rather than that nothing was recorded.
+		p.opts.Log.Warn("tool-call probe: the verdict is held for this session but was not written to the registry file; the model is asked again after a restart",
+			"model", model, "can", can, "err", err)
+		return tc, nil
 	}
 	p.opts.Log.Info("tool-call probe recorded", "model", model, "can", can)
 	return tc, nil
