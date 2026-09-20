@@ -129,7 +129,8 @@ are decided (DECISIONS.md, 2026-09-20):
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-c14e4cac2e39 -->
+Fidelity review OWED (receipt rcp-c14e4cac2e39).
 
 ## Grounds
 
