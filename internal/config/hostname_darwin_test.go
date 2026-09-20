@@ -46,3 +46,36 @@ func TestLocalHostNameIsNotEmpty(t *testing.T) {
 		t.Error("LocalHostName() returned empty; the Connect tab would show a broken URL")
 	}
 }
+
+// The Bonjour instance name is the Computer Name, which is a DIFFERENT setting
+// from the LocalHostName and is routinely spelled differently: System Settings
+// shows "Alice's Mac" while the LocalHostName it derives is "Alices-Mac". The
+// instance name people read has to be the former (adr-2609200729102059), so it
+// is read from its own key rather than inferred from the host label.
+func TestComputerNameMatchesSystemSettings(t *testing.T) {
+	// The same absolute path the code under test uses, for the same reason as
+	// the LocalHostName oracle above.
+	out, err := exec.Command("/usr/sbin/scutil", "--get", "ComputerName").Output()
+	if err != nil {
+		t.Skip("scutil unavailable")
+	}
+	want := strings.TrimSpace(string(out))
+	if want == "" {
+		t.Skip("no ComputerName set on this machine")
+	}
+
+	if got := ComputerName(); got != want {
+		t.Errorf("ComputerName() = %q, want %q (the name System Settings shows)", got, want)
+	}
+}
+
+// A Mac that answers nothing still has to be advertised under something, so the
+// chain runs Computer Name, then LocalHostName, and the advertiser supplies the
+// last resort. What this holds is that the fallback is never an empty string
+// while a name of some kind is available.
+func TestComputerNameFallsBackToTheHostName(t *testing.T) {
+	if ComputerName() == "" && LocalHostName() != "" {
+		t.Error("ComputerName() returned empty although this Mac has a LocalHostName; " +
+			"the advertisement would carry no instance name at all")
+	}
+}
