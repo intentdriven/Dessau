@@ -59,27 +59,39 @@ instead: its weights plus a fifth.
 ## The window is the operator's, and it is the same window twice
 
 The window in that charge is the one **Settings → Served context** holds for
-the model, and the window the model's own configuration declares when that
-field is blank. It is one figure doing two jobs, and that is what makes it
-trustworthy: the memory budget charges the cache this window costs, and the
-gateway refuses a request estimated to be larger than it. Dessau never budgets
-for one window and then serves another.
+the model. When that field is blank, the window is the largest one that fits
+the memory budget: what is left of the budget after the model's weights and
+their headroom, divided by what a token of cache costs across the batched
+requests in force, capped at the window the model's own configuration declares
+and never below 4,096 tokens. The card and the field both show the figure and
+say it is the default. It is worked out, never stored, so it follows the budget
+and the concurrency as they change, and a settings file carried to another Mac
+carries no window chosen for a machine that no longer exists. It is one figure
+doing two jobs, and that is what makes it trustworthy: the memory budget
+charges the cache this window costs, and the gateway refuses a request
+estimated to be larger than it. Dessau never budgets for one window and then
+serves another.
 
-That is what to reach for when a model will not fit. A model declaring 262,144
-tokens can cost more than a whole Mac at that window; served at 32,768 it costs
-a fraction of it, and it is a model this Mac can hold beside another rather
-than one it cannot hold at all. Lowering **Batched requests (decode
-concurrency)** does the same thing, in proportion: each sequence that may run
-at once holds its own cache. That one is not immediate — the model servers take
-the concurrency when Dessau starts, so a change to it is charged from the next
-start, and every figure Dessau shows in the meantime is worked out from the
-concurrency in force.
+The default is the budget's answer, not the model's. A model declaring 262,144
+tokens can cost more than a whole Mac at that window, and every current
+long-context model declares a window of that order; served at what fits, it is
+a model this Mac can hold beside another rather than one it cannot hold at all.
+A figure of your own in the field is honoured as typed, up to the declared
+window: type one to serve a model longer than the default and pay the memory
+for it, or shorter to make room beside it. **Batched requests (decode
+concurrency)** is the other term: each sequence that may run at once holds its
+own cache, so the default window is what the budget has room for per sequence.
+It is one by default, which gives each model its widest window; raising it to
+serve several clients at once narrows the default window in proportion. That
+one is not immediate — the model servers take the concurrency when Dessau
+starts, so a change to it is charged from the next start, and every figure
+Dessau shows in the meantime is worked out from the concurrency in force.
 
-A model whose charge does not fit the budget is refused rather than loaded on a
-smaller figure. The refusal names the window and the concurrency it was charged
-at and the largest of each that would fit, so what to change is in the message.
-Dessau will not quietly charge a model less than it costs: a budget that lies
-by a factor is worse than one that says no.
+A model whose charge does not fit the budget even at 4,096 tokens is refused
+rather than loaded on a smaller figure. The refusal names the window and the
+concurrency it was charged at and the largest of each that would fit, so what
+to change is in the message. Dessau will not quietly charge a model less than
+it costs: a budget that lies by a factor is worse than one that says no.
 
 ## The measured window is offered, never assumed
 

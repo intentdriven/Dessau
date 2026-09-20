@@ -579,7 +579,12 @@ type Config struct {
 	IdleTimeoutSec int `json:"idle_timeout_sec"`
 
 	// DecodeConcurrency maps to mlx_lm's --decode-concurrency: how many
-	// requests get batched together during token generation.
+	// requests get batched together during token generation. The default is
+	// one, because each sequence holds its own attention cache and the
+	// default served window is derived from what the budget has left per
+	// sequence: at one a 128 GB Mac serves its long-context models at
+	// windows of over 100k tokens, at four at a quarter of that. A saved
+	// figure is the operator's and a change of default never rewrites it.
 	DecodeConcurrency int `json:"decode_concurrency"`
 
 	// HFToken authenticates against gated HuggingFace repos.
@@ -793,15 +798,19 @@ type ModelSettings struct {
 	Sampling Sampling `json:"sampling,omitzero"`
 
 	// ServedContext is the context window Dessau serves this model at, in
-	// tokens. Zero means the window the model's own configuration declares,
-	// which is the default and what most models will run at.
+	// tokens. Zero means the default, which is not stored: the largest window
+	// that fits the memory budget at the decode concurrency in force, capped
+	// at the window the model's own configuration declares, worked out by
+	// App.ServedWindow in internal/app from figures only the app holds
+	// together.
 	//
 	// It is one figure with two effects, and that is the point of it: the
 	// memory budget charges the attention cache this window costs, and the
 	// gateway refuses a request estimated to be larger than it. Lowering it is
-	// how a model whose declared window will not fit this Mac becomes one that
-	// does. Read through Config.ServedContext, never off this field, so that
-	// the default is applied in one place.
+	// how a model whose default window is too short for the operator's use is
+	// traded against the memory it costs. Read through
+	// Config.ServedContextSetting, never off this field, so that the folding
+	// and the cap are applied in one place.
 	ServedContext int64 `json:"served_context,omitempty"`
 }
 
@@ -827,19 +836,21 @@ func (m ModelSettings) IsZero() bool {
 	return !m.MergeSystemMessages && !m.Pinned && m.ServedContext == 0 && m.Sampling.IsZero()
 }
 
-// ServedContext is the window Dessau serves the named model at: the
-// operator's figure, or declared — the window the model's own configuration
-// states — when they have set none or set one the model cannot address.
+// ServedContextSetting is the operator's served window for the named model,
+// or 0 when they have set none. It is the reader of the SETTING and not of
+// the served window: the window a model is served at is App.ServedWindow in
+// internal/app, which derives a default from the memory budget when this
+// answers 0, and every surface — the charge, the gateway's refusal, the
+// models list, the panel — reads that. A second reading of the setting
+// anywhere else is how those come to mean different windows by one number,
+// which is why an architecture test holds the callers of this to
+// internal/app.
 //
-// The one home of that question. The memory budget charges this window, the
-// gateway refuses a request larger than it, the models list publishes it and
-// the panel shows it; a second reading of the setting anywhere is how those
-// four come to mean different windows by one number.
-//
-// A setting above the declared window is not honoured: the operator can ask
-// for less than the model was built for and cannot ask for more, and a model
-// that declares nothing has no window to serve.
-func (c Config) ServedContext(repoID string, declared int64) int64 {
+// A setting above the declared window is not honoured as typed: the operator
+// can ask for less than the model was built for and cannot ask for more, so
+// the answer is the declared window — a figure of the operator's, capped,
+// rather than no setting at all.
+func (c Config) ServedContextSetting(repoID string, declared int64) int64 {
 	set := c.Models[repoID].ServedContext
 	if set == 0 {
 		// Folded, because a request resolves to the registry's spelling and
@@ -860,7 +871,10 @@ func (c Config) ServedContext(repoID string, declared int64) int64 {
 			}
 		}
 	}
-	if set <= 0 || (declared > 0 && set > declared) {
+	if set <= 0 {
+		return 0
+	}
+	if declared > 0 && set > declared {
 		return declared
 	}
 	return set
@@ -1304,7 +1318,7 @@ func Default() Config {
 		UpstreamHeaderTimeoutSec: 0,
 		Advertise:                true,
 		IdleTimeoutSec:           0,
-		DecodeConcurrency:        4,
+		DecodeConcurrency:        1,
 		StatsMonths:              DefaultStatsMonths,
 		StatsMaxBytes:            DefaultStatsMaxBytes,
 		// Stored even though the feature is off, so that switching it on in

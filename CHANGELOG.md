@@ -11,6 +11,37 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **One batched request by default.** `impact: breaking`. The default decode
+  concurrency is 1, so that a model with no served context of its own is
+  served at the largest window the memory budget allows: each batched request
+  holds its own attention cache, and the default window is what the budget has
+  room for per request — on a 128 GB Mac, over 100,000 tokens for the
+  long-context models at one request and a quarter of that at four. A
+  `config.json` that says 4 keeps 4: a change of default never rewrites a
+  saved value. Raise **Settings → Batched requests** on a Mac that serves
+  several clients at once; it reaches the model servers at the next start.
+
+### Fixed
+
+- **A fresh install serves the models it downloaded.** `impact: fix`. A model
+  with no served context of its own is served at the largest window that fits
+  the memory budget at the batched requests in force — up to the window the
+  model declares, and never below 4,096 tokens — instead of at its declared
+  window, which for every current long-context model costs more cache than any
+  Mac holds at the default concurrency, so a fresh install refused every model
+  it had. The window is derived, never written to `config.json`, and follows
+  the budget and the concurrency as they change; a model that does not fit
+  even at 4,096 tokens is refused as before, with the message that names what
+  to change. An explicit served context is honoured exactly as it was. The
+  models list carries the window in force as `served_context` and says whether
+  it is the default in `served_context_default`; the model's card and the
+  Served context field show the derived figure and what it fits. The warning
+  for a budget too small for the smallest model names the served window, the
+  batched requests and a smaller quantisation as the things to change, rather
+  than the budget alone.
+
 ## [0.8.1] - 2026-09-20
 
 ### Added

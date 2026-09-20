@@ -37,7 +37,7 @@ func TestControlAPIRejectsNonLoopback(t *testing.T) {
 	}{
 		{"GET", "/api/state", ""},
 		{"GET", "/api/settings", ""},
-		{"POST", "/api/settings", `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4}`},
+		{"POST", "/api/settings", `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1}`},
 		{"POST", "/api/models/delete", `{"model":"org/m"}`},
 		{"POST", "/api/models/download", `{"model":"org/m"}`},
 	}

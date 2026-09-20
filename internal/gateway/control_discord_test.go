@@ -48,7 +48,7 @@ func TestSavingTheRedactedPlaceholderKeepsTheRealDiscordToken(t *testing.T) {
 	srv, a := newTestControlApp(t, cfg)
 
 	body := `{"host":"0.0.0.0","port":11535,"api_key":"","discord_bridge":true,` +
-		`"discord_token":"` + redacted + `","decode_concurrency":4,"idle_timeout_sec":0}`
+		`"discord_token":"` + redacted + `","decode_concurrency":1,"idle_timeout_sec":0}`
 	resp, err := srv.Client().Post(srv.URL+"/api/settings", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestASaveIsNeverRefusedOverTheDiscordToken(t *testing.T) {
 			t.Fatal(err)
 		}
 		body := `{"host":"0.0.0.0","port":11535,"api_key":"","discord_bridge":true,` +
-			`"discord_token":` + string(encoded) + `,"decode_concurrency":4,"idle_timeout_sec":0}`
+			`"discord_token":` + string(encoded) + `,"decode_concurrency":1,"idle_timeout_sec":0}`
 		resp, err := srv.Client().Post(srv.URL+"/api/settings", "application/json", strings.NewReader(body))
 		if err != nil {
 			t.Fatal(err)

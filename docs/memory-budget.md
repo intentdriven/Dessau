@@ -40,8 +40,10 @@ a word:
   from its configuration rather than measured on your Mac, so the machine can
   still run out.
 - **A budget too small to hold the smallest model on this Mac** is saved with a
-  warning too, naming what that model needs. Every request is refused until the
-  budget is raised.
+  warning too, naming what that model needs at the served window and the
+  batched requests it is charged at. Every request is refused until one of
+  those changes: its served context, the batched requests, a smaller
+  quantisation, or the budget.
 
 A figure that arrives already over this Mac — a settings file carried from a
 bigger one, or written during a start where the machine's memory could not be
@@ -49,6 +51,16 @@ read — is applied rather than refused, so it never stands between you and savi
 an unrelated setting. Models are still held to the memory this Mac has, and the
 panel and the start-up log show the figure being enforced. Change the field to
 put your own figure back in charge.
+
+## Batched requests
+
+**Settings → Batched requests** is how many requests one model server answers
+at once, and it is one by default. Each batched request holds its own attention
+cache, so the default served window — the largest that fits the budget — is
+worked out per request: at one it is as wide as the budget allows, at four a
+quarter of that. Raise it on a Mac that serves several clients at once; the
+figure reaches the model servers at the next start, and every charge shown in
+the meantime uses the figure in force.
 
 ## What a change does not do
 
@@ -65,8 +77,9 @@ take and how much the models volume has left, and the memory budget against
 what is resident — naming the part still exiting, which is memory a stopped
 server has not handed back yet and which a load is still measured against.
 Every figure is one Dessau already has; nothing is walked or measured to
-draw it. Each model's card says the window it declares and, when you have
-set one below it, the window it is served at.
+draw it. Each model's card says the window it declares and, when the window it
+is served at is below it, that one too — with a note when it is the default
+Dessau worked out to fit the budget rather than a figure you set.
 
 ## Where the rules are
 

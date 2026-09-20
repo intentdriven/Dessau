@@ -14,7 +14,7 @@ import (
 // changes only the level — the restart flag is a disjunction over the fields
 // that really need one, and a differing host here would set it for the wrong
 // reason.
-const levelSettings = `"host":"127.0.0.1","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0`
+const levelSettings = `"host":"127.0.0.1","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0`
 
 // levelConfig is that body's configuration.
 func levelConfig() config.Config {
@@ -79,7 +79,7 @@ func TestASaveRefusesALogLevelThisBuildDoesNotWriteAt(t *testing.T) {
 	srv, a := newTestControlApp(t, levelConfig())
 
 	resp := postJSON(t, srv, "/api/settings",
-		`{"host":"127.0.0.1","port":11599,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0,"log_level":"verbose"}`)
+		`{"host":"127.0.0.1","port":11599,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0,"log_level":"verbose"}`)
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
 		t.Fatal("a save with log_level=verbose was accepted")

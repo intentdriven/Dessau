@@ -31,7 +31,7 @@ func measuredGateway(t *testing.T, inFlight int, footprint int64) (*httptest.Ser
 	cfg := config.Default()
 	cfg.Statistics = true
 	cfg.Models = map[string]config.ModelSettings{testModelID: {ServedContext: 65536}}
-	g := New(Options{Config: cfg, Pool: pool, Models: models, Stats: rec})
+	g := New(Options{Config: cfg, Pool: pool, Models: models, Stats: rec, ServedWindow: settingOrDeclared(cfg)})
 	srv := httptest.NewServer(g.Handler())
 	t.Cleanup(srv.Close)
 	return srv, rec

@@ -55,7 +55,7 @@ func TestACrossFieldRefusalNamesAChangedField(t *testing.T) {
 				c.EvictionGrace = true
 				return c
 			},
-			posted:  `{"host":"0.0.0.0","bind_mode":"","port":11535,"api_key":"","eviction_grace":true,"decode_concurrency":4,"idle_timeout_sec":0,"stats_months":6,"stats_max_bytes":209715200}`,
+			posted:  `{"host":"0.0.0.0","bind_mode":"","port":11535,"api_key":"","eviction_grace":true,"decode_concurrency":1,"idle_timeout_sec":0,"stats_months":6,"stats_max_bytes":209715200}`,
 			changed: "host",
 			rule:    "eviction grace needs an API key",
 		},
@@ -68,7 +68,7 @@ func TestACrossFieldRefusalNamesAChangedField(t *testing.T) {
 				c.EvictionGrace = false
 				return c
 			},
-			posted:  `{"host":"0.0.0.0","bind_mode":"","port":11535,"api_key":"","eviction_grace":true,"decode_concurrency":4,"idle_timeout_sec":0,"stats_months":6,"stats_max_bytes":209715200}`,
+			posted:  `{"host":"0.0.0.0","bind_mode":"","port":11535,"api_key":"","eviction_grace":true,"decode_concurrency":1,"idle_timeout_sec":0,"stats_months":6,"stats_max_bytes":209715200}`,
 			changed: "eviction_grace",
 			rule:    "eviction grace needs an API key",
 		},
@@ -84,7 +84,7 @@ func TestACrossFieldRefusalNamesAChangedField(t *testing.T) {
 				c.IdleTimeoutSec = 0
 				return c
 			},
-			posted:  `{"host":"127.0.0.1","bind_mode":"","port":11535,"api_key":"a-key","eviction_grace":true,"eviction_grace_sec":300,"eviction_max_wait_sec":300,"decode_concurrency":4,"idle_timeout_sec":60,"stats_months":6,"stats_max_bytes":209715200}`,
+			posted:  `{"host":"127.0.0.1","bind_mode":"","port":11535,"api_key":"a-key","eviction_grace":true,"eviction_grace_sec":300,"eviction_max_wait_sec":300,"decode_concurrency":1,"idle_timeout_sec":60,"stats_months":6,"stats_max_bytes":209715200}`,
 			changed: "idle_timeout_sec",
 			rule:    "must not be longer than the idle timeout",
 		},

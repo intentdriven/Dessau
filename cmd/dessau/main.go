@@ -378,7 +378,7 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 	// OpenAI-compatible API — LAN-facing, guarded by the optional API key. The
 	// gateway reads the key live (a.Config) so setting one in the control panel
 	// takes effect without a restart.
-	g := gateway.New(gateway.Options{ConfigFunc: a.Config, Pool: a.Pool, Models: a.Registry, Log: log, Stats: a.Stats})
+	g := gateway.New(gateway.Options{ConfigFunc: a.Config, Pool: a.Pool, Models: a.Registry, Log: log, Stats: a.Stats, ServedWindow: a.ServedWindow})
 	// The Discord bridge, wired here because it needs the gateway. SetBridge
 	// puts the stored settings in force — which for an install that has never
 	// touched it means off, and nothing is opened.

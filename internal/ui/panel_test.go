@@ -39,7 +39,7 @@ func TestModelCardInfoLineShowsTheMaximumContext(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := evalPanel(t, "modelInfoLine("+c.model+", {})", "bytes", "tokensLabel", "foldRepoID", "servedContext", "contextLabel", "modelInfoLine")
+			got := evalPanel(t, "modelInfoLine("+c.model+", 4)", "bytes", "tokensLabel", "servedContext", "servedDefaultNote", "contextLabel", "modelInfoLine")
 			if got != c.want {
 				t.Errorf("modelInfoLine(%s) = %q, want %q", c.model, got, c.want)
 			}
@@ -55,7 +55,7 @@ func TestModelCardInfoLineShowsTheMaximumContext(t *testing.T) {
 func TestModelCardIsBuiltFromTheInfoLine(t *testing.T) {
 	body := extractFunction(t, readPanelSource(t), "renderModels")
 	for _, fragment := range []string{
-		"const info = modelInfoLine(m, state.config);",
+		"const info = modelInfoLine(m, sequencesInForce());",
 		`<div class="info">${info}</div>`,
 	} {
 		if !strings.Contains(body, fragment) {

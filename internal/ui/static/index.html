@@ -380,7 +380,9 @@
     </fieldset>
 
     <label>
-      <span>Batched requests (decode concurrency, 1 or more)</span>
+      <span>Batched requests (decode concurrency, 1 or more) <em>(default 1: each batched
+        request holds its own cache, and a model's default served window is what the budget
+        has room for per request)</em></span>
       <input id="setConc" type="number" min="1">
     </label>
     <p id="concHint" class="hint" hidden></p>
@@ -622,10 +624,11 @@
     <fieldset class="group">
       <legend>Served context</legend>
       <p class="hint">The context window Dessau serves each model at, in tokens. Leave a
-        field blank to serve the window the model itself declares. A request whose prompt
-        and answer are estimated to be larger is refused, and the memory budget charges
-        the cache this window costs — so lowering it is how a long-context model is made
-        to fit a Mac that will not hold it at its full window.</p>
+        field blank for the default: the largest window that fits the memory budget at
+        the batched requests in force, up to the window the model itself declares — the
+        field shows the figure. A request whose prompt and answer are estimated to be
+        larger is refused, and the memory budget charges the cache this window costs, so
+        a figure of your own trades the window against the memory it takes.</p>
       <div id="contextList"></div>
     </fieldset>
 

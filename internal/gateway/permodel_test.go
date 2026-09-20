@@ -50,7 +50,7 @@ func TestSavingSettingsWithoutAModelTurnsItsSwitchOff(t *testing.T) {
 	srv := newTestControl(t, cfg)
 
 	got := perModelAfterSave(t, srv, srv.URL,
-		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0,"models":{}}`,
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0,"models":{}}`,
 		http.StatusOK)
 
 	if len(got) != 0 {
@@ -68,7 +68,7 @@ func TestSavingSettingsThatOmitsPerModelKeepsIt(t *testing.T) {
 	srv := newTestControl(t, cfg)
 
 	got := perModelAfterSave(t, srv, srv.URL,
-		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0}`,
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0}`,
 		http.StatusOK)
 
 	if !got["mlx-community/Qwen3-8B-4bit"].MergeSystemMessages {
@@ -86,7 +86,7 @@ func TestSettingsRejectsAPerModelKeyThatIsNotAModelID(t *testing.T) {
 	srv := newTestControl(t, cfg)
 
 	got := perModelAfterSave(t, srv, srv.URL,
-		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0,`+
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0,`+
 			`"models":{"../../etc":{"merge_system_messages":true}}}`,
 		http.StatusBadRequest)
 
@@ -111,7 +111,7 @@ func TestARefusedSaveDoesNotRewriteTheLivePreloadList(t *testing.T) {
 	srv := newTestControl(t, cfg)
 
 	resp, err := srv.Client().Post(srv.URL+"/api/settings", "application/json", strings.NewReader(
-		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0,`+
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0,`+
 			`"preload":["org/planted"],`+
 			`"models":{"../../etc":{"merge_system_messages":true}}}`))
 	if err != nil {
@@ -149,7 +149,7 @@ func TestSavingSettingsWithAPerModelNullClearsIt(t *testing.T) {
 	srv := newTestControl(t, cfg)
 
 	got := perModelAfterSave(t, srv, srv.URL,
-		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0,`+
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0,`+
 			`"models":null}`,
 		http.StatusOK)
 

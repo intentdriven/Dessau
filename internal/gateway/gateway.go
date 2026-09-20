@@ -79,6 +79,15 @@ type Options struct {
 	// through ConfigFunc like the API key. Nil means nothing is recorded and
 	// nothing is asked of a model server on the recorder's behalf.
 	Stats *stats.Recorder
+	// ServedWindow resolves the window a model is served at, and whether it is
+	// the default rather than the operator's figure. It is the app's
+	// App.ServedWindow, handed in the way the pool and the registry are,
+	// because the default is derived from the memory budget, the concurrency
+	// and the model's charge, which only the app holds together; the gateway
+	// publishes and enforces the figure and never works one out. Nil serves
+	// every model at its declared window, as the default: the gateway reads
+	// no setting of its own.
+	ServedWindow func(registry.Model) (window int64, isDefault bool)
 }
 
 // Gateway routes OpenAI requests to model servers.
@@ -94,6 +103,8 @@ type Gateway struct {
 	// the line it produces has to be rate-limited or the log is somewhere a
 	// stranger can write at the rate it can send requests.
 	refusalLog *logEvery
+	// servedWindow is Options.ServedWindow, never nil.
+	servedWindow func(registry.Model) (int64, bool)
 }
 
 // New builds a Gateway.
@@ -118,14 +129,19 @@ func New(opts Options) *Gateway {
 			MaxIdleConnsPerHost: 32,
 		}
 	}
+	served := opts.ServedWindow
+	if served == nil {
+		served = func(m registry.Model) (int64, bool) { return m.ContextLength, true }
+	}
 	return &Gateway{
-		cfg:        cfgFn,
-		pool:       opts.Pool,
-		models:     opts.Models,
-		log:        opts.Log,
-		tr:         opts.Transport,
-		stats:      opts.Stats,
-		refusalLog: newLogEvery(refusalLogEvery),
+		cfg:          cfgFn,
+		pool:         opts.Pool,
+		models:       opts.Models,
+		log:          opts.Log,
+		tr:           opts.Transport,
+		stats:        opts.Stats,
+		refusalLog:   newLogEvery(refusalLogEvery),
+		servedWindow: served,
 	}
 }
 
@@ -342,7 +358,6 @@ func (g *Gateway) handleHealth(w http.ResponseWriter, r *http.Request) {
 // enumerates the HuggingFace cache directory rather than the loaded model (and
 // throws CacheNotFound when that directory is absent).
 func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
-	cfg := g.cfg()
 	ready := g.models.Ready()
 	// Residency is reported to a client the install has admitted on its key,
 	// and to any client on this machine. The three-state value is not itself a
@@ -430,11 +445,13 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 		}
 		// And the window this Mac will actually serve, which is the figure a
 		// client should size its prompts to: the operator's setting, or the
-		// declared window when they have set none. A request estimated above
-		// it is refused, so publishing it is what lets a client stay inside
-		// the limit rather than discover it.
-		if served := cfg.ServedContext(m.RepoID, m.ContextLength); served > 0 {
+		// default the app derived to fit the budget when they have set none,
+		// and which of the two it is. A request estimated above it is
+		// refused, so publishing it is what lets a client stay inside the
+		// limit rather than discover it.
+		if served, isDefault := g.servedWindow(m); served > 0 {
 			entry["served_context"] = served
+			entry["served_context_default"] = isDefault
 		}
 		// And what the context probe measured on this Mac, beside the two:
 		// the largest prompt the server verifiably accepted, and what stopped
@@ -649,7 +666,7 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	// and acquiring first would load a model — evicting another to do it — for
 	// a request that is about to be turned away. Streaming and non-streaming
 	// take this line together, because the stream is not opened until below.
-	msg, verdict := g.judgeServedContext(cfg, model, len(raw), payload)
+	msg, verdict := g.judgeServedContext(model, len(raw), payload)
 	// What the request was judged against and measured as, recorded before
 	// the refusal so a refused request carries them too, and only while
 	// recording is on, so the path with the switch off is the path it was
@@ -1456,8 +1473,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // max_tokens counts against the same window because generated tokens are
 // written into the same cache. A model that declares no window and has been
 // given no setting has nothing to enforce, and nothing is refused for it.
-func (g *Gateway) overServedContext(cfg config.Config, model string, bodyBytes int, payload map[string]json.RawMessage) string {
-	msg, _ := g.judgeServedContext(cfg, model, bodyBytes, payload)
+func (g *Gateway) overServedContext(model string, bodyBytes int, payload map[string]json.RawMessage) string {
+	msg, _ := g.judgeServedContext(model, bodyBytes, payload)
 	return msg
 }
 
@@ -1471,12 +1488,19 @@ type servedVerdict struct {
 
 // judgeServedContext is overServedContext with its figures: the refusal
 // message, empty when the request is under the window, and the verdict.
-func (g *Gateway) judgeServedContext(cfg config.Config, model string, bodyBytes int, payload map[string]json.RawMessage) (string, servedVerdict) {
+//
+// The window is the app's answer (Options.ServedWindow): the operator's
+// figure, or the default derived to fit the budget, and a request over the
+// derived window is refused exactly as one over a set window is. A model the
+// registry does not hold is judged as one with no declared window.
+func (g *Gateway) judgeServedContext(model string, bodyBytes int, payload map[string]json.RawMessage) (string, servedVerdict) {
 	var v servedVerdict
-	if m, err := g.models.Get(model); err == nil {
-		v.declared = m.ContextLength
+	m, err := g.models.Get(model)
+	if err != nil {
+		m = registry.Model{RepoID: model}
 	}
-	v.served = cfg.ServedContext(model, v.declared)
+	v.declared = m.ContextLength
+	v.served, _ = g.servedWindow(m)
 	v.estimate = int64(estimatedTokens(bodyBytes))
 	// Saturating, because both terms are the client's to choose: a max_tokens
 	// of the largest integer there is made this sum negative, and a negative

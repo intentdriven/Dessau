@@ -244,7 +244,7 @@ func TestSavingSettingsPreservesUnsentFields(t *testing.T) {
 	srv := newTestControl(t, cfg)
 
 	// A realistic form body: host/port/etc, but NOT advertise or preload.
-	body := `{"host":"127.0.0.1","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":300}`
+	body := `{"host":"127.0.0.1","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":300}`
 	resp, err := srv.Client().Post(srv.URL+"/api/settings", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -282,7 +282,7 @@ func TestSavingRedactedPlaceholderKeepsTheRealSecret(t *testing.T) {
 	cfg.APIKey = "bh_real_key"
 	srv := newTestControl(t, cfg)
 
-	body := `{"host":"0.0.0.0","port":11535,"api_key":"********","decode_concurrency":4,"idle_timeout_sec":0}`
+	body := `{"host":"0.0.0.0","port":11535,"api_key":"********","decode_concurrency":1,"idle_timeout_sec":0}`
 	resp, err := srv.Client().Post(srv.URL+"/api/settings", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -314,7 +314,7 @@ func TestSavingRedactedPlaceholderKeepsTheRealSecret(t *testing.T) {
 func TestSavingRestartOnlyFieldsReportsRestart(t *testing.T) {
 	srv := newTestControl(t, config.Default())
 
-	// Same host/port as the defaults; decode_concurrency changed from 4 to 8.
+	// Same host/port as the defaults; decode_concurrency changed from the default to 8.
 	body := `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":8,"idle_timeout_sec":0}`
 	resp, err := srv.Client().Post(srv.URL+"/api/settings", "application/json", strings.NewReader(body))
 	if err != nil {
@@ -335,7 +335,7 @@ func TestSavingRestartOnlyFieldsReportsRestart(t *testing.T) {
 func TestSettingsRejectsInvalidPort(t *testing.T) {
 	srv := newTestControl(t, config.Default())
 
-	body := `{"host":"0.0.0.0","port":99999,"decode_concurrency":4}`
+	body := `{"host":"0.0.0.0","port":99999,"decode_concurrency":1}`
 	resp, err := srv.Client().Post(srv.URL+"/api/settings", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -505,7 +505,7 @@ func TestSearchAuthorEmptyOverrideKeepsDefault(t *testing.T) {
 func TestSavingPinnedModelsNeedsNoRestart(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 
-	body := `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,` +
+	body := `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,` +
 		`"idle_timeout_sec":0,"models":{"org/keeper":{"pinned":true}}}`
 	resp := postJSON(t, srv, "/api/settings", body)
 	defer resp.Body.Close()
@@ -535,7 +535,7 @@ func TestSavingSettingsWithoutNamingPinnedKeepsThePins(t *testing.T) {
 	srv, a := newTestControlApp(t, cfg)
 
 	resp := postJSON(t, srv, "/api/settings",
-		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0}`)
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0}`)
 	resp.Body.Close()
 	if got := a.Config().PinnedIDs(); len(got) != 1 || got[0] != "org/keeper" {
 		t.Errorf("Pinned = %v after an unrelated save, want the pin kept", got)
@@ -554,7 +554,7 @@ func TestSettingsRefusesAPinnedSetLargerThanTheBudget(t *testing.T) {
 	}
 
 	resp := postJSON(t, srv, "/api/settings",
-		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,`+
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,`+
 			`"idle_timeout_sec":0,"models":{"org/enormous":{"pinned":true}}}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -575,7 +575,7 @@ func TestSavingAShorterPinnedListRemovesTheRest(t *testing.T) {
 	srv, a := newTestControlApp(t, cfg)
 
 	resp := postJSON(t, srv, "/api/settings",
-		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,`+
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,`+
 			`"idle_timeout_sec":0,"models":{"org/one":{"pinned":true}}}`)
 	resp.Body.Close()
 	if got := a.Config().PinnedIDs(); len(got) != 1 || got[0] != "org/one" {
@@ -588,7 +588,7 @@ func TestSavingAShorterPinnedListRemovesTheRest(t *testing.T) {
 	// And an explicit null clears it, the way naming a collection means "these
 	// are its members" everywhere else in this handler.
 	resp = postJSON(t, srv, "/api/settings",
-		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,`+
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,`+
 			`"idle_timeout_sec":0,"models":null}`)
 	resp.Body.Close()
 	if got := a.Config().PinnedIDs(); len(got) != 0 {
@@ -1017,7 +1017,7 @@ func TestSavingTheChatRuleTouchesNothingElse(t *testing.T) {
 	srv, a := newTestControlApp(t, cfg)
 
 	resp := postJSON(t, srv, "/api/settings",
-		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0,`+
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0,`+
 			`"chat_rule":{"pipeline_tags":["text-generation"],"required_tags":[]}}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -1062,7 +1062,7 @@ func TestSavingSettingsWithoutNamingTheChatRuleKeepsIt(t *testing.T) {
 			srv, a := newTestControlApp(t, cfg)
 
 			resp := postJSON(t, srv, "/api/settings",
-				`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":4,"idle_timeout_sec":0}`)
+				`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0}`)
 			resp.Body.Close()
 			got := a.Config().ChatRule
 			if !got.Equal(c.rule) {
@@ -1223,7 +1223,7 @@ func TestASaveThatChangesAdvertisingAsksForARestart(t *testing.T) {
 			cfg.Advertise = tc.stored
 			srv := newTestControl(t, cfg)
 
-			body := fmt.Sprintf(`{"host":"0.0.0.0","port":11535,"advertise":%s,"decode_concurrency":4,"idle_timeout_sec":0}`, tc.posted)
+			body := fmt.Sprintf(`{"host":"0.0.0.0","port":11535,"advertise":%s,"decode_concurrency":1,"idle_timeout_sec":0}`, tc.posted)
 			resp := postJSON(t, srv, "/api/settings", body)
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {

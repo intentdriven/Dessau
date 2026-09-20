@@ -11,7 +11,7 @@
       "conversational"
     ],
     "context_probe": false,
-    "decode_concurrency": 4,
+    "decode_concurrency": 1,
     "discord_bridge": true,
     "discord_token": "********",
     "eviction_grace": false,

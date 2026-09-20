@@ -22,14 +22,14 @@ var ErrNoMeasurement = errors.New("the model has no current measurement")
 type probeSources struct{ a *App }
 
 func (s probeSources) Candidates() []contextprobe.Candidate {
-	cfg := s.a.Config()
 	models := s.a.Registry.Ready()
 	out := make([]contextprobe.Candidate, 0, len(models))
 	for _, m := range models {
+		served, _ := s.a.ServedWindow(m)
 		out = append(out, contextprobe.Candidate{
 			RepoID:           m.RepoID,
 			Declared:         m.ContextLength,
-			Served:           cfg.ServedContext(m.RepoID, m.ContextLength),
+			Served:           served,
 			Bytes:            chargedSize(m),
 			KVChargePerToken: m.KVChargePerToken,
 			Measured:         m.Measured,
@@ -44,22 +44,23 @@ func (s probeSources) Candidates() []contextprobe.Candidate {
 // window. It is the one spelling of the provenance, used both to stamp a
 // measurement and to judge it stale.
 func (s probeSources) Provenance(repoID string) registry.Provenance {
-	declared := int64(0)
-	if m, err := s.a.Registry.Get(repoID); err == nil {
-		declared = m.ContextLength
+	m, err := s.a.Registry.Get(repoID)
+	if err != nil {
+		m = registry.Model{RepoID: repoID}
 	}
-	return s.provenanceFor(repoID, declared)
+	return s.provenanceFor(m)
 }
 
-// provenanceFor is Provenance with the declared window in hand, for a caller
-// that already holds the model — the registry's own staleness refresh, which
-// runs under the registry's lock and must not read it back.
-func (s probeSources) provenanceFor(repoID string, declared int64) registry.Provenance {
+// provenanceFor is Provenance with the model in hand, for a caller that
+// already holds it — the registry's own staleness refresh, which runs under
+// the registry's lock and must not read it back.
+func (s probeSources) provenanceFor(m registry.Model) registry.Provenance {
+	served, _ := s.a.ServedWindow(m)
 	return registry.Provenance{
 		Runtime:           runtime.MLXLMVersion(),
 		BudgetBytes:       s.a.Pool.MemoryBudget(),
 		DecodeConcurrency: s.a.Pool.DecodeConcurrency(),
-		ServedContext:     s.a.Config().ServedContext(repoID, declared),
+		ServedContext:     served,
 	}
 }
 
@@ -107,9 +108,7 @@ func (a *App) applyIdleJobs(c config.Config) {
 // every save.
 func (a *App) refreshStaleness() {
 	src := probeSources{a}
-	if changed := a.Registry.RefreshStaleness(func(m registry.Model) registry.Provenance {
-		return src.provenanceFor(m.RepoID, m.ContextLength)
-	}); len(changed) > 0 {
+	if changed := a.Registry.RefreshStaleness(src.provenanceFor); len(changed) > 0 {
 		a.Log.Info("measurements re-judged against the settings in force", "models", changed)
 	}
 }

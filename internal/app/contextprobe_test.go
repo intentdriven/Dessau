@@ -94,16 +94,16 @@ func TestAdoptingAMeasurementSetsTheServedContextAndAnUnadoptedOneChangesNoCharg
 	if got := a.chargeOf(m, chargedSize(m)); got != before {
 		t.Errorf("an unadopted measurement changed the charge from %d to %d", before, got)
 	}
-	if got := a.Config().ServedContext("org/m", 131072); got != 131072 {
-		t.Errorf("an unadopted measurement changed the served window to %d", got)
+	if got, isDefault := a.ServedWindow(m); got != 131072 || !isDefault {
+		t.Errorf("an unadopted measurement changed the served window to %d (default %v)", got, isDefault)
 	}
 	if err := a.AdoptMeasurement("org/m"); err != nil {
 		t.Fatal(err)
 	}
-	if got := a.Config().ServedContext("org/m", 131072); got != 65536 {
-		t.Errorf("served window after adoption = %d, want 65536", got)
-	}
 	m, _ = a.Registry.Get("org/m")
+	if got, isDefault := a.ServedWindow(m); got != 65536 || isDefault {
+		t.Errorf("served window after adoption = %d (default %v), want the adopted 65536", got, isDefault)
+	}
 	if got := a.chargeOf(m, chargedSize(m)); got >= before {
 		t.Errorf("the adopted window did not lower the charge (%d before, %d after)", before, got)
 	}

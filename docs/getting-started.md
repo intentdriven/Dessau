@@ -97,6 +97,14 @@ and nothing is unloaded to fit a lowered figure. See
 [Why there is a memory budget](memory-budget-explained.md) for what the figure
 does and does not account for.
 
+**Settings → Batched requests** is how many requests one model server answers
+at once: one by default. Each batched request holds its own attention cache, and
+a model with no served context of its own is served at the largest window the
+budget has room for per request, so one is the setting that gives each model
+its widest window. Raise it on a Mac that serves several clients at once, and
+the default window falls in proportion. It reaches the model servers at the
+next start.
+
 ### Keep a model in memory
 
 **Settings → Pinned models** protects the models you rely on. A pinned model is

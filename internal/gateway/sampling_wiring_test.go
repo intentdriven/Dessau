@@ -149,7 +149,7 @@ func TestSavedSamplingReachesTheLaunchedProcess(t *testing.T) {
 	a, l, mux := newWiredControl(t, config.Default(), "org/plain", "org/special")
 	srv := serve(t, mux)
 
-	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":4,
+	resp := postJSON(t, srv, "/api/settings", `{"host":"127.0.0.1","port":11535,"decode_concurrency":1,
 		"sampling":{"temperature":0.7,"max_tokens":8192},
 		"models":{"org/special":{"sampling":{"temperature":0.1}}}}`)
 	resp.Body.Close()
@@ -193,7 +193,7 @@ func TestSettingsNamesExactlyTheResidentModelsThatMustLoadAgain(t *testing.T) {
 
 	// Move the machine-wide default. org/pinned's own override shadows it, so
 	// nothing about how that model is served changes.
-	resp := postJSON(t, srv, "/api/settings", `{"host":"0.0.0.0","port":11535,"decode_concurrency":4,
+	resp := postJSON(t, srv, "/api/settings", `{"host":"0.0.0.0","port":11535,"decode_concurrency":1,
 		"sampling":{"temperature":1.2},
 		"models":{"org/pinned":{"sampling":{"temperature":0.1}}}}`)
 	defer resp.Body.Close()
@@ -221,7 +221,7 @@ func TestSettingsNamesExactlyTheResidentModelsThatMustLoadAgain(t *testing.T) {
 	}
 
 	// A save that changes nothing about sampling names nobody.
-	resp2 := postJSON(t, srv, "/api/settings", `{"host":"0.0.0.0","port":11535,"decode_concurrency":4,
+	resp2 := postJSON(t, srv, "/api/settings", `{"host":"0.0.0.0","port":11535,"decode_concurrency":1,
 		"sampling":{"temperature":1.2},
 		"models":{"org/pinned":{"sampling":{"temperature":0.1}}}}`)
 	defer resp2.Body.Close()

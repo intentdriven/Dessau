@@ -7,6 +7,7 @@ import (
 	"github.com/intentdriven/Dessau/internal/app"
 	"github.com/intentdriven/Dessau/internal/bridge/discord"
 	"github.com/intentdriven/Dessau/internal/gateway"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 // newDiscordBridge wires the Discord bridge to this server.
@@ -50,14 +51,15 @@ func chatModels(a *app.App) []string {
 	return out
 }
 
-// servedContext is the window a model is served at on this Mac: the
-// operator's setting, or the model's declared window when they have set none.
-// It is the figure the gateway judges a request against, so it is the figure
-// the bridge bounds a conversation to.
+// servedContext is the window a model is served at on this Mac, as the app
+// resolves it: the operator's setting, or the default derived to fit the
+// budget when they have set none. It is the figure the gateway judges a
+// request against, so it is the figure the bridge bounds a conversation to.
 func servedContext(a *app.App, model string) int64 {
-	var declared int64
-	if m, err := a.Registry.Get(model); err == nil {
-		declared = m.ContextLength
+	m, err := a.Registry.Get(model)
+	if err != nil {
+		m = registry.Model{RepoID: model}
 	}
-	return a.Config().ServedContext(model, declared)
+	window, _ := a.ServedWindow(m)
+	return window
 }

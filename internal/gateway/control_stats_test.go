@@ -118,7 +118,7 @@ func TestTurningTheSwitchOffEmptiesThePanelAtOnce(t *testing.T) {
 	a.Stats.Add(stats.Record{Model: "org/a", Class: stats.ClassOK})
 
 	resp := postJSON(t, srv, "/api/settings",
-		`{"host":"0.0.0.0","port":11535,"decode_concurrency":4,"statistics":false}`)
+		`{"host":"0.0.0.0","port":11535,"decode_concurrency":1,"statistics":false}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("saving settings returned %d, want 200", resp.StatusCode)
@@ -143,7 +143,7 @@ func TestTurningTheSwitchOnAppliesAtOnce(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 
 	resp := postJSON(t, srv, "/api/settings",
-		`{"host":"0.0.0.0","port":11535,"decode_concurrency":4,"statistics":true}`)
+		`{"host":"0.0.0.0","port":11535,"decode_concurrency":1,"statistics":true}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("saving settings returned %d, want 200", resp.StatusCode)
@@ -209,7 +209,7 @@ func TestRecordingWritesOnlyToTheStore(t *testing.T) {
 	// Everything the settings save itself writes is already on disk before the
 	// tree is read, so what is compared is only what recording adds.
 	resp := postJSON(t, srv, "/api/settings",
-		`{"host":"0.0.0.0","port":11535,"decode_concurrency":4,"statistics":true}`)
+		`{"host":"0.0.0.0","port":11535,"decode_concurrency":1,"statistics":true}`)
 	resp.Body.Close()
 	before := treeOf(t, root)
 

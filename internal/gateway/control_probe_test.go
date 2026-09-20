@@ -97,7 +97,7 @@ func TestMeasureNowQueuesAndAdoptWritesTheServedWindow(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || out["status"] != "adopted" {
 		t.Fatalf("adopt = %d %v", resp.StatusCode, out)
 	}
-	if got := a.Config().ServedContext("org/m", 131072); got != 65536 {
+	if got := a.Config().ServedContextSetting("org/m", 131072); got != 65536 {
 		t.Errorf("served window after adopting = %d", got)
 	}
 }
