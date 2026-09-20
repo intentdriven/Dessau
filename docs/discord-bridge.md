@@ -7,7 +7,7 @@ the internet.
 
 **What leaves this Mac.** While the bridge is on, messages to the bot and the
 model's answers pass through Discord and are kept under Discord's terms. That
-is the whole of the trade: Gropius opens one outbound connection to Discord and
+is the whole of the trade: Dessau opens one outbound connection to Discord and
 relays conversations over it. Everything else about your server is unchanged —
 the bind address, the API key, and which machines can reach the OpenAI endpoint
 are exactly what they were. Switching the bridge off closes the connection.
@@ -45,7 +45,7 @@ bot works without any server at all.
 
 ## Paste the token
 
-1. Open the Gropius control panel and go to **Settings**.
+1. Open the Dessau control panel and go to **Settings**.
 2. Find **Discord bridge**, read the sentence beside the switch, and paste the
    token into **Discord bot token**.
 3. Turn the switch on and save.
@@ -58,7 +58,7 @@ stops the bridge and says so there; it never refuses a save, so you can change
 any other setting while the bridge is unhappy.
 
 The same two settings are `discord_bridge` and `discord_token` in
-`config.json`, and `gropius config show` prints the token redacted, the way it
+`config.json`, and `dessau config show` prints the token redacted, the way it
 prints the API key.
 
 ## Use it
@@ -99,7 +99,7 @@ field.
 - The bridge holds a limited number of conversations and answers a small number
   of requests at once. A very busy channel has messages dropped rather than
   queued, and the log says so.
-- If Gropius cannot serve a request, the bot says so in one short sentence:
+- If Dessau cannot serve a request, the bot says so in one short sentence:
   that it cannot serve the model right now, or that the conversation is too
   long for it. The detailed reason — which model, how much memory, what to
   change — stays in your log, because it describes your Mac.

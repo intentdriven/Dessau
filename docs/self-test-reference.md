@@ -4,8 +4,8 @@ What the [self-test](self-test.md) writes, where, and field by field.
 
 ## The file
 
-`selftest/results.jsonl` under this account's Gropius data folder: the
-data root for a per-user install or a root set with `GROPIUS_ROOT`, and this
+`selftest/results.jsonl` under this account's Dessau data folder: the
+data root for a per-user install or a root set with `DESSAU_ROOT`, and this
 account's own Application Support directory under a shared install, beside
 the statistics store and under the same rule. Its directory is created, at
 mode 0700, on the first write, and the file is mode 0600.
@@ -16,7 +16,7 @@ line would take it past that, the file is started again and the line is the
 first in it, so the newest run is always kept and the history is at most the
 cap. There is one file: no numbered predecessors and nothing beside it.
 
-It is written by the same writer as Gropius's own log and its
+It is written by the same writer as Dessau's own log and its
 [request statistics](statistics-store-reference.md#kind-run--one-self-test-run),
 and held to the same rules. A name in this folder standing for something that
 is not this account's own plain file — a link, a named pipe, a folder, or a
@@ -42,10 +42,10 @@ waited on, and the run is dropped with a line in the log.
 - `yielded` — a request from a client arrived, or a client's load needed the
   memory the run was holding; the self-test cancelled its own request and
   released the model.
-- `stopped` — the switch went off, or Gropius quit, during the run.
+- `stopped` — the switch went off, or Dessau quit, during the run.
 - `failed` — the model could not be loaded (`reason` is `load`), or a request
   to it failed or timed out (`reason` is `request`). The reason is a class, not
-  the error's text; Gropius's own log has the text.
+  the error's text; Dessau's own log has the text.
 
 A model with a failed or yielded run is not retried until its turn comes round
 again the next day. A stopped run does not count: the model is measured

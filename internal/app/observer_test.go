@@ -3,13 +3,13 @@ package app
 import (
 	"bytes"
 	"errors"
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 	"log/slog"
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // The pool names the seven ways a model can leave it, and the recorder names

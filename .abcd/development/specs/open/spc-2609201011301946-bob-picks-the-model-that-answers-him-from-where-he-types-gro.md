@@ -13,7 +13,7 @@ production_mode: hand-written
 This spec delivers itd-2609200829199959 in the chat client only. The composer
 becomes a pill that floats over the transcript, and the control that decides
 who answers sits at its start, carrying the model's name and where it runs.
-Its popover lists **On this Mac** first and then one section per Gropius
+Its popover lists **On this Mac** first and then one section per Dessau
 server found on the network, each listing that server's chat models, with a
 lock where a key is wanted, a greyed **No response** where a server has gone
 quiet, and a paired server shown as paired. A server appears once, matched by
@@ -28,12 +28,12 @@ the control panel or `config.json`. Impact: additive.
 
 ## Scope
 
-In: `client/GropiusChat/` (the composer, the picker, discovery, the backends,
+In: `client/DessauChat/` (the composer, the picker, discovery, the backends,
 the conversation record, the app's commands and Settings), three new
 SwiftUI-free files that hold the logic the unit tier tests, `client/tests/`
 (the Swift unit tier), a new XCUITest bundle under `client/`,
 `internal/archtest/`, and `client/README.md`. Neither build script needs
-editing: both compile `GropiusChat/*.swift` as a glob, so a new source file is
+editing: both compile `DessauChat/*.swift` as a glob, so a new source file is
 picked up by itself.
 
 Out: the server, the control panel, `config.json`, the Discord bridge (its
@@ -61,17 +61,17 @@ built and the disagreement is a question for the maintainer, not a licence.
 
 ### The welcome sheet
 
-A new file `client/GropiusChat/Welcome.swift` declares `struct WelcomeSheet:
+A new file `client/DessauChat/Welcome.swift` declares `struct WelcomeSheet:
 View`. `RootView` presents it with `.sheet(isPresented:)` bound to
 `@AppStorage("hasSeenWelcome")` inverted; the one button sets the flag and the
 sheet closes. There is no second path that sets or clears it, and Settings
 carries no control that names it. The sheet holds a title, two lines and one
 button, and no model control of any kind:
 
-- Title: **Welcome to Gropius Chat**
+- Title: **Welcome to Dessau Chat**
 - "Type a question and a language model answers. That is the whole of it."
 - "This \(deviceNoun) can already answer, on the device, with nothing sent
-  anywhere. When a Gropius server turns up on your network, its models are one
+  anywhere. When a Dessau server turns up on your network, its models are one
   click away in the picker beside the message box."
 - Button: **Start Chatting**
 
@@ -334,7 +334,7 @@ Each gets a test file and a shell wrapper in `client/tests/`, on the pattern of
 no toolchain is present. `TestChatClientCardSummaryCompilesAlone`'s rule
 applies to all three: the file mentions no `import`, no `SwiftUI`, and neither
 `Conversation` nor `Message`, so it compiles standalone. Neither build script
-changes — both glob `GropiusChat/*.swift`.
+changes — both glob `DessauChat/*.swift`.
 
 ## Acceptance-criteria map
 
@@ -370,7 +370,7 @@ on the same rule as a script argument locally.
 - **HC-1 First launch.** A reset container: the sheet, the dismissal, the
   first message answered on this Mac.
 - **HC-2 The offer line.** The maintainer's own network with a second Mac
-  running Gropius: the line appears once, **Use it** switches the chat, the
+  running Dessau: the line appears once, **Use it** switches the chat, the
   dismissal is permanent across a relaunch.
 - **HC-3 A server switched off while the picker is open.** Its section greys
   to **No response** and stays listed.

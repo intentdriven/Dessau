@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The stored intervals reach the pool at start-up, so a Mac that was serving

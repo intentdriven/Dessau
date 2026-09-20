@@ -1,6 +1,6 @@
 # Why a request waits instead of taking the memory
 
-Gropius holds a fixed amount of memory for loaded models, and when a request
+Dessau holds a fixed amount of memory for loaded models, and when a request
 arrives for a model that does not fit, something has to go. The rule that picks
 what goes is least-recently-used: the idle model nobody has touched for longest.
 The [models list reference](models-list.md) states the rules;

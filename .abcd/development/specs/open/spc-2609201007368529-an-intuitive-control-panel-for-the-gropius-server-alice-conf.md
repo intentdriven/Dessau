@@ -6,7 +6,7 @@ origin: researcher-authored
 production_mode: hand-written
 ---
 
-# An intuitive control panel for the Gropius server
+# An intuitive control panel for the Dessau server
 
 ## Summary
 
@@ -114,7 +114,7 @@ There is no Usage tab and none is added: the usage dashboard is this pane
 | `statsHistoryBounds`, `statsHistoryEmpty`, `statsHistoryBusy` | read-only lines | — | Unchanged. |
 | `statsHistoryBody`, `statsDaysTable`/`Rows`, `statsLatencyTable`/`Rows`, `statsSpreadTable`/`Head`/`Rows`, `statsSizesTable`/`Rows`, `statsOverridesTable`/`Rows`, `statsFootprintTable`/`Rows`, `statsHoursTable`/`Rows` and the memory hint | roll-ups | — | Unchanged, each in its `.scroll` wrapper, which becomes a labelled, focusable region (see **Accessibility**). |
 | `statsSummaryBlock`, `statsSummaryNote`, `statsSummaryTable`, `statsSummaryRows` | roll-up | — | Unchanged. |
-| `selftestHint`, `selftestBody`, `selftestTable`, `selftestRows` and their hint | roll-up | — | **Moves to the foot of the pane** from its head. The self-test reports what Gropius measured of its own accord; the traffic above it is what the server did for other people, and that is what an operator opening Statistics came for. |
+| `selftestHint`, `selftestBody`, `selftestTable`, `selftestRows` and their hint | roll-up | — | **Moves to the foot of the pane** from its head. The self-test reports what Dessau measured of its own accord; the traffic above it is what the server did for other people, and that is what an operator opening Statistics came for. |
 
 ### Connect (`tab-connect`)
 
@@ -194,7 +194,7 @@ nested `<section>`.
 | `mergeList` and its prose | container of controls | `models.*.merge_system` | Group D. |
 | `setChatPipelines`, `setChatTags` and their prose | controls | `chat_rule.pipeline_tags`, `chat_rule.required_tags` (via `chatRule`) | Group D. |
 
-**E. What Gropius measures when nobody is asking** (`group-idlework`)
+**E. What Dessau measures when nobody is asking** (`group-idlework`)
 
 | Element | What it is | Key | Destination |
 | --- | --- | --- | --- |
@@ -204,7 +204,7 @@ nested `<section>`.
 | `setSelfTest` and its prose | control | `self_test` | Group E. |
 | `selfTestIdleFigure` | read-only line | — | Group E, inside that prose, unchanged. |
 
-**F. What Gropius writes down** (`group-record`)
+**F. What Dessau writes down** (`group-record`)
 
 | Element | What it is | Key | Destination |
 | --- | --- | --- | --- |

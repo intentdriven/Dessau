@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Registry answers the one question both the TLS handshake and every request

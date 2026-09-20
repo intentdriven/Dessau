@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // adr-2609182357322050's obligation: the plain port's behaviour is BYTE FOR

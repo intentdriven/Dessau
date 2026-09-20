@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // writeConfig writes a settings file and returns its path.

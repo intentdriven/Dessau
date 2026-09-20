@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // askGateway is a recording gateway a test can call Ask on directly, over a
@@ -259,7 +259,7 @@ func TestAskHandsBackAClassAndKeepsThePoolsTextForTheOperator(t *testing.T) {
 	g := New(Options{
 		Config: cfg,
 		Pool: &refusingPool{err: &runtime.LaunchError{
-			Err: errors.New("/Users/someone/Library/Application Support/Gropius/venv/bin/python: no such file"),
+			Err: errors.New("/Users/someone/Library/Application Support/Dessau/venv/bin/python: no such file"),
 		}},
 		Models: models,
 		Stats:  rec,

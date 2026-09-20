@@ -3,15 +3,16 @@ package discovery
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Regression test for a bug that renamed the user's Mac.
 //
 // brutella/dnssd is a standalone responder: it publishes A/AAAA records claiming
 // whatever Config.Host is set to. macOS's mDNSResponder already owns
-// <LocalHostName>.local. When Gropius claimed that same name, macOS detected a
+// <LocalHostName>.local. When Dessau claimed that same name, macOS detected a
 // collision and renamed the machine (AlicesMac -> AlicesMac-2) — a persistent
 // change to the user's system settings.
 //
@@ -28,8 +29,8 @@ func TestServiceHostNeverClaimsTheMachineHostname(t *testing.T) {
 		t.Fatalf("serviceHost(%q) = %q — publishing address records for the machine's own "+
 			"hostname makes macOS rename the machine to avoid the collision", local, got)
 	}
-	if !strings.HasPrefix(got, "gropius-") {
-		t.Errorf("serviceHost(%q) = %q, want a gropius- prefixed name that nothing else can own", local, got)
+	if !strings.HasPrefix(got, "dessau-") {
+		t.Errorf("serviceHost(%q) = %q, want a dessau- prefixed name that nothing else can own", local, got)
 	}
 }
 
@@ -88,6 +89,17 @@ func TestServiceNamesStayWithinOneDNSLabel(t *testing.T) {
 	if got := serviceName(long); len(got) > 63 {
 		t.Errorf("serviceName(63 chars) = %q (%d octets), over the 63-octet DNS label limit", got, len(got))
 	}
+	// The instance name is arbitrary UTF-8, so the cut must land between
+	// runes: a label of two-byte runes is clamped to whole runes and stays
+	// valid, and a cut that lands after a word leaves no trailing space.
+	wide := strings.Repeat("\u00e9", 40)
+	if got := serviceName(wide); !utf8.ValidString(got) || len(got) > maxDNSLabel-labelHeadroom {
+		t.Errorf("serviceName(40 two-byte runes) = %q (%d octets, valid=%v); the clamp must cut between runes and stay within %d octets", got, len(got), utf8.ValidString(got), maxDNSLabel-labelHeadroom)
+	}
+	spaced := strings.Repeat("a", 58) + " Pro"
+	if got := serviceName(spaced); strings.HasSuffix(got, " ") {
+		t.Errorf("serviceName(%q) = %q, ends in a space", spaced, got)
+	}
 	trailing := strings.Repeat("a", 50) + "--bbbb"
 	if got := serviceHost(trailing); strings.HasSuffix(got, "-") {
 		t.Errorf("serviceHost(%q) = %q ends with a hyphen, which is not legal in a DNS host label", trailing, got)
@@ -99,10 +111,10 @@ func TestServiceHostIsALegalDNSLabel(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"AlicesMac", "gropius-alicesmac"},
-		{"Alice's iMac", "gropius-alice-s-imac"},
-		{"Mac-Pro-2", "gropius-mac-pro-2"},
-		{"", "gropius-host"},
+		{"AlicesMac", "dessau-alicesmac"},
+		{"Alice's iMac", "dessau-alice-s-imac"},
+		{"Mac-Pro-2", "dessau-mac-pro-2"},
+		{"", "dessau-host"},
 	}
 	for _, tt := range tests {
 		got := serviceHost(tt.in)

@@ -131,7 +131,7 @@ func TestWalkRepoFilesSkipsDotDirectories(t *testing.T) {
 		".claude/worktrees/branch/tracked.txt",
 		".github/workflows/ci.yml",
 		"node_modules/dep/index.js",
-		"bin/gropius",
+		"bin/dessau",
 		"client/main.swift",
 	} {
 		path := filepath.Join(root, filepath.FromSlash(rel))

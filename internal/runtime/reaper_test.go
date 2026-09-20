@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 	"golang.org/x/sys/unix"
 )
 
@@ -211,7 +211,7 @@ func TestReadLockedDoesNotFollowSymlinkedLedger(t *testing.T) {
 	}
 }
 
-// A planted ledger can name process groups Gropius never started. kill(-1, sig)
+// A planted ledger can name process groups Dessau never started. kill(-1, sig)
 // signals every process this uid may signal, kill(0, sig) our own group, and a
 // negative pgid flips sign into a single-pid kill — none can ever be a child we
 // recorded, so they are dropped at parse time before any signal is sent.

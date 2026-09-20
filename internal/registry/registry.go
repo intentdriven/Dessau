@@ -1,6 +1,6 @@
 // Package registry tracks which models are on disk and where.
 //
-// The registry is the source of truth for what Gropius can serve. It is
+// The registry is the source of truth for what Dessau can serve. It is
 // deliberately a thin index over the filesystem: the model directories
 // themselves are the real artifact, and the registry can always be rebuilt from
 // them (see Rescan).
@@ -20,8 +20,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/intentdriven/Gropius/internal/capability"
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/capability"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // State is where a model is in its lifecycle.
@@ -72,7 +72,7 @@ type Model struct {
 	// pipeline tag ("text-generation", "automatic-speech-recognition") and its
 	// tags, recorded from the Hub when the model was downloaded.
 	//
-	// They are the Hub's words, not a Gropius vocabulary, and they are the only
+	// They are the Hub's words, not a Dessau vocabulary, and they are the only
 	// thing a client is given to pick a model by kind. Neither is on the disk,
 	// so a rescan cannot re-derive them: an entry recorded by a build that
 	// predates them, or downloaded while the Hub was unreachable, simply has
@@ -86,7 +86,7 @@ type Model struct {
 	// with the files it described (itd-2609091301112705).
 	Measured *Measurement `json:"measured,omitempty"`
 	// ProbeIncomplete says a probe of this model was interrupted — the
-	// switch went off, Gropius quit, the Mac slept — and wrote no figure, so
+	// switch went off, Dessau quit, the Mac slept — and wrote no figure, so
 	// the next start reports it rather than silently retrying.
 	ProbeIncomplete bool `json:"probe_incomplete,omitempty"`
 }
@@ -181,7 +181,7 @@ func hubTagRune(b byte) bool {
 	return strings.IndexByte("-_.:/", b) >= 0
 }
 
-// MaxContextLength bounds the context length Gropius will believe. A model
+// MaxContextLength bounds the context length Dessau will believe. A model
 // directory's config.json is, in shared-cache mode, a file another local
 // account can write, and the figure it declares is served to the LAN — so a
 // hostile or corrupt configuration must not be able to hand a client an
@@ -396,7 +396,7 @@ func (r *Registry) SetState(repoID string, state State, progress float64, errMsg
 // ReconcileInterrupted marks every model still recorded as "downloading" as
 // failed, and returns the ids it changed.
 //
-// Only one Gropius process ever downloads (the singleton that owns the port), so
+// Only one Dessau process ever downloads (the singleton that owns the port), so
 // any "downloading" entry found when a fresh process starts up is orphaned: the
 // goroutine that was fetching it died with the previous process. Left alone it
 // stays "downloading" forever — the UI offers only a Cancel button for that
@@ -413,7 +413,7 @@ func (r *Registry) ReconcileInterrupted() []string {
 			continue
 		}
 		m.State = StateFailed
-		m.Err = "interrupted — Gropius restarted while this was downloading; retry to resume or remove it"
+		m.Err = "interrupted — Dessau restarted while this was downloading; retry to resume or remove it"
 		r.models[repoID] = m
 		changed = append(changed, repoID)
 	}
@@ -621,7 +621,7 @@ func (r *Registry) broadcast(snapshot []Model) {
 //
 // A directory counts as a model when it holds a plausible model config.json,
 // at least one .safetensors file, and every weight shard its
-// model.safetensors.index.json names. Anything mid-download (a .gropius-part
+// model.safetensors.index.json names. Anything mid-download (a .dessau-part
 // file present) or incomplete is skipped rather than adopted as ready — and an
 // existing failed record for it keeps its state and diagnostic.
 func (r *Registry) Rescan(modelsDir string) error {
@@ -760,7 +760,7 @@ func inspectModelDir(dir string) (complete bool, size int64, facts ModelFacts) {
 			return nil
 		}
 		name := d.Name()
-		if strings.HasSuffix(name, ".gropius-part") {
+		if strings.HasSuffix(name, ".dessau-part") {
 			partial = true
 		}
 		if filepath.Dir(path) == dir {
@@ -859,7 +859,7 @@ func readManifest(dir, name string, v any) error {
 }
 
 // readModelConfig decodes dir's config.json. This is the only decoder of a
-// model's configuration in Gropius; every question asked of that file —
+// model's configuration in Dessau; every question asked of that file —
 // whether the directory is a model, what positional range it declares, and
 // whether a finished download is worth advertising — is answered from the map
 // it returns.

@@ -7,7 +7,7 @@ import (
 
 // The panel shows the same proportion the terminal does.
 //
-// `gropius install` provisions in the foreground and prints how many of the
+// `dessau install` provisions in the foreground and prints how many of the
 // stages are done; the panel reads the same SetupStatus over /api/state. A
 // proportion on one surface and a bare spinner on the other would be a Go
 // capability with no panel equivalent, which this repository counts as a gap

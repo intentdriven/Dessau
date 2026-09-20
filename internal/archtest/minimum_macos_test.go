@@ -98,14 +98,14 @@ func TestEverySurfaceDeclaresTheSameMacOSFloor(t *testing.T) {
 
 	t.Run("update verb floor", func(t *testing.T) {
 		// The third route onto a Mac. install.sh refuses below the floor and
-		// Launch Services refuses to open the bundle; `gropius update` goes
+		// Launch Services refuses to open the bundle; `dessau update` goes
 		// through neither, and it quits the server and swaps the bundle aside
 		// before the system is asked anything. Its constant is a fourth copy of
 		// this number and is held here with the rest.
 		raw := readRepoFile(t, root, filepath.Join("internal", "lifecycle", "floor.go"))
 		m := regexp.MustCompile(`(?m)^const minMacOSMajor = ([0-9]+)$`).FindStringSubmatch(raw)
 		if m == nil {
-			t.Fatal("internal/lifecycle/floor.go declares no minMacOSMajor; `gropius update` would replace a working install on a Mac that cannot open the new bundle")
+			t.Fatal("internal/lifecycle/floor.go declares no minMacOSMajor; `dessau update` would replace a working install on a Mac that cannot open the new bundle")
 		}
 		if m[1] != major {
 			t.Errorf("internal/lifecycle declares minMacOSMajor = %s; the plists declare major %q", m[1], major)

@@ -13,6 +13,16 @@
         "(?i)<!--\\s*docs-lint:\\s*allow\\b"
       ],
       "message": "names a banned token in user-facing content (names/predecessor-product); this repo's published surface does not name it. Use a generic term, or add <!-- docs-lint: allow --> if naming it is genuinely necessary."
+    },
+    {
+      "id": "names/superseded-product",
+      "pattern": "(?i)Gropius",
+      "severity": "blocker",
+      "successor": "Dessau",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "names a banned token in user-facing content (names/superseded-product); this product is Dessau, and the superseded name belongs to something else. Use Dessau, or add <!-- docs-lint: allow --> if naming it is genuinely necessary."
     }
   ],
   "rules": {},

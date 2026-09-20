@@ -16,7 +16,7 @@ import (
 // This file is the self-test's one reader and writer of a conversation, and
 // it is on internal/archtest's allow-list for both sides of that boundary
 // (prompt_content_test.go). It builds requests from the two constants below
-// and reads nothing from a client: a self-test run is a conversation Gropius
+// and reads nothing from a client: a self-test run is a conversation Dessau
 // has with its own model server, and the only thing kept from the answer is
 // when its first chunk arrived and how many chunks there were.
 

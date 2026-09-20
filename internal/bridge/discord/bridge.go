@@ -1,7 +1,7 @@
 // Package discord bridges direct messages and mentions of a Discord bot to a
 // model on this Mac.
 //
-// It is the first thing in Gropius that carries a conversation off the machine,
+// It is the first thing in Dessau that carries a conversation off the machine,
 // and it does so only under adr-2609181004167097: opt-in per bridge and off by
 // default, outbound only (no port is opened and the bind mode is untouched),
 // with the bot token held as a secret on every surface the API key is, and with
@@ -31,10 +31,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/gateway"
+	"github.com/intentdriven/Dessau/internal/gateway"
 )
 
-// The bridge's four states, as the panel and `gropius config show` spell them.
+// The bridge's four states, as the panel and `dessau config show` spell them.
 const (
 	// StateOff is the switch off: no connection, no goroutine, nothing held.
 	StateOff = "off"

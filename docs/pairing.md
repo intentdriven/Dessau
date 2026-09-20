@@ -57,7 +57,7 @@ in **Settings**, under **Port for paired clients**:
 - `-1` — no port for paired clients at all. Nothing can pair, and anything
   already paired stops being able to connect.
 
-Changing it takes effect when Gropius next starts.
+Changing it takes effect when Dessau next starts.
 
 ## Start again
 

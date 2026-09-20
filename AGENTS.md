@@ -59,10 +59,10 @@ Download MLX models on your Mac and serve them to the rest of your network — a
 
 ## What this repository is
 
-Gropius is a Go menu-bar app for Apple Silicon Macs (module
-`github.com/intentdriven/Gropius`, Go 1.25). It downloads MLX models from
+Dessau is a Go menu-bar app for Apple Silicon Macs (module
+`github.com/intentdriven/Dessau`, Go 1.25). It downloads MLX models from
 HuggingFace and serves them over an OpenAI-compatible API to the local network.
-Entry point: `cmd/gropius`. Packages live under `internal/` (`app`, `capability`,
+Entry point: `cmd/dessau`. Packages live under `internal/` (`app`, `capability`,
 `config`, `discovery`, `gateway`, `hub`, `registry`, `runtime`, `ui`, plus the
 `archtest`/`mlxtest` test packages). `client/` holds a small Swift chat client
 built separately via `client/build.sh`. `docs/` is user-facing documentation;
@@ -73,7 +73,7 @@ built separately via `client/build.sh`. `docs/` is user-facing documentation;
 ```sh
 make test                                  # go test -race ./...  — the full suite
 go test -race -run TestDownloadResumesFromPartialFile ./internal/hub/   # a single test
-make build                                 # dev binary at bin/gropius
+make build                                 # dev binary at bin/dessau
 make app                                   # signed .app bundle in dist/
 gofmt -l .                                 # must print nothing
 go vet ./...

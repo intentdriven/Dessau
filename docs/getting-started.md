@@ -1,4 +1,4 @@
-# Getting started with Gropius
+# Getting started with Dessau
 
 This walks you from a fresh checkout to answering a prompt from another machine.
 About 15 minutes, most of it downloads.
@@ -14,26 +14,26 @@ About 15 minutes, most of it downloads.
 - Go 1.25+ and the Xcode command-line tools (`xcode-select --install`) to build.
 - An internet connection for the first run.
 
-You do **not** need Python installed — Gropius installs its own.
+You do **not** need Python installed — Dessau installs its own.
 
 ## 2. Build and launch
 
 Building from source is what this page walks through. If you are installing a
 release instead, the one-line command in the README is the whole of it: it
 verifies the download against the checksums published beside it and hands over
-to `gropius install`, which places the application, asks once for the firewall
-grant, installs the MLX runtime in the foreground and links the `gropius`
+to `dessau install`, which places the application, asks once for the firewall
+grant, installs the MLX runtime in the foreground and links the `dessau`
 command into `~/.local/bin`. See
-[Install, repair and remove Gropius](lifecycle.md).
+[Install, repair and remove Dessau](lifecycle.md).
 
-To move to a later release afterwards, run `gropius update`: it does the same
+To move to a later release afterwards, run `dessau update`: it does the same
 work and then reports the version it installed and the version this Mac is
 serving as two separate facts — see
 [Update it](lifecycle.md#update-it).
 
 ```sh
-git clone <this repo> && cd Gropius
-make install        # builds Gropius.app, copies it to /Applications, launches it — needs your password, for the firewall
+git clone <this repo> && cd Dessau
+make install        # builds DessauServer.app, copies it to /Applications, launches it — needs your password, for the firewall
 ```
 
 A small icon appears in the menu bar. The first launch downloads a private Python
@@ -87,7 +87,7 @@ describes every field, including what those values do and do not promise.
 
 ### Set how much memory models may use
 
-**Settings → Memory for loaded models** is how much of this Mac Gropius fills
+**Settings → Memory for loaded models** is how much of this Mac Dessau fills
 with loaded models: 60% of its memory until you type a figure of your own, in
 gigabytes, with the share of the machine shown beside it. Raise it on a Mac that
 serves models and does nothing else, and two large models sit in memory together
@@ -170,13 +170,13 @@ Setting a key also turns on the models list's residency fields, so a client
 holding it can see which models are loaded and pick a warm one instead of
 triggering a load — see the [models list reference](models-list.md).
 
-### What Gropius reads of a request
+### What Dessau reads of a request
 
-Gropius passes a request on to the model without reading what is in it. There
+Dessau passes a request on to the model without reading what is in it. There
 is one exception, it is per model, and it is off until you switch it on:
 **Settings → Merge system messages**, for a model whose template refuses a
 conversation whose instructions are not all at the top. For a model you switch
-it on for, Gropius reads that request's instruction messages and nothing else,
+it on for, Dessau reads that request's instruction messages and nothing else,
 gathers them into the first one, and keeps none of what it reads. See
 [Merge system messages for a template-strict model](system-message-merging.md).
 
@@ -192,13 +192,13 @@ themselves in [Reference: sampling parameters](sampling-reference.md).
 
 ## 8. See how your models are performing (optional)
 
-Gropius keeps no record of the requests it serves unless you ask it to.
+Dessau keeps no record of the requests it serves unless you ask it to.
 **Settings → Request statistics** turns on a content-free record of each
 request — the model, the token counts and the timings — shown per model on the
 **Statistics** tab, so two quantisations of the same model can be compared by
 their numbers. It never records a prompt, an answer, an API key or the address
 of the client, and nothing recorded leaves this Mac. The records are kept in a
-`stats` folder inside the Gropius data folder, one line of JSON each, for as
+`stats` folder inside the Dessau data folder, one line of JSON each, for as
 many months and as many megabytes as you say in Settings. When those limits
 drop a day's records, a coarse per-model summary of that day is kept in their
 place, so the shape of last year's use survives the detail. See
@@ -211,23 +211,23 @@ tab's tables over days and months mean.
 If several people log into this Mac, let them share one copy of each model:
 
 ```sh
-make install-shared     # creates /Users/Shared/Gropius, needs your password
+make install-shared     # creates /Users/Shared/Dessau, needs your password
 ```
 
-After that, whoever launches Gropius first runs the server; everyone else's
+After that, whoever launches Dessau first runs the server; everyone else's
 menu-bar app just points at it. One copy on disk, one on the GPU.
 
 The shared folder holds the model files and the download cache they arrive
 through. A folder set up by an earlier version may also hold a `registry.json`
 and a `logs` folder, which nothing uses any more; they are safe to delete, and
-Gropius does not remove them for you. Everything belonging to one account
+Dessau does not remove them for you. Everything belonging to one account
 stays in that
-account's own `~/Library/Application Support/Gropius`: its settings
+account's own `~/Library/Application Support/Dessau`: its settings
 (`config.json`, which holds the API key and the HuggingFace token), its list of
-models (`registry.json`), its model-server logs, Gropius's own log, its request
+models (`registry.json`), its model-server logs, Dessau's own log, its request
 statistics, and
 the private Python runtime it starts model servers with. So an API key or a
-token one account sets is never readable by another. What Gropius writes in
+token one account sets is never readable by another. What Dessau writes in
 that log, and how to make it say more while you are diagnosing something, is on
 the [logging page](logging.md).
 
@@ -242,26 +242,26 @@ has recording on, its records cover every request the server handled, from any
 account on this Mac, and they are kept in that account's own folder rather
 than the shared one.
 
-Gropius only uses `/Users/Shared/Gropius` when the installer created it: the
+Dessau only uses `/Users/Shared/Dessau` when the installer created it: the
 directory must be owned by the administrator account (`root`), which is what
 `make install-shared` produces. A folder someone made by hand there is ignored
 and each account falls back to its own data directory.
 
 ## 10. Settings that live only in `config.json` (optional)
 
-Almost everything Gropius holds has a control in **Settings**, and a build that
+Almost everything Dessau holds has a control in **Settings**, and a build that
 grows a setting without one fails its own tests. Two are deliberately not
 there. Both are power-tool settings, both are set by hand in `config.json`, and
 both survive every save the panel makes — the panel never writes a setting it
 does not show.
 
-The file is at `~/Library/Application Support/Gropius/config.json`. Edit it
-with Gropius stopped, because the panel writes the whole file when you save and
+The file is at `~/Library/Application Support/Dessau/config.json`. Edit it
+with Dessau stopped, because the panel writes the whole file when you save and
 the last writer wins. To read what is in force without opening it — the
 secrets are shown as `********` and never as their values:
 
 ```sh
-gropius config show
+dessau config show
 ```
 
 ### `preload` — models loaded at startup
@@ -282,8 +282,8 @@ loads it. Pinning has a control, under **Settings → Pinned models**.
 
 ### `upstream_header_timeout_sec` — how long to wait for a model's first header
 
-How long Gropius waits for a model server to send its first response header
-before giving up, in seconds. Zero — the default — means Gropius works the
+How long Dessau waits for a model server to send its first response header
+before giving up, in seconds. Zero — the default — means Dessau works the
 figure out itself from what the model is and what this Mac can do, which is the
 right answer almost always.
 
@@ -302,10 +302,10 @@ wait is wrong for your Mac, and put it back to zero when it is not.
 ## Troubleshooting
 
 - **Another machine gets `ERR_EMPTY_RESPONSE` / "didn't send any data", but
-  `localhost` works on the Mac itself.** `gropius doctor` reports what it can
+  `localhost` works on the Mac itself.** `dessau doctor` reports what it can
   see of this, including the two commands that make the firewall grant again —
-  see [Install, repair and remove Gropius](lifecycle.md). The macOS Application Firewall is
-  blocking incoming connections to Gropius. A locally-built app is not signed by
+  see [Install, repair and remove Dessau](lifecycle.md). The macOS Application Firewall is
+  blocking incoming connections to Dessau. A locally-built app is not signed by
   a Developer-ID certificate, so the firewall accepts the connection and then
   drops it — loopback is exempt, which is why same-machine access still works.
   Allow it through once:
@@ -313,14 +313,14 @@ wait is wrong for your Mac, and put it back to zero when it is not.
   ```sh
   make allow-firewall     # or, for the installed app:
   sudo /usr/libexec/ApplicationFirewall/socketfilterfw \
-    --add "/Applications/Gropius.app/Contents/MacOS/gropius"
+    --add "/Applications/DessauServer.app/Contents/MacOS/dessau"
   sudo /usr/libexec/ApplicationFirewall/socketfilterfw \
-    --unblockapp "/Applications/Gropius.app/Contents/MacOS/gropius"
+    --unblockapp "/Applications/DessauServer.app/Contents/MacOS/dessau"
   ```
 
   `make install` does this for you. You can also do it in **System Settings →
-  Network → Firewall → Options** by setting Gropius to "Allow incoming
-  connections". Only the Gropius app needs this; its Python helper only ever
+  Network → Firewall → Options** by setting Dessau Server to "Allow incoming
+  connections". Only the server app needs this; its Python helper only ever
   listens on loopback.
 
 - **A model answers the first message, then fails with a template error once the
@@ -329,7 +329,7 @@ wait is wrong for your Mac, and put it back to zero when it is not.
   for that model — see
   [Merge system messages for a template-strict model](system-message-merging.md).
 - **The menu-bar icon never appears.** Run it in the foreground to see errors:
-  `./dist/Gropius.app/Contents/MacOS/gropius`.
+  `./dist/DessauServer.app/Contents/MacOS/dessau`.
 - **A model stays "downloading" forever / fails.** Check the panel for the error.
   Gated models need a HuggingFace token in **Settings**.
 - **`your-mac.local` won't resolve from another machine.** Use the IP from the
@@ -343,7 +343,7 @@ wait is wrong for your Mac, and put it back to zero when it is not.
   automatic sleeping in **System Settings → Energy** (on a laptop, **Battery →
   Options**), or run `caffeinate` in a terminal for a headless session.
 - **The log says `config.json could not be read` and other machines cannot
-  connect.** Gropius refuses a `config.json` that is not an ordinary file (a
+  connect.** Dessau refuses a `config.json` that is not an ordinary file (a
   symlink from a dotfiles manager, say) or that does not parse — a hand-edited
   value of the wrong kind, such as a number in quotes — and starts locked to
   this Mac only, so a file it cannot trust never opens the server to the
@@ -362,29 +362,29 @@ wait is wrong for your Mac, and put it back to zero when it is not.
 One command:
 
 ```sh
-gropius uninstall
+dessau uninstall
 ```
 
 It removes the application, the private Python runtime, your settings, your
-model list, the logs, the request statistics, the `gropius` command itself and
+model list, the logs, the request statistics, the `dessau` command itself and
 the firewall entry — which is the step every hand-written instruction forgets.
 It leaves the models you downloaded, states how much room they take, and names
 the flag that removes them too:
 
 ```sh
-gropius uninstall --purge
+dessau uninstall --purge
 ```
 
 With the shared cache from step 9, your own account's directory is what goes.
 The shared folder holds every account's models, so uninstall never touches it;
 the output says how much it holds and how many other accounts it belongs to.
-Once everybody on this Mac has finished with Gropius, one deliberate command
+Once everybody on this Mac has finished with Dessau, one deliberate command
 removes it:
 
 ```sh
-sudo /bin/rm -rf /Users/Shared/Gropius
+sudo /bin/rm -rf /Users/Shared/Dessau
 ```
 
 What each verb removes, what `--purge` does under a shared cache, and what a
 declined authorisation panel leaves behind are on
-[Install, repair and remove Gropius](lifecycle.md).
+[Install, repair and remove Dessau](lifecycle.md).

@@ -29,8 +29,8 @@ panel and `config.json` are untouched.
 
 ## Scope
 
-In: `client/GropiusChat/` (a new `Backgrounds.swift` and a new `Contrast.swift`,
-plus edits to `GropiusChat.swift` and `Bubbles.swift`), `client/tests/` (the
+In: `client/DessauChat/` (a new `Backgrounds.swift` and a new `Contrast.swift`,
+plus edits to `DessauChat.swift` and `Bubbles.swift`), `client/tests/` (the
 Swift unit target's cases for the store, the resolver and the contrast
 arithmetic), the client's XCUITest tier, `internal/archtest/`, and
 `client/README.md`.
@@ -43,7 +43,7 @@ itd-2609200850330402; the Mac's Desktop Pictures and any other system path.
 
 ### The background model
 
-One declaration, in a new file `client/GropiusChat/Backgrounds.swift`:
+One declaration, in a new file `client/DessauChat/Backgrounds.swift`:
 
 ```swift
 enum ChatBackground: RawRepresentable, Hashable, Codable, Sendable {
@@ -91,7 +91,7 @@ drawing the client does itself by definition, and no system control draws one.
 The exception stays one file wide — the transcript applies its background
 through `.chatBackground(_:)`, a modifier declared in `Backgrounds.swift`
 exactly as `.bubble(_:isUser:)` is declared in `Bubbles.swift`, so
-`GropiusChat.swift` gains none of the banned modifiers.
+`DessauChat.swift` gains none of the banned modifiers.
 
 ### Pictures: the picker, the copy, the file layout
 
@@ -104,10 +104,10 @@ systems (cond-2609201011303278).
 
 The item is loaded as `Data` and written into the client's own container beside
 the conversation store, which is already
-`Application Support/GropiusChat/conversations.json`:
+`Application Support/DessauChat/conversations.json`:
 
 ```
-Application Support/GropiusChat/Backgrounds/<uuid>.<ext>
+Application Support/DessauChat/Backgrounds/<uuid>.<ext>
 ```
 
 `<uuid>` is minted at the copy, and `<ext>` comes from the transferable's own

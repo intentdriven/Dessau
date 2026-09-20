@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
-// The category is published the way every other Gropius extension to the models
+// The category is published the way every other Dessau extension to the models
 // list is: top-level fields under the names the source already uses, absent
 // when there is nothing to say. The words are HuggingFace's own.
 func TestListModelsPublishesTheHubsCategory(t *testing.T) {
@@ -124,7 +124,7 @@ func TestTheChatFlagFollowsTheServersRule(t *testing.T) {
 // as the flag so the two cannot drift apart.
 func TestAModelOutsideTheChatRuleIsStillServed(t *testing.T) {
 	const modelPath = "/models/org/ears"
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "GROPIUS OK"})
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	defer fake.Close()
 
 	models := &stubModels{models: []registry.Model{{

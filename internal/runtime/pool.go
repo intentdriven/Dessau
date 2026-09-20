@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/capability"
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/capability"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // ModelSource resolves a repo id to an on-disk model. The registry implements it.
@@ -35,7 +35,7 @@ type ResolvedModel struct {
 	Path string
 	// Bytes is the model's size on disk.
 	Bytes int64
-	// ServedContext is the window Gropius serves this model at: the operator's
+	// ServedContext is the window Dessau serves this model at: the operator's
 	// per-model setting, or the window the model declares when they have set
 	// none (config.Config.ServedContext). The gateway refuses a request
 	// estimated to be larger, so it is the window the pool charges.
@@ -2085,7 +2085,7 @@ func (p *Pool) drainEntry(repoID string, proc Process, charge int64) {
 	// Keep watching, with nothing else to do and nobody waiting on it. A
 	// process the kernel reaps late — minutes later, at shutdown, whenever —
 	// still closes Done, and its memory is as real as anyone else's: dropping
-	// the watch here would charge the budget for it until Gropius restarted,
+	// the watch here would charge the budget for it until Dessau restarted,
 	// however long ago it actually went.
 	<-proc.Done()
 
@@ -2489,7 +2489,7 @@ type softHoldKey struct{}
 // and its model is never stopped under it.
 //
 // It is the self-test's promise made enforceable: that a real request is never
-// made to wait for a run of Gropius's own (internal/selftest). It is carried
+// made to wait for a run of Dessau's own (internal/selftest). It is carried
 // in the context, like the source tag beside it, because a LAN client cannot
 // reach one: an HTTP request builds its context in the gateway, so a caller
 // can only ever mark its own hold, never another's.

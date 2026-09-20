@@ -63,7 +63,7 @@ func Assess(modelsDir string, totalRAM, budget int64) Machine {
 // second answer waiting to happen.
 func PhysicalMemory() int64 {
 	// The absolute path, not the name: this figure decides how much memory
-	// Gropius will fill, and resolving the command through PATH would let
+	// Dessau will fill, and resolving the command through PATH would let
 	// anything earlier on it answer that question.
 	out, err := exec.Command("/usr/sbin/sysctl", "-n", "hw.memsize").Output()
 	if err != nil {

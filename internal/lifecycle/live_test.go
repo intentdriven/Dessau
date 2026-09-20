@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The seams a real run uses are the ones a table over fakes can say nothing
@@ -151,7 +151,7 @@ func TestTheVerbEntryPointsRunAgainstATemporaryRoot(t *testing.T) {
 	}
 
 	out.Reset()
-	// Nothing here is a fault Gropius owns — a temporary root is writable, the
+	// Nothing here is a fault Dessau owns — a temporary root is writable, the
 	// settings file is absent, the runtime is not installed and no server is on
 	// the port — so doctor reports warnings and exits zero. This is also what
 	// covers the live checks: the provisioner read, the writability probe, the

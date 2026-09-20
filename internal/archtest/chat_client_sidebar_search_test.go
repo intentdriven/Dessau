@@ -12,7 +12,7 @@ import (
 // finds nothing because the words are not adjacent reads as a chat that is
 // gone. The client has no test target of its own, so the match lives in one
 // file that imports Foundation and nothing of the client's
-// (client/GropiusChat/SidebarSearch.swift) and is checked by a Swift main that
+// (client/DessauChat/SidebarSearch.swift) and is checked by a Swift main that
 // `swiftc` compiles on its own. These two tests are how that check reaches CI:
 // one runs it, the other holds the shipped sidebar to using it.
 
@@ -52,44 +52,44 @@ func TestChatClientSidebarSearchesEveryWord(t *testing.T) {
 
 	search, ok := all["SidebarSearch.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/SidebarSearch.swift is missing; the sidebar's search has no home of its own")
+		t.Fatal("client/DessauChat/SidebarSearch.swift is missing; the sidebar's search has no home of its own")
 	}
 	// The file has to compile on its own with nothing but Foundation, which
 	// is what lets client/tests/sidebar-search.sh check it.
 	for _, line := range strings.Split(search, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "import ") && strings.TrimSpace(line) != "import Foundation" {
-			t.Errorf("client/GropiusChat/SidebarSearch.swift carries %q; it must compile on its own "+
+			t.Errorf("client/DessauChat/SidebarSearch.swift carries %q; it must compile on its own "+
 				"against Foundation alone", strings.TrimSpace(line))
 		}
 	}
 	for _, forbidden := range []string{"SwiftUI", "Conversation", "AppModel"} {
 		if strings.Contains(search, forbidden) {
-			t.Errorf("client/GropiusChat/SidebarSearch.swift mentions %q; it must compile on its own, "+
+			t.Errorf("client/DessauChat/SidebarSearch.swift mentions %q; it must compile on its own, "+
 				"which is what lets client/tests/sidebar-search.sh check it", forbidden)
 		}
 	}
 	// The two halves of the promise: the query becomes words, and every one
 	// of them has to be found.
 	if !strings.Contains(search, "isWhitespace") {
-		t.Error("client/GropiusChat/SidebarSearch.swift does not split the query on whitespace; " +
+		t.Error("client/DessauChat/SidebarSearch.swift does not split the query on whitespace; " +
 			"a multi-word search would be one literal substring again (iss-2609181213191220)")
 	}
 	if !strings.Contains(search, "allSatisfy") {
-		t.Error("client/GropiusChat/SidebarSearch.swift does not require every word to be found; " +
+		t.Error("client/DessauChat/SidebarSearch.swift does not require every word to be found; " +
 			"a search that narrows on one word only is not the promise")
 	}
 	// Case and accents are not what a search is about, and the standard
 	// comparison is the one the rest of the platform searches with.
 	if !strings.Contains(search, "localizedStandardContains") {
-		t.Error("client/GropiusChat/SidebarSearch.swift does not match with localizedStandardContains; " +
+		t.Error("client/DessauChat/SidebarSearch.swift does not match with localizedStandardContains; " +
 			"the search would be sensitive to case or to accents")
 	}
 
 	// And the sidebar has to be the thing calling it: a pure function nothing
 	// uses would pass every check above while the list filtered some other way.
-	src, ok := all["GropiusChat.swift"]
+	src, ok := all["DessauChat.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/GropiusChat.swift is missing")
+		t.Fatal("client/DessauChat/DessauChat.swift is missing")
 	}
 	sidebar := swiftBlock(t, src, "struct Sidebar: View {")
 	for _, want := range []string{"SidebarSearch.words(in: query)", "SidebarSearch.matches("} {

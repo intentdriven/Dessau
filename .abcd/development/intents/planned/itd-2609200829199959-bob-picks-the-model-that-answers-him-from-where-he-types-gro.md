@@ -16,9 +16,9 @@ production_mode: hand-written
 
 ## Press Release
 
-Bob installs GropiusChat and opens it. A sheet welcomes him: a line saying
+Bob installs DessauChat and opens it. A sheet welcomes him: a line saying
 what the app is, a line saying that his Mac can already answer and that any
-Gropius server on his network can too, and one button that closes it. It asks
+Dessau server on his network can too, and one button that closes it. It asks
 him nothing and selects nothing. He closes it, types his question into the
 pill at the foot of the window, and the answer comes back from his own Mac —
 before he has chosen a model, found a server, or been told what a model is.
@@ -29,7 +29,7 @@ sitting in a bar beneath it, is the control that decides who answers. It
 carries the name of the model in use and where it runs: **On this Mac**. It is
 a hand's width from the words Bob is typing, and it is the same control in
 every window and on the iPad. Clicking it opens a menu with **On this Mac**
-first, then one section per Gropius server found on the network, each listing
+first, then one section per Dessau server found on the network, each listing
 that server's chat models under its own name: a lock where a server wants an
 API key, a greyed row saying **No response** where a server has gone quiet,
 and a server Bob has already paired with shown as paired. A server appears
@@ -90,7 +90,7 @@ sheet in this release is exactly that: shown once, dismissible, selecting
 nothing, gating no message.
 
 That leaves the real problem the sheet was reaching for. This client exists to
-show what a Gropius server is for, and a chat that quietly works on the Mac's
+show what a Dessau server is for, and a chat that quietly works on the Mac's
 own model risks nobody ever reaching for the server. The answer is not to
 interrogate Bob before he has a reason to care, but to make the offer at the
 moment a reason appears: the first time servers show up on his network, one
@@ -190,7 +190,7 @@ show:
 
 ## Acceptance Criteria
 
-- Given a clean install, when Bob launches GropiusChat for the first time,
+- Given a clean install, when Bob launches DessauChat for the first time,
   then a welcome sheet appears that carries no model control, and dismissing
   it leaves an open chat whose picker reads **On this Mac**, with nothing
   blocking the first message. Held by the XCUITest tier on a reset simulator,
@@ -200,7 +200,7 @@ show:
   again, then it does not appear, and no setting anywhere brings it back.
   Held by the XCUITest tier across two launches, and by an architecture test
   that the sheet is presented on a single stored flag that dismissal sets.
-- Given no server has been seen before, when one or more Gropius servers
+- Given no server has been seen before, when one or more Dessau servers
   appear on the network, then exactly one line appears above the composer
   naming one of them, offering **Use it**, **See all** and a dismissal that
   is permanent, and no model changes until Bob clicks. Held by an architecture

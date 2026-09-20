@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // mlxRequirements is the fully-resolved, hash-locked dependency set for the
@@ -40,11 +40,11 @@ import (
 //go:embed mlx-requirements.txt
 var mlxRequirements []byte
 
-// mlxPin is the exact MLX stack Gropius installs.
+// mlxPin is the exact MLX stack Dessau installs.
 //
 // Pinned deliberately: an unpinned `uv pip install mlx-lm` resolves differently
 // on different days, and a silent minor bump in mlx-lm has repeatedly changed
-// server flags and response shapes. These versions are the ones Gropius is
+// server flags and response shapes. These versions are the ones Dessau is
 // tested against.
 const (
 	mlxLMVersion  = "0.31.3"
@@ -102,7 +102,7 @@ var stagesComplete = map[SetupStage]int{
 
 // Provisioner installs and verifies the private Python runtime.
 //
-// Everything it creates lives under Paths.Root, so uninstalling Gropius is
+// Everything it creates lives under Paths.Root, so uninstalling Dessau is
 // `rm -rf` of one directory. It never touches the user's own Python.
 type Provisioner struct {
 	// Owner is the uid the runtime's executables must be owned by (root is
@@ -212,7 +212,7 @@ func (p *Provisioner) installed() bool {
 	}
 	// The venv existing is not enough — a half-finished pip install leaves the
 	// interpreter in place without mlx_lm.
-	marker := filepath.Join(p.Paths.Venv, ".gropius-mlx-"+mlxLMVersion)
+	marker := filepath.Join(p.Paths.Venv, ".dessau-mlx-"+mlxLMVersion)
 	_, err := os.Stat(marker)
 	return err == nil
 }
@@ -272,7 +272,7 @@ func (p *Provisioner) Ensure(ctx context.Context) error {
 	return nil
 }
 
-// uvVersion pins the exact uv release Gropius installs, and uvSHA256 the
+// uvVersion pins the exact uv release Dessau installs, and uvSHA256 the
 // expected digest of its macOS release tarball per architecture. Pinning both
 // turns "run whatever astral.sh serves today through sh" into "install these
 // exact bytes or fail": a compromised CDN, a tampered release, or a
@@ -453,7 +453,7 @@ func (p *Provisioner) ensureMLX(ctx context.Context) error {
 			err, tail(string(out), 500))
 	}
 
-	marker := filepath.Join(p.Paths.Venv, ".gropius-mlx-"+mlxLMVersion)
+	marker := filepath.Join(p.Paths.Venv, ".dessau-mlx-"+mlxLMVersion)
 	if err := os.WriteFile(marker, []byte(strings.TrimSpace(string(out))), 0o644); err != nil {
 		return err
 	}

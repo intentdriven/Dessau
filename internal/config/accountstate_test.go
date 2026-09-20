@@ -26,7 +26,7 @@ func TestSharedModeStateIsPerAccount(t *testing.T) {
 	b := NewPaths(root)
 
 	for name, got := range map[string]string{"Config": a.Config, "State": a.State} {
-		if dir := filepath.Dir(got); dir != filepath.Join(homeA, "Library", "Application Support", "Gropius") {
+		if dir := filepath.Dir(got); dir != filepath.Join(homeA, "Library", "Application Support", "Dessau") {
 			t.Errorf("%s = %q, want it in this account's own directory under %q", name, got, homeA)
 		}
 	}
@@ -57,7 +57,7 @@ func TestSharedModeLogsAndLedgerDirArePerAccount(t *testing.T) {
 	t.Setenv("HOME", homeB)
 	b := NewPaths(root)
 
-	acctA := filepath.Join(homeA, "Library", "Application Support", "Gropius")
+	acctA := filepath.Join(homeA, "Library", "Application Support", "Dessau")
 	if a.Logs != filepath.Join(acctA, "logs") {
 		t.Errorf("Logs = %q, want this account's own %q", a.Logs, filepath.Join(acctA, "logs"))
 	}

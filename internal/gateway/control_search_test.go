@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // A query typed as a full repository id is looked up exactly, whatever account

@@ -8,7 +8,7 @@ source: "manual-test"
 found_during: "maintainer manual test of the chat client, 2026-09-20"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "client/GropiusChat/GropiusChat.swift"
+found_at: "client/DessauChat/DessauChat.swift"
 blocked_by: ["iss-2609200817467659"]
 ---
 

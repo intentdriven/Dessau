@@ -1,7 +1,9 @@
 {
   // The landing page's Worker: static assets only, no script. The assets are
-  // the output of `make site` (cmd/gropius-site), which writes them under a
-  // Gropius/ subdirectory so the served path matches the route below.
+  // the output of `make site` (cmd/dessau-site), which writes them under a
+  // Dessau/ subdirectory so the served path matches the first route below,
+  // and writes `_headers` and `_redirects` at the root of that directory,
+  // which is where the host reads them.
   //
   // GITHUB ACTIONS IS THE ONLY DEPLOYER. The Worker's automatic build on push
   // is disconnected on purpose — a dashboard setting, recorded here because the
@@ -26,19 +28,35 @@
   // tag is immutable. Residual, plainly: whoever can merge to main can change
   // the workflow and have it run with these secrets — this repository's
   // ordinary review boundary, not a new one.
+  // The Worker's own name is a dashboard identifier nobody reads, and it is
+  // deliberately NOT the family name: a Worker is addressed by name, so a new
+  // name is a new Worker, and the old one would go on holding the superseded
+  // route while the new one's deploy is refused the same pattern — a failed
+  // site deploy inside every release until someone deletes the old Worker by
+  // hand. Keeping the name makes the deploy an update in place: this one
+  // Worker holds both routes and nothing races it. Renaming it is a dashboard
+  // act, taken with this line, whenever the maintainer chooses.
   "name": "gropius",
   "compatibility_date": "2026-09-06",
-  // A PATH ROUTE, not a custom domain: the apex is the organization's own site
-  // and only /Gropius belongs to this project. The deploy asserts the route, so
-  // a drifted attachment is reclaimed on the next release rather than left
-  // wherever the dashboard last put it.
+  // PATH ROUTES, not a custom domain: the apex is the organization's own site
+  // and only these two paths belong to this project. The deploy asserts the
+  // routes, so a drifted attachment is reclaimed on the next release rather
+  // than left wherever the dashboard last put it.
+  //
+  // The second route is what lets the redirect answer. A superseded path that
+  // no Worker is attached to is not a 301, it is the apex's own 404: the
+  // _redirects file in the assets root can only rewrite a request this Worker
+  // is already handed. So the old path is routed here in order to be sent
+  // away again. Both routes belong to this one Worker (see its name above),
+  // so nothing else on the zone claims either path.
   "routes": [
+    { "pattern": "intentdriven.sh/Dessau*", "zone_name": "intentdriven.sh" },
     { "pattern": "intentdriven.sh/Gropius*", "zone_name": "intentdriven.sh" }
   ],
   "assets": {
     "directory": "./site",
-    // The page lives at site/Gropius/index.html, so a request for /Gropius and
-    // one for /Gropius/ must both reach it; auto-trailing-slash is what serves
+    // The page lives at site/Dessau/index.html, so a request for /Dessau and
+    // one for /Dessau/ must both reach it; auto-trailing-slash is what serves
     // the directory index for either spelling.
     "html_handling": "auto-trailing-slash",
     // The documented default. Nothing renders a 404 page today, and claiming

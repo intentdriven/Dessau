@@ -13,11 +13,11 @@ import (
 )
 
 // adr-2609081118587999: detecting a private-network daemon may inform what
-// Gropius reports and may never inform what it enforces.
+// Dessau reports and may never inform what it enforces.
 //
-// The reason is that the detection is not a fact about Gropius. It is an
+// The reason is that the detection is not a fact about Dessau. It is an
 // inference about another process's state, and that state changes without
-// Gropius being told — the operator logs out, a key expires, an ACL is
+// Dessau being told — the operator logs out, a key expires, an ACL is
 // edited, the daemon is stopped — while the bind address stays exactly as it
 // was. A check that relaxed on the inference would fail open on every one of
 // those transitions, silently, on a machine already reachable by anyone on the
@@ -52,11 +52,11 @@ import (
 //     even when the field is never named — comparing an Endpoint against a
 //     literal of itself is a read of Network that mentions neither netshape nor
 //     Network;
-//   - cmd/gropius, which no dependency rule can cover (it imports the gateway,
+//   - cmd/dessau, which no dependency rule can cover (it imports the gateway,
 //     which imports the classifier) and which holds the strongest enforcement
 //     decision in the app: the generate-a-key-or-drop-to-loopback branch;
 //   - internal/ui, which imports nothing of ours today and is therefore free to
-//     import the gateway tomorrow, while cmd/gropius already imports IT. A
+//     import the gateway tomorrow, while cmd/dessau already imports IT. A
 //     helper there reading Endpoint.Network and returning a bool is a route
 //     into the enforcement path that no rule saw. It is scanned for the same
 //     names as the gateway, with nothing allowlisted;
@@ -67,7 +67,7 @@ import (
 //     package name is scanned for exactly as the classifier's is, everywhere
 //     the classifier's is: reaching the detection THROUGH the carve-out has to
 //     be as loud as reaching it directly, or the exception becomes a laundry.
-//     Two declarations in cmd/gropius may name it, listed below with what each
+//     Two declarations in cmd/dessau may name it, listed below with what each
 //     is for; internal/gateway's list says the same for the panel's side.
 //
 // WHAT THEY DO NOT CLOSE, in full, because a list that says "and some other
@@ -89,7 +89,7 @@ import (
 //     one that cannot be fixed even in principle;
 //  8. anything at all, once the scan's own file is edited.
 const (
-	detectionPkg  = "github.com/intentdriven/Gropius/internal/netshape"
+	detectionPkg  = "github.com/intentdriven/Dessau/internal/netshape"
 	detectionName = "netshape"
 	// detectionField is how the classifier's answer leaves the classifier.
 	// Naming it is reading the detection, whatever the reader calls it, and it
@@ -100,7 +100,7 @@ const (
 	// detectionType is the type the answer travels in. A value of it carries
 	// Network whether or not anything names the field, so the type is closed as
 	// well: outside the handful of declarations that build the endpoint list,
-	// nothing in internal/gateway or cmd/gropius may name it at all.
+	// nothing in internal/gateway or cmd/dessau may name it at all.
 	detectionType = "Endpoint"
 	// resolverPkg is the carve-out: the one package outside the endpoint list
 	// that may read the classifier, because the private-network bind mode has
@@ -114,7 +114,7 @@ const (
 	// as reaching netshape directly — otherwise the carve-out is a laundry and
 	// the amendment widened by accident, which is the failure this file exists
 	// to make impossible to do quietly.
-	resolverPkg  = "github.com/intentdriven/Gropius/internal/bind/private"
+	resolverPkg  = "github.com/intentdriven/Dessau/internal/bind/private"
 	resolverName = "private"
 )
 
@@ -124,30 +124,30 @@ const (
 // together, and this Mac's own measurements the budget comes from. None of
 // them may have the detection anywhere in its dependency closure.
 //
-// internal/gateway and cmd/gropius are deliberately absent — the first has to
+// internal/gateway and cmd/dessau are deliberately absent — the first has to
 // see the classifier because the endpoint list lives in it, the second reaches
 // it through the first — and both are covered by the source-scoped rules
 // below instead.
 var enforcementPath = []string{
-	"github.com/intentdriven/Gropius/internal/config",
-	"github.com/intentdriven/Gropius/internal/bind",
-	"github.com/intentdriven/Gropius/internal/runtime",
-	"github.com/intentdriven/Gropius/internal/app",
-	"github.com/intentdriven/Gropius/internal/capability",
-	"github.com/intentdriven/Gropius/internal/hub",
-	"github.com/intentdriven/Gropius/internal/registry",
-	"github.com/intentdriven/Gropius/internal/discovery",
-	"github.com/intentdriven/Gropius/internal/stats",
+	"github.com/intentdriven/Dessau/internal/config",
+	"github.com/intentdriven/Dessau/internal/bind",
+	"github.com/intentdriven/Dessau/internal/runtime",
+	"github.com/intentdriven/Dessau/internal/app",
+	"github.com/intentdriven/Dessau/internal/capability",
+	"github.com/intentdriven/Dessau/internal/hub",
+	"github.com/intentdriven/Dessau/internal/registry",
+	"github.com/intentdriven/Dessau/internal/discovery",
+	"github.com/intentdriven/Dessau/internal/stats",
 	// The port holder's classification: it decides whether this process defers
 	// to the process already on the port as its client, or refuses to route
 	// this account's model traffic to it. That is an admission decision, and
 	// it must not start reading which network anything is on to make it.
-	"github.com/intentdriven/Gropius/internal/instance",
+	"github.com/intentdriven/Dessau/internal/instance",
 	// The paired set and the TLS identity: it answers whether the key a client
 	// is presenting is one this server has paired, which is the admission
 	// decision for the whole TLS listener. It must never start deciding that
 	// from which network the client is on.
-	"github.com/intentdriven/Gropius/internal/pairing",
+	"github.com/intentdriven/Dessau/internal/pairing",
 }
 
 // notEnforcement is every other package in the module, each with the reason it
@@ -157,19 +157,19 @@ var enforcementPath = []string{
 // added next year is uncovered by default and the rule quietly stops applying
 // to it.
 var notEnforcement = map[string]string{
-	"github.com/intentdriven/Gropius/internal/gateway":        "holds the endpoint list, so it must see the classifier; covered by the source-scoped rule below instead",
-	"github.com/intentdriven/Gropius/cmd/gropius":             "reaches the endpoint list through the gateway, so no import rule can cover it; covered by its own source-scoped rule below",
-	"github.com/intentdriven/Gropius/internal/netshape":       "is the classifier",
-	"github.com/intentdriven/Gropius/internal/ui":             "serves the control panel's assets and decides nothing about who may reach the server; presentation is what rule 1 allows. It imports nothing of ours and so could import the gateway, while cmd/gropius already imports it — a helper here reading Endpoint.Network is a route into the enforcement path, which is why TestThePanelPackageDoesNotReadTheDetectionEither scans it with nothing allowlisted",
-	"github.com/intentdriven/Gropius/internal/applog":         "builds the process's own log — a file, a level and a rotation — and, since iss-2609091714393599, holds the size-rotating file writer the statistics store and the self-test's results are written through as well. It decides nothing about who may reach the server or what it will do for them, and it imports nothing of ours, so there is no address in it to enforce on. What it must never gain is a reason to look at one, and it now matters twice over: it sits under internal/stats, which is on the enforcement path, so a log that reported which network a client came from would put the detection on the path of every served request by two routes rather than one",
-	"github.com/intentdriven/Gropius/internal/lifecycle":      "holds the verbs a person types — status and doctor today, the installing and removing ones to come. It reports and it changes this installation; it decides nothing about who may reach this server or what it will do for them, and nothing on the control plane's path may import it at all (adr-2609111126115848 condition 3, armed in lifecycle_boundary_test.go). Doctor reads the firewall's state, which is exactly the class of signal rule 2 governs — so what keeps it on this side of the rule is that its report gates nothing, which that closure is what holds",
-	"github.com/intentdriven/Gropius/internal/archtest":       "is these rules",
-	"github.com/intentdriven/Gropius/internal/mlxtest":        "test helpers; nothing ships in the binary",
-	"github.com/intentdriven/Gropius/internal/sitetest":       "test helpers for the landing-page renderer",
-	"github.com/intentdriven/Gropius/internal/contextprobe":   "measures a model's servable window as a job of the self-test's idle loop. It decides nothing about who may reach the server: it is a client of this Mac's own loopback endpoint, and it imports config, registry, runtime's two sentinel errors and selftest — no address, nothing to enforce on",
-	"github.com/intentdriven/Gropius/internal/selftest":       "measures the models while nobody is using them. It decides nothing about who may reach the server or what it will do for them: it talks only to the model server the pool hands it, on loopback, and it imports config for the fold rule and applog for the writer its results file is written by, and nothing else of ours, so there is no address in it to enforce on",
-	"github.com/intentdriven/Gropius/cmd/gropius-site":        "renders the landing page offline and serves nothing",
-	"github.com/intentdriven/Gropius/internal/bridge/discord": "carries a conversation out to Discord over a connection this Mac opens (adr-2609181004167097). It binds nothing, opens no port and changes no bind mode, and it reads no address at all: it never sees a remote address, a Host or an Origin, because there is no inbound request. Who may talk to the bot is decided by where the operator invited it, which is the maintainer's decision in itd-2609180959397172 and is not a property of any network this classifier can see. What it must never gain is a reason to look at one — a bridge that answered differently depending on which network an address sat on would put the detection on the path of every bridged request",
+	"github.com/intentdriven/Dessau/internal/gateway":        "holds the endpoint list, so it must see the classifier; covered by the source-scoped rule below instead",
+	"github.com/intentdriven/Dessau/cmd/dessau":              "reaches the endpoint list through the gateway, so no import rule can cover it; covered by its own source-scoped rule below",
+	"github.com/intentdriven/Dessau/internal/netshape":       "is the classifier",
+	"github.com/intentdriven/Dessau/internal/ui":             "serves the control panel's assets and decides nothing about who may reach the server; presentation is what rule 1 allows. It imports nothing of ours and so could import the gateway, while cmd/dessau already imports it — a helper here reading Endpoint.Network is a route into the enforcement path, which is why TestThePanelPackageDoesNotReadTheDetectionEither scans it with nothing allowlisted",
+	"github.com/intentdriven/Dessau/internal/applog":         "builds the process's own log — a file, a level and a rotation — and, since iss-2609091714393599, holds the size-rotating file writer the statistics store and the self-test's results are written through as well. It decides nothing about who may reach the server or what it will do for them, and it imports nothing of ours, so there is no address in it to enforce on. What it must never gain is a reason to look at one, and it now matters twice over: it sits under internal/stats, which is on the enforcement path, so a log that reported which network a client came from would put the detection on the path of every served request by two routes rather than one",
+	"github.com/intentdriven/Dessau/internal/lifecycle":      "holds the verbs a person types — status and doctor today, the installing and removing ones to come. It reports and it changes this installation; it decides nothing about who may reach this server or what it will do for them, and nothing on the control plane's path may import it at all (adr-2609111126115848 condition 3, armed in lifecycle_boundary_test.go). Doctor reads the firewall's state, which is exactly the class of signal rule 2 governs — so what keeps it on this side of the rule is that its report gates nothing, which that closure is what holds",
+	"github.com/intentdriven/Dessau/internal/archtest":       "is these rules",
+	"github.com/intentdriven/Dessau/internal/mlxtest":        "test helpers; nothing ships in the binary",
+	"github.com/intentdriven/Dessau/internal/sitetest":       "test helpers for the landing-page renderer",
+	"github.com/intentdriven/Dessau/internal/contextprobe":   "measures a model's servable window as a job of the self-test's idle loop. It decides nothing about who may reach the server: it is a client of this Mac's own loopback endpoint, and it imports config, registry, runtime's two sentinel errors and selftest — no address, nothing to enforce on",
+	"github.com/intentdriven/Dessau/internal/selftest":       "measures the models while nobody is using them. It decides nothing about who may reach the server or what it will do for them: it talks only to the model server the pool hands it, on loopback, and it imports config for the fold rule and applog for the writer its results file is written by, and nothing else of ours, so there is no address in it to enforce on",
+	"github.com/intentdriven/Dessau/cmd/dessau-site":         "renders the landing page offline and serves nothing",
+	"github.com/intentdriven/Dessau/internal/bridge/discord": "carries a conversation out to Discord over a connection this Mac opens (adr-2609181004167097). It binds nothing, opens no port and changes no bind mode, and it reads no address at all: it never sees a remote address, a Host or an Origin, because there is no inbound request. Who may talk to the bot is decided by where the operator invited it, which is the maintainer's decision in itd-2609180959397172 and is not a property of any network this classifier can see. What it must never gain is a reason to look at one — a bridge that answered differently depending on which network an address sat on would put the detection on the path of every bridged request",
 }
 
 // carveOut is the amendment, written down. It is deliberately not part of
@@ -191,7 +191,7 @@ func TestTheEnforcementPathCannotSeeThePrivateNetworkDetection(t *testing.T) {
 			}
 			for _, dep := range strings.Fields(string(out)) {
 				if dep == detectionPkg {
-					t.Errorf("%s depends on %s — detecting a private network may inform what Gropius reports, never what it enforces (adr-2609081118587999 rule 2)", pkg, detectionPkg)
+					t.Errorf("%s depends on %s — detecting a private network may inform what Dessau reports, never what it enforces (adr-2609081118587999 rule 2)", pkg, detectionPkg)
 				}
 			}
 		})
@@ -206,7 +206,7 @@ func TestTheEnforcementPathCannotSeeThePrivateNetworkDetection(t *testing.T) {
 func TestEveryPackageIsOnOneSideOfTheRule(t *testing.T) {
 	// The module pattern rather than ./... : the test runs with this package's
 	// directory as its working directory, where ./... is this package alone.
-	const all = "github.com/intentdriven/Gropius/..."
+	const all = "github.com/intentdriven/Dessau/..."
 	out, err := exec.Command("go", "list", all).CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list %s: %v\n%s", all, err, out)
@@ -254,8 +254,8 @@ func TestEveryPackageIsOnOneSideOfTheRule(t *testing.T) {
 // source-scoped rules below need their own defence against that, and have one.
 func TestTheClassifierAndTheResolverAreImportedOnlyWhereTheyMayBe(t *testing.T) {
 	const (
-		gatewayPkg = "github.com/intentdriven/Gropius/internal/gateway"
-		commandPkg = "github.com/intentdriven/Gropius/cmd/gropius"
+		gatewayPkg = "github.com/intentdriven/Dessau/internal/gateway"
+		commandPkg = "github.com/intentdriven/Dessau/cmd/dessau"
 	)
 	allowed := map[string]map[string]bool{
 		// The endpoint list lives in the gateway, and the resolver is what
@@ -265,7 +265,7 @@ func TestTheClassifierAndTheResolverAreImportedOnlyWhereTheyMayBe(t *testing.T) 
 		// command asks it what to acquire. Both are named declarations below.
 		resolverPkg: {gatewayPkg: true, commandPkg: true},
 	}
-	out, err := exec.Command("go", "list", "-f", "{{.ImportPath}} {{join .Imports \" \"}}", "github.com/intentdriven/Gropius/...").CombinedOutput()
+	out, err := exec.Command("go", "list", "-f", "{{.ImportPath}} {{join .Imports \" \"}}", "github.com/intentdriven/Dessau/...").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}
@@ -332,7 +332,7 @@ var gatewayMayReadTheDetection = map[string]bool{
 	"control.go::func appendEndpoint":      true,
 }
 
-// cmd/gropius names the resolver in exactly two declarations, and this is the
+// cmd/dessau names the resolver in exactly two declarations, and this is the
 // list of them. It is separate from the gateway's, keyed the same way — file
 // and declaration — and it exists rather than the command being scanned with
 // nothing allowlisted, because the carve-out has to be consumed somewhere: the
@@ -365,9 +365,9 @@ func TestOnlyTheEndpointListReadsTheDetection(t *testing.T) {
 //
 // It was scanned by nothing, and it is the one package in the module that is
 // blessed as pure presentation, imports nothing of ours, and is imported by
-// cmd/gropius. That combination is a laundry: internal/ui may import the
+// cmd/dessau. That combination is a laundry: internal/ui may import the
 // gateway without a cycle, and a helper here taking a gateway.Endpoint and
-// returning a bool would put the classification in cmd/gropius's hands with no
+// returning a bool would put the classification in cmd/dessau's hands with no
 // rule anywhere objecting. It renders the mark from a JSON field in the
 // browser and needs none of these names in Go.
 //
@@ -375,7 +375,7 @@ func TestOnlyTheEndpointListReadsTheDetection(t *testing.T) {
 // calling net.Interfaces() itself, and nothing can: see the header.
 func TestThePanelPackageDoesNotReadTheDetectionEither(t *testing.T) {
 	for _, r := range scanForDetection(t, filepath.Join("..", "ui")) {
-		t.Errorf("%s: %s reads the detection (%s) — internal/ui serves the panel's assets, is imported by cmd/gropius, and imports nothing of ours; a helper here reading the classification hands it to the enforcement path with no import rule in the way (adr-2609081118587999 rule 2)",
+		t.Errorf("%s: %s reads the detection (%s) — internal/ui serves the panel's assets, is imported by cmd/dessau, and imports nothing of ours; a helper here reading the classification hands it to the enforcement path with no import rule in the way (adr-2609081118587999 rule 2)",
 			r.file, r.where, r.what)
 	}
 	for file, name := range detectionImports(t, filepath.Join("..", "ui")) {
@@ -383,10 +383,10 @@ func TestThePanelPackageDoesNotReadTheDetectionEither(t *testing.T) {
 	}
 }
 
-// cmd/gropius is where the app decides, before serving anything, whether an
+// cmd/dessau is where the app decides, before serving anything, whether an
 // exposed bind may run at all: it generates and persists an API key or drops
 // to loopback. That is enforcement in its purest form and it is the one place
-// no dependency rule reaches, because cmd/gropius imports the gateway and the
+// no dependency rule reaches, because cmd/dessau imports the gateway and the
 // gateway imports the classifier.
 //
 // Nothing here may read the detection by any route the source can name — not
@@ -397,7 +397,7 @@ func TestThePanelPackageDoesNotReadTheDetectionEither(t *testing.T) {
 // carve-out has to be consumed here or it cannot be consumed at all. What
 // arrives is a set of addresses; why they were chosen stays in the resolver.
 //
-// What cmd/gropius legitimately needs is the URL of the first entry, for the
+// What cmd/dessau legitimately needs is the URL of the first entry, for the
 // menu-bar title and the clipboard, and reading `.URL` off a value it never
 // names is untouched by any of this. That is NOT the same as `.URL` being safe,
 // and an earlier version of this comment said it was. The presence of the
@@ -406,20 +406,20 @@ func TestThePanelPackageDoesNotReadTheDetectionEither(t *testing.T) {
 // only address is on a private network — so eps[0].URL and len(eps) both carry
 // the answer. See TestTheDetectionIsCarriedByTheShapeOfTheListItself.
 func TestTheCommandCannotSeeTheDetection(t *testing.T) {
-	dir := filepath.Join("..", "..", "cmd", "gropius")
+	dir := filepath.Join("..", "..", "cmd", "dessau")
 	for _, r := range scanForDetection(t, dir) {
 		if commandMayNameTheResolver[r.site()] && strings.HasPrefix(r.what, resolverName+".") {
 			continue
 		}
-		t.Errorf("%s: %s reads the detection (%s) — cmd/gropius decides whether an exposed bind may run at all, and that decision may not rest on another process's state (adr-2609081118587999 rule 2). The menu bar needs the first entry's .URL and nothing else",
+		t.Errorf("%s: %s reads the detection (%s) — cmd/dessau decides whether an exposed bind may run at all, and that decision may not rest on another process's state (adr-2609081118587999 rule 2). The menu bar needs the first entry's .URL and nothing else",
 			r.file, r.where, r.what)
 	}
 	// The scan finds the package by the name it is called by, so the import
-	// itself is refused outright here: cmd/gropius has no legitimate use for
+	// itself is refused outright here: cmd/dessau has no legitimate use for
 	// the classifier, and an import with no reference today is a reference
 	// tomorrow.
 	for file, name := range detectionImports(t, dir) {
-		t.Errorf("%s imports %s (as %q) — cmd/gropius reaches the endpoint list through the gateway and has no other business with the classifier", file, detectionPkg, name)
+		t.Errorf("%s imports %s (as %q) — cmd/dessau reaches the endpoint list through the gateway and has no other business with the classifier", file, detectionPkg, name)
 	}
 }
 
@@ -440,8 +440,8 @@ var detectionSpelling = []string{`"network"`, "private network"}
 
 func TestTheDetectionsSpellingIsNotWrittenDownOutsideTheEndpointList(t *testing.T) {
 	for dir, allowed := range map[string]map[string]bool{
-		filepath.Join("..", "gateway"):              gatewayMayReadTheDetection,
-		filepath.Join("..", "..", "cmd", "gropius"): commandMayNameTheResolver,
+		filepath.Join("..", "gateway"):             gatewayMayReadTheDetection,
+		filepath.Join("..", "..", "cmd", "dessau"): commandMayNameTheResolver,
 	} {
 		for _, u := range declUnits(t, dir) {
 			if allowed[u.file+"::"+u.name] {

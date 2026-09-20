@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gropius · MLX Model Server</title>
+<title>Dessau Server · MLX Model Server</title>
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'><rect width='1024' height='1024' fill='%2317181d'/><polygon points='302,132 472,472 132,472' fill='%23F5C518'/><rect x='552' y='132' width='340' height='340' fill='%23B4B6BB'/><rect x='132' y='552' width='340' height='340' fill='%232B5DAA'/><circle cx='722' cy='722' r='170' fill='%23E63329'/></svg>">
 </head>
@@ -21,7 +21,7 @@
       <circle cx="722" cy="722" r="170" fill="#E63329"/>
     </svg>
     <div>
-      <h1>Gropius</h1>
+      <h1>Dessau Server</h1>
       <p class="sub">Local MLX models, served to your network</p>
     </div>
   </div>
@@ -41,7 +41,7 @@
   <div class="failmark" id="setupFailMark" hidden>&#9888;</div>
   <div>
     <strong id="setupStage">Setting up the MLX runtime…</strong>
-    <p id="setupBlurb">Gropius is installing its own private Python and MLX. This happens once and takes a few minutes.</p>
+    <p id="setupBlurb">Dessau is installing its own private Python and MLX. This happens once and takes a few minutes.</p>
     <p class="mono" id="setupErr"></p>
   </div>
 </div>
@@ -99,7 +99,7 @@
       none can be shown.</p>
   </div>
   <div id="statsOff" class="empty" hidden>
-    <p><strong>Gropius is not recording anything.</strong></p>
+    <p><strong>Dessau is not recording anything.</strong></p>
     <p>Turn on <em>Record request statistics on this Mac</em> in
       <a href="#" onclick="showTab('settings');return false">Settings</a> to see how
       each model performs. Nothing is recorded until you do, and nothing leaves this Mac.</p>
@@ -227,7 +227,7 @@
 <!-- ── Connect ───────────────────────────────────────────── -->
 <section id="tab-connect" class="panel">
   <h2>Point any OpenAI client here</h2>
-  <p>Gropius speaks the OpenAI API. Anything that talks to ChatGPT can talk to your Mac.</p>
+  <p>Dessau speaks the OpenAI API. Anything that talks to ChatGPT can talk to your Mac.</p>
 
   <h3>Base URL</h3>
   <div id="endpoints"></div>
@@ -269,13 +269,13 @@
      tab. -->
 <section id="tab-posture" class="panel">
   <h2>Where this server stands</h2>
-  <p class="hint">Each line says what is, as Gropius sees it now, and says where its view
+  <p class="hint">Each line says what is, as Dessau sees it now, and says where its view
     stops. Nothing here is a warning and nothing here changes a setting; the warning for
     an exposed server with no key still appears at the top of this panel, and Settings
     is where a setting changes.</p>
   <div id="posture"></div>
   <p class="hint">What each line is read from, and what none of them can see, is on the
-    <a href="https://github.com/intentdriven/Gropius/blob/main/docs/posture-reference.md">posture
+    <a href="https://github.com/intentdriven/Dessau/blob/main/docs/posture-reference.md">posture
     page reference</a>.</p>
 </section>
 
@@ -294,7 +294,7 @@
     </label>
     <p id="bindNotice" class="hint" hidden></p>
     <p class="hint">The server takes its addresses once, at startup, so a change
-      here applies when Gropius next starts. Until then the Connect tab lists
+      here applies when Dessau next starts. Until then the Connect tab lists
       what it is answering on.</p>
     <label>
       <span>Port</span>
@@ -314,12 +314,12 @@
         <input id="setAdvertise" type="checkbox">
         <span>Announce this server on the local network</span>
       </label>
-      <p class="hint">While it is on, Gropius announces itself over Bonjour, so a client
+      <p class="hint">While it is on, Dessau announces itself over Bonjour, so a client
         on your network can find it by name instead of being told its address. While it
         is off, it serves exactly the same requests to anything that already knows where
         it is: announcing is how a server is found and never what it allows, and the bind
         address above is what decides who can reach it. The advert is started once, when
-        Gropius starts, so a change here applies when Gropius next starts; until then the
+        Dessau starts, so a change here applies when Dessau next starts; until then the
         Posture tab says what is being announced now.</p>
     </fieldset>
 
@@ -361,7 +361,7 @@
         within the maximum, the request gets the same refusal it would have had at once,
         now saying how long it waited. With an API key set above, every answer that
         reached a model server also says whether it waited and for how long, in the
-        <code>X-Gropius-State</code> and <code>X-Gropius-Queue-Time</code> headers; a
+        <code>X-Dessau-State</code> and <code>X-Dessau-Queue-Time</code> headers; a
         server with no key sends them to nobody, the same rule the models list applies
         to which models are loaded. The protection may not be longer than the idle
         timeout above when one is set, or the idle timeout would unload the very model
@@ -398,7 +398,7 @@
         client can leave an OCR or a speech model out of its picker. It filters nothing:
         every model stays callable over the API by name, whatever the rule says of it.
         Clear a field to stop testing that half; clear both and every model is marked as
-        able to chat. A model downloaded before Gropius recorded these words, or while
+        able to chat. A model downloaded before Dessau recorded these words, or while
         HuggingFace could not be reached, carries none and is marked as unable — download
         it again to give it the words.</p>
       <label>
@@ -477,14 +477,14 @@
         <span>Measure each model&rsquo;s context window when this Mac is idle</span>
       </label>
       <p class="hint">Off unless you turn it on. While it is on, whenever this Mac has been idle for the
-        threshold below, Gropius takes one model with no current measurement, sends it prompts of
+        threshold below, Dessau takes one model with no current measurement, sends it prompts of
         growing length through its own endpoint, bisects to the largest the server accepts, and
         records the window beside the one the model declares. A measurement changes nothing
         until you press <strong>Use this window</strong> on the model&rsquo;s card. It costs about
         forty minutes of GPU per model, never pushes another model out to make room, and stands
         down the moment anyone sends a request. Each model&rsquo;s card also has
         <strong>Measure now</strong>, which runs one probe whatever this box says. The
-        <a href="https://github.com/intentdriven/Gropius/blob/main/docs/context-probe.md">context
+        <a href="https://github.com/intentdriven/Dessau/blob/main/docs/context-probe.md">context
         probe page</a> says what the figure means and what it costs.</p>
       <label>
         <span>Idle threshold (seconds)</span>
@@ -502,16 +502,16 @@
       </label>
       <p class="hint">Off unless you turn it on. While it is on, whenever nothing has asked this Mac
         for a model for <span id="selfTestIdleFigure">the idle threshold</span> and nothing
-        is downloading, Gropius loads one of your
+        is downloading, Dessau loads one of your
         models, runs the same short set of tests against it &mdash; how long the load takes,
         how fast it reads a long prompt, how fast it generates, and what that becomes when
         several requests arrive at once &mdash; writes one line of figures to a file in your
-        Gropius data folder, and unloads the model again if it was not already loaded. Each
+        Dessau data folder, and unloads the model again if it was not already loaded. Each
         model is measured once a day, and never at the cost of another: a model that would need
         one pushed out to make room waits for a time when there is room. A request from anyone
         ends the run at once. The file holds counts and timings only, never a prompt or an
         answer, and nothing in it leaves this Mac. The
-        <a href="https://github.com/intentdriven/Gropius/blob/main/docs/self-test.md">self-test
+        <a href="https://github.com/intentdriven/Dessau/blob/main/docs/self-test.md">self-test
         page</a> says what it costs and where the file is.</p>
     </fieldset>
 
@@ -521,7 +521,7 @@
         <input id="setStats" type="checkbox">
         <span>Record request statistics on this Mac</span>
       </label>
-      <p class="hint">Off unless you turn it on. While it is on, Gropius records, for each
+      <p class="hint">Off unless you turn it on. While it is on, Dessau records, for each
         request it serves: the model, when the request arrived, how it ended, whether it
         streamed, how many tokens went in and came out, how long the first token took, how
         long the whole request took, and how long it waited for the model. It never records
@@ -532,7 +532,7 @@
         several people log into means every account on it — so on a shared Mac this is a
         decision for all of them, and while it is on <strong>Recording</strong> appears
         beside the server status at the top of this page. The
-        <a href="https://github.com/intentdriven/Gropius/blob/main/docs/statistics-store-reference.md">what
+        <a href="https://github.com/intentdriven/Dessau/blob/main/docs/statistics-store-reference.md">what
         is recorded page</a> says all of this field by field.</p>
       <label>
         <span>Keep records for (months)</span>
@@ -543,7 +543,7 @@
         <input id="setStatsMB" type="number" step="1" min="10" max="10240">
       </label>
       <p class="hint">Records are kept in plain text files, one line of JSON each, under your
-        own Gropius data folder. The size limit is the one that always wins, and the months
+        own Dessau data folder. The size limit is the one that always wins, and the months
         figure clears out what fits within it. Whole files are removed at a time, oldest
         first, as records arrive and whenever you change either figure, so a limit you
         lower here takes effect when you save it. Switching recording off stops new records
@@ -562,7 +562,7 @@
           <option value="detailed">Detailed — the figures behind each one</option>
         </select>
       </label>
-      <p class="hint">Gropius keeps its own log in your account's data folder, beside the
+      <p class="hint">Dessau keeps its own log in your account's data folder, beside the
         model servers' logs. <strong>Sparse</strong>, the default, writes a line for each
         thing that mattered: a request refused and which refusal it was, a model loading or
         leaving memory, a model server that would not start, the server starting and
@@ -572,11 +572,11 @@
         behind a launch that failed. Neither level ever writes a prompt, an answer, an API
         key, a HuggingFace token or the address of the client that sent a request. Changing
         this takes effect on the next line; nothing needs restarting. The log is kept to a
-        fixed size and the oldest file is removed as it grows. This is Gropius's own log
+        fixed size and the oldest file is removed as it grows. This is Dessau's own log
         level and never the model servers', which are always run at their INFO level — at
         their debug level they write prompts and answers to their own logs, and no setting
         here can ask for that. The
-        <a href="https://github.com/intentdriven/Gropius/blob/main/docs/logging.md">logging
+        <a href="https://github.com/intentdriven/Dessau/blob/main/docs/logging.md">logging
         page</a> says what each level writes and where the file is.</p>
     </fieldset>
 
@@ -589,7 +589,7 @@
       <p class="hint">Off unless you turn it on. While it is on, <strong>messages to the bot
         and the model&rsquo;s answers pass through Discord and are kept under Discord&rsquo;s
         terms</strong> &mdash; which is what this switch trades for reaching your models from
-        a phone. Gropius connects out to Discord; no port on this Mac is opened to the
+        a phone. Dessau connects out to Discord; no port on this Mac is opened to the
         internet, the bind address above is untouched, and switching the bridge off closes
         the connection. Anyone who can reach the bot may talk to it, so where you invite it
         is what decides who can. A direct message to the bot, or a message that mentions it
@@ -597,7 +597,7 @@
         not mention it is never read. In any channel, <code>/model</code> shows or sets the
         model answering there and <code>/reset</code> clears that channel&rsquo;s
         conversation. The
-        <a href="https://github.com/intentdriven/Gropius/blob/main/docs/discord-bridge.md">Discord
+        <a href="https://github.com/intentdriven/Dessau/blob/main/docs/discord-bridge.md">Discord
         bridge page</a> says how to make the bot and what leaves this Mac.</p>
       <label>
         <span>Discord bot token</span>
@@ -611,9 +611,9 @@
       <legend>Merge system messages</legend>
       <p class="hint">Some models refuse a conversation whose instructions are not all at
         the top, so an assistant that repeats its instructions mid-conversation gets an
-        error instead of an answer. Switch merging on for such a model and Gropius gathers
+        error instead of an answer. Switch merging on for such a model and Dessau gathers
         that request's instruction messages into the leading one, separated by a blank
-        line, before the model sees it. Gropius reads the instruction messages of requests
+        line, before the model sees it. Dessau reads the instruction messages of requests
         to that model and nothing else, keeps none of what it reads, and writes none of it
         down.</p>
       <div id="mergeList"></div>
@@ -621,7 +621,7 @@
 
     <fieldset class="group">
       <legend>Served context</legend>
-      <p class="hint">The context window Gropius serves each model at, in tokens. Leave a
+      <p class="hint">The context window Dessau serves each model at, in tokens. Leave a
         field blank to serve the window the model itself declares. A request whose prompt
         and answer are estimated to be larger is refused, and the memory budget charges
         the cache this window costs — so lowering it is how a long-context model is made
@@ -631,7 +631,7 @@
 
     <fieldset class="group">
       <legend>Pinned models</legend>
-      <p class="hint">A pinned model stays in memory: Gropius never unloads it to make
+      <p class="hint">A pinned model stays in memory: Dessau never unloads it to make
         room for another, and the idle timeout above does not touch it. A request for a
         model that would need its memory is refused instead, so pin only the models you
         want protected. Pinning is not preloading — a pinned model is not loaded at

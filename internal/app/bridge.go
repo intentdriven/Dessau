@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // Bridge is a bridge to a third-party messaging platform, as the app needs it:
@@ -28,7 +28,7 @@ type Bridge interface {
 	Close() error
 }
 
-// BridgeState is what the panel and `gropius config show` are told about the
+// BridgeState is what the panel and `dessau config show` are told about the
 // bridge: off, connecting, connected since a moment, or stopped for a reason.
 //
 // The reason is the bridge's own sentence about a credential or a

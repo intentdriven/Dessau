@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/capability"
+	"github.com/intentdriven/Dessau/internal/capability"
 )
 
 // graceModels are three models of the same charged size, with a budget that

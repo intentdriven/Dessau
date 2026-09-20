@@ -12,7 +12,7 @@ import (
 //
 // WHY THERE IS ONE AT ALL. The macOS Application Firewall entry is machine-wide
 // state with no per-account route: a standard account cannot add or remove one,
-// and Gropius without it accepts the handshake and drops the data, so the LAN
+// and Dessau without it accepts the handshake and drops the data, so the LAN
 // sees an empty response while loopback works. Every other step of every verb
 // acts on files this account owns and elevates for nothing — the per-user link,
 // the private runtime, the settings, and every removal.
@@ -54,11 +54,11 @@ import (
 // being asked, which is the stated reason the criteria require.
 const (
 	firewallGrantScript = `do shell script fw & " --add " & p & " && " & fw & " --unblockapp " & p ` +
-		`with prompt "Gropius needs administrator rights to allow itself through the macOS firewall, ` +
+		`with prompt "Dessau Server needs administrator rights to allow itself through the macOS firewall, ` +
 		`so other machines on your network can reach it." with administrator privileges`
 
 	firewallRemoveScript = `do shell script fw & " --remove " & p ` +
-		`with prompt "Gropius needs administrator rights to remove its own entry from the macOS firewall. ` +
+		`with prompt "Dessau Server needs administrator rights to remove its own entry from the macOS firewall. ` +
 		`This is the last step of uninstalling it." with administrator privileges`
 )
 
@@ -131,7 +131,7 @@ func firewallRemoveCommand(binary, home string) string {
 // one rule for every root command line this product composes, whichever verb
 // prints it.
 
-// quitRunningCopy asks a running Gropius to quit, so the swap replaces a bundle
+// quitRunningCopy asks a running Dessau to quit, so the swap replaces a bundle
 // nothing is executing and the launch that follows starts the new binary rather
 // than activating the old process.
 //
@@ -143,10 +143,17 @@ func firewallRemoveCommand(binary, home string) string {
 // A quit request rather than a signal: the app is a menu-bar application, and
 // this is the message Launch Services already sends it. The name is a literal,
 // so nothing is interpolated into the script.
+//
+// The name is the BUNDLE name from build/Info.plist's CFBundleName, not the
+// display name a person reads: that is what Launch Services resolves, and a
+// name it matches nothing to is not an error anything here can see — osascript
+// answers, the old process keeps serving, and the update reports success over
+// the top of it. TestTheServersBundleNameIsSpelledTheSameOnEverySurface holds
+// this literal to the plist.
 func quitRunningCopy() error {
 	ctx, cancel := context.WithTimeout(context.Background(), quitTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/usr/bin/osascript", "-e", `quit app "Gropius"`)
+	cmd := exec.CommandContext(ctx, "/usr/bin/osascript", "-e", `quit app "DessauServer"`)
 	cmd.Stdin = nil
 	out, err := cmd.CombinedOutput()
 	return toolError(ctx, "/usr/bin/osascript", quitTimeout, out, err)

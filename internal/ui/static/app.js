@@ -202,7 +202,7 @@ function renderWarnings() {
 
 // setupHeading is what the setup banner says it is doing, and how far it has
 // got. The proportion comes from the server's own SetupStatus — the same value
-// `gropius install` renders in the terminal — so the two surfaces cannot drift.
+// `dessau install` renders in the terminal — so the two surfaces cannot drift.
 // A status carrying no count at all still gets the heading it always had.
 function setupHeading(s) {
   if (s.stage === 'failed') return 'Setup failed';
@@ -227,8 +227,8 @@ function renderSetup() {
   $('setupSpinner').hidden = failed;
   $('setupFailMark').hidden = !failed;
   $('setupBlurb').textContent = failed
-    ? 'Setup stopped and will not finish on its own. Quit Gropius and open it again to retry; if it keeps failing, the message below says why.'
-    : 'Gropius is installing its own private Python and MLX. This happens once and takes a few minutes.';
+    ? 'Setup stopped and will not finish on its own. Quit Dessau and open it again to retry; if it keeps failing, the message below says why.'
+    : 'Dessau is installing its own private Python and MLX. This happens once and takes a few minutes.';
   $('setupErr').textContent = s.err || '';
   banner.classList.toggle('failed', failed);
 }
@@ -418,7 +418,7 @@ function renderModels() {
 }
 
 // boundText says what stopped the probe's step above the measured window,
-// in words: the model's own limit, or one of Gropius's bounds, in which case
+// in words: the model's own limit, or one of Dessau's bounds, in which case
 // the figure is a floor.
 function boundText(bound) {
   switch (bound) {
@@ -608,7 +608,7 @@ function endpointOf(e) {
   return { url: (e && e.url) || '', network: (e && e.network) || '' };
 }
 
-// endpointLine is one row: the URL, and beside it the network Gropius found
+// endpointLine is one row: the URL, and beside it the network Dessau found
 // the address on. The mark is what the server observed and not what it
 // guarantees — it says which network, never what that network is worth
 // (adr-2609081118587999) — and it sits in its own element, so nothing that
@@ -739,7 +739,7 @@ print(resp.choices[0].message.content)`;
 // before a restart applies it, nor from the endpoint list, which omits
 // addresses it cannot name while the sockets answer on them.
 //
-// The lines say what is, in the present tense, and say where Gropius's view
+// The lines say what is, in the present tense, and say where Dessau's view
 // stops. They state which network an address is on and nothing about what
 // that network is worth (adr-2609081118587999 rule 1), and nothing here is an
 // input to any decision the server makes: the page reports and gates nothing.
@@ -778,7 +778,7 @@ function postureLines(state) {
     reach = `This server answers on this Mac and on no other address: ${list(urls)}. ` +
       'A request from another machine reaches nothing.';
   } else if (bind.wildcard) {
-    reach = `This server answers on every address this Mac holds. The ones Gropius can name are ${list(urls)}; ` +
+    reach = `This server answers on every address this Mac holds. The ones Dessau can name are ${list(urls)}; ` +
       "a name ending in .local is this Mac's name on the local network and not an address. ";
   } else if (bind.bound) {
     reach = `This server answers on ${bind.bound} and on this Mac; the addresses clients can use are ${list(urls)}. `;
@@ -786,11 +786,11 @@ function postureLines(state) {
     // A bound address the panel cannot write as a URL — one carrying an
     // interface zone — is answered on all the same, and the list below
     // leaves it out; the page says so rather than leaving a gap.
-    reach = 'This server answers on this Mac and on one more address, which Gropius cannot write as a URL; ' +
+    reach = 'This server answers on this Mac and on one more address, which Dessau cannot write as a URL; ' +
       `the addresses it can name are ${list(urls)}. `;
   }
   if (reaches) {
-    reach += 'Which machines can reach an address is decided by the network it is on, and Gropius does not see that.';
+    reach += 'Which machines can reach an address is decided by the network it is on, and Dessau does not see that.';
   }
   if (bind.refusal) reach += ` The bind narrowed to this Mac: ${bind.refusal}.`;
   lines.push({ id: 'reach', heading: 'Who can reach it', text: reach,
@@ -806,24 +806,25 @@ function postureLines(state) {
     let text = marked.length
       ? `${list(marked.map((ep) => ep.url))} ${marked.length === 1 ? 'is' : 'are'} on a private network. `
       : 'No address on a private network is being answered on. ';
-    text += 'Gropius reads that from the interface an address sits on and the range it falls in, and reads ' +
+    text += 'Dessau reads that from the interface an address sits on and the range it falls in, and reads ' +
       'nothing from the network itself. Whether that network has since been shared with machines you do not ' +
-      'own, or whether a feature of the network publishes this port to the internet, Gropius cannot see, ' +
+      'own, or whether a feature of the network publishes this port to the internet, Dessau cannot see, ' +
       'and neither changes the address or the mark.';
     if (running) {
       text += bind.selected
         ? ` The private-network choice selected ${bind.selected}.`
         : ' The private-network choice is in force and selected no address, so the server answers on this Mac.';
     } else if (chosen) {
-      text += ' The private-network choice is saved and is not in force until Gropius next starts.';
+      text += ' The private-network choice is saved and is not in force until Dessau next starts.';
     }
     lines.push({ id: 'private', heading: 'The private network', text,
       reads: ['endpoints.url', 'endpoints.network', 'bind.mode', 'bind.mode_in_force', 'bind.selected'] });
   }
 
   lines.push({ id: 'transport', heading: 'What carries a request', reads: [],
-    text: 'Every address is plain HTTP. Gropius does no TLS: whatever protection a request has on its way ' +
-      'here comes from the network it travelled, and Gropius does not see that either.' });
+    text: 'Every address on the ordinary port is plain HTTP, and the paired-client port carries TLS. ' +
+      'Whatever other protection a request has on its way here comes from the network it travelled, ' +
+      'and Dessau does not see that either.' });
 
   lines.push({ id: 'panel', heading: 'This control panel', reads: [],
     text: 'This panel, and the API it is drawn from, answer on this Mac alone whichever bind is chosen. ' +
@@ -851,32 +852,33 @@ function postureLines(state) {
         'request from another account on this Mac. The key applies to the network and not to this Mac.'
       : 'A request from this Mac is served without a key, as every request is.' });
 
-  // The announcement: the one thing Gropius sends to every machine on the
-  // local network, and what it carries. The service is named after this Mac
-  // and published under a name of Gropius's own, never the Mac's own .local
-  // name (internal/discovery); with no name to read, the advert says gropius.
+  // The announcement: the one thing Dessau sends to every machine on the
+  // local network, and what it carries. The service is named after this Mac's
+  // Computer Name, and its address records are published under a name of
+  // Dessau's own, never the Mac's own .local name (internal/discovery); with
+  // no name to read, the advert says dessau.
   const off = advertising(state);
-  const name = state.hostname || 'gropius';
+  const name = state.computer_name || state.hostname || 'dessau';
   let announce;
   if (!off) {
-    announce = 'Gropius is announcing this server to every machine on the local network, as a Bonjour ' +
-      `service named after this Mac's name, ${name}, shortened where it is too long for a service name. ` +
+    announce = 'Dessau is announcing this server to every machine on the local network, as a Bonjour ' +
+      `service named after this Mac's Computer Name, ${name}, shortened where it is too long for a service name. ` +
       `The announcement carries this Mac's addresses, port ${bind.port}, how many models are ready, whether ` +
       'a key is required, and the fixed words saying it speaks the OpenAI API under /v1. It carries no ' +
       'model names and no key.';
   } else {
     const why = {
-      setting: 'announcing was switched off when Gropius started',
+      setting: 'announcing was switched off when Dessau started',
       mode: 'the announcement travels over the local network, which the private-network choice excludes',
       bind: 'the bind reaches no other machine',
     }[off];
-    announce = `Gropius is not announcing this server: ${why}.`;
+    announce = `Dessau is not announcing this server: ${why}.`;
   }
-  announce += ' This line reads the decision made when Gropius started, from the setting and the bind then in ' +
+  announce += ' This line reads the decision made when Dessau started, from the setting and the bind then in ' +
     'force; a setting changed since then takes effect at the next start, and an announcement that failed to ' +
     'start is reported in the log and not here.';
   lines.push({ id: 'announce', heading: 'The local network', text: announce,
-    reads: ['bind.advertising', 'bind.port', 'bind.mode_in_force', 'bind.reaches_other_machines', 'hostname'] });
+    reads: ['bind.advertising', 'bind.port', 'bind.mode_in_force', 'bind.reaches_other_machines', 'computer_name', 'hostname'] });
 
   // The level is applied live — a save moves it on the next line — so the
   // stored setting is the level in force, unlike the bind and the advert.
@@ -887,7 +889,7 @@ function postureLines(state) {
       `${level} level` + (level === 'detailed'
         ? ', which adds to each line the figures the sparse level leaves out'
         : ', one line for each thing that mattered') +
-      ", and is kept in the logs folder of this account's Gropius data folder, in a file created for this " +
+      ", and is kept in the logs folder of this account's Dessau data folder, in a file created for this " +
       'account alone.' });
 
   // What is recorded, where, and for how long. The store's figures ride the
@@ -900,7 +902,7 @@ function postureLines(state) {
     const store = state.stats_store || {};
     let kept;
     if (store.refused) {
-      kept = 'Gropius could not open the store where records are kept, so nothing is on disk and the ' +
+      kept = 'Dessau could not open the store where records are kept, so nothing is on disk and the ' +
         'figures in the Statistics tab are held in memory; its own log says why';
     } else if (store.oldest) {
       kept = `records from ${new Date(store.oldest * 1000).toISOString().slice(0, 10)} onwards, ` +
@@ -915,7 +917,7 @@ function postureLines(state) {
       'arrived, how it ended, whether it streamed, the tokens in and out, and how long it took; and beside ' +
       'those, when a model was loaded or evicted, and the settings in force. A record holds no prompt, no ' +
       `answer, no key and no client address. Records are kept for ${c.stats_months} months and within ` +
-      `${bytes(c.stats_max_bytes)}, in this account's Gropius data folder; ${kept}. Anyone who can open ` +
+      `${bytes(c.stats_max_bytes)}, in this account's Dessau data folder; ${kept}. Anyone who can open ` +
       'this panel can read them, which is every account on this Mac.';
   } else {
     stats = 'Request statistics are off: no request is recorded.';
@@ -933,11 +935,11 @@ function postureLines(state) {
     || 'the idle threshold';
   const selfTest = c.self_test
     ? `The self-test is on: while nothing has asked this Mac for a model for ${idleFor} and ` +
-      'nothing is downloading, Gropius loads one of its models at a time where it fits beside ' +
+      'nothing is downloading, Dessau loads one of its models at a time where it fits beside ' +
       'what is loaded, measures it with a fixed set of prompts, and unloads what it loaded. A request ' +
-      'from anyone ends the run. The figures go to a file in this account\'s Gropius data folder and ' +
+      'from anyone ends the run. The figures go to a file in this account\'s Dessau data folder and ' +
       'hold no prompt and no answer.'
-    : 'The self-test is off: Gropius loads no model on its own.';
+    : 'The self-test is off: Dessau loads no model on its own.';
   lines.push({ id: 'selftest', heading: 'Self-test', text: selfTest,
     reads: ['config.self_test', 'config.idle_threshold_sec', 'defaults.idle_threshold_sec'] });
 
@@ -1056,7 +1058,7 @@ function bindSelectBody(chosen, storedHost) {
 // privateBindLabel says what the mode would bind, or why it cannot.
 //
 // It states which network an address is on and nothing about what that network
-// is worth: Gropius cannot see whether the network has been published to the
+// is worth: Dessau cannot see whether the network has been published to the
 // internet or shared with machines the operator does not own, and neither
 // transition touches the address.
 function privateBindLabel(bind) {
@@ -1069,7 +1071,7 @@ function privateBindLabel(bind) {
   if (found.length === 1) return `A private network (${found[0]}) — and this Mac`;
   // Named rather than counted: a refusal the operator can act on is one that
   // says which addresses it would not choose between.
-  if (found.length > 1) return `A private network — ${found.join(', ')} all match, so Gropius will not choose`;
+  if (found.length > 1) return `A private network — ${found.join(', ')} all match, so Dessau will not choose`;
   return 'A private network — no matching address on this Mac';
 }
 
@@ -1102,7 +1104,7 @@ function renderBindMode(select, bind) {
 
 // renderBindOptions makes the bind-address select offer the host in force,
 // labeled with the address itself, so the value round-trips and the pane shows
-// the bind Gropius is actually serving on rather than a blank control.
+// the bind Dessau is actually serving on rather than a blank control.
 //
 // The option added last time is dropped first. renderSettings runs on every
 // live update, so without that a pane left open across a bind change would
@@ -1230,7 +1232,7 @@ function renderSettings() {
 // renderPinSwitches draws one box per downloaded model, and the figure that
 // says what the ticked ones leave of the memory budget. The figure is what
 // makes a pinned set that cannot fit visible while it is being chosen, rather
-// than at the first request Gropius has to refuse.
+// than at the first request Dessau has to refuse.
 function renderPinSwitches() {
   const box = $('pinList');
   const rows = pinRows(state.models || [], state.pinned || []);
@@ -1294,7 +1296,7 @@ function checkedPinModels() {
   return pinBoxes().filter((cb) => cb.checked).map((cb) => cb.dataset.model);
 }
 
-// servedContext is the window Gropius serves a model at, which is what it is
+// servedContext is the window Dessau serves a model at, which is what it is
 // charged for and what the gateway holds a request to: the operator's figure
 // for that model, or the window the model itself declares when they have set
 // none or set one the model cannot address. It is config.Config.ServedContext
@@ -1431,7 +1433,7 @@ function updateBudgetHint() {
 }
 
 // concurrencyNotice says when the batched-requests figure in the box is not
-// the one Gropius is running with. The decode concurrency is a pool option,
+// the one Dessau is running with. The decode concurrency is a pool option,
 // read once when the pool is built, so a save only reaches it at the next
 // start — and until then the memory a model is charged, which is worked out
 // once per sequence, follows the figure in force and not the one on screen.
@@ -1444,7 +1446,7 @@ function concurrencyNotice(machine, config) {
   const inForce = (machine && machine.decode_concurrency) || 0;
   const saved = (config && config.decode_concurrency) || 0;
   if (!inForce || !saved || inForce === saved) return '';
-  return `Gropius is batching ${inForce} request${inForce === 1 ? '' : 's'} at a time. `
+  return `Dessau is batching ${inForce} request${inForce === 1 ? '' : 's'} at a time. `
     + `The saved figure of ${saved} takes effect at the next start, and the memory a `
     + `pinned model is charged below is worked out from the ${inForce} in force.`;
 }
@@ -1486,7 +1488,7 @@ function updatePinBudget() {
 
 // renderMergeSwitches draws one box per downloaded model. Merging is per model
 // because it is a fact about that model's chat template, and because it is the
-// one setting that has Gropius read a request's instructions at all.
+// one setting that has Dessau read a request's instructions at all.
 function renderMergeSwitches() {
   const box = $('mergeList');
   const models = state.models || [];
@@ -1762,7 +1764,7 @@ function renderStatsStore() {
     return;
   }
   if (store.refused) {
-    line.textContent = 'Gropius could not open the store where records are kept, so the figures ' +
+    line.textContent = 'Dessau could not open the store where records are kept, so the figures ' +
       'above are being held in memory only and nothing is on disk. Its own log says why.';
     return;
   }
@@ -1879,7 +1881,7 @@ $('settingsForm').addEventListener('submit', async (e) => {
     });
     msg.className = 'msg';
     const parts = ['Saved.'];
-    if (res.restart) parts.push('Restart Gropius for the change to take effect.');
+    if (res.restart) parts.push('Restart Dessau for the change to take effect.');
     // Sampling defaults are set when a model server starts, so a model that is
     // already loaded keeps the values it started with.
     if (res.warning) parts.push(res.warning);
@@ -1967,7 +1969,7 @@ function selfTestHint(on, measured, idleFor) {
       : 'Off. Turn on Test the models when this Mac is idle in Settings to measure your models.';
   }
   return measured
-    ? `On. Gropius measures a model whenever this Mac has been idle for ${idleFor}.`
+    ? `On. Dessau measures a model whenever this Mac has been idle for ${idleFor}.`
     : `On. Nothing measured yet: the first run starts once this Mac has been idle for ${idleFor}.`;
 }
 
@@ -2142,7 +2144,7 @@ function outcomeLabel(c) {
     not_ready: 'never ready',
     unreachable: 'no answer',
     cancelled: 'client left',
-    gateway_error: 'Gropius failed',
+    gateway_error: 'Dessau failed',
   }[c] || 'unknown';
 }
 

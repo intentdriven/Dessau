@@ -14,7 +14,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // pidFileName is where the launcher records the process groups of the model
@@ -23,7 +23,7 @@ const pidFileName = "running-servers.pids"
 
 // pidLedger records live model-server process groups on disk.
 //
-// A model server holds gigabytes of GPU memory. If Gropius is force-quit or
+// A model server holds gigabytes of GPU memory. If Dessau is force-quit or
 // crashes, os/exec cannot run any cleanup, and those children keep that memory
 // pinned until the machine reboots. The ledger lets the next launch find and
 // kill them.

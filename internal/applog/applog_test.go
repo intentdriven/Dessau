@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/applog"
+	"github.com/intentdriven/Dessau/internal/applog"
 )
 
 // openIn builds a log in dir with the defaults a test wants: a small file, a
@@ -39,7 +39,7 @@ func TestTheLogFileIsOwnerOnlyAndRegular(t *testing.T) {
 
 	l.Logger.Info("serving")
 
-	if want := filepath.Join(dir, "gropius.log"); l.Path != want {
+	if want := filepath.Join(dir, "dessau.log"); l.Path != want {
 		t.Errorf("Path = %q, want %q", l.Path, want)
 	}
 	fi, err := os.Lstat(l.Path)
@@ -63,7 +63,7 @@ func TestOpenRefusesALinkLeftUnderTheLogsName(t *testing.T) {
 	if err := os.WriteFile(target, []byte("not the log\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(target, filepath.Join(dir, "gropius.log")); err != nil {
+	if err := os.Symlink(target, filepath.Join(dir, "dessau.log")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -84,7 +84,7 @@ func TestOpenRefusesALinkLeftUnderTheLogsName(t *testing.T) {
 // O_NONBLOCK, which would hang the whole start-up.
 func TestOpenRefusesAFifoLeftUnderTheLogsName(t *testing.T) {
 	dir := t.TempDir()
-	if err := syscall.Mkfifo(filepath.Join(dir, "gropius.log"), 0o600); err != nil {
+	if err := syscall.Mkfifo(filepath.Join(dir, "dessau.log"), 0o600); err != nil {
 		t.Skipf("cannot create a FIFO here: %v", err)
 	}
 
@@ -136,7 +136,7 @@ func TestEveryLineReachesStderrAndTheFile(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	onDisk, err := os.ReadFile(filepath.Join(dir, "gropius.log"))
+	onDisk, err := os.ReadFile(filepath.Join(dir, "dessau.log"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestTheLevelChangesWithoutReopening(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := os.ReadFile(filepath.Join(dir, "gropius.log"))
+	got, err := os.ReadFile(filepath.Join(dir, "dessau.log"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func logFiles(t *testing.T, dir string) (names []string, total int64) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), "gropius") {
+		if !strings.HasPrefix(e.Name(), "dessau") {
 			continue
 		}
 		info, err := e.Info()
@@ -214,7 +214,7 @@ func TestTheLogRotatesAtItsSizeAndPrunesOldFiles(t *testing.T) {
 	if max := int64(rotate) * keep * 2; total > max {
 		t.Errorf("the log totals %d bytes, want it bounded under %d", total, max)
 	}
-	current, err := os.ReadFile(filepath.Join(dir, "gropius.log"))
+	current, err := os.ReadFile(filepath.Join(dir, "dessau.log"))
 	if err != nil {
 		t.Fatalf("the current log is gone after rotating: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestTheLogRotatesAtItsSizeAndPrunesOldFiles(t *testing.T) {
 		t.Errorf("the last line written is not in the current log:\n%s", current)
 	}
 	// The line before the rotation is in the file the rotation made, not lost.
-	previous, err := os.ReadFile(filepath.Join(dir, "gropius.1.log"))
+	previous, err := os.ReadFile(filepath.Join(dir, "dessau.1.log"))
 	if err != nil {
 		t.Fatalf("rotation did not leave the previous file: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestRotationDoesNotFollowALinkLeftUnderARotatedName(t *testing.T) {
 	if err := os.WriteFile(target, []byte("not the log\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(target, filepath.Join(dir, "gropius.1.log")); err != nil {
+	if err := os.Symlink(target, filepath.Join(dir, "dessau.1.log")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -296,12 +296,12 @@ func TestRotationDoesNotFollowALinkLeftUnderARotatedName(t *testing.T) {
 	if got, _ := os.ReadFile(target); string(got) != "not the log\n" {
 		t.Errorf("rotation wrote through a link: target now %q", got)
 	}
-	fi, err := os.Lstat(filepath.Join(dir, "gropius.1.log"))
+	fi, err := os.Lstat(filepath.Join(dir, "dessau.1.log"))
 	if err != nil {
-		t.Fatalf("gropius.1.log: %v", err)
+		t.Fatalf("dessau.1.log: %v", err)
 	}
 	if fi.Mode()&fs.ModeSymlink != 0 {
-		t.Error("gropius.1.log is still the planted link; rotation renamed around it")
+		t.Error("dessau.1.log is still the planted link; rotation renamed around it")
 	}
 }
 
@@ -323,7 +323,7 @@ func TestReopeningAppendsRatherThanTruncating(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := os.ReadFile(filepath.Join(dir, "gropius.log"))
+	got, err := os.ReadFile(filepath.Join(dir, "dessau.log"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,8 +343,8 @@ func TestTheDefaultsAreTheOnesTheDocsPrint(t *testing.T) {
 	if applog.DefaultKeep != 5 {
 		t.Errorf("DefaultKeep = %d, want 5", applog.DefaultKeep)
 	}
-	if applog.DefaultName != "gropius.log" {
-		t.Errorf("DefaultName = %q, want gropius.log", applog.DefaultName)
+	if applog.DefaultName != "dessau.log" {
+		t.Errorf("DefaultName = %q, want dessau.log", applog.DefaultName)
 	}
 }
 
@@ -366,7 +366,7 @@ func TestCloseIsIdempotent(t *testing.T) {
 }
 
 // The log directory belongs to this account and may not exist yet: on a first
-// run, and on a shared-cache install where this account has never run Gropius
+// run, and on a shared-cache install where this account has never run Dessau
 // per-user, nothing has created it. Opening the log creates it owner-only
 // rather than refusing — the alternative is a first run with no log, which is
 // the run whose log is most worth having.
@@ -386,7 +386,7 @@ func TestOpenCreatesTheLogDirectoryWhenItIsMissing(t *testing.T) {
 	if perm := fi.Mode().Perm(); perm != 0o700 {
 		t.Errorf("log directory permissions = %#o, want 0700", perm)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "gropius.log")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "dessau.log")); err != nil {
 		t.Errorf("the log file is not in the created directory: %v", err)
 	}
 }
@@ -410,7 +410,7 @@ func TestOpenRefusesALinkStandingInForTheLogDirectory(t *testing.T) {
 	if err == nil {
 		t.Fatal("Open followed a link standing where the log directory should be")
 	}
-	if _, err := os.Stat(filepath.Join(elsewhere, "gropius.log")); err == nil {
+	if _, err := os.Stat(filepath.Join(elsewhere, "dessau.log")); err == nil {
 		t.Error("the log was written through the link")
 	}
 }

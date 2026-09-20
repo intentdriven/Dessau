@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// The window Gropius serves for a model is the operator's figure when they
+// The window Dessau serves for a model is the operator's figure when they
 // have set one and the model's own declared cap when they have not. One
 // function answers it, because the charge, the gateway's refusal, the models
 // list and the panel must all mean the same window by it.

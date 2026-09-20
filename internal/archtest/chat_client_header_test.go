@@ -30,7 +30,7 @@ func transcriptView(t *testing.T, src string) string {
 	t.Helper()
 	start := regexp.MustCompile(`private var transcript: some View \{`).FindStringIndex(src)
 	if start == nil {
-		t.Fatal("client/GropiusChat/GropiusChat.swift declares no transcript view")
+		t.Fatal("client/DessauChat/DessauChat.swift declares no transcript view")
 	}
 	end := regexp.MustCompile(`\n    private var composer: some View \{`).FindStringIndex(src[start[0]:])
 	if end == nil {
@@ -42,12 +42,12 @@ func transcriptView(t *testing.T, src string) string {
 // TestChatClientHeaderIsOneFixedHeight holds the header to one height.
 func TestChatClientHeaderIsOneFixedHeight(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 
 	t.Run("every title is pinned inline", func(t *testing.T) {
 		titles := regexp.MustCompile(`\.navigationTitle\(`).FindAllStringIndex(src, -1)
 		if len(titles) == 0 {
-			t.Fatal("client/GropiusChat/GropiusChat.swift sets no navigation title")
+			t.Fatal("client/DessauChat/DessauChat.swift sets no navigation title")
 		}
 		inline := regexp.MustCompile(`TitleDisplayMode\(\.inline\)`)
 		for i, at := range titles {

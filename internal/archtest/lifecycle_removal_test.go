@@ -237,7 +237,7 @@ func TestTheLifecycleVerbsOnlyEverREADTheControlPlane(t *testing.T) {
 // from the same place as the bundle, and the verification would prove only that
 // a directory is self-consistent.
 // It is scoped to the update's own files rather than the package, because
-// other verbs read the environment legitimately — uninstall reads GROPIUS_ROOT
+// other verbs read the environment legitimately — uninstall reads DESSAU_ROOT
 // so its output can name the root it did NOT remove. The names are checked to
 // exist first, so a file renamed does not silently empty the scan.
 func TestTheUpdatePathReadsNoEnvironmentVariable(t *testing.T) {

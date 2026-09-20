@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/instance"
+	"github.com/intentdriven/Dessau/internal/instance"
 )
 
 // The update verb, run end to end through its seams: no Mac, no panel, no
@@ -237,7 +237,7 @@ func TestAMacAtOrAboveTheFloorUpdatesNormally(t *testing.T) {
 // proof can be written into — ends the run before anything is fetched.
 //
 // This is the ONE ending where nothing is written. A Mac with something on the
-// server port that will not prove it is this account's Gropius is not a Mac to
+// server port that will not prove it is this account's Dessau is not a Mac to
 // install software on, and the refusal comes before the download rather than
 // after it.
 func TestTheUpdateRefusesBeforeAnythingIsWrittenWhenThePortCannotProveItself(t *testing.T) {
@@ -334,7 +334,7 @@ func TestTheRefusalSaysWhichOfTheTwoThingsItFound(t *testing.T) {
 
 // Something that holds the port and answers no challenge at all is NOT that
 // case. Under a per-account data root that description fits another account's
-// Gropius exactly, and refusing there would make a shared Mac unupdatable for
+// Dessau exactly, and refusing there would make a shared Mac unupdatable for
 // as long as a colleague stays logged in. So the bundle is replaced, and the
 // report says the version serving cannot be determined from here.
 func TestAHolderThatAnswersNoChallengeStillGetsTheUpdate(t *testing.T) {
@@ -509,7 +509,7 @@ func TestAStoppedSwapReportsWhatIsAtTheDestination(t *testing.T) {
 // nothing — it sends a person looking for their application in the wrong place.
 func TestAStoppedSwapThatKeptTheOnlyCopyNamesWhereItIs(t *testing.T) {
 	f := newFakeUpdate(t)
-	kept := filepath.Join(filepath.Dir(f.env.Dest), ".gropius-incoming-abcdef12", bundleName+".retired")
+	kept := filepath.Join(filepath.Dir(f.env.Dest), ".dessau-incoming-abcdef12", bundleName+".retired")
 	f.env.Place = func(_, dest string) error {
 		f.calls.placed = append(f.calls.placed, dest)
 		return &keptStagingError{
@@ -542,7 +542,7 @@ func TestAStoppedSwapThatKeptTheOnlyCopyNamesWhereItIs(t *testing.T) {
 func TestAStoppedSwapThatKeptNothingNamesTheVersionStillInstalled(t *testing.T) {
 	f := newFakeUpdate(t)
 	f.placeErr = errors.New("copy the verified bundle into /Applications: " +
-		"/Applications/.gropius-incoming-abcdef12/Gropius.app/Contents/MacOS/gropius: no space left on device")
+		"/Applications/.dessau-incoming-abcdef12/DessauServer.app/Contents/MacOS/dessau: no space left on device")
 
 	_, out, _ := f.run(t)
 	if !strings.Contains(out, "0.4.0") {
@@ -631,7 +631,7 @@ func TestTheUpdateFailsClosedOnEveryBadDownload(t *testing.T) {
 			name: "a checksums file that does not cover the archive",
 			assets: map[string][]byte{
 				updateArchiveName: good,
-				checksumsName:     sums(digestOf(t, "GropiusChat.app.zip", good)),
+				checksumsName:     sums(digestOf(t, "DessauChat.app.zip", good)),
 			},
 			wantCause: causeArchiveNotCovered,
 		},
@@ -843,7 +843,7 @@ func TestTheUpdateUsesTheSwapTheInstallerAlreadyPerforms(t *testing.T) {
 // before the staged build is run.
 //
 // os.OpenRoot resolves symbolic links in the path it is HANDED, so a root
-// opened on <extract>/Gropius.app covers every component below the bundle and
+// opened on <extract>/DessauServer.app covers every component below the bundle and
 // follows a link at the bundle name itself. The one exec in this path would
 // then run a program outside the directory the checksums covered — and the
 // later refusal in PlaceBundle comes after it, which is too late for an exec.
@@ -862,7 +862,7 @@ func TestAnUpdateWhoseStagedBundleIsASymbolicLinkIsRefusedBeforeAnythingIsRun(t 
 		t.Fatal(err)
 	}
 	marker := filepath.Join(outside, "it-ran")
-	program := "#!/bin/sh\n: > '" + marker + "'\necho 'gropius 9.9.9'\n"
+	program := "#!/bin/sh\n: > '" + marker + "'\necho 'dessau 9.9.9'\n"
 	if err := os.WriteFile(filepath.Join(elsewhere, binaryInBundle), []byte(program), 0o755); err != nil {
 		t.Fatal(err)
 	}

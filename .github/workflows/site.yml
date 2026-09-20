@@ -1,6 +1,6 @@
 name: site
 
-# Deploy the landing page at intentdriven.sh/Gropius. One reusable workflow with
+# Deploy the landing page at intentdriven.sh/Dessau. One reusable workflow with
 # two entry points:
 #
 #   workflow_call     the RELEASE CHAIN. release.yml calls this as a separate,
@@ -252,7 +252,7 @@ jobs:
         # this file makes:
         #
         #   1. list the releases with the forge's own `isLatest` flag,
-        #   2. `gropius-site select` elects from that list — the flagged one,
+        #   2. `dessau-site select` elects from that list — the flagged one,
         #      never the newest created, and never a draft or a pre-release,
         #   3. fetch that release and reshape it into the record the renderer
         #      validates.
@@ -285,13 +285,13 @@ jobs:
 
           gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
             --json tagName,isLatest,isDraft,isPrerelease,publishedAt > "$list"
-          tag="$(go run ./cmd/gropius-site select --from "$list")"
+          tag="$(go run ./cmd/dessau-site select --from "$list")"
           echo "the release flagged latest is $tag"
 
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
             --json tagName,publishedAt,assets,url > "$raw"
 
-          # Reshape into the record cmd/gropius-site validates, dropping every
+          # Reshape into the record cmd/dessau-site validates, dropping every
           # field the page does not show. The checksums link is the release's
           # OWN SHA256SUMS.txt asset, looked up by name rather than composed
           # from a URL pattern, so a release that does not carry one produces no
@@ -309,12 +309,12 @@ jobs:
           # file merely existing, and a release whose asset names or links the
           # record's grammar refuses would fail the render job and take the
           # deploy with it — losing the whole page over a fact.
-          if ! go run ./cmd/gropius-site validate-release "${RELEASE_JSON}.partial"; then
+          if ! go run ./cmd/dessau-site validate-release "${RELEASE_JSON}.partial"; then
             {
               echo "### The landing page is deployed without its release facts"
               echo
               echo "The release flagged latest (\`$tag\`) produced a record"
-              echo "\`cmd/gropius-site\` will not render. The page is deployed with"
+              echo "\`cmd/dessau-site\` will not render. The page is deployed with"
               echo "its static list of what a release contains; the download button"
               echo "is unaffected. The refusal is in this job's log."
             } >> "$GITHUB_STEP_SUMMARY"
@@ -339,11 +339,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ -s "$RELEASE_JSON" ]; then
-            go run ./cmd/gropius-site --out site --release "$RELEASE_JSON"
+            go run ./cmd/dessau-site --out site --release "$RELEASE_JSON"
           else
             echo "::warning::no release record; the page renders without its release facts"
             echo "The landing page is rendered without its release facts." >> "$GITHUB_STEP_SUMMARY"
-            go run ./cmd/gropius-site --out site
+            go run ./cmd/dessau-site --out site
           fi
       # render: end
 
@@ -353,8 +353,8 @@ jobs:
         # bytes leave this job.
         run: |
           set -euo pipefail
-          test -s site/Gropius/index.html
-          test -s site/Gropius/site.css
+          test -s site/Dessau/index.html
+          test -s site/Dessau/site.css
           # The response headers belong at the ROOT of the assets directory,
           # which is where the host reads them; a policy written beside the page
           # is a policy nothing applies.
@@ -425,15 +425,19 @@ jobs:
             echo "::error::the rendered tree holds something that is not a regular file or directory"
             exit 1
           fi
-          test -s "$staging/Gropius/index.html"
+          test -s "$staging/Dessau/index.html"
           # The response policy is served from the root of the assets directory,
           # so it has to survive the artifact round trip; a page deployed without
           # it is served with no policy at all and nothing else would say so.
           test -s "$staging/_headers"
+          # The redirect from the superseded path lives beside it and has to
+          # survive the same round trip: without it the old address is a 404.
+          test -s "$staging/_redirects"
           mkdir -p site
           cp -R "$staging/." site/
-          test -s site/Gropius/index.html
+          test -s site/Dessau/index.html
           test -s site/_headers
+          test -s site/_redirects
 
       - name: Deploy to the Worker
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
@@ -458,8 +462,8 @@ jobs:
         # already succeeded by this point, and the zone's DNS is outside this
         # repository's control, so a failure here must never turn a successful
         # release red. It runs because the page is served under a PATH: every
-        # reference on it is relative, so if /Gropius does not redirect to
-        # /Gropius/, "site.css" resolves to /site.css — a path the route does not
+        # reference on it is relative, so if /Dessau does not redirect to
+        # /Dessau/, "site.css" resolves to /site.css — a path the route does not
         # match — and the first visitor who types the address without a trailing
         # slash gets an unstyled page. Better read here than discovered there.
         continue-on-error: true
@@ -468,23 +472,31 @@ jobs:
         run: |
           set -uo pipefail
           fail=0
-          for suffix in /Gropius /Gropius/; do
+          for suffix in /Dessau /Dessau/; do
             code="$(curl -sS -o /dev/null -w '%{http_code}' -L --max-time 20 "${BASE}${suffix}" || echo 000)"
             echo "${suffix} -> ${code}"
             [ "$code" = 200 ] || fail=1
           done
-          css="$(curl -sS -o /dev/null -w '%{http_code}' -L --max-time 20 "${BASE}/Gropius/site.css" || echo 000)"
-          echo "/Gropius/site.css -> ${css}"
+          css="$(curl -sS -o /dev/null -w '%{http_code}' -L --max-time 20 "${BASE}/Dessau/site.css" || echo 000)"
+          echo "/Dessau/site.css -> ${css}"
           [ "$css" = 200 ] || fail=1
+          # The superseded path is answered by the _redirects rule, not by a
+          # page: a 301 is the expected answer, and anything else says the
+          # rule was not read from the assets directory root.
+          for suffix in /Gropius /Gropius/; do
+            old="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${BASE}${suffix}" || echo 000)"
+            echo "${suffix} -> ${old}"
+            [ "$old" = 301 ] || fail=1
+          done
           # The whole argument for shipping site-src/headers is enforcement at
           # SERVE time. Every other check on it stops at the file: the tests read
           # it, the render copies it, the deploy asserts it survived the
           # handover. This is the only place that can say whether a visitor's
           # browser is actually handed the policy, so it asks.
-          if curl -sSI -L --max-time 20 "${BASE}/Gropius/" | grep -qi '^content-security-policy:'; then
-            echo "/Gropius/ is served with a content-security-policy."
+          if curl -sSI -L --max-time 20 "${BASE}/Dessau/" | grep -qi '^content-security-policy:'; then
+            echo "/Dessau/ is served with a content-security-policy."
           else
-            echo "/Gropius/ is served with NO content-security-policy header"
+            echo "/Dessau/ is served with NO content-security-policy header"
             fail=1
           fi
           if [ "$fail" != 0 ]; then

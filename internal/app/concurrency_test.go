@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/registry"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 // manyFileHub serves a repo of many small files, each answered slowly, so a

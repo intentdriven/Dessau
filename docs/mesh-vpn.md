@@ -1,17 +1,17 @@
 # Serve models over a mesh VPN
 
 A mesh VPN gives each machine you sign in an address on a network of its own, so
-the Mac running Gropius answers a laptop in another building without opening a
+the Mac running Dessau answers a laptop in another building without opening a
 port on your router. Serving over one is the same job as
 [serving over the local network](getting-started.md#5-talk-to-it--from-another-machine):
 the address you hand out is different, and a few things on the VPN's side are
 yours to check.
 
-This page names Tailscale where an example helps; Gropius names no product, because it cannot tell one product on that address range from another. <!-- abcd-lint:allow: a person writing a page can say which product was reasoned about and tested against, which the classifier cannot -->
+This page names Tailscale where an example helps; Dessau names no product, because it cannot tell one product on that address range from another. <!-- abcd-lint:allow: a person writing a page can say which product was reasoned about and tested against, which the classifier cannot -->
 
 ## Before you start
 
-- Gropius is installed and running with at least one model downloaded — see
+- Dessau is installed and running with at least one model downloaded — see
   [Getting started](getting-started.md).
 - A mesh VPN is installed on this Mac and on the machine you want to reach it
   from, and both are signed in to the same network.
@@ -24,7 +24,7 @@ This page names Tailscale where an example helps; Gropius names no product, beca
    VPN gave this Mac. Choose **0.0.0.0 — reachable from your whole network**
    instead if you want the local network to reach the server as well.
 3. Under **API key**, click **Generate a key**, then **Save settings**. Every
-   request from a network has to carry it. (Gropius generates and saves a key
+   request from a network has to carry it. (Dessau generates and saves a key
    itself if you leave a bind other than loopback without one, rather than
    serving open.)
 4. Open the **Connect** tab. It lists the base URLs the server answers on. The
@@ -56,13 +56,13 @@ laptop, over the mesh, can.
 
 Three things to know before you choose it.
 
-- **It selects one address, and shows you which.** Gropius reads this Mac's
+- **It selects one address, and shows you which.** Dessau reads this Mac's
   interfaces, not your VPN. If two addresses look alike to it — a mesh VPN and
   a corporate VPN can — it refuses to choose, names both, and serves this Mac.
   Bind the address you meant directly in that case: write it into `config.json`
   as `host`.
 - **It narrows and never widens.** With no matching address on this Mac at
-  launch, Gropius serves this Mac and says so in **Settings** and in the log.
+  launch, Dessau serves this Mac and says so in **Settings** and in the log.
   It does not fall back to the local network.
 - **Bonjour goes quiet.** The advert travels over the local network, which this
   choice excludes, so it would name an address its recipients cannot reach.
@@ -73,11 +73,11 @@ The full table of what each choice binds is in the
 
 ## What the mark beside an address means
 
-Gropius marks an address that sits on a private network. The mark names the
+Dessau marks an address that sits on a private network. The mark names the
 network the address belongs to, and says nothing about how safe it is or who
 else can reach it.
 
-It is an observation about this Mac: Gropius reads the interface the address is
+It is an observation about this Mac: Dessau reads the interface the address is
 configured on and the range the address falls in. It cannot read your VPN's
 settings, and the four things below all live there.
 
@@ -93,13 +93,14 @@ settings, and the four things below all live there.
    changes when it does.
 3. **Encryption.** The mark says nothing about encryption. Whatever a mesh VPN
    does to protect traffic between two machines, the VPN is doing it, and
-   Gropius neither performs it nor observes it.
-4. **Gropius speaks plain HTTP.** There is no TLS, on the local network or on
-   the mesh address. So whatever protection the traffic has comes from the VPN
+   Dessau neither performs it nor observes it.
+4. **Dessau speaks plain HTTP on the ordinary port.** There is no TLS on it,
+   on the local network or on the mesh address; only the paired-client port
+   carries TLS. So whatever protection the traffic has comes from the VPN
    and stops where the VPN stops — at a relay you route through, at a proxy in
    front of the server, or at the far end of a share.
 
-None of the four is visible to Gropius, which is why the mark states which
+None of the four is visible to Dessau, which is why the mark states which
 network an address is on and leaves the rest to you.
 
 ## Where to go next
@@ -110,6 +111,6 @@ network an address is on and leaves the rest to you.
 - [The posture page](posture-reference.md) — the control panel's one-page
   statement of what is on: the addresses answered on, what a key is required
   for, what is announced and what is recorded, with the four things above
-  stated as the limits of what Gropius can see.
+  stated as the limits of what Dessau can see.
 - [Record request statistics on this Mac](request-statistics.md) — what a served
   request leaves behind, and who on this Mac can read it.

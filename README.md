@@ -1,6 +1,6 @@
 <div align="center">
 
-  <h1>Gropius</h1>
+  <h1>Dessau</h1>
 
   <p>Download MLX models on your Mac and serve them to the rest of your network — an OpenAI-compatible endpoint, in a menu-bar app.</p>
 
@@ -16,21 +16,21 @@
 
 ---
 
-**Gropius** turns one Apple Silicon Mac into a shared local-inference server.
+**Dessau** turns one Apple Silicon Mac into a shared local-inference server.
 Browse and download [MLX](https://github.com/ml-explore/mlx) models from
 HuggingFace, and serve them over an OpenAI-compatible API to every other machine
 and user account on your network. Anything that talks to ChatGPT can talk to your
 Mac — just change the base URL.
 
 It manages its own runtime: on first launch it installs a private Python and MLX
-under `~/Library/Application Support/Gropius` and never touches your system
+under `~/Library/Application Support/Dessau` and never touches your system
 Python. Uninstalling is one command, which takes the firewall entry with it and
 leaves the models you downloaded.
 
 ## Status
 
 Experimental. Runs and is tested end-to-end on macOS 27 / Apple Silicon.
-Cross-machine LAN use works; TLS and notarised distribution are not yet included.
+Cross-machine LAN use works. The ordinary port is plain HTTP; only the paired-client port carries TLS. Notarised distribution is not included.
 
 ## Features
 
@@ -76,19 +76,19 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
   models were evicted and reloaded
   ([what the views mean](docs/statistics-explained.md)).
 - **Self-test, opt-in** — off until you turn it on: while the Mac is idle,
-  Gropius loads each of your models in turn, runs the same short set of tests
+  Dessau loads each of your models in turn, runs the same short set of tests
   against it — load time, prompt reading, generation, and generation under
   concurrent requests — writes one line of figures to a file in your data
   folder, and unloads what it loaded. A request from anyone ends the run at
   once ([how to switch it on](docs/self-test.md), and
   [what is recorded](docs/self-test-reference.md)).
 - **Context-window probe, opt-in** — off until you turn it on: while the
-  Mac is idle, Gropius measures the largest prompt each model will actually
+  Mac is idle, Dessau measures the largest prompt each model will actually
   take, through its own endpoint, and records it beside the window the model
-  declares and the one it serves. A figure one of Gropius's own limits stopped
+  declares and the one it serves. A figure one of Dessau's own limits stopped
   is published as a floor, and nothing changes until you adopt it
   ([how to switch it on, and what it costs](docs/context-probe.md)).
-- **A log that says why** — Gropius keeps its own log in your account's data
+- **A log that says why** — Dessau keeps its own log in your account's data
   folder, so the reason behind a refusal a client saw is somewhere you can read
   it even when the app was launched from the Finder and has no terminal to
   print to. Sparse by default, one line per event that mattered; switch it to
@@ -96,8 +96,8 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
   each line. Neither level writes a prompt, an answer, a key or the address of
   the client that sent a request ([reference](docs/logging.md)).
 - **Network-shared** — bind the LAN, discoverable over Bonjour (the chat client
-  lists the servers it finds, so nobody has to guess an address), optional API
-  key. A mesh VPN reaches it from further away, with the same steps and a
+  lists the servers it finds, each under the name of the Mac it runs on, so
+  nobody has to guess an address), optional API key. A mesh VPN reaches it from further away, with the same steps and a
   different address ([how to](docs/mesh-vpn.md)) — or bind that network alone,
   so the local one cannot reach the server at all. Every bind includes this
   Mac, so narrowing one never costs you the control panel
@@ -106,33 +106,33 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
   as fact rather than warning, who can reach the server and by which addresses,
   what a request has to carry from the network and from this Mac, what is
   announced over Bonjour, what the request log writes down, and what is
-  recorded and for how long — and says where Gropius's own view stops
+  recorded and for how long — and says where Dessau's own view stops
   ([what each line is read from](docs/posture-reference.md)).
 - **Answer Discord messages with a model on this Mac** — off unless you turn it
   on. Paste a Discord bot token in Settings and a direct message to that bot, or
   a mention of it in a channel it has been invited to, is answered by one of
   your models: a placeholder appears and fills in as the answer is written, and
   `/model` and `/reset` pick the model and clear the conversation in each
-  channel. Gropius connects out to Discord; no port on this Mac is opened to the
+  channel. Dessau connects out to Discord; no port on this Mac is opened to the
   internet and the bind address is untouched. **Messages to the bot and the
   model's answers pass through Discord and are kept under Discord's terms** —
   that is what the switch trades for reaching your models from a phone, and it
   is stated beside the switch as well as here
   ([how to](docs/discord-bridge.md)).
 - **It installs, updates, repairs, removes and diagnoses itself** —
-  `gropius install` does the provisioning in the foreground and, run again,
+  `dessau install` does the provisioning in the foreground and, run again,
   repairs what is missing rather than reinstalling what is not.
-  `gropius update` fetches the current release, verifies it against the
+  `dessau update` fetches the current release, verifies it against the
   published checksums, swaps it in and reports two facts under two labels —
   the version installed and the version this Mac is serving — saying plainly
   when the second cannot be known rather than printing the first in its place.
-  `gropius uninstall` removes the app, the runtime, the settings and the
+  `dessau uninstall` removes the app, the runtime, the settings and the
   firewall entry every hand-written instruction forgets, and leaves the models
   you downloaded with their size and the flag that removes them too.
-  `gropius doctor` separates what it verified from what it could only observe
+  `dessau doctor` separates what it verified from what it could only observe
   — the firewall entry is never a verdict — and says outright that Local
   Network Privacy cannot be determined from here, rather than guessing it.
-  `gropius config show` prints every setting in force, with the API key, the
+  `dessau config show` prints every setting in force, with the API key, the
   HuggingFace token and the Discord bot token masked ([how to](docs/lifecycle.md),
   [reference](docs/lifecycle-reference.md)).
 - **Multi-account** — other user accounts on the same Mac share one copy of each
@@ -141,21 +141,21 @@ Cross-machine LAN use works; TLS and notarised distribution are not yet included
 
 ## Install
 
-One line — installs `Gropius.app` (the menu-bar server) to `/Applications`, or to
-your own `~/Applications` when your account is not an administrator, allows it
-through the firewall, and launches it:
+One line — installs `DessauServer.app`, the Dessau Server menu-bar app, to
+`/Applications`, or to your own `~/Applications` when your account is not an
+administrator, allows it through the firewall, and launches it:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/intentdriven/Dessau/main/install.sh | bash
 ```
 
 That command is a bootstrap and only a bootstrap. It downloads the release,
 verifies it against the checksums published beside it, clears the quarantine
-attribute, and hands over to `gropius install` inside the bundle it has just
+attribute, and hands over to `dessau install` inside the bundle it has just
 verified — so the script and the binary it calls are always the same build.
 The binary does the rest in the foreground, where you can watch it: it places
 the application, asks once for the firewall grant, installs the private Python
-and MLX runtime with a proportion rather than a spinner, links a `gropius`
+and MLX runtime with a proportion rather than a spinner, links a `dessau`
 command into `~/.local/bin`, and opens the app
 ([how to](docs/lifecycle.md), [reference](docs/lifecycle-reference.md)).
 
@@ -170,7 +170,7 @@ changes with every build and the firewall grant has to be made again on each
 update. The chat client needs no administrator rights at all.
 
 That command and a direct download of the current release are also on the
-project's page at <https://intentdriven.sh/Gropius>, which is where someone who
+project's page at <https://intentdriven.sh/Dessau>, which is where someone who
 is not building from source starts. The page names the release GitHub flags as
 latest, lists every file it carries with its size, and links the checksums to
 verify a download against; the release run renders it from the release itself,
@@ -179,15 +179,16 @@ so no one edits the page to keep it current.
 **Requires macOS 27** and **Apple Silicon**, for the server and the chat
 client alike. Both bundles declare that minimum, and the installer checks the
 version and the architecture before it downloads anything, so a Mac that
-cannot run Gropius is turned away rather than half-installed. There is no
-build for an older macOS and none for an Intel Mac. The native chat client
-(`GropiusChat.app`) chats with the Mac's own model out of the box and offers a
-Gropius server's models when it finds one on the network. Installing it
-downloads the server's archive too: both bundles are put in place by a Gropius
-binary, because a shell cannot replace an application directory safely.
+cannot run Dessau is turned away rather than half-installed. There is no
+build for an older macOS and none for an Intel Mac. Dessau Chat
+(`DessauChat.app`), the native chat client, chats with the Mac's own model out
+of the box and offers a Dessau Server's models when it finds one on the
+network, listed under the name of the Mac it runs on. Installing it downloads
+the server's archive too: both bundles are put in place by the `dessau` binary,
+because a shell cannot replace an application directory safely.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash -s -- client
+curl -fsSL https://raw.githubusercontent.com/intentdriven/Dessau/main/install.sh | bash -s -- client
 ```
 
 The installer **verifies the download before installing it**: it fetches the
@@ -197,13 +198,13 @@ attestation binding it to the release workflow run; check it yourself with
 [`gh attestation verify`](https://cli.github.com/manual/gh_attestation_verify):
 
 ```sh
-gh attestation verify Gropius.app.zip --repo intentdriven/Gropius
+gh attestation verify DessauServer.app.zip --repo intentdriven/Dessau
 ```
 
 There is no offline signing key; building from source is the escape hatch. The
 binaries are ad-hoc signed, not notarised; because the installer has verified
 the download, it clears the Gatekeeper quarantine so it launches without a
-prompt. The MLX runtime installs while `gropius install` runs, in the terminal
+prompt. The MLX runtime installs while `dessau install` runs, in the terminal
 and with a proportion (a few minutes); a launch from the Finder finishes what
 that run could not and shows progress in the control panel. Then you can
 download and serve models. New here? See
@@ -212,7 +213,7 @@ download and serve models. New here? See
 ## Build from source
 
 ```sh
-make app         # build Gropius.app (menu-bar app bundle)
+make app         # build DessauServer.app (menu-bar app bundle)
 make install     # copy to /Applications and launch it
 make run         # or: run headless in the foreground, for development
 ```
@@ -259,7 +260,7 @@ clients keep the ordinary port and the shared key, unchanged.
 The server's request log records the method, path, status and duration of a
 request, and never the client's network address.
 
-Gropius collects no telemetry: nothing about usage, models, hardware or errors
+Dessau collects no telemetry: nothing about usage, models, hardware or errors
 leaves your Mac, to the project or to anyone else. **Request statistics** is a
 local record, off unless you turn it on, holding token counts and timings —
 never a prompt, an answer, an API key or a client's address. The boundary is
@@ -268,9 +269,9 @@ reach it on this Mac, so on a Mac several people log into, any of them can
 turn the switch on and read what it records
 ([what is recorded, and who can see it](docs/request-statistics.md)).
 
-Gropius passes a request's prompt on to the model without reading it. The one
+Dessau passes a request's prompt on to the model without reading it. The one
 exception is **Merge system messages**, a per-model setting that is off unless
-you switch it on: for a model you switch it on for, Gropius gathers that
+you switch it on: for a model you switch it on for, Dessau gathers that
 request's system messages into the first one, reads nothing else of the
 request, and keeps none of what it reads
 ([how to switch it on](docs/system-message-merging.md); the rule it runs under
@@ -279,7 +280,7 @@ is written down as
 
 ## Layout
 
-- [`cmd/gropius/`](cmd/gropius/) — menu-bar app + singleton election.
+- [`cmd/dessau/`](cmd/dessau/) — menu-bar app + singleton election.
 - [`internal/`](internal/) — the engine: `hub` (HuggingFace client + downloader),
   `runtime` (Python/MLX provisioning + process pool), `gateway` (OpenAI + control
   API), `registry`, `discovery`, `bind` and `netshape` (which addresses are

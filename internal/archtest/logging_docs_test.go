@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/applog"
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/applog"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The logging page is a reference page, and a reference page that prints a
@@ -28,7 +28,7 @@ func TestTheLoggingPagePrintsTheFiguresTheCodeUses(t *testing.T) {
 		}
 	}
 	// The rotated names are what a person looks for in the folder.
-	if !containsAll(page, "gropius.1.log") {
+	if !containsAll(page, "dessau.1.log") {
 		t.Error("docs/logging.md does not say what a rotated file is called")
 	}
 }

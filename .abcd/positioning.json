@@ -37,7 +37,7 @@
     {
       "id": "landing-hero",
       "files": [
-        "site/Gropius/index.html"
+        "site/Dessau/index.html"
       ],
       "kind": "regexp",
       "patterns": [

@@ -18,8 +18,8 @@ func TestDownloadRejectsPathTraversal(t *testing.T) {
 	// Enough "../" to climb out of any plausible temp dir, plus a variant that
 	// hides the traversal in the middle so a naive prefix check misses it.
 	evilPaths := []string{
-		"../../../../../../../../../../../../tmp/gropius-pwned",
-		"weights/../../../../../../../../../../../../tmp/gropius-pwned2",
+		"../../../../../../../../../../../../tmp/dessau-pwned",
+		"weights/../../../../../../../../../../../../tmp/dessau-pwned2",
 	}
 
 	mux := http.NewServeMux()
@@ -39,7 +39,7 @@ func TestDownloadRejectsPathTraversal(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	victims := []string{"/tmp/gropius-pwned", "/tmp/gropius-pwned2"}
+	victims := []string{"/tmp/dessau-pwned", "/tmp/dessau-pwned2"}
 	for _, v := range victims {
 		os.Remove(v)
 		t.Cleanup(func() { os.Remove(v) })
@@ -56,7 +56,7 @@ func TestDownloadRejectsPathTraversal(t *testing.T) {
 		}
 	}
 	// Nothing at all may exist above dest with our marker name.
-	if entries, _ := filepath.Glob(filepath.Join(filepath.Dir(dest), "gropius-pwned*")); len(entries) > 0 {
+	if entries, _ := filepath.Glob(filepath.Join(filepath.Dir(dest), "dessau-pwned*")); len(entries) > 0 {
 		t.Fatalf("PATH TRAVERSAL: wrote files outside the model dir: %v", entries)
 	}
 }
@@ -153,7 +153,7 @@ func TestDownloadRefusesSymlinkedOrgDir(t *testing.T) {
 
 // Two repo files whose names differ only by case cannot both exist on macOS's
 // case-insensitive default volume: at best two goroutines race over one
-// .gropius-part and the download aborts, at worst a non-LFS file finalizes
+// .dessau-part and the download aborts, at worst a non-LFS file finalizes
 // with interleaved content. Refuse such a repo up front, naming the pair.
 func TestDownloadRefusesCaseCollidingFiles(t *testing.T) {
 	dest := t.TempDir()

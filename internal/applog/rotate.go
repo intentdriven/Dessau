@@ -13,7 +13,7 @@ import (
 // This file is the repository's one size-rotating file writer, and the one
 // guarded open underneath it.
 //
-// Gropius writes three bounded line files on this Mac: this package's own log,
+// Dessau writes three bounded line files on this Mac: this package's own log,
 // internal/stats's request statistics store, and internal/selftest's results.
 // Each of them appends lines to a file whose name is predictable, in a
 // directory anything running as this account can reach, and each of them used
@@ -150,7 +150,7 @@ func OpenRotator(opts RotateOptions) (*Rotator, error) {
 		opts.Keep = DefaultKeep
 	}
 	// Created when it is missing, and only then. On a first run — and on a
-	// shared-cache install where this account has never run Gropius per-user —
+	// shared-cache install where this account has never run Dessau per-user —
 	// nothing has made this directory yet, and the run whose log is most worth
 	// having is the first one. Owner-only, following internal/stats's own rule
 	// for the directory it creates: config.Paths.EnsureDirs leaves an existing
@@ -273,7 +273,7 @@ func (r *Rotator) rotate() error {
 	return r.open()
 }
 
-// numbered is the name of the nth previous file: gropius.1.log, gropius.2.log…
+// numbered is the name of the nth previous file: dessau.1.log, dessau.2.log…
 func (r *Rotator) numbered(n int) string {
 	return fmt.Sprintf("%s.%d%s", r.base, n, r.ext)
 }

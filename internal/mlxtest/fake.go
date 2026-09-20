@@ -1,7 +1,7 @@
 // Package mlxtest provides a fake mlx_lm.server for tests.
 //
 // It is deliberately faithful to the real server's quirks, because those quirks
-// are what the rest of Gropius has to work around. Verified against
+// are what the rest of Dessau has to work around. Verified against
 // mlx-lm 0.31.3 on 2026-07-14:
 //
 //   - The request's "model" field is a *load instruction*, not a label. If it
@@ -125,7 +125,7 @@ func Start(opts Options) *Server {
 		readyAt:              time.Now().Add(opts.LoadDelay),
 	}
 	if s.Reply == "" {
-		s.Reply = "GROPIUS OK"
+		s.Reply = "DESSAU OK"
 	}
 
 	mux := http.NewServeMux()

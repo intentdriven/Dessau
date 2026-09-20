@@ -1,4 +1,4 @@
-// Package applog builds the log Gropius keeps about itself.
+// Package applog builds the log Dessau keeps about itself.
 //
 // It exists because the app had nowhere to say why. Everything the server knew
 // about a refusal, a failed launch or a model leaving memory went to standard
@@ -38,7 +38,7 @@ import (
 // DefaultName is the current log's file name. It is fixed rather than dated so
 // that "the log" is one path a person can tail, which is what an operator
 // chasing a refusal actually does; the rotated files carry the numbers.
-const DefaultName = "gropius.log"
+const DefaultName = "dessau.log"
 
 // DefaultRotateBytes is how large the current log grows before the next one is
 // started, and DefaultKeep is how many files survive — the current one and its

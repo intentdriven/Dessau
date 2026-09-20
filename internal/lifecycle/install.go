@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/instance"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/instance"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
-// `gropius install` is the second half of the bootstrap: the shell script
+// `dessau install` is the second half of the bootstrap: the shell script
 // fetches the archive, verifies it against the release's published checksums
 // and clears the quarantine attribute, and then hands over to the binary IT
 // VERIFIED — never to the bundle it is about to replace — so the bootstrap and
@@ -33,24 +33,24 @@ const (
 	stagePlace    = "placing the application"
 	stageFirewall = "the firewall grant"
 	stageRuntime  = "the MLX runtime"
-	stageLink     = "the gropius command"
+	stageLink     = "the dessau command"
 )
 
-// bootstrapCommand is what installs Gropius in the first place. A verb that
+// bootstrapCommand is what installs Dessau in the first place. A verb that
 // finds nothing to repair names it, because the person reading has an
 // installation problem rather than a repair problem.
-const bootstrapCommand = "curl -fsSL https://raw.githubusercontent.com/intentdriven/Gropius/main/install.sh | bash"
+const bootstrapCommand = "curl -fsSL https://raw.githubusercontent.com/intentdriven/Dessau/main/install.sh | bash"
 
 // retryInstall is the command that retries any stage of an install. One
 // command, because the verb repairs what is missing rather than reinstalling
 // what is not: running it again after a failure resumes rather than restarts.
-const retryInstall = "gropius install"
+const retryInstall = "dessau install"
 
 // bundleName is the application bundle this product installs, and binaryInBundle
 // is where its executable sits inside it.
 const (
-	bundleName     = "Gropius.app"
-	binaryInBundle = "Contents/MacOS/gropius"
+	bundleName     = "DessauServer.app"
+	binaryInBundle = "Contents/MacOS/dessau"
 	// systemApplications is the machine-wide applications directory. One
 	// bundle there is launched by every account on the Mac; the per-user
 	// fallback below it is genuinely per-account.
@@ -73,7 +73,7 @@ type InstallEnv struct {
 	Paths config.Paths
 	Home  string
 	// Bundle is the verified bundle to place. Empty means there is nothing to
-	// place — `gropius install` typed on a Mac where the application is already
+	// place — `dessau install` typed on a Mac where the application is already
 	// where it belongs — and the rest of the install still runs.
 	Bundle string
 	// Dest is where the bundle belongs, derived from the fixed locations this
@@ -105,7 +105,7 @@ type InstallEnv struct {
 func RunInstall(env Env, args []string) int {
 	ie, err := liveInstallEnv(env)
 	if err != nil {
-		writeLine(env.Err, "gropius install: "+err.Error())
+		writeLine(env.Err, "dessau install: "+err.Error())
 		return ExitFailed
 	}
 	return runInstall(env, args, ie)
@@ -150,7 +150,7 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
-		writeLine(env.Err, "gropius install: unexpected argument "+Quote(fs.Arg(0)))
+		writeLine(env.Err, "dessau install: unexpected argument "+Quote(fs.Arg(0)))
 		return ExitUsage
 	}
 	if *bundle != "" {
@@ -170,9 +170,9 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 	// (iss-2609111240577746).
 	if ie.Bundle == "" {
 		if err := installedAt(ie.Dest); err != nil {
-			writeLine(env.Err, "gropius install: there is nothing to repair at "+redact(ie.Dest, ie.Home)+
+			writeLine(env.Err, "dessau install: there is nothing to repair at "+redact(ie.Dest, ie.Home)+
 				" — "+redact(err.Error(), ie.Home)+".")
-			writeLine(env.Err, "Install Gropius first: "+bootstrapCommand)
+			writeLine(env.Err, "Install Dessau Server first: "+bootstrapCommand)
 			return ExitFailed
 		}
 	}
@@ -246,24 +246,24 @@ func runInstall(env Env, args []string, ie InstallEnv) int {
 		return ExitOK
 	}
 	if waitUntil(ie.Serving, ie.Poll, 30*time.Second) {
-		writeLine(env.Out, "Gropius is serving.")
+		writeLine(env.Out, "Dessau Server is serving.")
 	} else {
 		// Said rather than assumed: the terminal's verdict is what was true
 		// when it exited, and the app's own check on the next launch may still
 		// finish what this run could not.
-		writeLine(env.Out, "Gropius was opened; it was not answering yet when this command returned. Run gropius status to see.")
+		writeLine(env.Out, "Dessau Server was opened; it was not answering yet when this command returned. Run dessau status to see.")
 	}
 	// What the bootstrap used to print at the end of its own run. It is said
 	// here because this is what finishes an install now, and a person who has
 	// just watched a runtime install should not have to go and find the
 	// documentation to learn where the application went.
 	writeLine(env.Out, "")
-	writeLine(env.Out, "Gropius is in the menu bar. Click its icon to open the control panel, download a model,")
+	writeLine(env.Out, "Dessau Server is in the menu bar. Click its icon to open the control panel, download a model,")
 	writeLine(env.Out, "and copy the address other machines should point at.")
 	return ExitOK
 }
 
-// installedAt reports whether a Gropius this verb can repair is at dest, and
+// installedAt reports whether a Dessau this verb can repair is at dest, and
 // says what is there instead when there is not.
 //
 // Lstat rather than Stat, and the bundle as well as the binary: the destination
@@ -299,7 +299,7 @@ func fail(env Env, ie InstallEnv, stage string, err error) int {
 	// redact, because an error is prose with a path in the middle of it
 	// ("rename /Users/…: permission denied") rather than a path on its own, and
 	// this output is written to be pasted into a bug report.
-	writeLine(env.Err, "gropius install: "+stage+" failed: "+redact(err.Error(), ie.Home))
+	writeLine(env.Err, "dessau install: "+stage+" failed: "+redact(err.Error(), ie.Home))
 	writeLine(env.Err, "Retry with: "+retryInstall)
 	return ExitFailed
 }

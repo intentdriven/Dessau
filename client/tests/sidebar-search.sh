@@ -10,6 +10,6 @@ OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 
 xcrun swiftc -swift-version 6 -o "$OUT/sidebar-search" \
-    ../GropiusChat/SidebarSearch.swift SidebarSearchTests.swift
+    ../DessauChat/SidebarSearch.swift SidebarSearchTests.swift
 
 "$OUT/sidebar-search"

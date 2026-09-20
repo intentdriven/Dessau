@@ -43,7 +43,7 @@ same chats on her iPad, and the iPad offers the same built-in set and the same
 limited-access picker — the set is bundled with the client or drawn by it, so
 neither system is the one with fewer backgrounds.
 
-Alice, who runs the Gropius server the two of them talk to, sees nothing new
+Alice, who runs the Dessau server the two of them talk to, sees nothing new
 whatsoever. A background is a file the client reads and draws: no request body
 carries it, no header names it, no log line or statistics record mentions it,
 and no model is ever told what a conversation looks like. If a picture stops

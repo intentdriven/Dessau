@@ -8,7 +8,7 @@ source: "agent-finding"
 found_during: "fidelity audits 2026-09-18"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "client/GropiusChat/GropiusChat.swift"
+found_at: "client/DessauChat/DessauChat.swift"
 ---
 
 No coverage of any kind exists for the sidebar selection's behaviour across a live search filter, and the search field's own named falsifier - a sidebar column that cannot host the field at its minimum width - was never exercised.

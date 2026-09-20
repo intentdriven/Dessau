@@ -1,8 +1,8 @@
 # Reference: the models list
 
-`GET /v1/models` reports the models this Gropius can serve. It is the
+`GET /v1/models` reports the models this Dessau can serve. It is the
 OpenAI-shaped listing every OpenAI client already calls, with a small number
-of Gropius extensions carried as extra top-level fields. Some of those fields
+of Dessau extensions carried as extra top-level fields. Some of those fields
 appear only for a client connecting over loopback, or on an install with an
 API key configured.
 
@@ -21,7 +21,7 @@ curl http://localhost:11535/v1/models
       "id": "mlx-community/Qwen3-8B-4bit",
       "object": "model",
       "created": 1757145600,
-      "owned_by": "gropius",
+      "owned_by": "dessau",
       "pipeline_tag": "text-generation",
       "tags": ["mlx", "conversational"],
       "chat": true,
@@ -40,32 +40,32 @@ curl http://localhost:11535/v1/models
 | `id` | The model's name: its HuggingFace repository id. This is the exact string to put in a request's `model` field. |
 | `object` | Always `model`, as the OpenAI schema requires. |
 | `created` | Unix time at which this Mac first recorded the model. A re-download or a retry does not move it. |
-| `owned_by` | Always `gropius`. |
+| `owned_by` | Always `dessau`. |
 | `pipeline_tag` | What HuggingFace says the model does — `text-generation`, `automatic-speech-recognition`, and so on. Absent when the Hub has no tag for that repository. See below. |
 | `tags` | The repository's HuggingFace tags, as they are written there. Absent when the Hub has none. See below. |
 | `chat` | Whether the model counts as able to hold a conversation, under the rule this server runs. Always present. See below. |
 | `context_length` | The model's maximum context, in tokens. See below. |
 | `max_model_len` | The same figure again, under the name vLLM-derived clients read. |
 | `served_context` | The window this Mac will actually serve the model at, in tokens. A request estimated to be larger is refused. See below. |
-| `measured_context` | The largest prompt, in tokens, that the model's server on this Mac verifiably accepted when Gropius measured it. Absent until a measurement exists and while it is stale. See below. |
+| `measured_context` | The largest prompt, in tokens, that the model's server on this Mac verifiably accepted when Dessau measured it. Absent until a measurement exists and while it is stale. See below. |
 | `measured_bound` | What stopped the measurement's step above `measured_context`: `model`, `prefill_deadline`, `served_window` or `memory_guard`. Only `model` makes the figure the model's limit; the others make it a floor. Present with `measured_context`. |
 | `state` | Whether the model is loaded, still loading, or not loaded. Only for a client connecting over loopback, or on an install with an API key. See below. |
 | `in_flight` | How many requests that model is already handling. Only for a client connecting over loopback, or on an install with an API key. |
-| `last_used` | Unix time at which Gropius last handled a request for that model. Only for a client connecting over loopback, or on an install with an API key, and only while the model is in memory — `loaded` or `loading`. |
+| `last_used` | Unix time at which Dessau last handled a request for that model. Only for a client connecting over loopback, or on an install with an API key, and only while the model is in memory — `loaded` or `loading`. |
 | `pinned` | Whether the operator has protected the model from eviction. Only for a client connecting over loopback, or on an install with an API key. See below. |
 
 ## What kind of model it is
 
 `pipeline_tag` and `tags` are HuggingFace's own words for a model, republished
-as they are. Gropius has no taxonomy of its own: it records the tags the Hub
+as they are. Dessau has no taxonomy of its own: it records the tags the Hub
 carries for a repository at the moment the model is downloaded, and serves them
-back. The vocabulary is HuggingFace's, so it can change without a Gropius
+back. The vocabulary is HuggingFace's, so it can change without a Dessau
 release.
 
 **When they are absent.** Either field is omitted, rather than sent empty, when:
 
 - The Hub carries no tag of that kind for the repository.
-- The model was downloaded by a Gropius that predates these fields. Nothing on
+- The model was downloaded by a Dessau that predates these fields. Nothing on
   disk says what kind of model it is, so a rescan cannot fill them in —
   download the model again to give it its words.
 - HuggingFace could not be reached for the repository's metadata when the
@@ -106,9 +106,8 @@ that half, so a rule with both lists empty marks every model as able to chat; no
 [Choose which models are offered for chat](chat-models.md).
 
 **The flag is this server's answer, not the last word.** A client is free to
-read `pipeline_tag` and `tags` and apply its own rule — which is what the
-GropiusChat client does, with the same rule as its own default, changeable in
-its Settings.
+read `pipeline_tag` and `tags` and apply its own rule — which is what Dessau
+Chat does, with the same rule as its own default, changeable in its Settings.
 
 ## The context figure
 
@@ -120,7 +119,7 @@ uses.
 
 **What the number is.** The architectural maximum: the positional range the
 model's own configuration declares, which is what it was trained or scaled
-for. Gropius reads it from the model's `config.json` — `max_position_embeddings`
+for. Dessau reads it from the model's `config.json` — `max_position_embeddings`
 at the top level, or `text_config.max_position_embeddings` for the multimodal
 and composite architectures that nest the text model's settings — and applies
 no scaling arithmetic of its own.
@@ -147,7 +146,7 @@ context".
 
 ## The served window
 
-`served_context` is the window Gropius serves the model at on this Mac, and it
+`served_context` is the window Dessau serves the model at on this Mac, and it
 is the figure to size prompts to. It is the operator's per-model setting, or
 the declared figure above when they have set none, and it is enforced: a
 request whose prompt plus `max_tokens` is estimated to be larger is refused
@@ -188,7 +187,7 @@ verified here.
 `measured_bound` says what stopped the next step. `model` means the server
 refused or crashed above the figure, so it is the model's own limit on this
 Mac. `prefill_deadline`, `served_window` and `memory_guard` mean one of
-Gropius's own limits stopped the probe first: the figure is a verified floor,
+Dessau's own limits stopped the probe first: the figure is a verified floor,
 the model takes at least that much, and its own limit is not known.
 
 A measurement changes nothing on its own: the served window, the memory
@@ -262,7 +261,7 @@ last-used time, not only its own. The same is true of a loopback client.
 | --- | --- |
 | `loaded` | The model's server has answered its readiness probe. A request is served straight away. |
 | `loading` | The model's server is running but has not answered its readiness probe yet. A request is served, after the wait. |
-| `not_loaded` | Gropius is holding no server for this model. A request loads it first, evicting another model if the memory budget is full. |
+| `not_loaded` | Dessau is holding no server for this model. A request loads it first, evicting another model if the memory budget is full. |
 
 Where the fields are served, an entry reads:
 
@@ -271,7 +270,7 @@ Where the fields are served, an entry reads:
   "id": "mlx-community/Qwen3-8B-4bit",
   "object": "model",
   "created": 1757145600,
-  "owned_by": "gropius",
+  "owned_by": "dessau",
   "context_length": 40960,
   "max_model_len": 40960,
   "state": "loaded",
@@ -286,7 +285,7 @@ included, and is `0` for a model that is not loaded. Use it to spread work
 across two warm models rather than queueing behind one.
 
 `last_used` is Unix time in seconds. It is the record kept alongside the model
-in memory, so it is there exactly while Gropius is holding the model — `loaded`
+in memory, so it is there exactly while Dessau is holding the model — `loaded`
 or `loading` — and goes when the model does: a model that was busy a minute ago
 and has since been evicted reports `not_loaded` and no `last_used` at all. The
 field is absent rather than zero, which a client would read as 1970 rather than
@@ -321,7 +320,7 @@ picture worth acting on; one that lists once at start-up does not.
 Residency is worth reading because it changes, and it changes under these
 rules.
 
-- Gropius runs one model server per model and keeps as many resident as its
+- Dessau runs one model server per model and keeps as many resident as its
   memory budget allows. The budget defaults to 60% of this Mac's physical RAM,
   which leaves the rest for everything else on a machine whose GPU and CPU share
   one pool of memory, and **Settings → Memory for loaded models** sets it to any

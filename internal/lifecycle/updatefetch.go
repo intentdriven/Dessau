@@ -26,7 +26,7 @@ import (
 // WHY THERE IS NO ASSET-DIRECTORY SEAM. The bootstrap has one, refused outside
 // CI, because the release workflow has to run the installer against artefacts
 // it has just built. A verb a person types on a Mac has no CI case at all, so
-// the URL is a constant in this file: nothing Gropius reads — no environment
+// the URL is a constant in this file: nothing Dessau reads — no environment
 // variable, no flag, no setting — changes where the archive or the checksums
 // that verify it are asked for. A caller who could set one variable would
 // otherwise substitute the whole integrity control silently, because the
@@ -46,19 +46,19 @@ import (
 // not the attack. And it costs nothing against the adversary this package is
 // written for, which is ANOTHER ACCOUNT on this Mac (see elevate.go): that
 // account cannot set this account's environment, and anything that can set it
-// can replace ~/.local/bin/gropius outright. The claim is therefore about what
-// Gropius reads, and it is written that way rather than as a claim about curl.
+// can replace ~/.local/bin/dessau outright. The claim is therefore about what
+// Dessau reads, and it is written that way rather than as a claim about curl.
 
 // The release, and the two assets an update reads from it.
 const (
 	// releaseAssetBase is where the current release's assets live. `latest`
 	// rather than a version, because only the current release is published and
 	// there is nothing else to ask for.
-	releaseAssetBase = "https://github.com/intentdriven/Gropius/releases/latest/download/"
+	releaseAssetBase = "https://github.com/intentdriven/Dessau/releases/latest/download/"
 	// updateArchiveName is the server bundle. The client bundle is the
 	// bootstrap's to place; a verb on the server binary cannot be the remedy
 	// for a Mac that carries only the client.
-	updateArchiveName = "Gropius.app.zip"
+	updateArchiveName = "DessauServer.app.zip"
 	// checksumsName is the digest file published beside it, in the same
 	// release.
 	checksumsName = "SHA256SUMS.txt"
@@ -204,14 +204,14 @@ func verifyChecksums(dir string) error {
 
 // scopedChecksumsName is the one-line file shasum is actually pointed at. It
 // sits in the same staging directory, which nothing else can write.
-const scopedChecksumsName = ".gropius-update-checksum"
+const scopedChecksumsName = ".dessau-update-checksum"
 
 // checksumLineFor finds the checksums line for exactly one file name.
 //
 // A line is `<digest><separator><name>`, where the separator is two spaces for
 // a text-mode digest and " *" for a binary one. The name must be exactly the
 // archive: a line naming a PATH is refused rather than matched, because
-// "/somewhere/Gropius.app.zip" would otherwise verify a file this command never
+// "/somewhere/DessauServer.app.zip" would otherwise verify a file this command never
 // downloaded — and would make shasum print a success line that CONTAINS the
 // archive's own.
 func checksumLineFor(body, name string) (string, bool) {
@@ -230,7 +230,7 @@ func checksumLineFor(body, name string) (string, bool) {
 
 // hasSuccessLine reports whether shasum said this exact file was OK. Compared
 // line by line rather than as a substring: a checksums file naming
-// "/somewhere/Gropius.app.zip" produces a line ending in the same eighteen
+// "/somewhere/DessauServer.app.zip" produces a line ending in the same eighteen
 // characters.
 func hasSuccessLine(out, name string) bool {
 	for _, line := range strings.Split(out, "\n") {
@@ -393,7 +393,7 @@ func checkStagedBundle(extracted string) error {
 // versionLine is how a build spells its own version: the word this command is
 // called by, and then the build. Anchored and without (?m) or (?s), so the
 // whole of what came back must be one line.
-var versionLine = regexp.MustCompile(`^gropius\s+(\S+)$`)
+var versionLine = regexp.MustCompile(`^dessau\s+(\S+)$`)
 
 // maxVersionBytes caps what the downloaded build may say about itself. The
 // answer is one short line; the timeout bounds how long a hostile build can

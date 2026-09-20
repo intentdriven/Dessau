@@ -163,7 +163,7 @@ func (r *rest) send(ctx context.Context, call apiCall, body any) (rateLimit, int
 }
 
 // userAgent is what Discord asks a library-less client to identify itself as.
-const userAgent = "DiscordBot (https://github.com/intentdriven/Gropius, 1.0)"
+const userAgent = "DiscordBot (https://github.com/intentdriven/Dessau, 1.0)"
 
 // readRateLimit reads the two headers that decide how soon the next call may
 // go. A header that is absent or unreadable means no constraint, which is the

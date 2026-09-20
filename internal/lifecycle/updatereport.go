@@ -49,12 +49,12 @@ type portHolder int
 const (
 	// portIdle: nothing is accepting connections on the port.
 	portIdle portHolder = iota
-	// portOurs: a Gropius that shares this account's data root answered the
+	// portOurs: a Dessau that shares this account's data root answered the
 	// challenge — this account's own copy, or, under a shared root, a peer's.
 	portOurs
 	// portSilent: something accepted a connection and answered no challenge.
 	// Under a per-account data root that description fits another account's
-	// Gropius exactly, which is why it is not a refusal.
+	// Dessau exactly, which is why it is not a refusal.
 	portSilent
 	// portUnproven: something answered the challenge WRONGLY, or no proof
 	// could be written into the data root. This is the one ending where
@@ -86,7 +86,7 @@ const (
 		"release cannot be fetched."
 
 	didNotInstallSentence = "This Mac is serving a version this command did not install."
-	logOutSentence        = "The bundle just placed takes effect when that session logs out, or when Gropius is " +
+	logOutSentence        = "The bundle just placed takes effect when that session logs out, or when Dessau is " +
 		"restarted there."
 	cannotQuitSentence = "Quitting it is not something this command can do: a quit request reaches only this " +
 		"login session."
@@ -100,13 +100,13 @@ const (
 	// something the report says.
 	countedNotNamed = "it is counted here and not named"
 	heldBySilent    = "is held by 1 process that did not identify itself; " + countedNotNamed + "."
-	heldByPeer      = "is held by 1 Gropius that shares this account's data root and is serving a different " +
+	heldByPeer      = "is held by 1 Dessau that shares this account's data root and is serving a different " +
 		"build; " + countedNotNamed + "."
 	// heldByUnproven is the ending that is NOT a cross-account story. Something
 	// answered the challenge and answered it wrongly, and telling a person to
 	// wait for it to log out would be advice about a machine they do not have.
 	heldByUnproven = "is held by 1 process that answered this account's identity challenge wrongly; " +
-		countedNotNamed + ". Run gropius doctor to see what is there."
+		countedNotNamed + ". Run dessau doctor to see what is there."
 	perAccountSentence = "This account's own copy was updated; the copy this Mac serves from is not this " +
 		"account's."
 )
@@ -179,7 +179,7 @@ type updateReport struct {
 // Two ways to know it, and both are things that were observed rather than
 // assumed: the running server gave a version and it is not the one just
 // installed, or something holds the port and would not identify itself — which,
-// under a per-account data root, is exactly what another account's Gropius
+// under a per-account data root, is exactly what another account's Dessau
 // looks like from here.
 func (r updateReport) servedByAnother() bool {
 	if r.Holder == portSilent {
@@ -190,7 +190,7 @@ func (r updateReport) servedByAnother() bool {
 
 // holderLine says what is on the port, counted rather than named, and says it
 // as the two cases genuinely differ: something that would not identify itself
-// at all, and a Gropius that proved it shares this account's data root and is
+// at all, and a Dessau that proved it shares this account's data root and is
 // serving a different build.
 func (r updateReport) holderLine() string {
 	held := heldBySilent

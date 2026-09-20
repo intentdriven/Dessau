@@ -22,7 +22,7 @@ func TestTheStoreLivesUnderTheAccountsOwnRootNotTheSharedOne(t *testing.T) {
 	if strings.HasPrefix(got, SharedRoot) {
 		t.Errorf("the store is at %q, inside the group-writable shared root", got)
 	}
-	if want := filepath.Join(home, "Library", "Application Support", "Gropius", "stats"); got != want {
+	if want := filepath.Join(home, "Library", "Application Support", "Dessau", "stats"); got != want {
 		t.Errorf("Stats = %q, want the account's own %q", got, want)
 	}
 }
@@ -130,7 +130,7 @@ func TestLoadRepairsRetentionRatherThanRefusingTheWholeFile(t *testing.T) {
 func TestTheSharedRootIsRecognizedHoweverItIsSpelled(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	want := filepath.Join(home, "Library", "Application Support", "Gropius", "stats")
+	want := filepath.Join(home, "Library", "Application Support", "Dessau", "stats")
 	for _, spelling := range []string{
 		SharedRoot,
 		SharedRoot + "/",

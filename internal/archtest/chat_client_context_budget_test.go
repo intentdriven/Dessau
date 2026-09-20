@@ -12,7 +12,7 @@ import (
 // typed and the room the reply needs. Getting that arithmetic wrong is not
 // visible until a conversation is long, and the client has no test target of
 // its own — so the arithmetic lives in one file that imports nothing
-// (client/GropiusChat/ContextBudget.swift) and is checked by a Swift main that
+// (client/DessauChat/ContextBudget.swift) and is checked by a Swift main that
 // `swiftc` compiles on its own. These two tests are how that check reaches CI:
 // one runs it, the other holds the shipped backend to using it.
 
@@ -49,47 +49,47 @@ func TestChatClientTrimBudgetsTheNewPrompt(t *testing.T) {
 
 	budget, ok := all["ContextBudget.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/ContextBudget.swift is missing; the context arithmetic has no home of its own")
+		t.Fatal("client/DessauChat/ContextBudget.swift is missing; the context arithmetic has no home of its own")
 	}
 	// The file has to compile on its own, which means it names none of the
 	// framework's types and imports nothing at all.
 	for _, forbidden := range []string{"import ", "Transcript", "SystemLanguageModel", "LanguageModelSession"} {
 		if strings.Contains(budget, forbidden) {
-			t.Errorf("client/GropiusChat/ContextBudget.swift mentions %q; it must compile on its own, "+
+			t.Errorf("client/DessauChat/ContextBudget.swift mentions %q; it must compile on its own, "+
 				"which is what lets client/tests/context-budget.sh check it", forbidden)
 		}
 	}
 	if !strings.Contains(budget, "window - reserve - instructions - prompt") {
-		t.Error("client/GropiusChat/ContextBudget.swift does not take the new prompt's tokens out of the window; " +
+		t.Error("client/DessauChat/ContextBudget.swift does not take the new prompt's tokens out of the window; " +
 			"a prompt that overflows on its own would be left to the retry to absorb (iss-2609181116072455)")
 	}
 
 	backends, ok := all["Backends.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/Backends.swift is missing; the answerer seam has no home")
+		t.Fatal("client/DessauChat/Backends.swift is missing; the answerer seam has no home")
 	}
 	if !strings.Contains(backends, "ContextBudget(") {
-		t.Error("client/GropiusChat/Backends.swift builds no ContextBudget; the trim is doing its own arithmetic, " +
+		t.Error("client/DessauChat/Backends.swift builds no ContextBudget; the trim is doing its own arithmetic, " +
 			"which nothing checks")
 	}
 	if !strings.Contains(backends, "prompt: try await model.tokenCount(") {
-		t.Error("client/GropiusChat/Backends.swift does not count the new prompt's tokens; " +
+		t.Error("client/DessauChat/Backends.swift does not count the new prompt's tokens; " +
 			"the budget would be given the prior turns only")
 	}
 	// Not fitting has to end the turn, not soften it: the person is told, and
 	// nothing is sent.
 	if !strings.Contains(backends, "budget.fits") {
-		t.Error("client/GropiusChat/Backends.swift never asks whether the prompt fits; " +
+		t.Error("client/DessauChat/Backends.swift never asks whether the prompt fits; " +
 			"a prompt too long for the window would still be sent")
 	}
 	if !strings.Contains(backends, "promptTooLong") {
-		t.Error("client/GropiusChat/Backends.swift carries no sentence for a prompt that does not fit; " +
+		t.Error("client/DessauChat/Backends.swift carries no sentence for a prompt that does not fit; " +
 			"the transcript would show the framework's overflow error instead of the client's own words")
 	}
 	// The retry stays: the token counts are the framework's estimate, and an
 	// estimate can be wrong in the direction that matters.
 	if !strings.Contains(backends, "case .contextSizeExceeded where attempt == 0:") {
-		t.Error("client/GropiusChat/Backends.swift no longer retries once on a context overflow; " +
+		t.Error("client/DessauChat/Backends.swift no longer retries once on a context overflow; " +
 			"budgeting the prompt is an estimate, and the retry is what covers an estimate that was wrong")
 	}
 }

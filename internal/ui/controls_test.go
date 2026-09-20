@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // No control in the Settings pane is narrower than the server.

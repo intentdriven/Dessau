@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // The four historical views are the whole of the usage dashboard, and each of
@@ -53,7 +53,7 @@ func TestThePageSaysWhatTheViewsCannotShow(t *testing.T) {
 		// Days past the detail keep only a coarse total, once anything
 		// writes one.
 		"summary totals",
-		// The figures are the model server's counts and Gropius's timings,
+		// The figures are the model server's counts and Dessau's timings,
 		// not an independent measurement of either.
 		"the model server's own",
 		// Sums by model and by period, never by person.

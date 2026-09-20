@@ -1,7 +1,7 @@
 name: ci
 
 # Lightweight gates on every push and pull request: format + build + vet + test
-# (macOS only — Gropius is a macOS menu-bar app that links AppKit/systray via cgo
+# (macOS only — Dessau is a macOS menu-bar app that links AppKit/systray via cgo
 # and uses darwin-only syscalls, so it does not build on Linux like the
 # cross-platform sibling projects do), plus full-history secret scanning and a
 # workflow self-audit.
@@ -42,7 +42,7 @@ jobs:
   # Format + build + vet + test on macOS. Race-enabled unit tests over the
   # platform-independent internal packages catch data races a plain `go test`
   # would miss; the race leg is scoped to internal/... to keep this gate fast —
-  # full-module race coverage (including cmd/gropius) runs in `make test`
+  # full-module race coverage (including cmd/dessau) runs in `make test`
   # locally and in the release workflow's gate.
   check:
     timeout-minutes: 20

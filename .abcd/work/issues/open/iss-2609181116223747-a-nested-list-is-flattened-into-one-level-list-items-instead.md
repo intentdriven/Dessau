@@ -8,7 +8,7 @@ source: "agent-finding"
 found_during: "fidelity audits 2026-09-18"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "client/GropiusChat/Markdown.swift"
+found_at: "client/DessauChat/Markdown.swift"
 ---
 
 A nested list is flattened into one-level list items instead of falling back to the model's own text; only tables fall back, against the promise that an undrawable construct is shown as the model wrote it.

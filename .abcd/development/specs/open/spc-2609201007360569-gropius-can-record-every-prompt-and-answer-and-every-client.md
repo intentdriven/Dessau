@@ -15,8 +15,8 @@ of its own in the operator's account, mode 0600, on the existing rotating
 writer, bounded by a size cap she sets and removed only by a deliberate
 **Delete transcript**. It is off by default and nothing else turns it on. With
 it on, the server says so on every path a program can see: a recording header on
-every answer including the refusals Gropius composes itself, and a per-entry
-field on the models list. Gropius's own chat client is held to putting that in
+every answer including the refusals Dessau composes itself, and a per-entry
+field on the models list. Dessau's own chat client is held to putting that in
 front of Bob before he types; the Discord bridge writes it into the first answer
 of each channel. Under the shared-cache install the switch is unavailable and
 the pane says why. The statistics store is untouched and stays content-free.
@@ -39,7 +39,7 @@ per-channel notice in the editor's first message); `internal/ui/static` (the
 Transcript fieldset, the cap, the oldest-record line, **Delete transcript**);
 `internal/archtest` (the retainer named on both readers' lists; the third
 bounded writer; the no-third-rotator scan; the client's notice and icon);
-`client/GropiusChat` (the composer notice, the picker icon, the decoded field);
+`client/DessauChat` (the composer notice, the picker icon, the decoded field);
 `client/tests` (the notice rule's own checks); `docs/` (a how-to and a reference
 page, four pages updated); `README.md`; the changelog.
 
@@ -49,7 +49,7 @@ the panel's model-card icon — all of which belong to the sibling
 itd-2609091715089488. Per-model debug logging (itd-2609062346072707). Any route
 that reads the transcript back over the network. Per-account transcripts under
 the shared root. A days horizon, a summary fold, and any migration of an
-existing file (pre-1.0). Telling a person who uses a client Gropius did not
+existing file (pre-1.0). Telling a person who uses a client Dessau did not
 write (cond-2609201007369925).
 
 ## Approach
@@ -95,7 +95,7 @@ finished or failed:
 | `streamed` | whether the client asked for the answer as a stream |
 | `class` | how it ended, on the statistics record's own fixed classes, so a refusal and a cut answer are legible |
 | `prompt` | the whole message array as the client sent it |
-| `merged` | present and true when Gropius merged the request's system messages for this model, so the record says the prompt was rewritten without keeping a second copy |
+| `merged` | present and true when Dessau merged the request's system messages for this model, so the record says the prompt was rewritten without keeping a second copy |
 | `answer` | the whole of the generated text, assembled from what was relayed |
 | `prompt_tokens`, `completion_tokens` | the model server's own counts when it gave them |
 
@@ -198,9 +198,9 @@ naming), so this spec spells the suffix and not the prefix.
   `off` while the rest say `on`. A request refused before it named a model keeps
   the server-wide value, which is the honest answer to a question about a
   conversation that never happened.
-- **Unforgeable.** Its folded name joins `gropiusHeaders`, so
+- **Unforgeable.** Its folded name joins `dessauHeaders`, so
   `copyResponseHeaders` drops an upstream value before merging the rest — the
-  mechanism that already keeps the two wait headers Gropius's own word. The
+  mechanism that already keeps the two wait headers Dessau's own word. The
   folded lookup gains its entry in `internal/archtest/repo_id_fold_test.go`.
 - **Not on the control plane.** The loopback panel is the operator's own
   surface, not a client's, and it renders the state in words. The header is an
@@ -291,7 +291,7 @@ The notice, in the product's own words: "This server keeps a transcript. What
 you send here and what the model answers are written down on the Mac that runs
 it, where its operator can read them."
 
-### 8. Gropius's own client
+### 8. Dessau's own client
 
 Two things, and they are different promises.
 
@@ -300,7 +300,7 @@ Two things, and they are different promises.
 input row rather than between the text field and its modifier chain — the
 proportions test matches that chain and an insertion inside it would break it.
 The rule for *which* sentence is shown, and when, lives in a new
-Foundation-free `client/GropiusChat/TranscriptNotice.swift` so that it can be
+Foundation-free `client/DessauChat/TranscriptNotice.swift` so that it can be
 checked without the app: notice when the selected answerer is a server model the
 server reports as recorded, no notice when it is not, and **never** for
 `Answerer.builtIn`, whose whole promise is that nothing leaves the device
@@ -324,7 +324,7 @@ unit target" means this, because nothing else exists to mean.
 
 ### 9. What is never written, and how the store says so
 
-Nothing Gropius itself asked a model is in the transcript. The pool's readiness
+Nothing Dessau itself asked a model is in the transcript. The pool's readiness
 probe, the self-test and the context probe each compose their own conversation
 and post it straight to a model server on loopback, never through the gateway
 (cond-2609201007367156, on the shipped cond-2609061822382803); the client's
@@ -333,7 +333,7 @@ built-in on-device model never reaches the server at all
 
 The store says so by construction rather than by filter: every record carries
 `source`, one of two fixed classes — `http` and `bridge` — and there is no class
-for a request Gropius made of itself, because nothing Gropius makes of itself
+for a request Dessau made of itself, because nothing Dessau makes of itself
 goes through the retainer's seam. The reference page states this as its own
 section, in the shape `docs/request-statistics.md` states what is never
 recorded.
@@ -375,8 +375,8 @@ the shipping decision line with what was done and what was seen.
 | --- | --- | --- |
 | 1 | Off by default, and nothing turns it on | A test over `config.Default()` asserting the switch false and the cap at its default; and a test that drives a full request under a default config and fails if any file appears in `config.TranscriptDir` |
 | 2 | The header on every answer, including composed refusals | `TestEveryExitPathCarriesTheRecordingHeader`, a table naming each exit the API surface has — streamed, non-streamed, 400, 401, 403, 404, 408, 413, 500, 502, 503 (each of the three), 504 — so a path added later without the header fails |
-| 3 | Written on a keyless install too | One test asserting all three facts together on one keyless LAN response: the recording header present, `X-Gropius-State` and `X-Gropius-Queue-Time` absent — so the deliberate break of the `setWaitHeaders` symmetry is the thing under test |
-| 4 | An upstream can neither forge nor shadow it | A test in the shape of `TestAModelServerCannotAddASecondValueToTheWaitHeaders`; the folded name in `gropiusHeaders`; the entry in `internal/archtest/repo_id_fold_test.go` |
+| 3 | Written on a keyless install too | One test asserting all three facts together on one keyless LAN response: the recording header present, `X-Dessau-State` and `X-Dessau-Queue-Time` absent — so the deliberate break of the `setWaitHeaders` symmetry is the thing under test |
+| 4 | An upstream can neither forge nor shadow it | A test in the shape of `TestAModelServerCannotAddASecondValueToTheWaitHeaders`; the folded name in `dessauHeaders`; the entry in `internal/archtest/repo_id_fold_test.go` |
 | 5 | `recording` on every models-list entry, in the unentitled half | A test asserting the field present on a listing that `assertNoResidency` also passes, with one model true and one false; `TestModelsListReferenceDocumentsEveryFieldServed` and `TestChatClientReadsTheCategoryTheGatewayPublishes` both widened |
 | 6 | Its own file, 0600, on the existing rotator, never the statistics store | A test asserting the file's mode and that its path is outside `config.StatsDir`; `TestEveryBoundedWriterRefusesAPlantedFile` extended; `TestTheTreeHoldsNoThirdSizeRotatingWriter`; the retainer named in both lists of `prompt_content_test.go`; and `TestNothingFromTheRequestReachesTheRecordOrTheLog`, `TestNothingFromTheRequestReachesTheStore`, `TestNothingFromTheRequestReachesTheSummary` passing **unchanged** — an edit to any of the three fails this criterion rather than satisfying it |
 | 7 | The cap in Settings, the oldest record's date beside it | A round-trip test in `internal/ui` over the cap (markup ids and posted keys, in the shape of `TestSettingsOffersTheRetentionFiguresAndClear`); a test that the oldest-record line is rendered from `transcript_store` rather than a constant |
@@ -384,7 +384,7 @@ the shipping decision line with what was done and what was seen.
 | 9 | Three surfaces; a save never refused over an untouched setting | `TestEverySettingHasAPanelControlOrAnExemption` and its reverse half, with no new exemption; a repair test over an out-of-range cap; and a save-path test that loads the panel, hand-edits `config.json` underneath it, saves an unrelated setting and asserts the hand-edited per-model exception survives — **red until the sibling's merge lands** (§2) |
 | 10 | Refused under the shared-cache install, with the reason on the panel | One test asserting both halves: the fieldset cannot render the control without its reason (the `bridge_egress_test.go` fieldset walk), and a server started under a shared root with the switch on opens no store, writes nothing and says so once in the log |
 | 11 | Bridged turns recorded, the channel told once | A test on the bridge's editor: the notice in the text of the first edited message for a channel, absent from the second, and present for a channel whose first answer was sent while the transcript was off |
-| 12 | Gropius's own client shows the person before they type | `internal/archtest/chat_client_transcript_test.go` (the notice in the composer, the picker's third glyph, no notice for `Answerer.builtIn`) plus `client/tests/transcript-notice.sh`; the drawn result on Mac and iPad is a hand check recorded in the shipping line |
+| 12 | Dessau's own client shows the person before they type | `internal/archtest/chat_client_transcript_test.go` (the notice in the composer, the picker's third glyph, no notice for `Answerer.builtIn`) plus `client/tests/transcript-notice.sh`; the drawn result on Mac and iPad is a hand check recorded in the shipping line |
 | 13 | Two superseding ADRs, linked both ways, nothing else changed | Already on the record and **not this spec's to write**: adr-2609201008470380 supersedes adr-2609061610102325, adr-2609201008476813 supersedes adr-2609061503319212. Held by the cross-link check `abcd lint` runs over the ADR store, plus a hand check that each superseded file's diff touches its status fields and nothing else |
 | 14 | The docs and the README say it | `TestTheResponseHeaderReferenceDescribesEveryHeaderServed` extended to the new header and its values; `TestModelsListReferenceDocumentsEveryFieldServed` for the field; a docs test over the two new pages in the shape `TestTheStatisticsPageNamesEveryFieldThatIsRecorded` uses, driving off the record's own field list; `TestTheStatisticsPagesAreOneTypeEach`'s rule applied to the transcript pair; `abcd docs lint` |
 
@@ -424,7 +424,7 @@ kind. **The security-reviewer agent reviews the diff before it is presented.**
   panel would be a promise a text editor can break.
 - **The header's forging path.** The one way a client could be told the wrong
   thing is a model server emitting the header itself. The folded name in
-  `gropiusHeaders` makes `copyResponseHeaders` drop it before merging, and the
+  `dessauHeaders` makes `copyResponseHeaders` drop it before merging, and the
   merge-rather-than-replace behaviour is why dropping is the right verb: a
   second value beside ours would be read first by some clients. Tested directly.
 - **Delete on loopback.** The route is destructive and unauthenticated in the
@@ -437,7 +437,7 @@ kind. **The security-reviewer agent reviews the diff before it is presented.**
   panel receives figures only. A read-back route would put every prompt on the
   loopback control plane, and the day a browser page defeats one of its guards
   the exposure would be the whole store rather than a setting.
-- **The notice is Gropius's own word.** No client can suppress the header, ask
+- **The notice is Dessau's own word.** No client can suppress the header, ask
   for it to be omitted, or make the bridge's channel notice not be written; the
   value is composed from the server's own state and the resolved model, never
   from anything the request carried.
@@ -470,7 +470,7 @@ kind. **The security-reviewer agent reviews the diff before it is presented.**
   and no migration: pre-1.0, a hand-edited figure out of range is repaired.
 - No per-model exception, no `/model` omission, no panel model-card icon: the
   sibling's, and this spec ships with the field they need already published.
-- No notice to a person using a client Gropius did not write. The server tells
+- No notice to a person using a client Dessau did not write. The server tells
   every program on every path; whether a program tells anybody is its own
   choice, and the heading is narrowed to say so.
 

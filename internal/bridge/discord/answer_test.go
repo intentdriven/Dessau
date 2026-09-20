@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/gateway"
+	"github.com/intentdriven/Dessau/internal/gateway"
 )
 
 // connected starts a bridge against the fake and waits until it is answering.

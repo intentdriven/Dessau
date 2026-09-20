@@ -1,10 +1,12 @@
 package config
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 // LocalHostName returns the name this Mac answers to on the network, i.e. the
@@ -32,6 +34,45 @@ func LocalHostName() string {
 	return hostnameVal
 }
 
+// ComputerName returns the name System Settings shows for this Mac — "Alice's
+// Mac", spaces, apostrophes and all.
+//
+// It is a DIFFERENT setting from LocalHostName, and the two are routinely
+// spelled differently: macOS derives "Alices-Mac" from "Alice's Mac" for the
+// DNS label and leaves the readable one alone. Anything a person reads wants
+// this one; anything that has to be a DNS label wants LocalHostName. The
+// Bonjour instance name is the first kind (adr-2609200729102059): a DNS-SD
+// instance name is an arbitrary UTF-8 label, not a host label, and naming the
+// service after the Mac the way everything else on the network does is what
+// makes one machine one identity.
+//
+// Memoized behind its own sync.Once, and for the same reason LocalHostName is:
+// it forks a subprocess, and more than one caller reads it (the advertiser at
+// start, the control panel's snapshot on every request).
+var (
+	computerOnce sync.Once
+	computerVal  string
+)
+
+func ComputerName() string {
+	computerOnce.Do(func() { computerVal = resolveComputerName() })
+	return computerVal
+}
+
+func resolveComputerName() string {
+	// scutil, by absolute path, exactly as resolveLocalHostName does and for
+	// the reasons spelled out there.
+	if out, err := scutilGet("ComputerName"); err == nil {
+		if name := strings.TrimSpace(string(out)); name != "" {
+			return name
+		}
+	}
+	// A Mac that answers nothing here still has a host label, and a slightly
+	// wrong readable name beats no advertisement at all. The caller supplies
+	// the last resort when even this is empty.
+	return LocalHostName()
+}
+
 func resolveLocalHostName() string {
 	// scutil is the authoritative source; it is what System Settings edits and
 	// what mDNSResponder publishes.
@@ -40,11 +81,11 @@ func resolveLocalHostName() string {
 	// This runs with no user gesture at all — memoized behind the sync.Once
 	// above, reached from the endpoint list the menu bar builds and the control
 	// panel's snapshot re-renders — so it runs once early in every account on
-	// this Mac that launches Gropius. Gropius is built for a Mac shared by
+	// this Mac that launches Dessau. Dessau is built for a Mac shared by
 	// several accounts, where a group-writable directory ahead of /usr/sbin on
 	// this account's PATH is another account's way into this process; and even
 	// with nobody hostile, a bare name is no proof of which tool answered.
-	if out, err := exec.Command("/usr/sbin/scutil", "--get", "LocalHostName").Output(); err == nil {
+	if out, err := scutilGet("LocalHostName"); err == nil {
 		if name := strings.TrimSpace(string(out)); name != "" {
 			return name
 		}
@@ -55,4 +96,14 @@ func resolveLocalHostName() string {
 		return ""
 	}
 	return strings.TrimSuffix(h, ".local")
+}
+
+// scutilGet asks scutil for one key, bounded in time. Both readers run once,
+// memoized, but the advertiser calls them under its own lock at start, so a
+// wedged configd must not hold that lock for ever: a few seconds is longer
+// than scutil ever takes and short enough that Stop is not blocked behind it.
+var scutilGet = func(key string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "/usr/sbin/scutil", "--get", key).Output()
 }

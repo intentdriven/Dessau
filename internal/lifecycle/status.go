@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/instance"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/instance"
 )
 
 // maxStateBytes caps what status will read from the control plane. The snapshot
@@ -18,7 +18,7 @@ import (
 // terminal command read forever.
 const maxStateBytes = 4 << 20
 
-// Status is what `gropius status` answers.
+// Status is what `dessau status` answers.
 //
 // The JSON is the contract — the menu bar polls it and scripts parse it — and
 // the human rendering is a rendering of this same value. A field renamed here
@@ -71,7 +71,7 @@ type ServerState struct {
 	Resident []ResidentModel `json:"resident"`
 	// Version is the build the running server is, which is not necessarily
 	// this binary: on a Mac where another account holds the port, the server
-	// is that account's copy, and `gropius update` reports the two as separate
+	// is that account's copy, and `dessau update` reports the two as separate
 	// facts. A server older than the field answers nothing under it, and the
 	// verbs that read it say the serving version cannot be known rather than
 	// guessing at one.
@@ -107,7 +107,7 @@ func StatusOf(env StatusEnv) Status {
 		// next.
 		s.Serving = true
 	case instance.HolderForeign:
-		s.Reason = "port " + strconv.Itoa(env.Port) + " is held by a process that could not prove it is this account's Gropius"
+		s.Reason = "port " + strconv.Itoa(env.Port) + " is held by a process that could not prove it is this account's Dessau"
 		return s
 	default: // instance.HolderNone
 		s.Reason = "nothing is serving on port " + strconv.Itoa(env.Port)

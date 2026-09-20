@@ -3,7 +3,7 @@ package runtime
 import (
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // PoolObserver is told what the pool does with a model server: when one is

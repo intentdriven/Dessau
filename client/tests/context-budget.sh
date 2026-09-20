@@ -11,6 +11,6 @@ OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 
 xcrun swiftc -swift-version 6 -o "$OUT/context-budget" \
-    ../GropiusChat/ContextBudget.swift ContextBudgetTests.swift
+    ../DessauChat/ContextBudget.swift ContextBudgetTests.swift
 
 "$OUT/context-budget"

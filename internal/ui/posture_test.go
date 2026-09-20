@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/gateway"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/gateway"
 )
 
 // The posture page (itd-2609081718534201) is one view that states, in the
@@ -33,7 +33,8 @@ const baseSnapshot = `{
                 {"url":"http://127.0.0.1:11535/v1"}],
   "bind": {"mode":"","candidates":[],"mode_in_force":"","wildcard":true,"reaches_other_machines":true,
            "port":11535,"advertising":true},
-  "hostname": "alices-mac"
+  "hostname": "alices-mac",
+  "computer_name": "Alice's Mac"
 }`
 
 // The snapshot of a server that binds this Mac and nothing else.
@@ -155,19 +156,19 @@ func TestThePostureLinesStateWhatIsOn(t *testing.T) {
 	}
 	wants(t, lines, "reach",
 		"This server answers on every address this Mac holds.",
-		"The ones Gropius can name are http://alices-mac.local:11535/v1, http://192.0.2.10:11535/v1 and http://127.0.0.1:11535/v1;",
+		"The ones Dessau can name are http://alices-mac.local:11535/v1, http://192.0.2.10:11535/v1 and http://127.0.0.1:11535/v1;",
 		"a name ending in .local is this Mac's name on the local network and not an address.",
-		"Which machines can reach an address is decided by the network it is on, and Gropius does not see that.")
+		"Which machines can reach an address is decided by the network it is on, and Dessau does not see that.")
 	wants(t, lines, "key-network", "A request arriving from another machine has to carry the API key. A key is set.")
 	wants(t, lines, "key-local", "A request from this Mac to a loopback address is served without the key")
 	wants(t, lines, "announce",
-		"Gropius is announcing this server to every machine on the local network, as a Bonjour service named after this Mac's name, alices-mac,",
+		"Dessau is announcing this server to every machine on the local network, as a Bonjour service named after this Mac's Computer Name, Alice's Mac,",
 		"this Mac's addresses", "port 11535", "no model names and no key")
 	wants(t, lines, "log", "Each request to the API's endpoints", "method, path, status and duration", "no client address",
 		"at the sparse level", "logs folder")
 	wants(t, posture(t, edited(t, `{"config":{"log_level":"detailed"}}`)), "log", "at the detailed level")
 	wants(t, lines, "stats", "Request statistics are off: no request is recorded.")
-	wants(t, lines, "selftest", "The self-test is off: Gropius loads no model on its own.")
+	wants(t, lines, "selftest", "The self-test is off: Dessau loads no model on its own.")
 	wants(t, lines, "transport", "plain HTTP")
 	wants(t, lines, "panel", "answer on this Mac alone")
 }
@@ -218,7 +219,7 @@ func TestABindToOneAddressNamesTheAddress(t *testing.T) {
 	zoned := posture(t, edited(t, `{
 		"endpoints": [{"url":"http://127.0.0.1:11535/v1"}],
 		"bind": {"mode":"","candidates":[],"mode_in_force":"","wildcard":false,"bound":"","reaches_other_machines":true,"port":11535,"advertising":true}}`))
-	wants(t, zoned, "reach", "one more address, which Gropius cannot write as a URL", "the addresses it can name are http://127.0.0.1:11535/v1.")
+	wants(t, zoned, "reach", "one more address, which Dessau cannot write as a URL", "the addresses it can name are http://127.0.0.1:11535/v1.")
 	refuses(t, zoned, "reach", "answers on  and", "no other address")
 }
 
@@ -229,7 +230,7 @@ func TestABindToOneAddressNamesTheAddress(t *testing.T) {
 // which is the one direction adr-2609081118587999 rule 4 exists to prevent.
 func TestReachIsReadFromTheBindAndNotFromTheEndpointList(t *testing.T) {
 	lines := posture(t, edited(t, `{"endpoints": [{"url":"http://127.0.0.1:11535/v1"}]}`))
-	wants(t, lines, "reach", "every address this Mac holds", "The ones Gropius can name are http://127.0.0.1:11535/v1;")
+	wants(t, lines, "reach", "every address this Mac holds", "The ones Dessau can name are http://127.0.0.1:11535/v1;")
 	refuses(t, lines, "reach", "reaches nothing")
 	wants(t, lines, "announce", "is announcing")
 }
@@ -243,12 +244,12 @@ func TestASavedModeIsNotReportedAsRunning(t *testing.T) {
 		"bind": {"mode":"private-network","candidates":["PRIV"],"mode_in_force":"","wildcard":true,"reaches_other_machines":true,"port":11535,"advertising":true}}`)))
 	wants(t, lines, "announce", "is announcing")
 	wants(t, lines, "reach", "every address this Mac holds")
-	wants(t, lines, "private", "The private-network choice is saved and is not in force until Gropius next starts.")
+	wants(t, lines, "private", "The private-network choice is saved and is not in force until Dessau next starts.")
 	refuses(t, lines, "private", "selected")
 }
 
 // Criterion 4: on a private network the page states that sharing and public
-// tunnelling change who reaches the address, that Gropius cannot observe
+// tunnelling change who reaches the address, that Dessau cannot observe
 // either, and — under the mode — which address the mode selected (the
 // amendment to adr-2609081118587999 requires the selection to be shown here).
 func TestThePrivateNetworkLineStatesTheLimits(t *testing.T) {
@@ -258,7 +259,7 @@ func TestThePrivateNetworkLineStatesTheLimits(t *testing.T) {
 		              {"url":"http://127.0.0.1:11535/v1"}]}`)))
 	wants(t, marked, "private",
 		"http://"+privateAddr+":11535/v1 is on a private network",
-		"shared with machines", "publish", "Gropius cannot see")
+		"shared with machines", "publish", "Dessau cannot see")
 
 	mode := posture(t, edited(t, priv(`{
 		"config": {"bind_mode":"private-network"},
@@ -327,11 +328,11 @@ func TestTheStatisticsLineSaysWhatIsRecordedAndForHowLong(t *testing.T) {
 // so reading the setting would report "not announcing" while the network
 // went on hearing the advert. A failure to start is the one thing the
 // snapshot cannot carry, and the line says so. The service is named after
-// this Mac, and a Mac with no name to read is announced as gropius, which is
+// this Mac, and a Mac with no name to read is announced as dessau, which is
 // what internal/discovery publishes.
 func TestTheAnnouncementLineNamesWhyItIsOff(t *testing.T) {
 	cases := []struct{ name, edits, want string }{
-		{"switched off at start", `{"bind":{"advertising":false}}`, "switched off when Gropius started"},
+		{"switched off at start", `{"bind":{"advertising":false}}`, "switched off when Dessau started"},
 		{"the private-network choice", `{"bind":{"advertising":false,"mode_in_force":"private-network"}}`, "private-network choice excludes"},
 		{"a bind that reaches nobody", `{"bind":{"advertising":false,"reaches_other_machines":false}}`, "reaches no other machine"},
 	}
@@ -346,7 +347,11 @@ func TestTheAnnouncementLineNamesWhyItIsOff(t *testing.T) {
 	// The port announced is the one the listeners took, not a port saved since.
 	wants(t, posture(t, edited(t, `{"config":{"port":12000}}`)), "announce", "port 11535")
 	wants(t, posture(t, baseSnapshot), "announce", "failed to start", "log", "takes effect at the next start")
-	wants(t, posture(t, edited(t, `{"hostname":""}`)), "announce", "name, gropius,")
+	// The announce line names the Computer Name the service is announced under,
+	// never the DNS label the address records use.
+	wants(t, posture(t, baseSnapshot), "announce", "Computer Name, Alice's Mac,")
+	wants(t, posture(t, edited(t, `{"computer_name":""}`)), "announce", "Computer Name, alices-mac,")
+	wants(t, posture(t, edited(t, `{"computer_name":"","hostname":""}`)), "announce", "Computer Name, dessau,")
 }
 
 // Criterion 3, mechanised as far as it can be: every line names the snapshot

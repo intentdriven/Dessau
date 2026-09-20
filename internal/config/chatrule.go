@@ -10,7 +10,7 @@ import (
 // ChatRule decides which of the models this Mac serves are published as able to
 // hold a conversation, from the words HuggingFace itself puts on a repository.
 //
-// Gropius invents no vocabulary for this. A model carries the Hub's pipeline
+// Dessau invents no vocabulary for this. A model carries the Hub's pipeline
 // tag and the Hub's tags, recorded when it was downloaded, and the rule is two
 // lists of those same words: which pipeline tags count, and which tags a model
 // must carry. That is the whole of it, so a vocabulary the Hub changes without
@@ -34,7 +34,7 @@ type ChatRule struct {
 //
 // The difference is the whole of what the file has to carry. A config.json with
 // no chat_rule key means "the default", so a fresh install and a build that
-// predates the setting both get the rule Gropius ships. A chat_rule whose two
+// predates the setting both get the rule Dessau ships. A chat_rule whose two
 // lists are present and empty means "test neither half" — every model chats —
 // which is what an operator who cleared both fields in Settings asked for.
 // Folding the second into the first would hand them back the rule they just
@@ -116,7 +116,7 @@ func (r ChatRule) validate() error {
 	return nil
 }
 
-// DefaultChatRule is the rule Gropius ships: a model that generates text, or
+// DefaultChatRule is the rule Dessau ships: a model that generates text, or
 // text from images, and that the Hub tags as conversational.
 //
 // The same two lists are the chat client's shipped default, held to this one by

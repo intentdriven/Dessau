@@ -11,7 +11,7 @@ import (
 // is a person's message and the reply that answers it (itd-2609181104490133) —
 // arithmetic that is wrong only on the conversations nobody looks at twice.
 // The client has no test target of its own, so the count lives in one file
-// that imports nothing (client/GropiusChat/CardSummary.swift) and is checked
+// that imports nothing (client/DessauChat/CardSummary.swift) and is checked
 // by a Swift main that `swiftc` compiles on its own. These two tests are how
 // that check reaches CI: one runs it, the other holds the file to being
 // checkable at all.
@@ -44,16 +44,16 @@ func TestChatClientCardSummaryCompilesAlone(t *testing.T) {
 	root := repoRootDir(t)
 	summary, ok := clientSources(t, root)["CardSummary.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/CardSummary.swift is missing; the card's arithmetic has no home of its own")
+		t.Fatal("client/DessauChat/CardSummary.swift is missing; the card's arithmetic has no home of its own")
 	}
 	for _, forbidden := range []string{"import ", "SwiftUI", "Conversation", "Message"} {
 		if strings.Contains(summary, forbidden) {
-			t.Errorf("client/GropiusChat/CardSummary.swift mentions %q; it must compile on its own, "+
+			t.Errorf("client/DessauChat/CardSummary.swift mentions %q; it must compile on its own, "+
 				"which is what lets client/tests/card-summary.sh check it", forbidden)
 		}
 	}
 	if !strings.Contains(summary, "func exchangeCount(fromPerson") {
-		t.Error("client/GropiusChat/CardSummary.swift declares no exchangeCount(fromPerson:); " +
+		t.Error("client/DessauChat/CardSummary.swift declares no exchangeCount(fromPerson:); " +
 			"the card would be doing its own counting, which nothing checks")
 	}
 }

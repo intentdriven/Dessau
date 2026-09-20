@@ -40,7 +40,7 @@ func TestTheDocumentationSaysWhichSettingsHaveNoControl(t *testing.T) {
 		"Two are deliberately not there",
 		// Where the file is, and the verb that reads it without opening it.
 		"config.json",
-		"gropius config show",
+		"dessau config show",
 	} {
 		if !containsAll(page, phrase) {
 			t.Errorf("the getting-started page does not say %q, so the section the exemptions rest on is "+

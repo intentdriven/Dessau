@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // uvTarball builds a release-shaped tar.gz: a top-level directory containing
@@ -149,7 +149,7 @@ func writeInterpreter(t *testing.T, paths config.Paths, mode os.FileMode) {
 	if err := os.Chmod(paths.VenvPython(), mode); err != nil {
 		t.Fatal(err)
 	}
-	marker := filepath.Join(paths.Venv, ".gropius-mlx-"+mlxLMVersion)
+	marker := filepath.Join(paths.Venv, ".dessau-mlx-"+mlxLMVersion)
 	if err := os.WriteFile(marker, []byte("ok"), 0o644); err != nil {
 		t.Fatal(err)
 	}

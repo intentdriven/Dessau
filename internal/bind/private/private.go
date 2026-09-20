@@ -18,16 +18,16 @@
 //
 // Everything else stays closed. Nothing here decides whether a key is
 // required, who is admitted, or what a warning says; it decides which address
-// is acquired, and cmd/gropius acquires what it is handed without knowing why.
+// is acquired, and cmd/dessau acquires what it is handed without knowing why.
 // internal/archtest/enforcement_detection_test.go names this package
 // explicitly, so reaching the detection *through* it is as loud as reaching it
 // directly.
 package private
 
 import (
-	"github.com/intentdriven/Gropius/internal/bind"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/netshape"
+	"github.com/intentdriven/Dessau/internal/bind"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/netshape"
 )
 
 // Resolve is the plan this configuration acquires.
@@ -49,7 +49,7 @@ func Resolve(cfg config.Config) bind.Plan {
 	case 1:
 		return bind.Private(found[0], found, "")
 	default:
-		return bind.Private("", found, "more than one address on this Mac is on a private network, and Gropius does not choose between them — serving this Mac and nothing else")
+		return bind.Private("", found, "more than one address on this Mac is on a private network, and Dessau does not choose between them — serving this Mac and nothing else")
 	}
 }
 

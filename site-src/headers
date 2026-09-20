@@ -1,6 +1,6 @@
 # Response headers for the landing page.
 #
-# cmd/gropius-site copies this file to the ROOT of the output directory as
+# cmd/dessau-site copies this file to the ROOT of the output directory as
 # `_headers`, which is where the host reads it: one map for the whole assets
 # directory, while the page itself is served from a path under it.
 #
@@ -25,11 +25,11 @@
 # no `data:` and no remote image source, because the page has neither.
 #
 # The rule pattern mirrors wrangler.jsonc's route rather than the directory:
-# `/Gropius*` covers `/Gropius`, `/Gropius/` and everything under it without
+# `/Dessau*` covers `/Dessau`, `/Dessau/` and everything under it without
 # depending on a splat matching the empty string. internal/sitetest derives it
 # from the manifest's out_subdir, so moving the page moves the policy with it.
 
-/Gropius*
+/Dessau*
   Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff

@@ -59,7 +59,7 @@ func TestGoRangesAreNeverWiderThanThePinnedServers(t *testing.T) {
 }
 
 // Narrower is safe; drifting is not. This pins the bounds exactly, including
-// the one place Gropius is deliberately stricter than the request check.
+// the one place Dessau is deliberately stricter than the request check.
 func TestGoRangesAreExactlyThese(t *testing.T) {
 	want := []SamplingBound{
 		{Field: "temperature", Min: 0, ServerDefault: 0},
@@ -67,7 +67,7 @@ func TestGoRangesAreExactlyThese(t *testing.T) {
 		// The request check accepts any non-negative top_k, but the sampler
 		// refuses one at or above the model's vocabulary size — and it raises
 		// inside generation, so the process starts healthy and then fails
-		// every request that omits top_k. Gropius cannot know a vocabulary
+		// every request that omits top_k. Dessau cannot know a vocabulary
 		// size when the value is saved, so it caps top_k far below the
 		// smallest an MLX model ships.
 		{Field: "top_k", Min: 0, Max: 1024, HasMax: true, Integer: true, ServerDefault: 0},
@@ -133,7 +133,7 @@ func TestSamplingValidateAcceptsTheServersOwnDefaults(t *testing.T) {
 
 // An out-of-range value in a hand-edited config.json is a preference, not a
 // serving invariant: dropping it keeps one bad number from locking the whole
-// server down to loopback (the fail-closed branch in cmd/gropius).
+// server down to loopback (the fail-closed branch in cmd/dessau).
 func TestLoadDropsOutOfRangeSamplingRatherThanRefusingTheFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

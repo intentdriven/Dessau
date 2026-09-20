@@ -3,8 +3,8 @@ package gateway
 import (
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/capability"
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/capability"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The roll-up's free-disk figure is the capability package's one reader's,

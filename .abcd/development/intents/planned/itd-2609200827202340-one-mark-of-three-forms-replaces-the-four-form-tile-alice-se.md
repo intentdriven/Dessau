@@ -16,12 +16,12 @@ production_mode: hand-written
 
 ## Press Release
 
-Alice installs Gropius on the Mac under her desk and drags it to
+Alice installs Dessau on the Mac under her desk and drags it to
 `/Applications`. The tile that appears in the Dock is a small dark cube, tilted
 a little off the vertical, with one form cut into each of its three visible
 faces: a yellow triangle on the top, a red square on the left, a blue circle on
 the right. She has never read a word about the product's design and she can
-still describe the icon to Bob over the phone in one sentence. When Gropius
+still describe the icon to Bob over the phone in one sentence. When Dessau
 starts, the same cube appears in the menu bar — this time as a plain
 silhouette in one colour, its top face a shade lighter, sitting quietly among
 the system's own glyphs and turning white when she switches the Mac to dark
@@ -109,7 +109,7 @@ has the script but not yet the pin.
 
 We expect the menu-bar cube to be readable in a light bar and a dark one
 without a second drawing, because it is installed as a macOS *template* image:
-`cmd/gropius/menubar.go` calls `systray.SetTemplateIcon`, and `cmd/gropius/icon.go`
+`cmd/dessau/menubar.go` calls `systray.SetTemplateIcon`, and `cmd/dessau/icon.go`
 documents the embedded art as pure black plus an alpha mask, which macOS
 recolours for the bar it is drawn in. This is also why the menu-bar rendering
 drops the three coloured forms: a template image has no colour to drop them
@@ -144,7 +144,7 @@ there is no longer one source.
 - The surfaces this intent changes are exactly six and no others: the server's <!-- cond: cond-2609201011307657 -->
   app icon (`build/icon.svg` and the committed `build/AppIcon.icns`), the chat
   client's app icon (`client/icon/icon.svg` and its committed `AppIcon.icns`),
-  the menu-bar template glyph embedded by `cmd/gropius`, the landing page's
+  the menu-bar template glyph embedded by `cmd/dessau`, the landing page's
   hero mark and its wordmark dot (`site-src/index.html.tmpl`), and the README.
   The control panel's header mark and favicon follow the same source and are
   already held to it by an architecture test.
@@ -153,7 +153,7 @@ there is no longer one source.
   fourth form and no alternative palette is minted for the styles.
 - The website keeps its current path until the rename to Dessau lands on its <!-- cond: cond-2609201011306035 -->
   own branch, and moves with it; the mark is the same drawing on both sides of
-  that move. Prose written here uses the current name, Gropius, and where a
+  that move. Prose written here uses the current name, Dessau, and where a
   file or bundle name carries the family name it follows the rename rather
   than anticipating it.
 - No new dependency is added to rasterise anything. `rsvg-convert` stays a <!-- cond: cond-2609201011302195 -->
@@ -185,7 +185,7 @@ there is no longer one source.
   test to the client's icon, which today has the script but no pin.
 - Given the menu-bar item, when the server starts, then its image is installed
   as a template image and the embedded art carries no brand colour — held by
-  an architecture test over `cmd/gropius` asserting the `SetTemplateIcon` call
+  an architecture test over `cmd/dessau` asserting the `SetTemplateIcon` call
   and that the embedded glyph is single-channel black plus alpha.
 - Given the rendered landing page, when the site tests compare its hero mark
   and its wordmark dot with the mark's source file, then both carry the three

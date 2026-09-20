@@ -17,7 +17,7 @@ import (
 // writes every request body and every response it produces to its log — prompts
 // and completions — while recording statistics is content-free by
 // construction. Ollama ships that coupling and has an open security issue about
-// it; adr-2609061503319212 is why Gropius does not.
+// it; adr-2609061503319212 is why Dessau does not.
 //
 // The rule is kept by keeping the switch out of the packages that could act on
 // it. It is a scan for the field's names, not a proof: a value passed through

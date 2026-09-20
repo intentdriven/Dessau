@@ -1,6 +1,6 @@
 # Pin a model so it stays in memory
 
-Gropius keeps as many models in memory as its budget allows, and unloads the
+Dessau keeps as many models in memory as its budget allows, and unloads the
 one used longest ago when a request needs the room. On a Mac serving more than
 one client that is usually right — but not for the one or two models you rely
 on all day. Pin those, and nothing anyone else asks for can push them out.
@@ -35,7 +35,7 @@ never told which models are protected, or what this Mac is running.
   **Preload** and **Pinned models** to have it loaded at start-up and protected
   from then on.
 - **It does not survive everything.** Your own **Unload** works on a pinned
-  model, and so does quitting Gropius or a model server crashing. The pin stays
+  model, and so does quitting Dessau or a model server crashing. The pin stays
   in Settings either way, so the model is protected again the next time it
   loads.
 - **It does not go away when the model does.** Deleting a pinned model leaves
@@ -59,18 +59,18 @@ models you have ticked. A model that is still downloading is charged the size
 it declares, so pinning one before it lands is measured on the same terms as
 pinning one already on disk.
 
-The concurrency in that sum is the one Gropius is running with, not the one in
+The concurrency in that sum is the one Dessau is running with, not the one in
 **Settings → Batched requests**. The two are the same figure until you change
 it: a saved concurrency reaches the model servers at the next start, and a line
 under the field says so while they differ. The figure beside the boxes follows
 the concurrency in force, because that is the one the memory check on save
 applies too.
 
-Pin close to the whole budget and Gropius has nothing left to serve anything
+Pin close to the whole budget and Dessau has nothing left to serve anything
 else with: every request for an unpinned model is refused rather than served by
 a swap. Ticking a box that takes the set past the budget is refused when you
 save, naming both figures, and nothing is changed — see below for the sets
-Gropius warns about instead. Leave room for the models your clients ask for
+Dessau warns about instead. Leave room for the models your clients ask for
 occasionally.
 
 ## When a pinned set stops fitting
@@ -87,13 +87,13 @@ A set can also stop fitting with no save at all:
   again, and the download brings the whole charge back.
 - Downloading a model again at a larger quantisation grows what it costs.
 
-Nothing refuses either — there is no save to refuse — so Gropius says so on the
+Nothing refuses either — there is no save to refuse — so Dessau says so on the
 control panel and in its log instead. The symptom to recognise, if the warning
 is missed, is every unpinned model being refused for memory on a Mac that
 plainly has some.
 
 Two other things are refused as you tick a box, both rare: pinning a model this
-Mac records no size for — Gropius will not measure a set against the budget with
+Mac records no size for — Dessau will not measure a set against the budget with
 a model missing from the sum — and pinning more than 256 models.
 
 ## Where the pins are kept

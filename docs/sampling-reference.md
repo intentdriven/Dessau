@@ -1,6 +1,6 @@
 # Reference: sampling parameters
 
-The sampling parameters Gropius can hold a default for, machine-wide or per
+The sampling parameters Dessau can hold a default for, machine-wide or per
 model. To set one, see
 [Set default sampling parameters](sampling-defaults.md).
 
@@ -14,7 +14,7 @@ model. To set one, see
 | Min-p | `min_p` | 0, which switches min-p off |
 | Maximum completion tokens | `max_tokens`, and `max_completion_tokens` | 512 |
 
-"Blank means" is the model server's own default, which applies when Gropius
+"Blank means" is the model server's own default, which applies when Dessau
 holds no value. Each field's placeholder in the panel shows the same figure.
 
 These are the parameters the model server accepts when it starts. Anything else
@@ -37,9 +37,9 @@ and nothing else changed.
 
 Every range but two is the model server's own: temperature is at least 0,
 top-p and min-p are between 0 and 1, and top-k and the token budget are whole
-numbers of at least 0. Two ceilings are Gropius' own. Top-k has an upper limit
+numbers of at least 0. Two ceilings are Dessau's own. Top-k has an upper limit
 of 1024, because the model server refuses a top-k as large as the model's
-vocabulary and Gropius cannot tell what that is at the moment you save; a
+vocabulary and Dessau cannot tell what that is at the moment you save; a
 top-k above a few hundred keeps every plausible token anyway. The maximum
 completion tokens has an upper limit of 1048576, because a default larger than
 any real context window does not mean a generous budget, it means every
@@ -94,13 +94,13 @@ window, is evictable, and has its messages passed on as they arrive. At most
 256 models are held.
 
 A value of the right kind but the wrong size, hand-edited into that file, is
-ignored rather than fatal: Gropius starts normally, logs which fields it
+ignored rather than fatal: Dessau starts normally, logs which fields it
 dropped, and serves as though they had never been set.
 
 A value of the wrong *kind* is a different matter. `"temperature": "0.7"` with
 quotes round it, `"top_k": 40.0` with a decimal point, or a number too large
 for the field, is a malformed file rather than a setting out of range — the
-same as a misspelled port — and Gropius cannot tell a damaged file from a
+same as a misspelled port — and Dessau cannot tell a damaged file from a
 deliberate one. It starts locked to this Mac, with the shipping defaults, so a
 file it cannot read never opens the server to the network by accident. The log
 says `config.json could not be read`. Fix the file and restart, or change the

@@ -1,12 +1,12 @@
 #!/bin/bash
-# Build GropiusChat.app without an Xcode project: several Swift files, one
+# Build DessauChat.app without an Xcode project: several Swift files, one
 # script. Needs the installed Xcode's toolchain (`xcrun`) and its macOS 27 SDK —
 # the 27 SDK's SwiftUI is implemented with compiler macros whose plugin ships
 # only inside Xcode, so the Command Line Tools alone cannot build this app.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP="GropiusChat"
+APP="DessauChat"
 BUNDLE="dist/$APP.app"
 MACOS="$BUNDLE/Contents/MacOS"
 RES="$BUNDLE/Contents/Resources"
@@ -31,7 +31,7 @@ xcrun swiftc -O -wmo -c -parse-as-library \
     -emit-const-values \
     -Xfrontend -const-gather-protocols-file -Xfrontend appintents-protocols.json \
     -o "$OBJ/$APP.o" \
-    GropiusChat/*.swift
+    DessauChat/*.swift
 xcrun swiftc -sdk "$SDK" -target "$TARGET" -o "$MACOS/$APP" "$OBJ/$APP.o"
 
 # App Intents: the system lists an app's actions from Metadata.appintents in
@@ -41,7 +41,7 @@ xcrun swiftc -sdk "$SDK" -target "$TARGET" -o "$MACOS/$APP" "$OBJ/$APP.o"
 CONSTVALS="$OBJ/$APP.swiftconstvalues"
 [ -f "$CONSTVALS" ] || CONSTVALS="$(ls "$OBJ"/*.swiftconstvalues | head -1)"
 printf '%s\n' "$CONSTVALS" > "$OBJ/constvals.txt"
-ls "$PWD"/GropiusChat/*.swift > "$OBJ/sources.txt"
+ls "$PWD"/DessauChat/*.swift > "$OBJ/sources.txt"
 xcrun appintentsmetadataprocessor \
     --output "$RES" \
     --toolchain-dir "$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" \
@@ -66,7 +66,7 @@ fi
 if [ ! -f icon/AppIcon.icns ]; then ./mkicon.sh; fi
 cp icon/AppIcon.icns "$RES/AppIcon.icns"
 
-codesign --force --identifier dev.gropius.chat --sign - "$BUNDLE"
+codesign --force --identifier sh.intentdriven.dessau.chat --sign - "$BUNDLE"
 rm -rf "$OBJ"
 echo "Built $BUNDLE"
 echo "Run it with:  open $BUNDLE"

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/capability"
+	"github.com/intentdriven/Dessau/internal/capability"
 )
 
 // Two long-context models that fit the budget on their weights alone do not

@@ -8,7 +8,7 @@ source: "agent-finding"
 found_during: "fidelity audits 2026-09-18"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "client/GropiusChat/GropiusChat.swift"
+found_at: "client/DessauChat/DessauChat.swift"
 ---
 
 The composer binds a local draft rather than the spec's model input binding, and the architecture test pins the delivered spelling.

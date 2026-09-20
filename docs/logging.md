@@ -1,20 +1,20 @@
 # Reference: the server's log
 
-Gropius keeps a log of what it does. This page says where it is, what each of
+Dessau keeps a log of what it does. This page says where it is, what each of
 its two levels writes, and what it never writes at either.
 
 ## Where the file is
 
-In the `logs` folder of your own Gropius data folder, as `gropius.log`, beside
+In the `logs` folder of your own Dessau data folder, as `dessau.log`, beside
 the model servers' own logs. That folder belongs to your macOS account: on a
-Mac where several people use Gropius, each account has its own log and no
+Mac where several people use Dessau, each account has its own log and no
 account can read another's. The file is created owner-only.
 
 The first line of every run says where it is, so if you are not sure, start
-Gropius from a terminal and read the `log=` field on the `gropius starting`
-line — or open Settings, where the same path is named.
+Dessau from a terminal and read the `log=` field on the `dessau starting`
+line — or open Settings, which says which folder it is in.
 
-Gropius writes to standard error as well, with the same lines. That is what you
+Dessau writes to standard error as well, with the same lines. That is what you
 see when you run the server from a terminal. It is not what you see when you
 launch the app from the Finder: macOS discards a Finder-launched app's standard
 error, and the file is what this page exists for.
@@ -34,7 +34,7 @@ Sparse is enough to answer "why was my client refused". Detailed is what to
 turn on when the answer is "because there was no room" and you want to know how
 much room there was.
 
-A client on your network is told what Gropius could not do and never why:
+A client on your network is told what Dessau could not do and never why:
 "cannot serve this model right now". A client on this Mac, or one holding the
 API key, still gets the fuller answer. Either way the reason is in this log —
 sparsely, as which refusal it was, and in full at the detailed level.
@@ -43,7 +43,7 @@ The figures are on the detailed level rather than the sparse one for a reason
 beyond noise. The memory budget in bytes is roughly how much memory this Mac
 has, and the number of requests in flight is how busy it is. A client on your
 network can cause a refusal every time it sends a request, so at the sparse
-level a stranger cannot make Gropius write a detailed description of your Mac
+level a stranger cannot make Dessau write a detailed description of your Mac
 to your disk as fast as it can ask.
 
 ## What is never written
@@ -63,16 +63,16 @@ and how long it took.
 
 The model servers keep their own logs, one per model, in the same folder. They
 are always run at their INFO level. At their debug level they write prompts and
-answers to those logs, so no setting in Gropius asks for it — `log_level` here
-is Gropius's own and reaches nothing else.
+answers to those logs, so no setting in Dessau asks for it — `log_level` here
+is Dessau's own and reaches nothing else.
 
 Those logs are also not rotated the way this one is: each is emptied when its
 model server next starts.
 
 ## How big it gets
 
-`gropius.log` grows to 5 MB and is then rolled over: the current file becomes
-`gropius.1.log`, that becomes `gropius.2.log`, and so on. Five files are kept
+`dessau.log` grows to 5 MB and is then rolled over: the current file becomes
+`dessau.1.log`, that becomes `dessau.2.log`, and so on. Five files are kept
 in all — the current one and four previous — so the log takes at most 25 MB and
 the oldest is removed as new lines arrive. Nothing has to be tidied up by hand,
 and nothing is sent anywhere: the file stays on this Mac.

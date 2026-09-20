@@ -17,12 +17,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/app"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/app"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 const testModelID = "mlx-community/Qwen3-8B-4bit"
@@ -82,7 +82,7 @@ func statsGatewayWithStore(t *testing.T, on bool, opts mlxtest.Options) (*httpte
 	const modelPath = "/models/" + testModelID
 	opts.ModelArg = modelPath
 	if opts.Reply == "" {
-		opts.Reply = "GROPIUS OK"
+		opts.Reply = "DESSAU OK"
 	}
 	fake := mlxtest.Start(opts)
 	t.Cleanup(fake.Close)
@@ -166,7 +166,7 @@ func TestAStreamedRequestIsRecordedWithItsCountsAndTimings(t *testing.T) {
 	}
 }
 
-// Gropius asks the model server for the token counts on the client's behalf.
+// Dessau asks the model server for the token counts on the client's behalf.
 // The client did not ask, so the client must not see the answer to that
 // question: what reaches it is the stream it would have received anyway, byte
 // for byte.
@@ -429,7 +429,7 @@ func TestNothingFromTheRequestReachesTheRecordOrTheLog(t *testing.T) {
 	)
 
 	const modelPath = "/models/" + testModelID
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "GROPIUS OK"})
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
 	models := &stubModels{models: []registry.Model{{RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
 	pool := &stubPool{srv: fake}
@@ -548,7 +548,7 @@ func statsEndpointBody(t *testing.T, rec *stats.Recorder) string {
 // reads it through the same live configuration it reads the API key through.
 func TestTheSwitchAppliesToTheNextRequest(t *testing.T) {
 	const modelPath = "/models/" + testModelID
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "GROPIUS OK"})
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
 	models := &stubModels{models: []registry.Model{{RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
 	pool := &stubPool{srv: fake}
@@ -608,8 +608,8 @@ func TestAnAnswerCutShortIsNotRecordedAsOne(t *testing.T) {
 }
 
 // An answer ended by the relay's own line cap is not the model server failing.
-// It was reachable, it was answering, and Gropius stopped reading because of a
-// limit Gropius chose — recording that as "unreachable" points an operator
+// It was reachable, it was answering, and Dessau stopped reading because of a
+// limit Dessau chose — recording that as "unreachable" points an operator
 // reading the statistics at the wrong piece of software.
 func TestAnAnswerEndedByTheLineCapIsNotBlamedOnTheModelServer(t *testing.T) {
 	out := streamRewriteSSE(httptest.NewRecorder(),
@@ -626,7 +626,7 @@ func TestAnAnswerEndedByTheLineCapIsNotBlamedOnTheModelServer(t *testing.T) {
 		t.Error("the relay's own limit was recorded as the model server being unreachable")
 	}
 	if obs.record.Class != stats.ClassGatewayError {
-		t.Errorf("recorded as %q, want %q — the failure is Gropius's own",
+		t.Errorf("recorded as %q, want %q — the failure is Dessau's own",
 			obs.record.Class, stats.ClassGatewayError)
 	}
 }
@@ -635,7 +635,7 @@ type errReader struct{ err error }
 
 func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 
-// Which events count as the usage event Gropius asked for, and which do not.
+// Which events count as the usage event Dessau asked for, and which do not.
 // Only the shape that was asked for is removed — the counts with a choices
 // array that is present and empty. Removing an event the gateway does not
 // understand is the one mistake here a client would see, so everything else is
@@ -761,7 +761,7 @@ func TestAClientKeepsTheCountsWhateverTruthItAskedWith(t *testing.T) {
 		{"the key left out", `{"stream_options":{}}`, false},
 		{"no stream_options at all", `{"stream":true}`, false},
 		// Not an object: nothing was merged into it and the model server will
-		// refuse it, so there is nothing of Gropius's to remove either way.
+		// refuse it, so there is nothing of Dessau's to remove either way.
 		{"a stream_options that is not an object", `{"stream_options":"yes"}`, true},
 	}
 	for _, c := range cases {
@@ -1207,7 +1207,7 @@ func TestARequestThatStreamsWithOneIsRecordedAsStreaming(t *testing.T) {
 	}
 }
 
-// The counts are the child process's numbers, not Gropius's. A negative one
+// The counts are the child process's numbers, not Dessau's. A negative one
 // summed into a model's totals would drag them below zero, and no count is a
 // truer answer than a wrong one.
 func TestNegativeTokenCountsAreRefused(t *testing.T) {
@@ -1224,7 +1224,7 @@ func TestNegativeTokenCountsAreRefused(t *testing.T) {
 // What "time to first token" lands on when a server opens its stream with a
 // chunk that carries only the assistant's role and no words.
 //
-// Gropius times the first chunk that is about the generation at all, and reads
+// Dessau times the first chunk that is about the generation at all, and reads
 // nothing inside it: reading the text would make the gateway a second reader
 // of a model's output, which is a boundary the project holds elsewhere
 // (adr-2609061610102325 and internal/archtest). So against a server that opens

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // Every field a load, removal or footprint event carries is named on the

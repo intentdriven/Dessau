@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 	"sync"
 	"testing"
 	"time"

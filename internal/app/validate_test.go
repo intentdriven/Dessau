@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/registry"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 func TestValidateModelDir(t *testing.T) {

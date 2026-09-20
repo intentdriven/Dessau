@@ -1,4 +1,4 @@
-module github.com/intentdriven/Gropius
+module github.com/intentdriven/Dessau
 
 go 1.25.6
 

@@ -18,7 +18,7 @@ production_mode: dictated-and-formatted
 
 Some models keep no transcript, even while recording is on.
 
-Alice runs a Gropius server for her household and has turned recording on, so
+Alice runs a Dessau Server for her household and has turned recording on, so
 that every prompt and every answer is written down on her Mac. Some of what
 passes through that server is nobody's business but the person typing it. In
 Settings she opens the model she keeps for those conversations and switches its
@@ -29,9 +29,9 @@ cannot be produced later. Every other model on the server goes on being
 recorded, and excepting one model never excepts another.
 
 An exception is a fact about a model, not a mode Alice has to remember being in.
-It is set per model, alongside the other things Gropius already does differently
+It is set per model, alongside the other things Dessau already does differently
 for one model rather than for the machine, and it is off for every model until
-she says otherwise. It is reachable from all three places a Gropius setting
+she says otherwise. It is reachable from all three places a Dessau setting
 lives: the control panel, `config.json`, and Go.
 
 And it is published rather than hidden. A client asking Alice's server what
@@ -39,7 +39,7 @@ models it offers is told, for each one, whether a conversation with it is
 recorded, so a client that wants to show a person which models keep no
 transcript has the fact to show it from. What a given client then does with that
 fact is the client's business: an ordinary OpenAI-compatible client reads a
-model's name and ignores everything beside it, and Gropius cannot make software
+model's name and ignores everything beside it, and Dessau cannot make software
 display something it was not written to display.
 
 > _The narrative above described the setting and its reach while the
@@ -105,7 +105,7 @@ named machinery the parent had not defined.
   and on the panel's model cards, and a word in the bridge's `/model` prose, is
   what turns a field a program can read into something a person sees — and the
   honest limit stands: an ordinary OpenAI-compatible client reads a model's `id`
-  and shows none of it, which Gropius cannot fix from the server. What would show
+  and shows none of it, which Dessau cannot fix from the server. What would show
   this wrong: a person picking an excepted model from one of those three surfaces
   and learning its state only from the answer.
 
@@ -138,7 +138,7 @@ kept and practically broken that itd-2609062346072707 would otherwise create.
 - **An excepted model is not offered over a bridge.** The bridge's `/model` <!-- cond: cond-2609201007365982 -->
   listing omits it and a bridged request naming it is refused in the channel
   with the reason, because adr-2609181004167097 admits the platform as a reader
-  and keeper of the message and the answer: Gropius would write no transcript
+  and keeper of the message and the answer: Dessau would write no transcript
   while Discord kept one, and a panel saying "no transcript" beside that model
   would state what the product cannot honour.
 - **Arming the per-model debug log on an excepted model is refused**, with the <!-- cond: cond-2609201007364816 -->
@@ -155,7 +155,7 @@ kept and practically broken that itd-2609062346072707 would otherwise create.
 
 ## Acceptance Criteria
 
-- **Given** a build of Gropius, **when** the configuration type is read,
+- **Given** a build of Dessau, **when** the configuration type is read,
   **then** `config.ModelSettings` carries the transcript field, zero-valued by
   default, and it is the only place the setting is stored.
   *Held by* `TestConfigHoldsExactlyOnePerModelMap`
@@ -218,11 +218,11 @@ kept and practically broken that itd-2609062346072707 would otherwise create.
   `TestModelsListReferenceDocumentsEveryFieldServed`, which holds
   `docs/models-list.md` to the field set served.
 - **Given** a server offering one excepted and one recorded model, **when**
-  Alice opens the Gropius chat client's model picker and the control panel's
+  Alice opens Dessau Chat's model picker and the control panel's
   Models tab, **then** each model shows an icon of its transcript state, read
   from the models-list field and carrying an accessible label, so the state is
   visible before the model is chosen.
-  *Held by* an architecture test over `client/GropiusChat/Picker.swift` on the
+  *Held by* an architecture test over `client/DessauChat/Picker.swift` on the
   pattern of `internal/archtest/chat_client_native_test.go`, by the client's
   Swift unit target (the 2026-09-20 two-tier client-test decision), and by a
   node test over `internal/ui/static` for the model card.
@@ -325,7 +325,7 @@ for. Neither arm is obviously right.
 **An OpenAI client does not read the field at all.** This is the parent's
 feasibility crux, unchanged: a real OpenAI-compatible client reads a model's
 `id` and ignores everything beside it. A boolean on the models list tells
-software, not a person. The only surfaces that can tell a person are Gropius's
+software, not a person. The only surfaces that can tell a person are Dessau's
 own client and the control panel, so the honest promise is that the fact is
 published where a client can read it — not that any client shows it.
 
@@ -360,7 +360,7 @@ excepts from has a record permitting it to exist.
 adr-2609181004167097 admits a bridge as a reader of the message and the answer,
 and requires the pane taking the token to say that messages and answers pass
 through the platform and are kept under its terms. If Bob talks to an excepted
-model over the Discord bridge, Gropius writes no transcript and Discord keeps
+model over the Discord bridge, Dessau writes no transcript and Discord keeps
 one. A panel that says "no transcript" beside a model while a bridge is on
 states something the product cannot honour. Either the flag's control carries
 the bridge exclusion in the same pane — the discipline that ADR already imposes
@@ -465,7 +465,7 @@ the recording mode, and this record could only inherit the answer.
   If the parent settles on a per-answer notice, an excepted model's answers carry
   what instead — a different notice, or none, which is itself a signal.
   **Answered 2026-09-20:** the notice is an unconditional response header, whose
-  name carries the family-name prefix, plus a `recording` field per models-list
+  name carries the `X-Dessau-` prefix, plus a `recording` field per models-list
   entry, so the header states the truth for the model that answered and the
   listing states it per model before anything is asked
   (`.abcd/work/DECISIONS.md`, 2026-09-20, itd-2609091707499248 Question 1).
@@ -524,13 +524,13 @@ Decisions that were the maintainer's, not a reviewer's or an implementer's.
 And one addition the maintainer made rather than a question they answered.
 
 - **A model's transcript state is shown as an icon wherever a person picks a
-  model** — the Gropius chat client's picker and the control panel's model
+  model** — Dessau Chat's picker and the control panel's model
   cards, and as a word in the bridge's `/model` prose — read from the models-list
   field, so the person knows before choosing rather than after asking
   (`.abcd/work/DECISIONS.md`, 2026-09-20). This is the client-side half of "the
   client is told which is which", and it answers the review's finding that a
   boolean on a models list tells software rather than a person: it does not make
-  a third-party client display anything, and it does make Gropius's own three
+  a third-party client display anything, and it does make Dessau's own three
   surfaces display it. Mechanism claim five and the tenth acceptance criterion
   carry it.
 

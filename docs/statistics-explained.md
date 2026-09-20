@@ -16,7 +16,7 @@ themselves, field by field, see
 ## Where the figures come from
 
 Every figure is a sum, a count or a percentile over the records already on this
-Mac. Gropius reads them, adds them up and hands the panel the totals; the
+Mac. Dessau reads them, adds them up and hands the panel the totals; the
 browser never receives a request's own row. The reading happens on the control
 plane, which answers this Mac and nothing else, so nothing here reaches your
 network or leaves the machine.
@@ -30,8 +30,8 @@ how fast, not merely the last thousand requests the live view holds.
 before you switch recording on.
 
 They are only as good as what was recorded. The token counts are the model
-server's own — Gropius repeats them and does not count tokens itself — and the
-timings are Gropius's, measured at the point where it hands the answer back.
+server's own — Dessau repeats them and does not count tokens itself — and the
+timings are Dessau's, measured at the point where it hands the answer back.
 Neither is an independent measurement of the other.
 
 ## The range
@@ -121,14 +121,14 @@ another, and how many model servers were started.
 
 Only an eviction counts as an eviction. A model reaped after sitting idle, one
 you unloaded yourself, one that crashed, and every model server stopped when
-Gropius quits are all removals, and counting them here would say the memory
+Dessau quits are all removals, and counting them here would say the memory
 budget is thrashing when nothing of the kind happened. The store records the
 reason for exactly this distinction, and the
 [reference page](statistics-store-reference.md) lists every reason it can hold.
 
-The started column counts every model server Gropius starts, including one that
+The started column counts every model server Dessau starts, including one that
 never became ready, because the cost this table is about is the loading, which
-a server that failed still spent. It cannot say why a model was loaded: Gropius
+a server that failed still spent. It cannot say why a model was loaded: Dessau
 knows only that something asked for it.
 
 ## Prompts against the window
@@ -137,7 +137,7 @@ One row per model: how the prompts it was asked sat against the window it
 serves, in four bands of that window — up to a quarter of it, up to a half,
 up to three quarters, up to the whole — and beyond it, which is the requests
 the served window turned away. The size is the figure the refusal is judged
-on: Gropius's own estimate of the prompt from the request's bytes, plus the
+on: Dessau's own estimate of the prompt from the request's bytes, plus the
 answer the request asked for — so a refused request is counted in the last
 band by the figure that refused it. The row
 carries the two windows beside the counts, and the largest prompt anyone
@@ -178,7 +178,7 @@ absent.
 The tokens-per-day table follows one rule about that edge: a row whose figures
 come from a coarse per-model daily total rather than from the day's own records
 is marked **from daily totals**, so exact rows and summary totals are never
-mixed without saying so. Gropius writes those totals when retention folds a
+mixed without saying so. Dessau writes those totals when retention folds a
 day's records away, keeping one line per day and model, so a row covering a
 folded day carries the mark.
 
@@ -200,5 +200,5 @@ it says what the server was holding, not what that request added. Two long
 prompts in flight together are one reading.
 
 **What was asked or answered.** No prompt, no completion, no API key. The part
-of Gropius that keeps these figures is never handed a request, its headers or
+of Dessau that keeps these figures is never handed a request, its headers or
 its connection, so there is nothing of the kind for a table to show.

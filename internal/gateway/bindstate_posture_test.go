@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/bind"
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/bind"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The posture page (itd-2609081718534201) states whether the server reaches

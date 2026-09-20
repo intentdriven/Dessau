@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/instance"
+	"github.com/intentdriven/Dessau/internal/instance"
 )
 
-// `gropius update` is the bootstrap's work done a second time, by the binary
+// `dessau update` is the bootstrap's work done a second time, by the binary
 // rather than the script, and then one thing that is genuinely new.
 //
 // Almost none of the mechanism is new: the fetch, the verification, the staged
@@ -30,7 +30,7 @@ import (
 // retryUpdate is the command that runs the whole thing again. There is no
 // resume: a download that stopped is downloaded again, which costs a minute and
 // keeps this verb from carrying a second state machine.
-const retryUpdate = "gropius update"
+const retryUpdate = "dessau update"
 
 // UpdateEnv is everything update is allowed to do, handed in rather than
 // reached for — the shape InstallEnv already has, for the same reason: every
@@ -102,7 +102,7 @@ type UpdateEnv struct {
 func RunUpdate(env Env, args []string) int {
 	ue, err := liveUpdateEnv(env)
 	if err != nil {
-		writeLine(env.Err, "gropius update: "+err.Error())
+		writeLine(env.Err, "dessau update: "+err.Error())
 		return ExitFailed
 	}
 	return runUpdate(env, args, ue)
@@ -121,11 +121,11 @@ func runUpdate(env Env, args []string, ue UpdateEnv) int {
 	if fs.NArg() > 0 {
 		arg := fs.Arg(0)
 		if versionish.MatchString(arg) {
-			writeLine(env.Err, "gropius update: "+previousReleaseSentence)
+			writeLine(env.Err, "dessau update: "+previousReleaseSentence)
 			writeLine(env.Err, "This command installs the current release and takes no version.")
 			return ExitUsage
 		}
-		writeLine(env.Err, "gropius update: unexpected argument "+Quote(arg))
+		writeLine(env.Err, "dessau update: unexpected argument "+Quote(arg))
 		return ExitUsage
 	}
 
@@ -135,9 +135,9 @@ func runUpdate(env Env, args []string, ue UpdateEnv) int {
 	// Launch Services will not open. The bootstrap refuses the same Mac in the
 	// same words; this is the route that does not go through the bootstrap.
 	if sentence, refused := belowFloor(ue.HostMacOSVersion()); refused {
-		writeLine(env.Err, "gropius update: "+sentence)
+		writeLine(env.Err, "dessau update: "+sentence)
 		writeLine(env.Err, "Nothing was downloaded and nothing was replaced. The installed "+
-			"Gropius is untouched and still runs.")
+			"Dessau Server is untouched and still runs.")
 		return ExitFailed
 	}
 
@@ -155,14 +155,14 @@ func runUpdate(env Env, args []string, ue UpdateEnv) int {
 		// The bit that tells them apart is the one this verb already asks for:
 		// whether anything is accepting connections.
 		if ue.PortBusy() {
-			writeLine(env.Err, "gropius update: port "+strconv.Itoa(ue.Port)+
+			writeLine(env.Err, "dessau update: port "+strconv.Itoa(ue.Port)+
 				" "+heldByUnproven)
 			writeLine(env.Err, "Nothing was downloaded and nothing was replaced. A Mac with something on the "+
-				"server port claiming to be Gropius and failing to prove it is not one to install software on.")
+				"server port claiming to be Dessau and failing to prove it is not one to install software on.")
 		} else {
-			writeLine(env.Err, "gropius update: no proof of identity could be written into this account's data "+
+			writeLine(env.Err, "dessau update: no proof of identity could be written into this account's data "+
 				"root, so nothing can be checked against port "+strconv.Itoa(ue.Port)+".")
-			writeLine(env.Err, "Nothing was downloaded and nothing was replaced. Run gropius doctor: the data "+
+			writeLine(env.Err, "Nothing was downloaded and nothing was replaced. Run dessau doctor: the data "+
 				"root is the check that will say what stopped the write.")
 		}
 		return ExitFailed
@@ -343,7 +343,7 @@ func classifyPort(ue UpdateEnv) portHolder {
 // the stages that follow raise an authorisation panel and replace an
 // application, and neither was written for a run that stopped here.
 func updateStopped(env Env, ue UpdateEnv, stage string, err error) int {
-	writeLine(env.Err, "gropius update: "+stage+" stopped: "+redact(err.Error(), ue.Home))
+	writeLine(env.Err, "dessau update: "+stage+" stopped: "+redact(err.Error(), ue.Home))
 	writeLine(env.Err, "Nothing was replaced. Retry with: "+retryUpdate)
 	return ExitFailed
 }
@@ -390,7 +390,7 @@ func liveUpdateEnv(env Env) (UpdateEnv, error) {
 		PortBusy:         func() bool { return portAccepts(env.Port) },
 		ServingVersion:   func() (string, error) { return fetchServingVersion(env.Port) },
 		Staging: func() (string, func(), error) {
-			dir, err := os.MkdirTemp("", "gropius-update-")
+			dir, err := os.MkdirTemp("", "dessau-update-")
 			if err != nil {
 				return "", func() {}, err
 			}
@@ -434,7 +434,7 @@ func linkMissing(home string) bool {
 // stopped.
 //
 // It is THIS process's own version, and only where this process is running from
-// the bundle at the destination — which is the ordinary case, since `gropius`
+// the bundle at the destination — which is the ordinary case, since `dessau`
 // is a link into that bundle. Anywhere else the answer is that it cannot be
 // read from here, rather than a version borrowed from a different copy: the
 // spec's rule is that a binary is executed only from a directory that was

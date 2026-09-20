@@ -17,7 +17,7 @@ import (
 // compiled out.
 
 // A network name is an observation, and observations survive the transitions
-// Gropius cannot see: the network can be published to the internet or shared
+// Dessau cannot see: the network can be published to the internet or shared
 // with machines the operator does not own, and the interface and the address
 // are untouched by both. A name that says where the address lives is still
 // true afterwards; one that says it is encrypted, secure, or reachable only by

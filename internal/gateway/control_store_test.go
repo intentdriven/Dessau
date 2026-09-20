@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/app"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/app"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // recordingServer is an app with recording on and its store under a temporary
@@ -180,7 +180,7 @@ func TestNothingFromTheRequestReachesTheStore(t *testing.T) {
 	)
 
 	const modelPath = "/models/" + testModelID
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "GROPIUS OK"})
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
 	models := &stubModels{models: []registry.Model{{RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
 
@@ -316,7 +316,7 @@ func TestNothingFromTheRequestReachesTheSummary(t *testing.T) {
 	)
 
 	const modelPath = "/models/" + testModelID
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "GROPIUS OK"})
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
 	models := &stubModels{models: []registry.Model{{RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
 
@@ -365,7 +365,7 @@ func TestNothingFromTheRequestReachesTheSummary(t *testing.T) {
 	if !strings.Contains(string(raw), testModelID) {
 		t.Fatalf("the summary does not name the model whose requests it counts, so this scan proves nothing:\n%s", raw)
 	}
-	for _, secret := range []string{sentinel, token, "192.0.2.51", "GROPIUS OK"} {
+	for _, secret := range []string{sentinel, token, "192.0.2.51", "DESSAU OK"} {
 		if strings.Contains(string(raw), secret) {
 			t.Errorf("the summary carries %q", secret)
 		}
@@ -405,7 +405,7 @@ func TestTheStatisticsEndpointReportsTheReadingItJustDid(t *testing.T) {
 	// A summary line this build cannot use, which the reading counts as it
 	// goes: a figure the endpoint can only carry if it asked afterwards.
 	if err := os.WriteFile(filepath.Join(paths.Stats, "summary.jsonl"),
-		[]byte("this is not a line any Gropius wrote\n"), 0o600); err != nil {
+		[]byte("this is not a line any Dessau wrote\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // A challenge file sits in the data root, which in shared mode is
@@ -113,11 +113,11 @@ func TestChallengeNameRefusesTraversal(t *testing.T) {
 	good := strings.Repeat("ab12", 8)
 	for _, bad := range []string{
 		"", "..", "../../../../etc/passwd",
-		good[:len(good)-1],               // one short
-		good + "f",                       // one long
-		strings.ToUpper(good),            // wrong case
-		good[:len(good)-1] + "/",         // carries a separator
-		".gropius-challenge-" + good[:1], // the prefix is not part of the name
+		good[:len(good)-1],              // one short
+		good + "f",                      // one long
+		strings.ToUpper(good),           // wrong case
+		good[:len(good)-1] + "/",        // carries a separator
+		".dessau-challenge-" + good[:1], // the prefix is not part of the name
 	} {
 		if config.ValidChallengeName(bad) {
 			t.Errorf("accepted a malformed challenge name: %q", bad)
@@ -224,7 +224,7 @@ func portOf(t *testing.T, ln net.Listener) int {
 // A poll must not change the Mac it is asking about.
 //
 // Probe creates the data root on the way past, which is right for the server —
-// it is about to use it either way — and wrong for `gropius status`, which a
+// it is about to use it either way — and wrong for `dessau status`, which a
 // person and the menu bar run repeatedly and which answers a question about
 // state that already exists. ProbeExisting is the same question asked without
 // creating anything: a root that is not there is not a root this account is

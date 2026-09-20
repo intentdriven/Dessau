@@ -23,7 +23,7 @@ import (
 //
 // So it is compiled out of the release build instead of hidden. This is the
 // rule that keeps that true, in both halves: the seam carries the tag, and the
-// target that produces the bundle Gropius ships passes it.
+// target that produces the bundle Dessau ships passes it.
 func TestTheClassifiersInjectionSeamIsBuiltOutOfTheReleaseBinary(t *testing.T) {
 	root, err := filepath.Abs("../..")
 	if err != nil {
@@ -86,18 +86,18 @@ var bundleGoals = [][]string{
 
 // The goal orderings above are a rule about ORDER, and `make -j` is the flag
 // that removes order. Under it `build` and `app` run concurrently, both write
-// bin/gropius, and the `cp` that feeds the bundle is ordered against neither.
+// bin/dessau, and the `cp` that feeds the bundle is ordered against neither.
 //
 // Measured on this Makefile before `.NOTPARALLEL:` was added, three
 // consecutive runs of `make -j8 build app` from a removed bin/ and dist/ left
-// bin/gropius as the 13,826,866-byte untagged dev binary while the bundle
+// bin/dessau as the 13,826,866-byte untagged dev binary while the bundle
 // carried the 9,031,200-byte prod one: two writers of one path, and a `cp`
 // that won a race it is not ordered to win. It is the same untagged-binary
 // hazard the sub-make in `app` exists to close, reintroduced by a flag rather
 // than by a goal ordering — and had the `cp` lost instead, the bundle would
 // have been the dev binary, seam and all. With `.NOTPARALLEL:` the same three
 // runs, and a serial `make build app`, all produce a byte-identical
-// bin/gropius.
+// bin/dessau.
 //
 // This assertion is TEXTUAL, and that is a limit rather than a preference.
 // `make -n` cannot see the fault: it prints the recipes in dependency order
@@ -117,7 +117,7 @@ func TestTheMakefileRefusesToRunItsGoalsInParallel(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !regexp.MustCompile(`(?m)^\.NOTPARALLEL:`).Match(makefile) {
-		t.Error("the Makefile does not declare .NOTPARALLEL:, so `make -j8 build app` runs the untagged top-level `build` concurrently with `app`'s tagged sub-make — both write bin/gropius, and the cp into the bundle is ordered against neither")
+		t.Error("the Makefile does not declare .NOTPARALLEL:, so `make -j8 build app` runs the untagged top-level `build` concurrently with `app`'s tagged sub-make — both write bin/dessau, and the cp into the bundle is ordered against neither")
 	}
 }
 
@@ -145,7 +145,7 @@ func assertEveryBundlePathCarriesTheTag(t *testing.T, root string) {
 			lines := strings.Split(string(out), "\n")
 			copiedAt := -1
 			for i, line := range lines {
-				if strings.Contains(line, "cp ") && strings.Contains(line, filepath.FromSlash("dist/Gropius.app/Contents/MacOS/gropius")) {
+				if strings.Contains(line, "cp ") && strings.Contains(line, filepath.FromSlash("dist/DessauServer.app/Contents/MacOS/dessau")) {
 					copiedAt = i
 				}
 			}
@@ -154,7 +154,7 @@ func assertEveryBundlePathCarriesTheTag(t *testing.T, root string) {
 			}
 			last := ""
 			for _, line := range lines[:copiedAt] {
-				if strings.Contains(line, "go build") && strings.Contains(line, "-o bin/gropius") {
+				if strings.Contains(line, "go build") && strings.Contains(line, "-o bin/dessau") {
 					last = strings.TrimSpace(line)
 				}
 			}
@@ -176,7 +176,7 @@ func assertEveryBundlePathCarriesTheTag(t *testing.T, root string) {
 //
 // It did not. `go vet -tags prod ./...` and `go test -tags prod ./...` both
 // failed on `undefined: SetEnumerator` in internal/netshape and
-// internal/gateway, which meant the configuration Gropius actually ships was
+// internal/gateway, which meant the configuration Dessau actually ships was
 // exercised for the first time by the release job, after the tag was pushed.
 // CI now builds and vets it; this is the rule that keeps a new test from
 // breaking it again, and it is a static check so it fails on the machine that

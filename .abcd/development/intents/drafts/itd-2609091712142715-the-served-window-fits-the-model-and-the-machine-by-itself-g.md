@@ -12,32 +12,32 @@ origin: researcher-authored
 production_mode: dictated-and-formatted
 ---
 
-# The served window fits the model and the machine by itself: Gropius measures what a model can hold on this Mac and proposes it as the served window, Alice adopts it or keeps her own, and the change applies without restarting Gropius
+# The served window fits the model and the machine by itself: Dessau measures what a model can hold on this Mac and proposes it as the served window, Alice adopts it or keeps her own, and the change applies without restarting Dessau
 
 ## Press Release
 
-Gropius proposes the served window for each model from what it measured on your
+Dessau proposes the served window for each model from what it measured on your
 own Mac, and you decide whether to take it.
 
-Alice runs Gropius on the Mac in her study, with four models on it. Until now
+Alice runs Dessau on the Mac in her study, with four models on it. Until now
 the window each model is served at was either the number the model's own file
 declares — frequently unreachable on this machine — or a number she typed after
-reading a benchmark somebody else ran. Gropius already measures what each model
+reading a benchmark somebody else ran. Dessau already measures what each model
 can actually hold here. What is new is that the measurement arrives as a
 proposal: the models list shows the measured window beside the declared one,
-marked as Gropius's suggestion and dated, and one "Adopt" makes it the served
+marked as Dessau's suggestion and dated, and one "Adopt" makes it the served
 window for that model. Nothing is decided for her and nothing is written into
 her `config.json` behind her back.
 
 If Alice has typed her own figure, her figure stands: an explicit value pins
 until she clears it, and clearing it hands that model back to the proposal. If
-she has left the setting at zero, Gropius serves the figure it worked out,
+she has left the setting at zero, Dessau serves the figure it worked out,
 computed when the setting is read rather than frozen into a file, and the panel
 says the figure is derived and when it was measured. A derivation that has gone
 stale — a new runtime, a new model, a machine that has changed — is shown with
-its date and left at that; Gropius never enforces a figure it can no longer
+its date and left at that; Dessau never enforces a figure it can no longer
 stand behind. Adopting a window, or clearing one, takes effect without
-restarting Gropius, though the model server may still be relaunched before it
+restarting Dessau, though the model server may still be relaunched before it
 serves the new figure.
 
 Decode concurrency is out of scope, because it is one machine-wide setting
@@ -79,7 +79,7 @@ operator's override — so the read-time seam is precedent rather than invention
 and no new field is needed. We are wrong if the proposal is not trustworthy
 enough to show: a repeat probe on the same Mac, the same models and the same
 runtime returning a materially different window, or a reading that turns out to
-be Gropius's own upstream bound rather than the model's, which makes the
+be Dessau's own upstream bound rather than the model's, which makes the
 proposed figure move whenever `upstream_header_timeout_sec` does. We are also
 wrong if a value computed at read time cannot be shown with the date it was
 measured, because a figure that cannot state its own age cannot be governed by a
@@ -88,11 +88,11 @@ staleness rule.
 ## Scope Conditions
 
 - The served window only. Decode concurrency and sampling defaults are outside this intent: the concurrency is machine-wide and cannot express a per-model figure in the configuration's present shape, and sampling is a preference no usage record can decide.
-- Suggested, not derived behind her back. Gropius measures and Alice adopts, as `AdoptMeasurement` already does; this intent improves the proposal, it does not remove her from the loop.
-- A derived value lives at read time behind zero. Zero means "serve what Gropius worked out", resolved when the setting is read and shown on the panel as derived; the figure is never written into `config.json`. Zero's meaning changes for a value already in every operator's file, which is why `impact` is breaking; pre-1.0 permits the break and no migration is written for it.
+- Suggested, not derived behind her back. Dessau measures and Alice adopts, as `AdoptMeasurement` already does; this intent improves the proposal, it does not remove her from the loop.
+- A derived value lives at read time behind zero. Zero means "serve what Dessau worked out", resolved when the setting is read and shown on the panel as derived; the figure is never written into `config.json`. Zero's meaning changes for a value already in every operator's file, which is why `impact` is breaking; pre-1.0 permits the break and no migration is written for it.
 - An explicit operator value pins. A figure Alice typed is honoured until she clears it, never re-derived under her, and a save that touches nothing related must still succeed.
-- A stale derivation is displayed, never enforced. It is shown with the date it was measured; Gropius does not change a served figure under a running service on the strength of a reading it can no longer stand behind.
-- "Without a restart" means without restarting Gropius. The model server may still be relaunched before the new figure is served.
+- A stale derivation is displayed, never enforced. It is shown with the date it was measured; Dessau does not change a served figure under a running service on the strength of a reading it can no longer stand behind.
+- "Without a restart" means without restarting Dessau. The model server may still be relaunched before the new figure is served.
 - Single-machine evidence. Every figure on record comes from one 128 GB Apple Silicon Mac, so the derivation is fitted to that machine until a second Mac's figures exist; the same Apple Silicon, one-serving-process-per-Mac and pinned-runtime conditions the context probe records apply here unchanged.
 
 ## Acceptance Criteria
@@ -169,14 +169,14 @@ settings the headline names, and the shipped code says so itself:
 | --- | --- | --- |
 | Served window | The gateway, per request | Nothing — the next request is judged against it |
 | Sampling defaults | mlx-lm launch flags | The model server must be relaunched |
-| Decode concurrency | A launch flag, and a pool option fixed at start-up | The whole of Gropius must restart |
+| Decode concurrency | A launch flag, and a pool option fixed at start-up | The whole of Dessau must restart |
 
 The control plane computes exactly this distinction when it answers a save: the
 decode concurrency sits in the `restart` set beside the port and the bind
 address, and a sampling change is answered with the list of loaded models it
 will not reach until they reload. `docs/sampling-defaults.md` states it in
 prose. So the headline's promise holds for one setting of three, and the phrase
-has two readings — "without restarting Gropius" and "without relaunching the
+has two readings — "without restarting Dessau" and "without relaunching the
 model server" — that produce different pieces of work. The draft does not say
 which it means.
 
@@ -201,7 +201,7 @@ which it means.
 
 ### The evidence that does exist gives a ceiling, not a default
 
-Three of the four models in the 2026-09-06 campaign were bounded by Gropius's
+Three of the four models in the 2026-09-06 campaign were bounded by Dessau's
 own upstream timeout rather than by the model, which is why the probe intent
 already rules that such a reading is published as a floor and names the bound
 that stopped it. A window derived from such a figure inherits that ambiguity
@@ -221,7 +221,7 @@ nobody tested. The served window reads the same way today, falling back to the
 declared window when unset, so adopting the pattern costs no new field.
 
 The collision is that zero currently means "serve the declared window" and
-would come to mean "serve whatever Gropius worked out today" — a silent change
+would come to mean "serve whatever Dessau worked out today" — a silent change
 of meaning for a value already in every operator's `config.json`, resolving to
 a number that moves between runs. Pre-1.0 permits the break; it does not excuse
 leaving it unstated. And if a derived figure is instead written back into the
@@ -291,7 +291,7 @@ under the 2026-09-20 decisions a derived figure is displayed in any case.
   4 and 8.
 - **Confirmation that a derived served window is stable enough to enforce.**
   The probe's own falsifier — a repeat probe returning a materially different
-  window, or a reading that is Gropius's bound rather than the model's — has to
+  window, or a reading that is Dessau's bound rather than the model's — has to
   come back clean before a figure is enforced rather than displayed.
 
 ### What the maintainer must decide before this can be planned
@@ -302,10 +302,10 @@ now carried by this record's own body). This group is closed; the evidence group
 above is the only hold that remains.
 
 - **Which settings are in scope** — answered: the served window only, in `## Press Release` and the first `## Scope Conditions` bullet.
-- **Derived, or suggested?** — answered: suggested, Gropius measures and Alice adopts as `AdoptMeasurement` already does, in `## Press Release`, `## Mechanism` and the second scope bullet.
+- **Derived, or suggested?** — answered: suggested, Dessau measures and Alice adopts as `AdoptMeasurement` already does, in `## Press Release`, `## Mechanism` and the second scope bullet.
 - **Where a derived value lives** — answered: at read time behind zero, shown as derived, never written into `config.json`, in the third scope bullet and `## Mechanism`.
 - **What an operator's own value does to a derived one** — answered: an explicit value pins until she clears it, in `## Press Release` and the fourth scope bullet.
-- **What "without a restart" means** — answered: without restarting Gropius, a model relaunch may still be needed, in the H1, `## Press Release` and the sixth scope bullet.
+- **What "without a restart" means** — answered: without restarting Dessau, a model relaunch may still be needed, in the H1, `## Press Release` and the sixth scope bullet.
 - **What happens when a derivation goes stale** — answered: displayed with its date, never enforced, in `## Press Release` and the fifth scope bullet.
 - **The record's own shape** — answered: the H1 is retitled so the hold clause leaves the slug, the hold moves to `## Hold`, and `impact` becomes `breaking` because zero changes meaning for a value in every operator's file.
 
@@ -313,7 +313,7 @@ above is the only hold that remains.
   sampling defaults are three features with three different readiness dates and
   three different risk profiles. They may well be three intents.
 - **Derived, or suggested?** `AdoptMeasurement` already implements the
-  propose-and-confirm shape: Gropius measures, Alice adopts. Does this intent
+  propose-and-confirm shape: Dessau measures, Alice adopts. Does this intent
   remove her from that loop, or does it only make the proposal better? These
   are different products.
 - **Where a derived value lives.** Computed at read time from a zero — always
@@ -323,10 +323,10 @@ above is the only hold that remains.
   answers to "a derived value versus a set one".
 - **What an operator's own value does to a derived one.** Whether an explicit
   setting pins the value permanently, is re-derived when its inputs change, or
-  is honoured until Gropius can show it is wrong — and what Alice is told in
+  is honoured until Dessau can show it is wrong — and what Alice is told in
   each case. Whatever the rule, a save that touches nothing related must still
   succeed.
-- **What "without a restart" means.** Without restarting Gropius, or without
+- **What "without a restart" means.** Without restarting Dessau, or without
   relaunching the model server? The second is not available for sampling or
   concurrency without a change to what mlx-lm is asked for, and the first makes
   the concurrency's start-up-only binding a prerequisite of this intent.
@@ -340,4 +340,4 @@ above is the only hold that remains.
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
 
-**Answers 2026-09-20:** HELD; evidence lifts it (a read-back serving period with statistics on, plus one self-test cycle). Decisions 1–7: served window only; suggested; read-time behind zero; explicit pins; no Gropius restart; stale shown not enforced; retitle and impact breaking. Recorded in `.abcd/work/DECISIONS.md`.
+**Answers 2026-09-20:** HELD; evidence lifts it (a read-back serving period with statistics on, plus one self-test cycle). Decisions 1–7: served window only; suggested; read-time behind zero; explicit pins; no Dessau restart; stale shown not enforced; retitle and impact breaking. Recorded in `.abcd/work/DECISIONS.md`.

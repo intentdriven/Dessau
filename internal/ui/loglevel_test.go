@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // A Go capability with no panel equivalent is a gap, not a feature tier. The
@@ -37,7 +37,7 @@ func TestSettingsOffersTheLogLevel(t *testing.T) {
 
 // The pane has to say what the two words mean before an operator can choose
 // between them, and it has to say the thing that is easy to assume and wrong:
-// that this is Gropius's own log level and never the model servers'.
+// that this is Dessau's own log level and never the model servers'.
 func TestThePaneSaysWhatTheTwoLevelsMean(t *testing.T) {
 	markup := readPanelMarkup(t)
 	for _, phrase := range []string{

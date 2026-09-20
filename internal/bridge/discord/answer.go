@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/gateway"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/gateway"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // incoming is as much of a MESSAGE_CREATE as this bridge reads.

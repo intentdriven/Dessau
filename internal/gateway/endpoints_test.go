@@ -3,7 +3,7 @@
 // Every test here fixes this machine's interface list through
 // netshape.SetEnumerator, which the release build compiles out, so this file
 // is compiled out with it. Without the constraint `go vet -tags prod ./...`
-// and `go test -tags prod ./...` do not build, and the configuration Gropius
+// and `go test -tags prod ./...` do not build, and the configuration Dessau
 // ships is first exercised by the release job, after the tag is pushed.
 
 package gateway
@@ -15,9 +15,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/bind"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/netshape"
+	"github.com/intentdriven/Dessau/internal/bind"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/netshape"
 )
 
 // The endpoint list is a statement about this machine, so against a real Mac

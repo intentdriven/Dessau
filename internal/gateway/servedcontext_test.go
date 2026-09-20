@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 const servedModel = "mlx-community/Qwen3-8B-4bit"
@@ -20,7 +20,7 @@ const servedModel = "mlx-community/Qwen3-8B-4bit"
 func servedGateway(t *testing.T, cfg config.Config, declared int64) (string, *stubPool) {
 	t.Helper()
 	const modelPath = "/models/" + servedModel
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "GROPIUS OK"})
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
 	models := &stubModels{models: []registry.Model{{
 		RepoID: servedModel, Path: modelPath, State: registry.StateReady,
@@ -143,7 +143,7 @@ func TestAModelWithNoWindowAtAllRefusesNothing(t *testing.T) {
 	}
 }
 
-// The listing carries the window Gropius will serve beside the one the model
+// The listing carries the window Dessau will serve beside the one the model
 // declares, so a client can size its prompts to what this Mac will accept
 // rather than to what the model was built for.
 func TestModelsListCarriesTheServedContext(t *testing.T) {

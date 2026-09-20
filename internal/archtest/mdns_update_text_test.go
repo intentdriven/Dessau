@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// No Gropius code may call dnssd's ServiceHandle.UpdateText.
+// No Dessau code may call dnssd's ServiceHandle.UpdateText.
 //
 // It is the one call in that library that is not safe to make: it assigns
 // Service.Text with no locking at all, while the responder goroutine reads that

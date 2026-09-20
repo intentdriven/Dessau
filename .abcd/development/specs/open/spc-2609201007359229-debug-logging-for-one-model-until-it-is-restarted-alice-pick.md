@@ -11,7 +11,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers itd-2609062346072707 as shape (i) of its Question 2: the
-model server's own level is raised for one run of one model, and Gropius
+model server's own level is raised for one run of one model, and Dessau
 reads no prompt content anywhere. Alice arms a model from its card in the
 control panel; the arm is a transient per-model mark held in memory by the
 pool, consumed by the next launch of that model and cleared in the same step,
@@ -24,7 +24,7 @@ looping client or a context probe cannot fill the disk. A model carrying
 itd-2609091715089488's transcript exception refuses the arm with its reason.
 `TestTheModelServerIsAlwaysLaunchedAtInfo` is amended rather than deleted, a
 mirror readers' list holds the mark away from the statistics switch and from
-`log_level`, and `docs/logging.md` stops saying that no setting in Gropius
+`log_level`, and `docs/logging.md` stops saying that no setting in Dessau
 asks for the model servers' debug level.
 
 The exception this makes is written down in adr-2609201008477513, which
@@ -174,7 +174,7 @@ cannot drift. It says, in British English and plain words:
 > Debug logging is a per-model diagnostic and is off unless you arm it. From
 > that model's next start until the start after it, the model server's own log
 > holds every request sent to it and every answer it produced — the prompts and
-> the completions, whoever sent them — and the requests Gropius's own probes
+> the completions, whoever sent them — and the requests Dessau's own probes
 > and self-test send as well. Arming changes nothing about the run going on
 > now: unload the model to start the run that is logged. The run after that is
 > back to the ordinary level. The file is owner-only, stops at 64 MB, and the
@@ -267,7 +267,7 @@ rewritten in present tense: the model servers run at INFO unless the operator
 arms debug logging for one model from its card; what that writes; that it
 begins at that model's next start and ends at the start after; the 64 MB
 bound; and that the previous run's file is kept beside the current one rather
-than the current one being emptied. The sentence "so no setting in Gropius asks
+than the current one being emptied. The sentence "so no setting in Dessau asks
 for it" goes.
 
 *A trap for whoever writes it:* `TestTheLoggingPageNamesTheLevelsTheCodeAccepts`
@@ -291,7 +291,7 @@ named is watched red before the change and green after.
 | 6 | `TestTheModelServerIsAlwaysLaunchedAtInfo` is amended, not deleted | the amended test itself, renamed `TestTheModelServerLevelComesOnlyFromThePerModelDebugMark`, with the comment block citing adr-2609201008477513 |
 | 7 | The file is bounded | `TestTheDebugLogStopsAtItsBound` (`internal/runtime`), in the shape of `rotating_writer_test.go`: a looping write past the bound, a single write larger than the bound, the final line, writes after the bound reported as accepted and discarded, and the whole run under `-race`. The figure is stated in `docs/logging.md` and held there by the extended docs test |
 | 8 | The ending restart leaves Alice the file | `TestALaunchKeepsThePreviousRunsLog` (`internal/runtime`): the rename happens before the truncating open and the renamed file's content survives; `TestTwoConsecutiveLaunchesKeepOnlyOnePreviousLog` for the accumulation case |
-| 9 | The documentation sentence is corrected | `internal/archtest/logging_docs_test.go` extended: the page must not contain "no setting in Gropius asks for it", and must name the per-model action, what it writes, "64 MB", the kept previous file and that the mode begins at the model's next start |
+| 9 | The documentation sentence is corrected | `internal/archtest/logging_docs_test.go` extended: the page must not contain "no setting in Dessau asks for it", and must name the per-model action, what it writes, "64 MB", the kept previous file and that the mode begins at the model's next start |
 | 10 | A no-transcript model refuses the arm | `TestAnExceptedModelRefusesTheDebugArm` (`internal/gateway`) for the 409 and its reason, driving `Control.TranscriptExcepted`; the static-surface test of row 3 for the sentence at the control. *Dependency:* the predicate's real source is itd-2609091715089488's per-model field — see the sequencing note in the Approach |
 | 11 | The exception is written down before it ships | adr-2609201008477513 (authored in its own lane), held by the ADR link-integrity check that adr-2609061503319212 links forward to it. *Hand check:* the amended launcher test's comment and this spec both cite that ADR's id |
 
@@ -307,7 +307,7 @@ not a courtesy.
   writes the whole request body, every generation step's text and the whole
   non-streaming response object, with nothing sampled, truncated or redacted
   (`.abcd/development/research/notes/2026-09-20-mlx-lm-0.31.3-debug-logging.md`).
-  An API key a client puts in a message is written verbatim. Gropius cannot
+  An API key a client puts in a message is written verbatim. Dessau cannot
   redact what it does not read, and shape (i) is the choice not to read it.
   The paragraph at the control and the posture line say this in plain words;
   Bob is not told, which is adr-2609201008477513's stated cost.

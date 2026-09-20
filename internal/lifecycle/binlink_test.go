@@ -14,7 +14,7 @@ import (
 
 func TestTheLinkGoesInThisAccountsOwnBinDirectory(t *testing.T) {
 	home := t.TempDir()
-	binary := filepath.Join(t.TempDir(), "Gropius.app", "Contents", "MacOS", "gropius")
+	binary := filepath.Join(t.TempDir(), "DessauServer.app", "Contents", "MacOS", "dessau")
 	if err := os.MkdirAll(filepath.Dir(binary), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestTheLinkGoesInThisAccountsOwnBinDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("linkCommand: %v", err)
 	}
-	if want := filepath.Join(home, ".local", "bin", "gropius"); link != want {
+	if want := filepath.Join(home, ".local", "bin", "dessau"); link != want {
 		t.Errorf("the link is at %s, want %s", link, want)
 	}
 	target, err := os.Readlink(link)
@@ -53,11 +53,11 @@ func TestTheLinkReplacesAnOlderOneWithoutFollowingIt(t *testing.T) {
 	if err := os.WriteFile(witness, []byte("untouched"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(witness, filepath.Join(dir, "gropius")); err != nil {
+	if err := os.Symlink(witness, filepath.Join(dir, "dessau")); err != nil {
 		t.Fatal(err)
 	}
 
-	binary := filepath.Join(t.TempDir(), "gropius")
+	binary := filepath.Join(t.TempDir(), "dessau")
 	if err := os.WriteFile(binary, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func staleNames(t *testing.T, dir string) []string {
 	}
 	var left []string
 	for _, e := range entries {
-		if e.Name() != "gropius" {
+		if e.Name() != "dessau" {
 			left = append(left, e.Name())
 		}
 	}

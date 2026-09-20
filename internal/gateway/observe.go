@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // observation accumulates what is known about one request as it is served, and
@@ -171,8 +171,8 @@ func (o *observation) relayed(out relayOutcome) {
 		o.record.Class = stats.ClassCancelled
 	case out.oversizeLine:
 		// Ahead of upstreamCut, which is set with it: the model server was
-		// reachable and was answering, and the answer ended because Gropius
-		// stopped reading at a limit Gropius chose. Filing that as
+		// reachable and was answering, and the answer ended because Dessau
+		// stopped reading at a limit Dessau chose. Filing that as
 		// "unreachable" would send an operator reading the statistics after
 		// the wrong piece of software.
 		o.record.Class = stats.ClassGatewayError
@@ -244,10 +244,10 @@ type relayOutcome struct {
 	complete bool
 	// oversizeLine is an upstream line that reached maxStreamLine without a
 	// newline, which is the one way the relay itself ends an answer. It is a
-	// fact about this Gropius rather than about either side: it is logged once
+	// fact about this Dessau rather than about either side: it is logged once
 	// by the caller, and it is what the answer is recorded under, because
 	// upstreamCut — which is set with it, the answer having stopped part-way —
-	// would file Gropius's own limit as the model server failing.
+	// would file Dessau's own limit as the model server failing.
 	oversizeLine bool
 	firstToken   time.Time
 	usage        *usageCounts
@@ -265,7 +265,7 @@ type relayOptions struct {
 	// first chunk went out, and the counts in the usage event.
 	observing bool
 	// dropUsage removes the usage-only event from the answer. It is set only
-	// when Gropius asked the model server for that event on a client's behalf
+	// when Dessau asked the model server for that event on a client's behalf
 	// and the client did not ask for it itself.
 	dropUsage bool
 }
@@ -274,7 +274,7 @@ type relayOptions struct {
 // answer ends with the token counts.
 const streamOptionsField = "stream_options"
 
-// includeUsageField is the one key inside it that Gropius ever writes.
+// includeUsageField is the one key inside it that Dessau ever writes.
 const includeUsageField = "include_usage"
 
 // clientWantsUsage reports whether the client's own request asked the model
@@ -351,7 +351,7 @@ func streamRequested(payload map[string]json.RawMessage) bool {
 // A stream_options that is neither absent, null, nor an object is left exactly
 // as the client sent it. That request is already one the model server will
 // refuse, and refusing it is the model server's business — repairing a client's
-// malformed field to get a figure for the panel is not a trade Gropius makes.
+// malformed field to get a figure for the panel is not a trade Dessau makes.
 func mergeIncludeUsage(payload map[string]json.RawMessage) {
 	opts := map[string]json.RawMessage{}
 	if raw, ok := payload[streamOptionsField]; ok && string(raw) != "null" {

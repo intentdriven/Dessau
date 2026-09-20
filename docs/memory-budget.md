@@ -1,6 +1,6 @@
 # Set how much memory models may use
 
-Gropius holds as many models in memory as its memory budget allows. The budget
+Dessau holds as many models in memory as its memory budget allows. The budget
 is a share of this Mac's memory by default, and it is a setting: a Mac that does
 nothing but serve models can give them most of itself, while a laptop someone
 also works on wants less.
@@ -15,7 +15,7 @@ also works on wants less.
 4. **Save settings**.
 
 The budget applies at once — no restart. The next model to load is measured
-against the new figure, and the **Search** tab immediately hides the models that
+against the new figure, and the **Find Models** tab immediately hides the models that
 no longer fit and shows the ones that now do.
 
 To go back to the default, clear the field and save. The line under it then
@@ -57,14 +57,14 @@ says the machine is over its budget until they go by the usual rules — a reque
 for something else, the idle timeout, or your own **Unload**. A model is never
 taken away at the moment you press Save.
 
-## What the Models tab adds up
+## What the My Models tab adds up
 
-The line at the head of the **Models** tab is the roll-up: how many models
+The line at the head of the **My Models** tab is the roll-up: how many models
 are downloaded and how many are loaded, how much disk the downloaded ones
 take and how much the models volume has left, and the memory budget against
 what is resident — naming the part still exiting, which is memory a stopped
 server has not handed back yet and which a load is still measured against.
-Every figure is one Gropius already has; nothing is walked or measured to
+Every figure is one Dessau already has; nothing is walked or measured to
 draw it. Each model's card says the window it declares and, when you have
 set one below it, the window it is served at.
 

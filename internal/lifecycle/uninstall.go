@@ -8,14 +8,14 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
-// `gropius uninstall` removes what this installation put on the Mac, and
+// `dessau uninstall` removes what this installation put on the Mac, and
 // nothing else.
 //
 // EVERY DELETION PATH IS FIXED. Not one of them comes from a flag or from the
-// environment: GROPIUS_ROOT is read only so the output can say which root was
+// environment: DESSAU_ROOT is read only so the output can say which root was
 // NOT removed. A data root a caller can name is a data root any local account
 // can pre-create as a symlink, and it would then choose what is deleted.
 //
@@ -43,14 +43,14 @@ type UninstallEnv struct {
 	// SystemApplications is that machine-wide directory, so the output can say
 	// when what it removed was everybody's copy rather than this account's.
 	SystemApplications string
-	// Link is this account's own gropius command.
+	// Link is this account's own dessau command.
 	Link string
 	// Binary is the path the firewall entry is keyed to.
 	Binary string
 	// SharedRoot is the machine-wide data root when this installation uses one,
 	// and empty otherwise. It is never removed.
 	SharedRoot string
-	// NamedRoot is what GROPIUS_ROOT names, so the output can say it was not
+	// NamedRoot is what DESSAU_ROOT names, so the output can say it was not
 	// acted on. It is never a deletion path.
 	NamedRoot string
 	// Uid is this account, which under a shared root decides what may be
@@ -73,7 +73,7 @@ type UninstallEnv struct {
 func RunUninstall(env Env, args []string) int {
 	ue, err := liveUninstallEnv(env)
 	if err != nil {
-		writeLine(env.Err, "gropius uninstall: "+err.Error())
+		writeLine(env.Err, "dessau uninstall: "+err.Error())
 		return ExitFailed
 	}
 	return runUninstall(env, args, ue)
@@ -117,7 +117,7 @@ func liveUninstallEnv(env Env) (UninstallEnv, error) {
 		Link:               filepath.Join(binDir(home), linkFileName),
 		Binary:             binary,
 		SharedRoot:         shared,
-		NamedRoot:          os.Getenv("GROPIUS_ROOT"),
+		NamedRoot:          os.Getenv("DESSAU_ROOT"),
 		Uid:                os.Getuid(),
 		Terminal:           isTerminal(os.Stdin),
 		Firewall:           revokeFirewall,
@@ -133,7 +133,7 @@ func runUninstall(env Env, args []string, ue UninstallEnv) int {
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
-		writeLine(env.Err, "gropius uninstall: unexpected argument "+Quote(fs.Arg(0)))
+		writeLine(env.Err, "dessau uninstall: unexpected argument "+Quote(fs.Arg(0)))
 		return ExitUsage
 	}
 
@@ -141,9 +141,9 @@ func runUninstall(env Env, args []string, ue UninstallEnv) int {
 	// reads standard input: under a piped bootstrap that is the rest of the
 	// installer, so the refusal names the flag that would have answered it.
 	if *purge && !ue.Terminal && !*yes {
-		writeLine(env.Err, "gropius uninstall --purge deletes the downloaded models, and standard input is not a terminal, "+
+		writeLine(env.Err, "dessau uninstall --purge deletes the downloaded models, and standard input is not a terminal, "+
 			"so there is nobody to confirm it with. Nothing has been deleted.")
-		writeLine(env.Err, "Pass --yes to confirm it without a terminal: gropius uninstall --purge --yes")
+		writeLine(env.Err, "Pass --yes to confirm it without a terminal: dessau uninstall --purge --yes")
 		return ExitUsage
 	}
 
@@ -196,7 +196,7 @@ func runUninstall(env Env, args []string, ue UninstallEnv) int {
 	}
 	if ue.NamedRoot != "" {
 		writeLine(env.Out, "")
-		writeLine(env.Out, "GROPIUS_ROOT names "+redact(ue.NamedRoot, ue.Home)+
+		writeLine(env.Out, "DESSAU_ROOT names "+redact(ue.NamedRoot, ue.Home)+
 			". Uninstall never derives a deletion path from the environment, so nothing there was removed.")
 	}
 	if failed {
@@ -231,8 +231,8 @@ func removalTargets(ue UninstallEnv) []string {
 	)
 }
 
-// removeLink removes this account's gropius command, and only when it is a
-// symbolic link to a binary inside a Gropius bundle. A real file of that name
+// removeLink removes this account's dessau command, and only when it is a
+// symbolic link to a binary inside a Dessau bundle. A real file of that name
 // belongs to whoever put it there.
 func removeLink(ue UninstallEnv) bool {
 	if ue.Link == "" {
@@ -262,7 +262,7 @@ func reportModels(env Env, ue UninstallEnv, purge bool, failed *bool) {
 		}
 		writeLine(env.Out, "")
 		writeLine(env.Out, "The downloaded models are still there: "+formatSize(size)+".")
-		writeLine(env.Out, "Remove them too with: gropius uninstall --purge")
+		writeLine(env.Out, "Remove them too with: dessau uninstall --purge")
 		if shared {
 			reportSharedRoot(env, ue)
 		}

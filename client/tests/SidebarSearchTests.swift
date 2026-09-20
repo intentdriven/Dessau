@@ -1,6 +1,6 @@
 // What the sidebar's search promises, checked on its own:
 // `client/tests/sidebar-search.sh` compiles this with
-// `client/GropiusChat/SidebarSearch.swift` and runs it. The client has no test
+// `client/DessauChat/SidebarSearch.swift` and runs it. The client has no test
 // target, so this is a main that prints each promise and exits non-zero on the
 // first one that is broken.
 

@@ -630,7 +630,7 @@ func TestTheSummaryFoldAddsToTheDayAndMarksIt(t *testing.T) {
 
 // unreadableStore fills a directory with lines this build cannot read: a
 // schema version newer than its own, which is exactly what a store written by
-// a later Gropius looks like. Nothing in it ever reaches the aggregation, so
+// a later Dessau looks like. Nothing in it ever reaches the aggregation, so
 // every bound that lives there bounds nothing.
 func unreadableStore(t *testing.T, dir string, files int) {
 	t.Helper()
@@ -653,7 +653,7 @@ func unreadableStore(t *testing.T, dir string, files int) {
 // A store whose lines this build cannot read is still bounded and still
 // stoppable. Both used to live in the aggregation's own callback, which the
 // store never calls for a line that does not parse — so a store a newer
-// Gropius wrote was read from end to end, on every request, and a reader who
+// Dessau wrote was read from end to end, on every request, and a reader who
 // had gone away was paid for to the last byte of it.
 func TestAStoreOfUnreadableLinesIsStillBoundedAndStillStoppable(t *testing.T) {
 	dir := t.TempDir()

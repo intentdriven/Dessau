@@ -6,19 +6,19 @@ import (
 	"path/filepath"
 )
 
-// `gropius place` puts a staged application bundle where it belongs, with the
+// `dessau place` puts a staged application bundle where it belongs, with the
 // staged swap in swap.go — and it exists because the chat client has no binary
 // of its own to do it.
 //
-// The bootstrap's server half hands over to `gropius install`, which places the
-// server bundle in Go. Its client half had no such handover, so GropiusChat was
+// The bootstrap's server half hands over to `dessau install`, which places the
+// server bundle in Go. Its client half had no such handover, so DessauChat was
 // placed by the shell's `mv`: it nests into a destination that already exists
 // as a directory, follows one that is a symbolic link, and exits 0 in both
 // cases (iss-2609081310071028, and iss-2609111454146700 for the half that still
 // had it). /Applications is group-writable by the admin group on a stock Mac,
 // so on a Mac several people share that window is another account's to win.
 //
-// A verb rather than a flag on install: `gropius install` is this installation's
+// A verb rather than a flag on install: `dessau install` is this installation's
 // own lifecycle — it places THIS product's bundle at the destination the fixed
 // rule chooses, and then grants a firewall entry, provisions a runtime and
 // links a command for it. Placing a bundle somebody else names, somewhere
@@ -28,7 +28,7 @@ import (
 //
 // It is deliberately narrow: it takes the two paths, it checks them, it swaps,
 // and it says where the bundle went. It reads no settings, contacts nothing,
-// and knows nothing about GropiusChat beyond the name the caller hands it.
+// and knows nothing about DessauChat beyond the name the caller hands it.
 
 // RunPlace is the place verb.
 func RunPlace(env Env, args []string) int { return runPlace(env, args, PlaceBundle) }
@@ -42,22 +42,22 @@ func runPlace(env Env, args []string, place func(src, dest string) error) int {
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
-		writeLine(env.Err, "gropius place: unexpected argument "+Quote(fs.Arg(0)))
+		writeLine(env.Err, "dessau place: unexpected argument "+Quote(fs.Arg(0)))
 		return ExitUsage
 	}
 	if *bundle == "" || *into == "" {
-		writeLine(env.Err, "gropius place: --bundle and --into are both required: "+
-			"gropius place --bundle <staged .app> --into <applications directory>")
+		writeLine(env.Err, "dessau place: --bundle and --into are both required: "+
+			"dessau place --bundle <staged .app> --into <applications directory>")
 		return ExitUsage
 	}
 
 	dest, err := placeDestination(*bundle, *into)
 	if err != nil {
-		writeLine(env.Err, "gropius place: "+err.Error())
+		writeLine(env.Err, "dessau place: "+err.Error())
 		return ExitFailed
 	}
 	if err := place(*bundle, dest); err != nil {
-		writeLine(env.Err, "gropius place: "+err.Error())
+		writeLine(env.Err, "dessau place: "+err.Error())
 		return ExitFailed
 	}
 	// The same sentence the bootstrap used to print, because it is what proves

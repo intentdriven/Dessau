@@ -11,6 +11,6 @@ OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 
 xcrun swiftc -swift-version 6 -o "$OUT/card-summary" \
-    ../GropiusChat/CardSummary.swift CardSummaryTests.swift
+    ../DessauChat/CardSummary.swift CardSummaryTests.swift
 
 "$OUT/card-summary"

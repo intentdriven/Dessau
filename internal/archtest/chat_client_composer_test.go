@@ -15,10 +15,10 @@ import (
 // third named exception (iss-2609190004092322).
 func TestChatClientComposerHasMessagesForm(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	start := regexp.MustCompile(`private var composer: some View \{`).FindStringIndex(src)
 	if start == nil {
-		t.Fatal("client/GropiusChat/GropiusChat.swift declares no composer view")
+		t.Fatal("client/DessauChat/DessauChat.swift declares no composer view")
 	}
 	end := regexp.MustCompile(`\n    private func send\(\)`).FindStringIndex(src[start[0]:])
 	if end == nil {
@@ -42,10 +42,10 @@ func TestChatClientComposerHasMessagesForm(t *testing.T) {
 // hidden while it is being read.
 func TestChatClientThoughtsToggleOnAClickAnywhere(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	start := regexp.MustCompile(`private var reasoningDisclosure: some View \{`).FindStringIndex(src)
 	if start == nil {
-		t.Fatal("client/GropiusChat/GropiusChat.swift declares no reasoningDisclosure view")
+		t.Fatal("client/DessauChat/DessauChat.swift declares no reasoningDisclosure view")
 	}
 	end := regexp.MustCompile(`\n\}\n`).FindStringIndex(src[start[0]:])
 	if end == nil {
@@ -71,17 +71,17 @@ func TestChatClientDrawsMessagesAsBubbles(t *testing.T) {
 	all := clientSources(t, root)
 	bubbles, ok := all["Bubbles.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/Bubbles.swift is missing; the transcript's bubbles have no home")
+		t.Fatal("client/DessauChat/Bubbles.swift is missing; the transcript's bubbles have no home")
 	}
 	for _, want := range []string{`Color.accentColor`, `Color.secondary`, `@AppStorage("bubbleColorUser")`, `@AppStorage("bubbleColorModel")`} {
 		if !strings.Contains(bubbles, want) {
-			t.Errorf("client/GropiusChat/Bubbles.swift does not carry %s", want)
+			t.Errorf("client/DessauChat/Bubbles.swift does not carry %s", want)
 		}
 	}
-	if !strings.Contains(bubbles, "ColorPicker(") || strings.Count(all["GropiusChat.swift"], "BubbleColorRow(") < 2 {
+	if !strings.Contains(bubbles, "ColorPicker(") || strings.Count(all["DessauChat.swift"], "BubbleColorRow(") < 2 {
 		t.Error("Settings does not offer a colour picker for each bubble")
 	}
-	if !strings.Contains(all["GropiusChat.swift"], ".bubble(") {
+	if !strings.Contains(all["DessauChat.swift"], ".bubble(") {
 		t.Error("MessageRow does not draw its messages with the bubble modifier")
 	}
 }
@@ -95,10 +95,10 @@ func TestChatClientAsksForTheKeyWhereTheServerIsPicked(t *testing.T) {
 	picker := clientSources(t, root)["Picker.swift"]
 	for _, want := range []string{`.sheet(item: $askingKeyFor`, `model.saveAPIKey(`, `Keychain`, `only once`, `Settings`, `SecureField(`} {
 		if !strings.Contains(picker, want) {
-			t.Errorf("client/GropiusChat/Picker.swift does not carry %q; a server that needs a key is not asked for it where it is picked", want)
+			t.Errorf("client/DessauChat/Picker.swift does not carry %q; a server that needs a key is not asked for it where it is picked", want)
 		}
 	}
-	if !strings.Contains(clientSources(t, root)["GropiusChat.swift"], "needsAPIKey = true") {
+	if !strings.Contains(clientSources(t, root)["DessauChat.swift"], "needsAPIKey = true") {
 		t.Error("AppModel.connect does not record that the server asked for a key")
 	}
 }
@@ -108,9 +108,9 @@ func TestChatClientAsksForTheKeyWhereTheServerIsPicked(t *testing.T) {
 // sizes, applied at the window's root and at Settings' root.
 func TestChatClientTextSizeScalesTheWholeWindow(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	if !strings.Contains(src, "enum TextSize: String, CaseIterable {") {
-		t.Fatal("client/GropiusChat/GropiusChat.swift declares no TextSize enum over all of its cases")
+		t.Fatal("client/DessauChat/DessauChat.swift declares no TextSize enum over all of its cases")
 	}
 	steps := []string{"smaller", "standard", "larger", "extraLarge", "huge"}
 	if got := enumCases(t, src, "TextSize"); !slices.Equal(got, steps) {
@@ -149,9 +149,9 @@ func TestChatClientTextSizeScalesTheWholeWindow(t *testing.T) {
 // absence of a preference.
 func TestChatClientAppearanceFollowsOneSetting(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	if !strings.Contains(src, "enum Appearance: String, CaseIterable {") {
-		t.Fatal("client/GropiusChat/GropiusChat.swift declares no Appearance enum over all of its cases")
+		t.Fatal("client/DessauChat/DessauChat.swift declares no Appearance enum over all of its cases")
 	}
 	choices := []string{"system", "light", "dark"}
 	if got := enumCases(t, src, "Appearance"); !slices.Equal(got, choices) {
@@ -174,7 +174,7 @@ func TestChatClientAppearanceFollowsOneSetting(t *testing.T) {
 // uses, kept in the row's state.
 func TestChatClientThoughtsRenderMarkdown(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	start := regexp.MustCompile(`private var reasoningDisclosure: some View \{`).FindStringIndex(src)
 	if start == nil {
 		t.Fatal("no reasoningDisclosure view")
@@ -198,9 +198,9 @@ func TestChatClientThoughtsRenderMarkdown(t *testing.T) {
 // a change to the throttle cannot apply to one of them and miss the other.
 func TestChatClientThoughtsShareTheReplyScheduler(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	if n := strings.Count(src, "private func schedule"); n != 1 {
-		t.Errorf("client/GropiusChat/GropiusChat.swift declares %d parse schedulers; the reply and the Thoughts row share one", n)
+		t.Errorf("client/DessauChat/DessauChat.swift declares %d parse schedulers; the reply and the Thoughts row share one", n)
 	}
 	throttle := regexp.MustCompile(`let wait = [0-9.]+ - Date\(\)\.timeIntervalSince\(`)
 	if n := len(throttle.FindAllString(src, -1)); n != 1 {
@@ -221,7 +221,7 @@ func TestChatClientThoughtsShareTheReplyScheduler(t *testing.T) {
 // system's highlight.
 func TestChatClientSidebarShowsCards(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	for _, want := range []string{`.listStyle(.sidebar)`, `ConversationCard(conversation:`} {
 		if !strings.Contains(src, want) {
 			t.Errorf("the sidebar lacks %q", want)
@@ -272,7 +272,7 @@ func TestChatClientSidebarShowsCards(t *testing.T) {
 // message text.
 func TestChatClientSidebarIsSearchable(t *testing.T) {
 	root := repoRootDir(t)
-	src := clientSources(t, root)["GropiusChat.swift"]
+	src := clientSources(t, root)["DessauChat.swift"]
 	if !strings.Contains(src, `.searchable(text: $query`) {
 		t.Error("the sidebar carries no searchable field")
 	}
@@ -307,7 +307,7 @@ func swiftBlock(t *testing.T, src, marker string) string {
 	t.Helper()
 	switch n := strings.Count(src, marker); {
 	case n == 0:
-		t.Fatalf("client/GropiusChat/GropiusChat.swift carries no %q", marker)
+		t.Fatalf("client/DessauChat/DessauChat.swift carries no %q", marker)
 	case n > 1:
 		t.Fatalf("%q appears %d times; this scan reads one block and cannot say which", marker, n)
 	}
@@ -354,14 +354,14 @@ func enumCases(t *testing.T, src, name string) []string {
 // the text-size setting grows the field and not only the glyphs inside it.
 //
 // SwiftUI's own bordered capsule offers no way to inset its text, so the
-// capsule is drawn in client/GropiusChat/Composer.swift, which is why that
+// capsule is drawn in client/DessauChat/Composer.swift, which is why that
 // file is a named exception to the no-styling rule.
 func TestChatClientComposerFieldHasMessagesProportions(t *testing.T) {
 	root := repoRootDir(t)
 	all := clientSources(t, root)
 	src, ok := all["Composer.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/Composer.swift is missing; the composer's metrics have no home")
+		t.Fatal("client/DessauChat/Composer.swift is missing; the composer's metrics have no home")
 	}
 	// Messages' field is about 34 to 36 points tall at the standard text
 	// size, with roughly 12 points before the first glyph.
@@ -405,7 +405,7 @@ func TestChatClientComposerFieldHasMessagesProportions(t *testing.T) {
 	// The inset has to reach the text the person actually sees: the field
 	// carrying the placeholder is the view the capsule is applied to, not a
 	// wrapper beside it.
-	chat := all["GropiusChat.swift"]
+	chat := all["DessauChat.swift"]
 	field := regexp.MustCompile(`TextField\("Message…", text: \$draft, axis: \.vertical\)\n(\s+\.[^\n]*\n)*\s+\.composerFieldCapsule\(\)`)
 	if !field.MatchString(chat) {
 		t.Error("the placeholder field does not carry .composerFieldCapsule(); the inset applies to something other than the text the person reads")
@@ -428,7 +428,7 @@ func TestChatClientComposerShowsTheSystemsFocusRing(t *testing.T) {
 	root := repoRootDir(t)
 	src, ok := clientSources(t, root)["Composer.swift"]
 	if !ok {
-		t.Fatal("client/GropiusChat/Composer.swift is missing; the composer's focus ring has no home")
+		t.Fatal("client/DessauChat/Composer.swift is missing; the composer's focus ring has no home")
 	}
 	for _, want := range []struct{ fragment, why string }{
 		{"@FocusState", "the capsule holds no focus state, so it cannot know the field has keyboard focus"},

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // configShowEnv is a verb environment with captured streams and a settings
@@ -132,7 +132,7 @@ func TestEverySettingThatLooksLikeASecretIsRedacted(t *testing.T) {
 		for _, segment := range strings.Split(leaf, "_") {
 			switch segment {
 			case "key", "token", "secret", "password":
-				t.Errorf("`gropius config show` reports %q, which reads like a secret and is not in "+
+				t.Errorf("`dessau config show` reports %q, which reads like a secret and is not in "+
 					"secretSettings — the verb prints what that list does not redact, to a terminal and "+
 					"into a bug report", key)
 			}
@@ -147,7 +147,7 @@ func TestEverySettingThatLooksLikeASecretIsRedacted(t *testing.T) {
 	}
 }
 
-// `gropius config show --json` is the contract a script reads, so its shape is
+// `dessau config show --json` is the contract a script reads, so its shape is
 // pinned by a fixture rather than by a reviewer's memory: a key renamed or
 // dropped is a break for somebody.
 func TestConfigShowJSONIsTheContract(t *testing.T) {
@@ -168,7 +168,7 @@ func TestConfigShowJSONIsTheContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("`gropius config show --json` does not match testdata/config_show.json:\n%s", out.String())
+		t.Errorf("`dessau config show --json` does not match testdata/config_show.json:\n%s", out.String())
 	}
 }
 
@@ -277,7 +277,7 @@ func TestConfigShowStatesASettingsProblemBesideTheAnswer(t *testing.T) {
 // The machine contract carries the settings problem too.
 //
 // Standard error is not visible to the one caller the contract exists for. A
-// script that runs `gropius config show --json 2>/dev/null` and reads the bind
+// script that runs `dessau config show --json 2>/dev/null` and reads the bind
 // address out of it would be told "127.0.0.1" about a server that may be
 // answering the whole network: when config.json is unusable the settings
 // reported are the fail-closed FALLBACK the server would start from, not what
@@ -357,7 +357,7 @@ func TestNoSettingHidesItsFieldsBehindAPointer(t *testing.T) {
 	walk(reflect.TypeOf(config.Config{}), "", 0)
 }
 
-// `gropius config show` reports the paired set, and it was reported only
+// `dessau config show` reports the paired set, and it was reported only
 // because the walk happens to recurse into a map of structs
 // (iss-2609190200110241). The scope condition for the terminal surface says
 // the verb reports the clients block with the fingerprints shown, so the claim

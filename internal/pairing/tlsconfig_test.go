@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/pairing"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/pairing"
 )
 
 // handshakeServer is TLSConfig standing on its own: the server's identity, a

@@ -27,7 +27,7 @@ func TestExtraBindOptionNamesAHostTheSelectDoesNotOffer(t *testing.T) {
 		{"the wildcard the select already offers", "0.0.0.0", `null`},
 		{"the loopback the select already offers", "127.0.0.1", `null`},
 		// The four binds config.Validate accepts and this select never
-		// offered. Each of them is a bind Gropius starts on.
+		// offered. Each of them is a bind Dessau starts on.
 		{"loopback by name", "localhost", `"localhost"`},
 		{"IPv6 loopback", "[::1]", `"[::1]"`},
 		{"another loopback address", "127.0.0.2", `"127.0.0.2"`},

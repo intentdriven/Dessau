@@ -16,7 +16,7 @@ production_mode: hand-written
 
 ## Press Release
 
-Alice is setting the memory budget on the Gropius control panel. She types a
+Alice is setting the memory budget on the Dessau control panel. She types a
 figure, and before she reaches for **Save** a sentence appears beside the field:
 the server's own words, saying that this figure is below what the models she has
 pinned need to load. She corrects it and the sentence goes. Nothing was disabled

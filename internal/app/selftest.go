@@ -3,15 +3,15 @@ package app
 import (
 	"context"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/selftest"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/selftest"
 )
 
 // selfTestSource is the identity the self-test's loads carry in the pool's
 // load-waiter queue (runtime.WithSource), so its place there is its own and
 // never a client's.
-const selfTestSource = "gropius-self-test"
+const selfTestSource = "dessau-self-test"
 
 // selfTestServer is what the self-test sees of the app: the registry's ready
 // models, the pool's ordinary Acquire — never a second launcher, so the

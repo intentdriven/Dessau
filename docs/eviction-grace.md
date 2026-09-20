@@ -20,7 +20,7 @@ fit unloads a model at once, exactly as it always has.
    a pause while somebody reads an answer.
 4. Set **Wait at most** — the longest a request will wait for room before it is
    refused. The default is 300 seconds. Keep it under the timeout your clients
-   use, or they give up first and see their own error instead of Gropius's, and
+   use, or they give up first and see their own error instead of Dessau's, and
    at or above the protection above: a maximum shorter than the protection is
    refused, because it would refuse a waiting request before its own wait could
    override that protection, which is the starvation this feature exists to
@@ -99,7 +99,7 @@ waiting on, and the wait would be for nothing. Three things enforce it.
 
 On an install with an API key set, an answer that came from a model server
 carries two headers saying whether the request waited and for how long:
-`X-Gropius-State` and `X-Gropius-Queue-Time`. The 503 a request refused for
+`X-Dessau-State` and `X-Dessau-Queue-Time`. The 503 a request refused for
 want of memory gets carries them too. An open server sends them to nobody, the
 same rule [the models list](models-list.md) applies to residency. See
 [the response header reference](response-headers.md).

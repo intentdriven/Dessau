@@ -15,15 +15,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/bind"
-	"github.com/intentdriven/Gropius/internal/capability"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/contextprobe"
-	"github.com/intentdriven/Gropius/internal/hub"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/selftest"
-	"github.com/intentdriven/Gropius/internal/stats"
+	"github.com/intentdriven/Dessau/internal/bind"
+	"github.com/intentdriven/Dessau/internal/capability"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/contextprobe"
+	"github.com/intentdriven/Dessau/internal/hub"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/selftest"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // App holds everything the daemon needs.
@@ -417,14 +417,14 @@ func (a *App) Bind() bind.Plan { return a.bindPlan }
 // Config() at once and the sockets at the next start.
 func (a *App) BindPort() int { return a.startup.Port }
 
-// Advertising reports the decision cmd/gropius made at start about the Bonjour
+// Advertising reports the decision cmd/dessau made at start about the Bonjour
 // advert. The advert is started once and stopped at shutdown, so a live change
 // to the setting reaches nothing until the next start, and this stays what it
 // was. It does not know whether the start succeeded: a failure to advertise is
 // logged and is not fatal.
 func (a *App) Advertising() bool { return Advertises(a.startup, a.bindPlan) }
 
-// Advertises is the one spelling of whether Gropius advertises itself: the
+// Advertises is the one spelling of whether Dessau advertises itself: the
 // setting is on, the mode is not the private-network one, and the bind reaches
 // another machine. The advert is mDNS on the local link, so under the
 // private-network mode and on any bind that narrowed to this Mac every advert
@@ -433,7 +433,7 @@ func (a *App) Advertising() bool { return Advertises(a.startup, a.bindPlan) }
 // exactly the network the bind excludes (adr-2609091123526871 rule 8).
 //
 // It reads the configured mode and the plan, never the classifier. Both are
-// state Gropius owns end to end, which is what keeps this out of
+// state Dessau owns end to end, which is what keeps this out of
 // adr-2609081118587999 rule 2.
 func Advertises(cfg config.Config, plan bind.Plan) bool {
 	if !cfg.Advertise {
@@ -597,7 +597,7 @@ func (a *App) enforcedGrace(c config.Config) (grace, maxWait time.Duration) {
 	grace, maxWait = evictionGraceFor(c)
 	held := clampGraceToIdle(grace, a.Pool.IdleTimeout())
 	if held != grace {
-		a.Log.Warn("the eviction grace is longer than the idle timeout this Gropius is running with; models are protected for the shorter figure until a restart",
+		a.Log.Warn("the eviction grace is longer than the idle timeout this Dessau is running with; models are protected for the shorter figure until a restart",
 			"grace", grace, "idle_timeout", a.Pool.IdleTimeout(), "enforced", held)
 	}
 	return held, maxWait
@@ -713,7 +713,7 @@ func (a *App) BudgetWarnAbove() int64 {
 // end of its range, and "" for one in the middle.
 //
 // Advice rather than a refusal at both ends. At the top, what a Mac can carry
-// is not a figure Gropius knows: a model's charge is worked out from its own
+// is not a figure Dessau knows: a model's charge is worked out from its own
 // configuration rather than measured here, and everything else on the machine
 // draws on the same memory, so a Mac fully committed on paper can still run
 // out under load — and equally, a Mac that runs nothing else can carry more
@@ -863,7 +863,7 @@ func (a *App) applyStatistics(c config.Config) {
 	a.Stats.RecordSettings(a.effectiveSettings(c))
 }
 
-// effectiveSettings is what Gropius is actually serving under, which is not
+// effectiveSettings is what Dessau is actually serving under, which is not
 // always what is saved: the memory budget, decode concurrency and the idle
 // timeout are read once when the pool is built and a change to any of them
 // takes a restart. Recording a saved value that is not yet in force would put

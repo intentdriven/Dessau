@@ -1,6 +1,6 @@
 // Package contextprobe measures the largest prompt this Mac will actually
 // serve a model: a sweep of growing prompts and a bisection between the last
-// that came back and the first that did not, through Gropius's own OpenAI
+// that came back and the first that did not, through Dessau's own OpenAI
 // endpoint, the way a client reaches the model (itd-2609091301112705).
 //
 // It is a job of the self-test's idle loop (internal/selftest): that loop owns
@@ -31,10 +31,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
-	"github.com/intentdriven/Gropius/internal/selftest"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/selftest"
 )
 
 // Name is the job's name, as the loop's status and the log carry it.
@@ -46,7 +46,7 @@ type Candidate struct {
 	// Declared is the window the model's own configuration declares; zero
 	// means none, and there is nothing to bisect between.
 	Declared int64
-	// Served is the window Gropius serves the model at (the operator's
+	// Served is the window Dessau serves the model at (the operator's
 	// setting, or Declared), which bounds the largest step.
 	Served int64
 	// Bytes and KVChargePerToken are what the memory guard projects from.

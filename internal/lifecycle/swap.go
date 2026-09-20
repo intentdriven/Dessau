@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The staged swap, in Go, because the shell cannot express it.
@@ -68,14 +68,14 @@ import (
 
 // stagingPrefix names a staging directory. It is a dot name so it does not
 // appear in a Finder listing of the destination while the swap runs.
-const stagingPrefix = ".gropius-incoming-"
+const stagingPrefix = ".dessau-incoming-"
 
 // retiredPrefix names the directory the set-aside bundle waits in, inside this
 // account's own directory. A name of its own rather than stagingPrefix: the
 // two directories hold opposite things — one the copy that can be thrown away,
 // one the copy that must not be — and a person looking at either wants to know
 // which they have.
-const retiredPrefix = ".gropius-retired-"
+const retiredPrefix = ".dessau-retired-"
 
 // renameFunc is os.Rename, handed in so a test can fail one call of it. The
 // failure that produced the defect is an ordinary one — a full disk, a locked

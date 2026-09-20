@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // One per-model structure, held there by the type system rather than by prose.
 //
-// Gropius carried two per-model maps once — model_sampling and per_model —
+// Dessau carried two per-model maps once — model_sampling and per_model —
 // and a pinned list beside them, held to the same rules by comments in three
 // files. Each had its own ceiling, its own sanitiser on the file path, its own
 // guard in the settings handler and its own canonicalisation, and every one of

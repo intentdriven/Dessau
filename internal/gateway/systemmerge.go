@@ -39,7 +39,7 @@ const mergedSystemSeparator = "\n\n"
 
 // messagesField is the request field merging reads. Naming it here and
 // nowhere else is what keeps the whole reading footprint inside this file,
-// which is the boundary internal/archtest holds Gropius to.
+// which is the boundary internal/archtest holds Dessau to.
 const messagesField = "messages"
 
 // mergeOutcome says what merging did with a request, so the caller can tell a
@@ -87,7 +87,7 @@ func mergeSystemMessagesInto(payload map[string]json.RawMessage) mergeOutcome {
 // messages array into a single leading system message, returning the rebuilt
 // array and what it did.
 //
-// This is the only place in Gropius that reads the content of a request's
+// This is the only place in Dessau that reads the content of a request's
 // messages, it runs only for a model the operator switched merging on for, and
 // it exists for one reason: a chat template that refuses a system message
 // anywhere but the front refuses the whole conversation an agent client

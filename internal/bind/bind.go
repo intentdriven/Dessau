@@ -4,7 +4,7 @@
 // Loopback is in every set, first, because two things rest on it: the control
 // plane is loopback-only, so a bind that took loopback away stranded the
 // operator's own panel (iss-7); and the port-ownership challenge in
-// cmd/gropius contacts loopback and nothing else, so loopback is the one
+// cmd/dessau contacts loopback and nothing else, so loopback is the one
 // address every instance can be made to collide on. Measured on this hardware:
 // two processes binding *different* addresses on one port both succeed, while
 // an exact duplicate bind is refused — so EADDRINUSE, the only signal the
@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // LoopbackAddr is the address every plan acquires first: this Mac, and no

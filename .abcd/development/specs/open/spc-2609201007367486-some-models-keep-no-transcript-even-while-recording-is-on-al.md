@@ -39,8 +39,8 @@ models-list entry, the refused debug arm); `internal/ui` (the per-model
 transcript control, the model card's icon, the two sentences about the debug
 arm, the panel-side tests that evaluate `app.js`); `internal/ui/static`
 (`app.js`, `index.html`); `internal/bridge/discord` (the `/model` listing's
-omission and word, the refusal in the channel); `client/GropiusChat`
-(`GropiusChat.swift`'s models-list decode, `Picker.swift`'s icon);
+omission and word, the refusal in the channel); `client/DessauChat`
+(`DessauChat.swift`'s models-list decode, `Picker.swift`'s icon);
 `internal/archtest` (the client architecture test); `docs/` (the recording
 page's section, the `docs/models-list.md` row, the client README line); the
 changelog.
@@ -171,7 +171,7 @@ therefore called **after** the pool has handed back the model that will answer
 - If the serving model is recorded, the request is recorded **whole**, under
   the serving model, including turns an excepted model produced that the client
   carried back as prior context. Nothing is redacted, nothing is refused on
-  account of them (cond-2609201007364849). Gropius cannot attribute a turn in a
+  account of them (cond-2609201007364849). Dessau cannot attribute a turn in a
   message array it was handed to the model that produced it without keeping
   conversation state it deliberately does not keep, and pretending otherwise
   would be a promise it could not hold.
@@ -210,13 +210,13 @@ criterion below is satisfied when both halves are in.
 A boolean on a models list tells software. Three surfaces turn it into
 something a person sees before they choose (2026-09-20 addition).
 
-**The chat client.** `ModelsResponse.Model` in `GropiusChat.swift` gains
+**The chat client.** `ModelsResponse.Model` in `DessauChat.swift` gains
 `let recording: Bool?` beside `let chat: Bool?`, and the connect path keeps the
 folded ids whose `recording` is `false` in a published set beside `chatModels`.
 `Picker.swift`'s model rows draw the state beside each model: a chosen-state
 `Label` today, with the transcript icon added as a trailing view, its
 `accessibilityLabel` reading "keeps no transcript" or "recorded" in words
-rather than in a symbol's name. A server that says nothing — an older Gropius,
+rather than in a symbol's name. A server that says nothing — an older Dessau,
 or one whose entry carries no `recording` — draws no icon at all, because an
 absent fact is not a promise. The client's built-in on-device answerer reaches
 no server, so it carries no icon and the picker says nothing new about it
@@ -238,7 +238,7 @@ already prints.
 ### The bridge omits and refuses
 
 adr-2609181004167097 admits the platform as a reader and keeper of the message
-and the answer. Gropius would write no transcript while Discord kept one, and a
+and the answer. Dessau would write no transcript while Discord kept one, and a
 panel saying "no transcript" beside that model would state what the product
 cannot honour. So an excepted model is not offered over a bridge at all
 (cond-2609201007365982, 2026-09-20 decision, point 3):
@@ -292,7 +292,7 @@ The debug intent's lane owns the mark's clearing.
   models keep no transcript.
 - The honest limit is stated once, on the recording page: an ordinary
   OpenAI-compatible client reads a model's `id` and displays none of this, and
-  Gropius cannot fix that from the server.
+  Dessau cannot fix that from the server.
 
 British English, present tense, one Diátaxis type per page.
 
@@ -313,7 +313,7 @@ order itd-2609091715089488 states them.
 | 7 | An exception set under one spelling bites under another | a folded-match test on the pattern of `TestListModelsJoinsResidencyWhateverTheSpelling`, plus a unit test of `Config.NoTranscript` over exact, folded and duplicate keys |
 | 8 | Settable on a model that has never been downloaded; the first request it serves writes nothing | a settings test on the terms `TestSettingsRejectsAPerModelKeyThatIsNotAModelID` sets, plus a gateway test over the first served request; `TestUnknownModelReturns404` stays green |
 | 9 | Every models-list entry carries `recording`, in the base entry beside `chat` | `TestListModelsPublishesContextLengthUnderBothNames` and `TestListModelsCarriesNoResidencyWithoutAnAPIKey` widened to name it, and `TestModelsListReferenceDocumentsEveryFieldServed` |
-| 10 | The icon in the client's picker and on the panel's model cards, with an accessible label | an architecture test over `client/GropiusChat/Picker.swift` and `GropiusChat.swift` on the pattern of `internal/archtest/chat_client_native_test.go`; the client's Swift unit target (2026-09-20 two-tier client-test decision) over the decode and the folded set; a test in `internal/ui` evaluating the card's helper for both states |
+| 10 | The icon in the client's picker and on the panel's model cards, with an accessible label | an architecture test over `client/DessauChat/Picker.swift` and `DessauChat.swift` on the pattern of `internal/archtest/chat_client_native_test.go`; the client's Swift unit target (2026-09-20 two-tier client-test decision) over the decode and the folded set; a test in `internal/ui` evaluating the card's helper for both states |
 | 11 | The bridge's `/model` omits an excepted model and refuses one named | two tests in `internal/bridge/discord` beside the existing `modelCommand` tests, one per arm, plus one for a channel excepted after it chose |
 | 12 | Arming debug logging on an excepted model is refused, and both panels say so | a control-endpoint test in `internal/gateway` for the refusal and its reason; a panel markup test for the two sentences |
 | 13 | The documentation states all of it | `TestModelsListReferenceDocumentsEveryFieldServed` for the field; a hand check with the docs-currency reviewer before the release that ships this, recorded on the shipping decision line, since prose completeness is not a test |

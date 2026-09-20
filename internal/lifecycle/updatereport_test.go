@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The report `gropius update` ends on, as a value, and every assertion the
+// The report `dessau update` ends on, as a value, and every assertion the
 // intent makes about what a person reads.
 //
 // The value is what the assertions are made against rather than a run: an
@@ -20,8 +20,8 @@ import (
 // a path with no real account name in it.
 var (
 	reportHome    = filepath.Join(string(filepath.Separator), "somewhere", "an-account")
-	reportDest    = filepath.Join(string(filepath.Separator), "Applications", "Gropius.app")
-	perAccountDir = filepath.Join(reportHome, "Applications", "Gropius.app")
+	reportDest    = filepath.Join(string(filepath.Separator), "Applications", "DessauServer.app")
+	perAccountDir = filepath.Join(reportHome, "Applications", "DessauServer.app")
 )
 
 // updateReportCases is the table every assertion below runs over: one entry per
@@ -98,7 +98,7 @@ func updateReportCases() map[string]updateReport {
 
 	kept := failed
 	kept.DestVersion = ""
-	kept.KeptStaging = filepath.Join(reportDest, "..", ".gropius-incoming-1234", "Gropius.app.retired")
+	kept.KeptStaging = filepath.Join(reportDest, "..", ".dessau-incoming-1234", "DessauServer.app.retired")
 	kept.SwapFailure = "the installed bundle was already set aside and is intact at " + kept.KeptStaging
 	cases["the swap stopped and the only copy is in staging"] = kept
 

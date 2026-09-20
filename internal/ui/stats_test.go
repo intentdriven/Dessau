@@ -209,10 +209,10 @@ func TestThePanelSaysWhenItIsRecording(t *testing.T) {
 // to the page that explains the switch, with a test that went on passing.
 //
 // It is deliberately brittle. The words beside an opt-in are a promise about
-// what Gropius will do with a person's requests, and changing them should be
+// what Dessau will do with a person's requests, and changing them should be
 // something someone did on purpose.
 func TestTheSwitchExplainsItselfInWholeSentences(t *testing.T) {
-	const want = "Off unless you turn it on. While it is on, Gropius records, for each " +
+	const want = "Off unless you turn it on. While it is on, Dessau records, for each " +
 		"request it serves: the model, when the request arrived, how it ended, whether it " +
 		"streamed, how many tokens went in and came out, how long the first token took, how " +
 		"long the whole request took, and how long it waited for the model. It never records " +
@@ -227,7 +227,7 @@ func TestTheSwitchExplainsItselfInWholeSentences(t *testing.T) {
 	if got := statisticsHint(t); got != want {
 		t.Errorf("the paragraph beside the switch reads:\n  %s\nwant:\n  %s", got, want)
 	}
-	if !strings.Contains(readPanelMarkup(t), `href="https://github.com/intentdriven/Gropius/blob/main/docs/statistics-store-reference.md"`) {
+	if !strings.Contains(readPanelMarkup(t), `href="https://github.com/intentdriven/Dessau/blob/main/docs/statistics-store-reference.md"`) {
 		t.Error("the switch no longer links to the page that says what it records")
 	}
 }

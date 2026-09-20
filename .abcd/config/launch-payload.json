@@ -1,0 +1,19 @@
+{
+  "includes": [
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "install.sh",
+    "Makefile",
+    "go.mod",
+    "go.sum",
+    "build",
+    "cmd",
+    "internal",
+    "client",
+    "docs",
+    "site-src",
+    "wrangler.jsonc",
+    ".github"
+  ]
+}

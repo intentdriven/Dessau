@@ -2,11 +2,11 @@
 
 The evidence for itd-2609081259532589's headline installing criterion:
 
-> Given a Mac with no Gropius on it, when Alice runs the documented one-line
+> Given a Mac with no Dessau on it, when Alice runs the documented one-line
 > install, then the bundle is placed, the firewall grant is requested once
 > through the system authorisation panel with a stated reason, the MLX runtime
 > is provisioned with progress that reports proportion rather than a spinner,
-> and Gropius is serving when the command returns.
+> and Dessau is serving when the command returns.
 
 ## Why this is a procedure and not a test
 
@@ -28,10 +28,10 @@ written down rather than left to be remembered.
   panel exists for, and the one a `sudo` prompt could never serve.
 - A published release, or a local asset directory built from the tree under
   test. Note which, and the version, in the record below.
-- No Gropius installed for the account being tested: no bundle in either
-  applications directory, no `~/Library/Application Support/Gropius`, and no
+- No Dessau installed for the account being tested: no bundle in either
+  applications directory, no `~/Library/Application Support/Dessau`, and no
   firewall entry (`/usr/libexec/ApplicationFirewall/socketfilterfw --listapps`).
-  `gropius uninstall --purge` clears the first three; the entry goes with it.
+  `dessau uninstall --purge` clears the first three; the entry goes with it.
 
 ## Run A — the administrator account
 
@@ -44,13 +44,13 @@ written down rather than left to be remembered.
 3. **Progress with a proportion.** While the MLX runtime installs, the terminal
    names the stage AND how many of the stages are done. A spinner with no
    proportion is a failure. Record the elapsed time and the peak on-disk size of
-   `~/Library/Application Support/Gropius`, which is the figure the record has
+   `~/Library/Application Support/Dessau`, which is the figure the record has
    never had.
 4. **Serving when it returns.** When the command returns, the terminal says
-   Gropius is serving. Check it from a second machine on the same network, not
+   Dessau is serving. Check it from a second machine on the same network, not
    only over loopback: the empty-response failure this whole intent opens on is
    invisible from the Mac itself.
-5. **The command resolves.** `gropius status` runs and answers. If the install
+5. **The command resolves.** `dessau status` runs and answers. If the install
    said the bin directory is not on the search path, check that the line it
    printed is the line that fixes it.
 

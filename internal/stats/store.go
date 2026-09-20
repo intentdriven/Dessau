@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/applog"
+	"github.com/intentdriven/Dessau/internal/applog"
 )
 
 // The durable store: the records the recorder makes, kept on this Mac so that
@@ -70,7 +70,7 @@ const (
 	KindFootprint = "footprint"
 )
 
-// Settings is what Gropius was actually serving under when it was written: the
+// Settings is what Dessau was actually serving under when it was written: the
 // effective values, not the saved ones. Decode concurrency and the idle
 // timeout take a restart, so a value saved and not yet in force must never be
 // recorded as though it were — a reader comparing "before and after I raised
@@ -99,7 +99,7 @@ func (s Settings) sameAs(o Settings) bool {
 //
 // V is the version the line was written under, which may be newer than this
 // build's: a field this build does not know is ignored rather than refused,
-// which is what makes an older Gropius able to read a newer file at all.
+// which is what makes an older Dessau able to read a newer file at all.
 type Line struct {
 	V    int
 	Kind string
@@ -249,7 +249,7 @@ type StoreStatus struct {
 	// that says it is missing.
 	Dropped int64 `json:"dropped"`
 	// Skipped counts lines the last read through the store could not use: a
-	// line torn by a crash, one a newer Gropius wrote, one a full disk cut in
+	// line torn by a crash, one a newer Dessau wrote, one a full disk cut in
 	// half. One is the ordinary cost of a crash; a great many mean an
 	// aggregate drawn over a fraction of the records, and the same reasoning
 	// applies as to Dropped — a figure that is quietly missing is worse than
@@ -1042,8 +1042,8 @@ func ensureStoreDir(dir string) error {
 	parent := filepath.Dir(dir)
 	// The account's own data folder may not exist at all. In shared-cache mode
 	// the layout is created under the shared root, and this store is the one
-	// thing Gropius keeps under the account's own — so for an account that has
-	// never run Gropius per-user there is nothing above the store yet. Created
+	// thing Dessau keeps under the account's own — so for an account that has
+	// never run Dessau per-user there is nothing above the store yet. Created
 	// owner-only, and then held to the same rule as any other ancestor.
 	if _, err := os.Stat(parent); errors.Is(err, fs.ErrNotExist) {
 		if err := os.MkdirAll(parent, 0o700); err != nil {
@@ -1627,7 +1627,7 @@ func (s *FileStore) Files() ([]string, error) {
 //
 // The bounds are on the reading, not on what the reading yields, because those
 // are different quantities the moment a line does not parse: a store written by
-// a newer Gropius, or one a crash tore, hands back nothing while costing every
+// a newer Dessau, or one a crash tore, hands back nothing while costing every
 // byte of itself. A caller that bounded only the records it accepted would have
 // bounded nothing at all.
 type ReadOptions struct {

@@ -13,7 +13,7 @@ This spec delivers itd-2609200827202340 by replacing the four-form tile with
 one drawing in three renderings, each rendering a committed SVG that every
 raster is derived from: the default mark ("G3 inverse") at `build/icon.svg`,
 the same mark inside a bubble frame at `client/icon/icon.svg`, and a
-single-colour template glyph at `cmd/gropius/icon.svg`. The geometry is copied
+single-colour template glyph at `cmd/dessau/icon.svg`. The geometry is copied
 from the three accepted drawings under
 `.abcd/development/research/evidence/2026-09-20-mark-icons/` and is not
 redrawn. The rasters stay by-hand work for `make icon` through the two scripts
@@ -30,7 +30,7 @@ programmatically.
 
 In: `build/` (`icon.svg`, `AppIcon.icns`, its hash pin, `mkicon.sh`);
 `client/` (`icon/icon.svg`, `icon/AppIcon.icns`, a new hash pin, `mkicon.sh`,
-the icon fallback in `build.sh`); `cmd/gropius/` (a new `icon.svg` source,
+the icon fallback in `build.sh`); `cmd/dessau/` (a new `icon.svg` source,
 the embedded `icon.png`, a new hash pin); `internal/archtest` (the source-SVG
 test, the client's pin test, the template-image test, the control panel's
 existing mark test); `internal/sitetest` (the mark test, replaced);
@@ -73,13 +73,13 @@ rotate(-8) scale(0.66)` — six tenths, so Bob's chat tile carries a cube the
 size of Alice's server tile inside a frame rather than a shrunken one. The
 bubble-with-three-bars drawing goes.
 
-**`cmd/gropius/icon.svg` — the menu-bar glyph, a new file.** The menu bar has
+**`cmd/dessau/icon.svg` — the menu-bar glyph, a new file.** The menu bar has
 had a committed PNG and no source; this gives it one, from
 `server-menu-bar-cube-template.svg`: 44×44, the cube at `translate(22,23)
 rotate(-8) scale(0.062)`, the three faces in `#000000`, and the top face drawn
 a second time for the lift. One restatement, and only one: the evidence draws
 that lift as `#ffffff` at 35 % opacity, and a template image carries no white
-(`cmd/gropius/icon.go`: pure black plus an alpha mask). The source therefore
+(`cmd/dessau/icon.go`: pure black plus an alpha mask). The source therefore
 draws the lifted top face as `#000000` at `opacity="0.65"` over transparency,
 which is the same composite — a face 35 % of the way towards whatever the bar
 is drawn on — expressed in the one channel a template image has. This is the
@@ -90,7 +90,7 @@ colour to cut them into.
 
 No new dependency (cond-2609201011302195). `build/mkicon.sh` keeps its
 `rsvg-convert` → `sips` → `iconutil` path for `AppIcon.icns` and gains one
-step: it rasterises `../cmd/gropius/icon.svg` to `cmd/gropius/icon.png` at
+step: it rasterises `../cmd/dessau/icon.svg` to `cmd/dessau/icon.png` at
 44×44 and records that source's hash beside it. One embedded PNG, not two —
 `systray.SetTemplateIcon` takes a single byte slice and AppKit scales the
 template to the bar's height, which is what the committed 44 px file already
@@ -102,7 +102,7 @@ build` and the release workflow still reach neither, which
 
 One fallback goes with this. `client/build.sh` runs `./mkicon.sh` when
 `icon/AppIcon.icns` is absent — a path the release workflow reaches when it
-builds `GropiusChat.app`, on a runner with no librsvg, after the tag is
+builds `DessauChat.app`, on a runner with no librsvg, after the tag is
 pushed. It becomes the same refusal the server's Makefile gives: the committed
 `.icns` is restored, or `make icon` is run by hand.
 
@@ -110,7 +110,7 @@ pushed. It becomes the same refusal the server's Makefile gives: the committed
 
 Three recorded hashes on one pattern: `build/AppIcon.icns.source-sha256`
 (exists, rewritten by the script), `client/icon/AppIcon.icns.source-sha256`
-(new) and `cmd/gropius/icon.png.source-sha256` (new). In `internal/archtest`,
+(new) and `cmd/dessau/icon.png.source-sha256` (new). In `internal/archtest`,
 `TestAppIconMatchesTheCommittedArt` gains the client's and the menu bar's
 pins beside the server's — one table, three rows of source and pin, each
 failing with the same sentence naming `make icon`.
@@ -119,7 +119,7 @@ A second new test, over the sources themselves, holds them to the evidence:
 for `build/icon.svg` and `client/icon/icon.svg` it asserts that every shape
 element of the drawing it was copied from is present with the same fill and
 the same transform, normalised for whitespace and quoting the way the control
-panel's test already normalises; for `cmd/gropius/icon.svg` it asserts the
+panel's test already normalises; for `cmd/dessau/icon.svg` it asserts the
 cube's geometry and that no fill in the file is anything but `#000000`. The
 evidence folder is committed, so the drawings are readable from the test.
 
@@ -127,9 +127,9 @@ evidence folder is committed, so the drawings are readable from the test.
 
 A new architecture test asserts both halves of what makes Alice's menu-bar
 glyph legible in a light bar and a dark one without a second drawing: that
-`cmd/gropius/menubar.go` installs the image through
+`cmd/dessau/menubar.go` installs the image through
 `systray.SetTemplateIcon` at every call site that sets it, and that the
-embedded `cmd/gropius/icon.png` decodes to pixels that are pure black
+embedded `cmd/dessau/icon.png` decodes to pixels that are pure black
 (R=G=B=0) wherever they are not fully transparent, with at least two distinct
 non-zero alpha values — the faces at full alpha and the top face at its lift.
 A single alpha value would mean the lift was lost; a non-zero colour channel
@@ -200,7 +200,7 @@ holder is watched failing before the change and passing after.
 | 1 | The two coloured sources carry the accepted drawings' shapes and fills | The new source-SVG architecture test in `internal/archtest`, beside `icon_test.go`, comparing `build/icon.svg` and `client/icon/icon.svg` with the evidence drawings shape by shape |
 | 2 | `make app` on a clean checkout with no librsvg; the server's pin agrees | `TestAppIconIsCommittedAndBuildable` (unchanged, `make -n app` reaches no `mkicon`) and `TestAppIconMatchesTheCommittedArt`'s server row |
 | 3 | The chat client's bundle carries the committed `.icns` and its recorded hash equals `client/icon/icon.svg` | The new `client/icon/AppIcon.icns.source-sha256` and its row in `TestAppIconMatchesTheCommittedArt`; `client/build.sh`'s fallback replaced by a refusal |
-| 4 | The menu-bar image is a template image and carries no brand colour | The new template-image architecture test: `SetTemplateIcon` at every call site in `cmd/gropius/menubar.go`, and `cmd/gropius/icon.png` decoding to black-plus-alpha with at least two non-zero alpha values |
+| 4 | The menu-bar image is a template image and carries no brand colour | The new template-image architecture test: `SetTemplateIcon` at every call site in `cmd/dessau/menubar.go`, and `cmd/dessau/icon.png` decoding to black-plus-alpha with at least two non-zero alpha values |
 | 5 | Hero mark and wordmark dot carry the three forms in the cube's arrangement, with the three fills and no grey | `TestMarkCarriesTheThreeForms` in `internal/sitetest`, replacing `TestMarkMatchesTheAppIcon`; `TestControlPanelMarkMatchesTheAppIcon` holds the panel's two marks to the same file |
 | 6 | No user-facing line describes a four-form tile, a grey square or a bar-chart chat icon; the README shows the mark under `build/` | `abcd docs lint` with the documentation architecture tests in `internal/archtest`; the README references `build/icon.svg` itself, so there is no second drawing to check |
 | 7 | All three renderings read as their drawings on a real Mac | The named hand check `hand-check: mark at 32 px and 18 pt, light and dark` — the server tile and the chat tile at 32 px in the Dock and in Finder, the menu-bar glyph at 18 pt, in both appearances — dated and recorded beside the drawings in the evidence folder, since no automated test sees what a menu bar renders |

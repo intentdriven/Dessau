@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/Gropius/internal/applog"
-	"github.com/intentdriven/Gropius/internal/config"
-	"github.com/intentdriven/Gropius/internal/mlxtest"
-	"github.com/intentdriven/Gropius/internal/registry"
-	"github.com/intentdriven/Gropius/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/applog"
+	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // levelBuffer collects the gateway's log while the handler goroutine writes it.
@@ -52,7 +52,7 @@ func launchFailureLogAt(t *testing.T, level slog.Level) string {
 	lv.Set(level)
 
 	models := &stubModels{models: []registry.Model{{RepoID: "org/m", State: registry.StateReady}}}
-	leaky := fmt.Errorf("python runtime is not installed (/Users/carol/Library/Application Support/Gropius/venv/bin/python): file does not exist")
+	leaky := fmt.Errorf("python runtime is not installed (/Users/carol/Library/Application Support/Dessau/venv/bin/python): file does not exist")
 	pool := &stubPool{srv: fake, acquireErr: fmt.Errorf("start model server for org/m: %w", &runtime.LaunchError{Err: leaky})}
 	g := New(Options{
 		Config: config.Default(), Pool: pool, Models: models,

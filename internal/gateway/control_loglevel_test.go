@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/intentdriven/Gropius/internal/config"
+	"github.com/intentdriven/Dessau/internal/config"
 )
 
 // The settings body every other client sends. Enough for a valid save and
