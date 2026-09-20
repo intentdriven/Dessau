@@ -190,6 +190,7 @@ type manifest struct {
 	Template  string   `json:"template"`
 	Static    []string `json:"static"`
 	Headers   string   `json:"headers"`
+	Redirects string   `json:"redirects"`
 	OutSubdir string   `json:"out_subdir"`
 	Forge     struct {
 		Base       string `json:"base"`
@@ -463,22 +464,31 @@ func render(root, manifestPath, out, releasePath string) error {
 			return err
 		}
 	}
-	// The response headers the host serves these files with. They belong at the
-	// ROOT of the output tree and not beside the page: the platform reads one
-	// map for the whole assets directory, while the page is served from a path
-	// under it. The written name is fixed here rather than taken from the
-	// manifest, so this is the only file a render puts outside out_subdir and a
-	// manifest cannot name a second one.
-	if m.Headers != "" {
-		from, err := src.path(m.Headers)
+	// The response headers the host serves these files with, and the redirects
+	// it answers a superseded path with. Both belong at the ROOT of the output
+	// tree and not beside the page: the platform reads one map and one list for
+	// the whole assets directory, while the page is served from a path under
+	// it. Each written name is fixed here rather than taken from the manifest,
+	// so these two are the only files a render puts outside out_subdir and a
+	// manifest cannot name a third.
+	for _, root := range []struct {
+		field, from, name string
+	}{
+		{"headers", m.Headers, "_headers"},
+		{"redirects", m.Redirects, "_redirects"},
+	} {
+		if root.from == "" {
+			continue
+		}
+		from, err := src.path(root.from)
 		if err != nil {
-			return fmt.Errorf("headers: %w", err)
+			return fmt.Errorf("%s: %w", root.field, err)
 		}
 		b, err := os.ReadFile(from)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(out, "_headers"), b, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(out, root.name), b, 0o644); err != nil {
 			return err
 		}
 	}

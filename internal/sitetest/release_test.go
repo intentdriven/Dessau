@@ -670,3 +670,61 @@ func TestTheReleaseRegionCarriesNoLiteralFact(t *testing.T) {
 // collapse reduces rendered HTML to one line, so a region can be compared with
 // what it is supposed to be without restating the template's indentation.
 func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// The superseded path is answered, not abandoned. A reader who kept the old
+// address, and every index that recorded it, must arrive at the page rather
+// than at the apex's own 404 — which is what a path with no redirect behind
+// it gives them.
+//
+// Held here rather than only in the deploy: the file is copied by the render,
+// so a render that stops copying it is the failure this catches, and the
+// deploy's own check runs after a release has already published.
+func TestTheRenderWritesTheRedirectsFileAtTheAssetsRoot(t *testing.T) {
+	out := t.TempDir()
+	if _, err := renderTree(".", out); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(out, "_redirects"))
+	if err != nil {
+		t.Fatalf("the render wrote no _redirects at the root of the assets directory: %v", err)
+	}
+
+	// Every rule points at the subdirectory the page is rendered into, derived
+	// from the manifest rather than written twice: moving out_subdir moves the
+	// page, and a redirect left behind sends the reader nowhere.
+	dest := "/" + outSubdir(t) + "/"
+	rules := 0
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			t.Errorf("the redirects file carries a line that is neither a rule nor a comment: %q", line)
+			continue
+		}
+		rules++
+		if !strings.HasPrefix(fields[1], dest) {
+			t.Errorf("the rule %q sends the reader to %q, which is not under %q, where the page is rendered", line, fields[1], dest)
+		}
+		// A superseded path is not coming back, and only a permanent code lets
+		// a browser and an index stop asking for it.
+		if len(fields) > 2 && fields[2] != "301" {
+			t.Errorf("the rule %q answers with %s; the old path is gone for good and says so with a 301", line, fields[2])
+		}
+	}
+	if rules == 0 {
+		t.Errorf("the redirects file carries no rule at all:\n%s", b)
+	}
+
+	// And the render must put it where the host reads it: the root of the
+	// assets directory, not beside the page.
+	var man struct {
+		Redirects string `json:"redirects"`
+	}
+	readJSON(t, filepath.Join(repoRoot, ".abcd", "site.json"), &man)
+	if man.Redirects != "site-src/_redirects" {
+		t.Errorf("the manifest names %q as the redirects file; the committed one is site-src/_redirects", man.Redirects)
+	}
+}

@@ -11,6 +11,7 @@
     "site-src/site.css"
   ],
   "headers": "site-src/headers",
+  "redirects": "site-src/_redirects",
   "out_subdir": "Dessau",
   "forge": {
     "base": "https://github.com",
