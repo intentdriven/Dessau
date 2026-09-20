@@ -1020,7 +1020,8 @@ func TestListModelsPublishesContextLengthUnderBothNames(t *testing.T) {
 	// whole value is telling a model that can hold a conversation from one
 	// that cannot, so an absent key would read as a server that cannot say.
 	want := map[string]bool{"id": true, "object": true, "created": true, "owned_by": true,
-		"context_length": true, "max_model_len": true, "served_context": true, "chat": true, "tool_calling": true}
+		"context_length": true, "max_model_len": true, "served_context": true, "served_context_default": true,
+		"chat": true, "tool_calling": true}
 	for k := range entry {
 		if !want[k] {
 			t.Errorf("unexpected field %q on the models list", k)

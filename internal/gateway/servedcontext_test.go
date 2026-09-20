@@ -15,6 +15,19 @@ import (
 
 const servedModel = "mlx-community/Qwen3-8B-4bit"
 
+// settingOrDeclared stands in for App.ServedWindow in this package's tests:
+// the operator's figure from the settings, or the declared window as the
+// default. The gateway is handed a resolver and reads no setting itself; the
+// app's derivation from the budget is tested where it lives, in internal/app.
+func settingOrDeclared(cfg config.Config) func(registry.Model) (int64, bool) {
+	return func(m registry.Model) (int64, bool) {
+		if set := cfg.Models[m.RepoID].ServedContext; set > 0 {
+			return set, false
+		}
+		return m.ContextLength, true
+	}
+}
+
 // servedGateway is the ordinary test gateway with a declared window on its
 // model, so the served window has a default to fall back to.
 func servedGateway(t *testing.T, cfg config.Config, declared int64) (string, *stubPool) {
@@ -27,7 +40,7 @@ func servedGateway(t *testing.T, cfg config.Config, declared int64) (string, *st
 		ContextLength: declared,
 	}}}
 	pool := &stubPool{srv: fake}
-	g := New(Options{Config: cfg, Pool: pool, Models: models})
+	g := New(Options{Config: cfg, Pool: pool, Models: models, ServedWindow: settingOrDeclared(cfg)})
 	srv := httptest.NewServer(g.Handler())
 	t.Cleanup(srv.Close)
 	return srv.URL, pool
@@ -168,6 +181,9 @@ func TestModelsListCarriesTheServedContext(t *testing.T) {
 	if got, want := out.Data[0]["served_context"], float64(32768); got != want {
 		t.Errorf("served_context = %v, want %v", got, want)
 	}
+	if got := out.Data[0]["served_context_default"]; got != false {
+		t.Errorf("served_context_default = %v, want false for the operator's figure", got)
+	}
 	if got, want := out.Data[0]["context_length"], float64(262144); got != want {
 		t.Errorf("context_length = %v, want the declared window %v", got, want)
 	}
@@ -234,5 +250,123 @@ func TestAFloatMaxTokensCountsAgainstTheWindow(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+// servedFrom is a served-window resolver of the tests' own: the window it is
+// given, marked as the default or not. The gateway does not derive a window —
+// the app does, from figures only it holds together — so what the gateway is
+// held to here is that it publishes and enforces the figure it is handed.
+func servedFrom(window int64, isDefault bool) func(registry.Model) (int64, bool) {
+	return func(registry.Model) (int64, bool) { return window, isDefault }
+}
+
+func resolvedGateway(t *testing.T, declared int64, served func(registry.Model) (int64, bool)) (string, *stubPool) {
+	t.Helper()
+	const modelPath = "/models/" + servedModel
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
+	t.Cleanup(fake.Close)
+	models := &stubModels{models: []registry.Model{{
+		RepoID: servedModel, Path: modelPath, State: registry.StateReady,
+		ContextLength: declared,
+	}}}
+	pool := &stubPool{srv: fake}
+	g := New(Options{Config: config.Default(), Pool: pool, Models: models, ServedWindow: served})
+	srv := httptest.NewServer(g.Handler())
+	t.Cleanup(srv.Close)
+	return srv.URL, pool
+}
+
+func listedModel(t *testing.T, srv string) map[string]any {
+	t.Helper()
+	resp, err := http.Get(srv + "/v1/models")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out.Data) != 1 {
+		t.Fatalf("data = %v, want one model", out.Data)
+	}
+	return out.Data[0]
+}
+
+// The listing publishes the window in force as the app resolves it — the
+// default it derived to fit the budget, or the operator's figure — and says
+// which it is, so a client and the panel can tell a default from a choice.
+func TestModelsListPublishesTheResolvedServedContextAndWhetherItIsTheDefault(t *testing.T) {
+	srv, _ := resolvedGateway(t, 262144, servedFrom(61000, true))
+	entry := listedModel(t, srv)
+	if got, want := entry["served_context"], float64(61000); got != want {
+		t.Errorf("served_context = %v, want the derived %v", got, want)
+	}
+	if got := entry["served_context_default"]; got != true {
+		t.Errorf("served_context_default = %v, want true for a derived window", got)
+	}
+	if got, want := entry["context_length"], float64(262144); got != want {
+		t.Errorf("context_length = %v, want the declared window %v", got, want)
+	}
+
+	srv, _ = resolvedGateway(t, 262144, servedFrom(32768, false))
+	entry = listedModel(t, srv)
+	if got, want := entry["served_context"], float64(32768); got != want {
+		t.Errorf("served_context = %v, want the set %v", got, want)
+	}
+	if got := entry["served_context_default"]; got != false {
+		t.Errorf("served_context_default = %v, want false for a set window", got)
+	}
+
+	// No window at all: neither field, as before.
+	srv, _ = resolvedGateway(t, 0, servedFrom(0, true))
+	entry = listedModel(t, srv)
+	if _, ok := entry["served_context"]; ok {
+		t.Errorf("served_context published for a model with no window: %v", entry)
+	}
+	if _, ok := entry["served_context_default"]; ok {
+		t.Errorf("served_context_default published without served_context: %v", entry)
+	}
+}
+
+// A request larger than the derived window is refused exactly as one larger
+// than a set window is: the same 400, the same message naming the window and
+// the estimate, before anything loads.
+func TestARequestLargerThanTheDerivedWindowIsRefused(t *testing.T) {
+	srv, pool := resolvedGateway(t, 262144, servedFrom(1000, true))
+	body := fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":%q}]}`,
+		servedModel, strings.Repeat("a", 40000))
+	resp, err := http.Post(srv+"/v1/chat/completions", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	var out struct {
+		Error struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.Error.Type != "invalid_request_error" {
+		t.Errorf("error.type = %q, want invalid_request_error", out.Error.Type)
+	}
+	for _, want := range []string{"1,000", "10,0", "served at"} {
+		if !strings.Contains(out.Error.Message, want) {
+			t.Errorf("message %q does not say %q", out.Error.Message, want)
+		}
+	}
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+	if len(pool.acquired) != 0 {
+		t.Errorf("the pool was asked for %v; the refusal comes before any load", pool.acquired)
 	}
 }

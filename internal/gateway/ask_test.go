@@ -31,10 +31,11 @@ func askGateway(t *testing.T, reply string) (*Gateway, *stats.Recorder, *mlxtest
 	cfg.Statistics = true
 	cfg.Models = map[string]config.ModelSettings{testModelID: {ServedContext: 65536}}
 	g := New(Options{
-		Config: cfg,
-		Pool:   &stubPool{srv: fake},
-		Models: models,
-		Stats:  rec,
+		Config:       cfg,
+		Pool:         &stubPool{srv: fake},
+		Models:       models,
+		Stats:        rec,
+		ServedWindow: settingOrDeclared(cfg),
 	})
 	return g, rec, fake
 }

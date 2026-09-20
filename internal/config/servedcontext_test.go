@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-// The window Dessau serves for a model is the operator's figure when they
-// have set one and the model's own declared cap when they have not. One
-// function answers it, because the charge, the gateway's refusal, the models
-// list and the panel must all mean the same window by it.
-func TestServedContextFallsBackToTheDeclaredWindow(t *testing.T) {
+// The setting is the operator's figure when they have made one, capped at the
+// model's own declared window, and nothing when they have not: the served
+// window itself is resolved in internal/app (App.ServedWindow), which derives
+// a default from the budget when this reader answers nothing.
+func TestServedContextSettingIsTheOperatorsFigureOrNothing(t *testing.T) {
 	c := Config{Models: map[string]ModelSettings{
 		"org/set": {ServedContext: 32768},
 		"org/off": {Pinned: true},
@@ -21,17 +21,18 @@ func TestServedContextFallsBackToTheDeclaredWindow(t *testing.T) {
 		want     int64
 	}{
 		{"a figure of the operator's own", "org/set", 262144, 32768},
-		{"a model with other settings and no window", "org/off", 262144, 262144},
-		{"a model with no settings at all", "org/none", 262144, 262144},
+		{"a model with other settings and no window", "org/off", 262144, 0},
+		{"a model with no settings at all", "org/none", 262144, 0},
 		{"the id as the model list spells it", "ORG/SET", 262144, 32768},
 		{"no declared cap either", "org/none", 0, 0},
+		{"a figure with no declared cap to hold it to", "org/set", 0, 32768},
 		// A setting larger than the model can address is the operator asking
 		// for a window the model does not have; the model's own cap wins.
 		{"a figure above the declared cap", "org/set", 8192, 8192},
 	}
 	for _, tc := range cases {
-		if got := c.ServedContext(tc.repoID, tc.declared); got != tc.want {
-			t.Errorf("%s: ServedContext(%q, %d) = %d, want %d", tc.name, tc.repoID, tc.declared, got, tc.want)
+		if got := c.ServedContextSetting(tc.repoID, tc.declared); got != tc.want {
+			t.Errorf("%s: ServedContextSetting(%q, %d) = %d, want %d", tc.name, tc.repoID, tc.declared, got, tc.want)
 		}
 	}
 }
@@ -90,13 +91,13 @@ func TestServedContextWithTwoCaseVariantKeysIsDeterministic(t *testing.T) {
 	}}
 	// Asked a hundred times, because one map iteration proves nothing.
 	for i := 0; i < 100; i++ {
-		if got := c.ServedContext("ORG/MODEL", 262144); got != 65536 {
-			t.Fatalf("ServedContext = %d on iteration %d, want the largest of the variants (65536)", got, i)
+		if got := c.ServedContextSetting("ORG/MODEL", 262144); got != 65536 {
+			t.Fatalf("ServedContextSetting = %d on iteration %d, want the largest of the variants (65536)", got, i)
 		}
 	}
 	// An exact key is the operator's own spelling and wins outright, whatever
 	// the variants say.
-	if got := c.ServedContext("org/Model", 262144); got != 8192 {
-		t.Errorf("ServedContext = %d for the exact key, want its own figure 8192", got)
+	if got := c.ServedContextSetting("org/Model", 262144); got != 8192 {
+		t.Errorf("ServedContextSetting = %d for the exact key, want its own figure 8192", got)
 	}
 }

@@ -70,7 +70,7 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 	obs.resolved(model)
 	obs.streaming(true)
 
-	msg, verdict := g.judgeServedContext(cfg, model, len(req.Body), payload)
+	msg, verdict := g.judgeServedContext(model, len(req.Body), payload)
 	if obs.recording() {
 		obs.judged(verdict.declared, verdict.served, verdict.estimate, verdict.judged)
 		obs.overrides(overriddenSampling(payload))

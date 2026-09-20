@@ -750,13 +750,20 @@ func (a *App) MemoryBudgetWarning() string {
 }
 
 // tooSmallWarning is the bottom end of that range: a budget that cannot hold
-// the smallest model on this Mac.
+// the smallest model on this Mac even at the floor under the default served
+// window.
 //
 // A warning rather than a floor — refusing the save is the wedge this setting
 // has been through twice — and a Mac with no models on it yet has no figure to
 // judge against, so it says nothing.
+//
+// It names the served window and the batched requests the model was charged
+// at, because those are the knobs: a model that fits nowhere at the default
+// window is charged its cache at the floor, and on the Mac from
+// iss-2609202048576967 the figure exceeded the machine, so "raise the budget"
+// was advice nobody could take.
 func (a *App) tooSmallWarning() string {
-	smallest, id := a.smallestChargeableModel()
+	smallest, m := a.smallestChargeableModel()
 	if smallest <= 0 {
 		return ""
 	}
@@ -764,18 +771,19 @@ func (a *App) tooSmallWarning() string {
 	if budget >= smallest {
 		return ""
 	}
+	window, _ := a.ServedWindow(m)
 	return fmt.Sprintf(
-		"The memory budget (%s) is smaller than the smallest model on this Mac (%s needs about %s), so every request is refused until it is raised.",
-		runtime.HumanBytes(budget), id, runtime.HumanBytes(smallest))
+		"The memory budget (%s) cannot hold the smallest model on this Mac: %s needs about %s at a served context of %d tokens and %d batched requests, so every request is refused. Lower its served context or the batched requests, choose a smaller quantization, or raise the budget.",
+		runtime.HumanBytes(budget), m.RepoID, runtime.HumanBytes(smallest), window, a.Pool.DecodeConcurrency())
 }
 
 // smallestChargeableModel is the least a model on this Mac would cost the
 // budget, and which model that is. It walks the registry the way pinnedCharge
 // does, charges what the pool charges, and counts only a model the pool could
 // actually load.
-func (a *App) smallestChargeableModel() (int64, string) {
+func (a *App) smallestChargeableModel() (int64, registry.Model) {
 	var smallest int64
-	var id string
+	var which registry.Model
 	for _, m := range a.Registry.List() {
 		if !chargeable(m) {
 			continue
@@ -785,10 +793,10 @@ func (a *App) smallestChargeableModel() (int64, string) {
 			continue
 		}
 		if cost := a.chargeOf(m, size); smallest == 0 || cost < smallest {
-			smallest, id = cost, m.RepoID
+			smallest, which = cost, m
 		}
 	}
-	return smallest, id
+	return smallest, which
 }
 
 // checkPinnedFit refuses a save that pins more than can be in memory at once.
@@ -837,7 +845,7 @@ func (a *App) lowersUnderAFittingSet(incoming []string, budget, currentBudget in
 // A model it cannot measure is reported before the sum, because a sum with a
 // model missing from it is not a figure to act on.
 func (a *App) pinnedFitProblem(pinned []string, budget int64) error {
-	sum, unsized := a.pinnedCharge(pinned)
+	sum, unsized := a.pinnedCharge(pinned, budget)
 	if len(unsized) > 0 {
 		return fmt.Errorf(
 			"cannot measure %s against the memory budget — this Mac does not record how large it is",
@@ -1077,7 +1085,9 @@ func (a *App) adoptModelSpelling() {
 }
 
 // pinnedCharge is what a pinned set costs the memory budget, and the names of
-// any pinned models this Mac cannot measure.
+// any pinned models this Mac cannot measure. The budget is a parameter because
+// a default served window is derived from it (ServedWindow), and a save is
+// judged on the budget it asks for rather than the one in force.
 //
 // Only a model the pool could actually load is charged: one that is ready, and
 // one that is still downloading, which is charged the size it declares —
@@ -1087,7 +1097,7 @@ func (a *App) adoptModelSpelling() {
 // ready, so it can never occupy a byte however large it declared itself. A pin
 // naming a model this Mac does not have at all is not counted either; it
 // protects nothing until something loads it.
-func (a *App) pinnedCharge(pinned []string) (sum int64, unsized []string) {
+func (a *App) pinnedCharge(pinned []string, budget int64) (sum int64, unsized []string) {
 	for _, id := range pinned {
 		m, err := a.Registry.Get(id)
 		if err != nil || !chargeable(m) {
@@ -1098,7 +1108,7 @@ func (a *App) pinnedCharge(pinned []string) (sum int64, unsized []string) {
 			unsized = append(unsized, m.RepoID)
 			continue
 		}
-		sum += a.chargeOf(m, size)
+		sum += a.chargeAt(m, size, budget)
 	}
 	return sum, unsized
 }
@@ -1111,12 +1121,93 @@ func (a *App) pinnedCharge(pinned []string) (sum int64, unsized []string) {
 // The size is a parameter because a model still downloading is charged the
 // size it declares rather than the bytes so far.
 func (a *App) chargeOf(m registry.Model, size int64) int64 {
+	return a.chargeAt(m, size, a.memoryBudget())
+}
+
+// chargeAt is chargeOf against a budget of the caller's: the one a save is
+// asking for, which the default served window is derived from.
+func (a *App) chargeAt(m registry.Model, size int64, budget int64) int64 {
+	window, _ := a.servedWindowAt(m, budget)
 	return capability.LoadCostOf(capability.Load{
 		DiskBytes:        size,
 		KVChargePerToken: m.KVChargePerToken,
-		Window:           a.Config().ServedContext(m.RepoID, m.ContextLength),
+		Window:           window,
 		Sequences:        int64(a.Pool.DecodeConcurrency()),
 	})
+}
+
+// MinServedWindow is the floor under a derived served window, in tokens. A
+// window narrower than this is not a model anyone can use, so the derivation
+// stops here and a model that does not fit at the floor is refused by the
+// pool — whose refusal names the window, the concurrency and what would fit —
+// rather than served at a window that could hold nothing. An explicit setting
+// is not floored: the operator may type any figure the model can address.
+const MinServedWindow = 4096
+
+// ServedWindow is the window a model is served at on this Mac, and whether
+// that is the default rather than a figure of the operator's.
+//
+// The one home of that question. The memory budget charges this window, the
+// pool is handed it, the gateway refuses a request larger than it, the models
+// list publishes it and the panel shows it; a second answer anywhere is how
+// those come to mean different windows by one number, which an architecture
+// test holds against.
+//
+// The operator's setting is honoured as they typed it, capped at the window
+// the model declares. Without one the default is derived: the largest window
+// whose cache fits the memory budget beside the model's weights, at the decode
+// concurrency in force — (budget − weights and headroom) / (charge per token ×
+// sequences) — capped at the declared window and floored at MinServedWindow.
+// The default was the declared window, and for every current long-context
+// model that is a figure no Mac holds at the default concurrency: a fresh
+// install refused every model it had downloaded (iss-2609202048576967). A
+// model whose configuration yields no cache charge, or declares no window,
+// keeps the declared window, and is charged its weights alone.
+//
+// Derived rather than stored, so it follows the budget and the concurrency as
+// they change and is never written into config.json. Nothing is charged less
+// than it costs: the charge still uses the served window; the window is what
+// moved.
+func (a *App) ServedWindow(m registry.Model) (window int64, isDefault bool) {
+	return a.servedWindowAt(m, a.memoryBudget())
+}
+
+// servedWindowAt is ServedWindow against a budget of the caller's.
+func (a *App) servedWindowAt(m registry.Model, budget int64) (window int64, isDefault bool) {
+	if set := a.Config().ServedContextSetting(m.RepoID, m.ContextLength); set > 0 {
+		return set, false
+	}
+	declared := m.ContextLength
+	if declared <= 0 || m.KVChargePerToken <= 0 {
+		return declared, true
+	}
+	floor := min(int64(MinServedWindow), declared)
+	perToken := capability.MulSaturating(m.KVChargePerToken, int64(a.Pool.DecodeConcurrency()))
+	room := budget - capability.LoadCost(chargedSize(m))
+	if perToken <= 0 || room <= 0 {
+		return floor, true
+	}
+	window = room / perToken
+	if window > declared {
+		return declared, true
+	}
+	if window < floor {
+		return floor, true
+	}
+	return window, true
+}
+
+// memoryBudget is the budget in force, worked out from the stored settings
+// and this Mac's memory the way the pool was handed it — at New and at every
+// save — rather than read back from the pool.
+//
+// Not the pool's figure, because the pool asks this App to resolve a model
+// under its own lock (modelSource.Resolve, under p.mu), and a served window is
+// derived on that path from the budget; Pool.MemoryBudget takes the same lock.
+// The two are one figure by construction: the app is the pool's only writer
+// and hands it exactly this, which a test in this package holds.
+func (a *App) memoryBudget() int64 {
+	return a.enforcedBudget(a.Config().MaxResidentBytes)
 }
 
 // chargeable reports whether a model could occupy memory at all. Anything the
@@ -1279,13 +1370,15 @@ func (s modelSource) Resolve(repoID string) (runtime.ResolvedModel, error) {
 	if !m.Ready() {
 		return runtime.ResolvedModel{}, fmt.Errorf("%s is not ready (%s)", repoID, m.State)
 	}
-	// The window is the one the operator has this model served at, which is
-	// the model's own declared cap unless they have lowered it: the pool
-	// charges what the gateway will let a client fill.
+	// The window is the one this model is served at — the operator's, or the
+	// default derived to fit the budget — so the pool charges what the gateway
+	// will let a client fill. Resolved under the pool's own lock, which is why
+	// ServedWindow reads the budget from the settings rather than the pool.
+	window, _ := s.app.ServedWindow(m)
 	return runtime.ResolvedModel{
 		Path:             m.Path,
 		Bytes:            m.Bytes,
-		ServedContext:    s.app.Config().ServedContext(m.RepoID, m.ContextLength),
+		ServedContext:    window,
 		KVChargePerToken: m.KVChargePerToken,
 	}, nil
 }
