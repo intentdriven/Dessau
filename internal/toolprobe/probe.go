@@ -71,6 +71,9 @@ const (
 	// DefaultPoll is how often a queued probe asks whether the request that
 	// loaded the model has been served.
 	DefaultPoll = 250 * time.Millisecond
+	// DefaultMaxQuietWait bounds how long the head of the queue waits for
+	// its model to fall quiet before the next model gets its turn.
+	DefaultMaxQuietWait = 5 * time.Minute
 )
 
 // Upstream is a ready model server: where it answers, and the exact string
@@ -115,6 +118,12 @@ type Options struct {
 	RequestTimeout time.Duration
 	// Poll is how often a queued probe looks again; zero means the default.
 	Poll time.Duration
+	// MaxQuietWait bounds the wait for the model at the head of the queue
+	// to fall quiet. A model under continuous traffic would otherwise park
+	// the queue and leave every model behind it unknown; when the bound
+	// elapses it goes to the back and is tried again in its turn. Zero
+	// means the default.
+	MaxQuietWait time.Duration
 }
 
 // ErrGone is returned by Run for a model that is not loaded: the probe
@@ -154,6 +163,9 @@ func New(opts Options) *Probe {
 	}
 	if opts.Poll <= 0 {
 		opts.Poll = DefaultPoll
+	}
+	if opts.MaxQuietWait <= 0 {
+		opts.MaxQuietWait = DefaultMaxQuietWait
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Probe{opts: opts, ctx: ctx, cancel: cancel}
@@ -214,28 +226,39 @@ func (p *Probe) drain() {
 		}
 		model := p.queue[0]
 		p.mu.Unlock()
-		p.serve(model)
-		p.dequeue(model)
+		if p.serve(model) {
+			p.dequeue(model)
+		} else {
+			p.requeue(model)
+		}
 	}
 }
 
 // serve waits for the request that loaded the model to be served, then runs
-// one probe. A model that has gone meanwhile is dropped: it is queued again
-// the next time it is served.
-func (p *Probe) serve(model string) {
+// one probe, and reports whether the model is finished with. A model that
+// has gone meanwhile is dropped: it is queued again the next time it is
+// served. A model that does not fall quiet within MaxQuietWait is not
+// finished with: it goes to the back of the queue so the models behind it
+// get their turn, and is tried again in its own.
+func (p *Probe) serve(model string) (finished bool) {
+	deadline := time.Now().Add(p.opts.MaxQuietWait)
 	for {
 		loaded, inFlight := p.opts.Sources.Resident(model)
 		if !loaded {
 			p.opts.Log.Debug("tool-call probe dropped: the model is no longer loaded; it is queued again at its next serve", "model", model)
-			return
+			return true
 		}
 		if inFlight == 0 {
 			break
 		}
+		if time.Now().After(deadline) {
+			p.opts.Log.Debug("tool-call probe deferred: the model has not fallen quiet; the next model is tried first", "model", model)
+			return false
+		}
 		select {
 		case <-time.After(p.opts.Poll):
 		case <-p.ctx.Done():
-			return
+			return true
 		}
 	}
 	_, err := p.Run(p.ctx, model)
@@ -249,6 +272,20 @@ func (p *Probe) serve(model string) {
 		// asked again the next time it is served.
 		p.opts.Log.Info("tool-call probe recorded nothing; the model is asked again at its next serve", "model", model)
 		p.opts.Log.Debug("tool-call probe failed", "model", model, "err", err)
+	}
+	return true
+}
+
+// requeue moves the model from the head of the queue to its back.
+func (p *Probe) requeue(model string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	key := config.FoldRepoID(model)
+	for i, q := range p.queue {
+		if config.FoldRepoID(q) == key {
+			p.queue = append(append(p.queue[:i:i], p.queue[i+1:]...), q)
+			return
+		}
 	}
 }
 

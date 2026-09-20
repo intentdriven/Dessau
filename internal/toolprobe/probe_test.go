@@ -25,6 +25,8 @@ type fakeSources struct {
 	mu       sync.Mutex
 	loaded   bool
 	inFlight int
+	// busy names models that never fall quiet, whatever inFlight says.
+	busy     map[string]bool
 	held     int
 	acquired int
 	saved    map[string]*registry.ToolCalling
@@ -38,9 +40,12 @@ func newSources(srv *mlxtest.Server) *fakeSources {
 	return &fakeSources{srv: srv, runtime: "0.31.3", loaded: true, saved: map[string]*registry.ToolCalling{}}
 }
 
-func (s *fakeSources) Resident(string) (bool, int) {
+func (s *fakeSources) Resident(repoID string) (bool, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.busy[repoID] {
+		return s.loaded, 1
+	}
 	return s.loaded, s.inFlight
 }
 
@@ -386,5 +391,33 @@ func TestThePoolTakingTheHoldBackAbortsTheRequest(t *testing.T) {
 	}
 	if _, held := src.counts(); held != 0 {
 		t.Error("the model is still held after the pool asked for it back")
+	}
+}
+
+// A model at the head of the queue that never falls quiet does not park the
+// queue: after the bounded wait it goes to the back, the next model is
+// probed, and it is tried again in its turn.
+func TestAModelThatNeverFallsQuietDoesNotStarveTheQueue(t *testing.T) {
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: "/models/org/m", ToolCall: true})
+	t.Cleanup(srv.Close)
+	src := newSources(srv)
+	src.busy = map[string]bool{"org/busy": true}
+	p := New(Options{
+		Sources: src, Log: slog.New(slog.DiscardHandler),
+		Poll: 5 * time.Millisecond, MaxQuietWait: 50 * time.Millisecond,
+	})
+	t.Cleanup(p.Close)
+	p.Enqueue("org/busy")
+	p.Enqueue("org/m")
+	waitFor(t, "the model behind the busy one to be probed", func() bool { return src.verdict("org/m") != nil })
+	if src.verdict("org/busy") != nil {
+		t.Error("a model that never fell quiet was probed while busy")
+	}
+	waitFor(t, "the busy model to be back at the head", func() bool {
+		q := p.Queued()
+		return len(q) == 1 && q[0] == "org/busy"
+	})
+	if acquired, _ := src.counts(); acquired != 1 {
+		t.Errorf("acquired %d times, want once: the busy model was never held", acquired)
 	}
 }
