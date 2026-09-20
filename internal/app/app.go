@@ -1568,7 +1568,7 @@ func (a *App) Download(repoID string) error {
 			// whether it transcribes speech or holds a conversation — so it is
 			// read from the Hub, once, at the only moment we are certain to be
 			// talking to it about this repo.
-			pipelineTag, tags := a.repoCategory(ctx, repoID)
+			pipelineTag, tags, _ := a.repoCategory(ctx, repoID)
 			var perr error
 			a.finishDownload(dl, func() {
 				perr = a.Registry.Put(registry.Model{
@@ -1577,6 +1577,7 @@ func (a *App) Download(repoID string) error {
 					Bytes:            bytes,
 					ContextLength:    facts.ContextLength,
 					KVChargePerToken: facts.KVChargePerToken,
+					ChatTemplate:     facts.ChatTemplate,
 					PipelineTag:      pipelineTag,
 					Tags:             tags,
 					State:            registry.StateReady,
@@ -1652,27 +1653,29 @@ func (a *App) Download(repoID string) error {
 const repoCategoryTimeout = 15 * time.Second
 
 // repoCategory reads what HuggingFace says a model is: its pipeline tag and its
-// tags, as the Hub spells them.
+// tags, as the Hub spells them, and whether the Hub answered at all.
 //
 // Best-effort by design. A failure — the Hub unreachable, the repo gated to a
 // token that lists files but not metadata, a body that will not decode —
 // records no category, which is exactly the state of a repo the Hub does not
 // tag: the model is ready, it is served, and a client is told nothing about its
 // kind rather than told something wrong. It is never an error a download fails
-// on, because the download has already succeeded by the time it is asked.
+// on, because the download has already succeeded by the time it is asked. The
+// third result tells the two apart for CompleteCategories, which asks again
+// at the next start after a failure and not after an answer with no words.
 //
 // Called before the registry write and outside dlMu, like the two readings
 // beside it: dlMu is on the model-load path, and a network request under it
 // would let a slow Hub decide how long every other model's load waits.
-func (a *App) repoCategory(ctx context.Context, repoID string) (string, []string) {
+func (a *App) repoCategory(ctx context.Context, repoID string) (pipelineTag string, tags []string, answered bool) {
 	ctx, cancel := context.WithTimeout(ctx, repoCategoryTimeout)
 	defer cancel()
 	info, err := a.Hub.RepoInfo(ctx, repoID)
 	if err != nil {
 		a.Log.Info("the hub did not say what kind of model this is", "model", repoID, "err", err)
-		return "", nil
+		return "", nil, false
 	}
-	return info.PipelineTag, info.Tags
+	return info.PipelineTag, info.Tags, true
 }
 
 // canRestoreReady answers the disk half of the question restoreReady acts on:
@@ -1709,6 +1712,8 @@ func (a *App) restoreReady(repoID, dest string, prior registry.Model) bool {
 		KVChargePerToken: prior.KVChargePerToken,
 		PipelineTag:      prior.PipelineTag,
 		Tags:             prior.Tags,
+		HubSilent:        prior.HubSilent,
+		ChatTemplate:     prior.ChatTemplate,
 		State:            registry.StateReady,
 		Progress:         100,
 		AddedAt:          prior.AddedAt,
