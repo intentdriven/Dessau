@@ -562,3 +562,29 @@ for chats; selectable are the macOS system backgrounds.
 Verdict proposed: FILE-AS-IS, one intent with four open questions. Verdict
 adopted: filed at the maintainer's ask. Grade: pending the maintainer's
 confirmation of the reading of "system backgrounds".
+
+## 2026-09-20 — a fully redesigned server UX
+
+Proposal (the maintainer): a fully redesigned server UX using SOTA
+principles, modularity, and SOTA design principles, also in terms of a modern
+look and feel across device screens.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| A modern look and feel across window sizes: tokens, adaptive layout, focus and touch, the tabs contract | capability | itd-2609201315575657, `builds_on` itd-2609100519003748 and the mark |
+| "Fully redesigned" information architecture by task | already an intent | itd-2609100519003748, planned the same morning (inventory, re-home, accessibility bars) |
+| Modularity of the panel's script | plumbing | the new intent's approach: native ES modules, no build step |
+| SOTA principles as the basis | evidence | `2026-09-20-control-panel-ui-stack-sota.md`, run before planning |
+| The menu-bar menu and the terminal verbs' output share the panel's vocabulary | capability, widened at the interview | the same intent (the maintainer chose all three surfaces) |
+| Reachable from an iPad or a phone | declined | loopback-only stands (adr-2609091123526871) |
+
+Typed links: `refines` itd-2609100519003748 and itd-2609200823520756; a
+possible `reverses` of the morning's no-build decision was flagged and, after
+the research pass, NOT taken — the decision was extended with a written
+trigger for a vendored renderer.
+
+Verdict proposed: SPLIT. Verdict adopted: SPLIT, with one widening (three
+surfaces rather than the panel alone) and one refusal (device reach). Grade:
+routing survived; the maintainer's clarifying questions ("what is a
+framework, why did we decide against it") were answered before the stack
+question was put, and the research pass changed nothing in the routing.
