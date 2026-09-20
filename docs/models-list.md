@@ -25,6 +25,7 @@ curl http://localhost:11535/v1/models
       "pipeline_tag": "text-generation",
       "tags": ["mlx", "conversational"],
       "chat": true,
+      "tool_calling": "yes",
       "context_length": 40960,
       "max_model_len": 40960,
       "served_context": 40960
@@ -44,6 +45,7 @@ curl http://localhost:11535/v1/models
 | `pipeline_tag` | What HuggingFace says the model does — `text-generation`, `automatic-speech-recognition`, and so on. Absent when the Hub has no tag for that repository. See below. |
 | `tags` | The repository's HuggingFace tags, as they are written there. Absent when the Hub has none. See below. |
 | `chat` | Whether the model counts as able to hold a conversation, under the rule this server runs. Always present. See below. |
+| `tool_calling` | Whether the model answers with a tool call when one is declared, as Dessau found by asking it once on this Mac: `yes`, `no`, or `unknown` while it has not been asked under the runtime in force. Always present. See below. |
 | `context_length` | The model's maximum context, in tokens. See below. |
 | `max_model_len` | The same figure again, under the name vLLM-derived clients read. |
 | `served_context` | The window this Mac will actually serve the model at, in tokens. A request estimated to be larger is refused. See below. |
@@ -108,6 +110,27 @@ that half, so a rule with both lists empty marks every model as able to chat; no
 **The flag is this server's answer, not the last word.** A client is free to
 read `pipeline_tag` and `tags` and apply its own rule — which is what Dessau
 Chat does, with the same rule as its own default, changeable in its Settings.
+
+## Tool calling
+
+`tool_calling` says whether the model makes tool calls on this Mac's runtime,
+and it is the server's own finding rather than a claim from the model's card.
+The first time a model is served, once the request that loaded it has been
+answered, Dessau asks it one fixed question with one small tool declared — a
+function `get_time` taking a city — and records what came back: a tool call
+is `yes`, and text or an empty answer is `no`. The question is Dessau's own
+and carries nobody's text; the request goes to the model's own server, not
+through the OpenAI endpoint, so it appears in no request statistic and no
+request log line. The answer is kept once per model per runtime version and
+asked again only when the model is downloaded again or Dessau's runtime
+changes; until then the field reads `unknown`, which means not asked, never
+no. A client that wants tools reads it before it asks, instead of finding
+out for itself once per model; the [model card](context-probe.md) shows the
+same answer.
+
+**It refuses nothing.** A request carrying `tools` for a model marked `no` is
+relayed to the model exactly as sent and answered as the model answers it;
+nothing on the completions path reads the field.
 
 ## The context figure
 

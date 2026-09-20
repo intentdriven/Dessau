@@ -11,6 +11,23 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **Dessau Server knows which models call tools, and tells every client.**
+  `impact: additive`. The models list carries `tool_calling` on every ready
+  entry — `yes`, `no`, or `unknown` while the model has not been asked — and
+  the model's card in the control panel shows the same answer as "Tool calls:
+  yes / no / not measured", beside the measured context. The answer is the
+  server's own: the first time a model is served, once the request that loaded
+  it has been answered, the server asks the model one fixed question with one
+  small tool declared and records whether it answered with a tool call. It
+  asks once per model per runtime version, against the model's own server
+  rather than through the OpenAI endpoint, so the question appears in no
+  request statistic and no request log line, and it asks again only when the
+  model is downloaded again or the runtime changes. The field refuses nothing:
+  a request carrying tools for a model marked `no` is relayed exactly as sent.
+  No setting is added and `config.json` is unchanged.
+
 ## [0.8.0] - 2026-09-20
 
 ### Changed
