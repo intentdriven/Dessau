@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"regexp"
 	"testing"
 )
@@ -50,25 +51,33 @@ func TestTheRollUpNamesTheExitingPart(t *testing.T) {
 	}
 }
 
-// The card shows both windows when the served one is below the declared,
-// the served one resolved the fold-aware way, and no window at all — never
-// zero — for a model that declares none.
-func TestTheCardShowsBothWindowsFoldAwareAndNeverZero(t *testing.T) {
-	label := func(model, config string) string {
-		v := evalPanelValue(t, "({text: contextLabel("+model+", "+config+")})", "tokensLabel", "foldRepoID", "servedContext", "contextLabel")
+// The card shows both windows when the served one is below the declared —
+// the served one as the server published it on the model, since only the
+// server can derive the default — says when that window is the default and
+// what it fits, and shows no window at all, never zero, for a model that
+// declares none.
+func TestTheCardShowsBothWindowsAndSaysWhenTheServedOneIsTheDefault(t *testing.T) {
+	label := func(model string, sequences int) string {
+		v := evalPanelValue(t, fmt.Sprintf("({text: contextLabel(%s, %d)})", model, sequences), "tokensLabel", "servedContext", "servedDefaultNote", "contextLabel")
 		s, _ := v["text"].(string)
 		return s
 	}
-	if got := label(`{"repo_id":"org/m","context_length":131072}`, `{"models":{"Org/M":{"served_context":65536}}}`); got != "context 128K declared · 64K served" {
+	if got := label(`{"repo_id":"org/m","context_length":131072,"served_context":65536}`, 4); got != "context 128K declared · 64K served" {
 		t.Errorf("both windows: %q", got)
 	}
-	if got := label(`{"repo_id":"org/m","context_length":131072}`, `{}`); got != "max context 128K" {
+	if got := label(`{"repo_id":"org/m","context_length":131072,"served_context":61000,"served_context_default":true}`, 4); got != "context 128K declared · 59K served (default: fits the budget at 4 batched requests)" {
+		t.Errorf("derived window: %q", got)
+	}
+	if got := label(`{"repo_id":"org/m","context_length":131072,"served_context":131072,"served_context_default":true}`, 4); got != "max context 128K" {
+		t.Errorf("declared window as the default: %q", got)
+	}
+	if got := label(`{"repo_id":"org/m","context_length":131072}`, 4); got != "max context 128K" {
 		t.Errorf("declared only: %q", got)
 	}
-	if got := label(`{"repo_id":"org/m","context_length":0}`, `{"models":{"org/m":{"served_context":65536}}}`); got != "" {
+	if got := label(`{"repo_id":"org/m","context_length":0,"served_context":65536}`, 4); got != "" {
 		t.Errorf("no declared window: %q, want nothing", got)
 	}
-	if got := label(`{"repo_id":"org/m"}`, `{}`); got != "" {
+	if got := label(`{"repo_id":"org/m"}`, 4); got != "" {
 		t.Errorf("no context at all: %q, want nothing", got)
 	}
 }

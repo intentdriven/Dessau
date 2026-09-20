@@ -299,9 +299,26 @@ func isLoopbackOrigin(origin string) bool {
 	return isLoopbackHost(u.Host)
 }
 
+// ModelView is one model as the panel sees it: the registry's record, and
+// the served window in force for it. The window is resolved by the app
+// (App.ServedWindow) — the operator's figure, or the default derived to fit
+// the memory budget — and published here rather than worked out by the panel,
+// which holds neither the budget arithmetic nor the concurrency the pool is
+// running with. It is the same pair the models list publishes.
+type ModelView struct {
+	registry.Model
+	// ServedContext is the window in force, in tokens; absent for a model
+	// that declares none.
+	ServedContext int64 `json:"served_context,omitempty"`
+	// ServedContextDefault says ServedContext is the derived default rather
+	// than a figure the operator set, so the card and the Settings field can
+	// say so.
+	ServedContextDefault bool `json:"served_context_default,omitempty"`
+}
+
 // State is the whole picture the UI renders.
 type State struct {
-	Models   []registry.Model    `json:"models"`
+	Models   []ModelView         `json:"models"`
 	Resident []runtime.Resident  `json:"resident"`
 	Setup    runtime.SetupStatus `json:"setup"`
 	Config   config.Config       `json:"config"`
@@ -477,6 +494,18 @@ type Defaults struct {
 
 // snapshot builds the state the UI renders.
 //
+// modelViews is the registry's list with the served window in force on each
+// entry.
+func (c *Control) modelViews() []ModelView {
+	models := c.App.Registry.List()
+	out := make([]ModelView, 0, len(models))
+	for _, m := range models {
+		window, isDefault := c.App.ServedWindow(m)
+		out = append(out, ModelView{Model: m, ServedContext: window, ServedContextDefault: isDefault && window > 0})
+	}
+	return out
+}
+
 // Both /api/state and the /api/events stream go through here. They used to build
 // the struct separately, and the streaming one quietly omitted Warnings — so the
 // "anyone on your network can use this server" notice never reached the UI, which
@@ -485,7 +514,7 @@ func (c *Control) snapshot() State {
 	cfg := c.App.Config()
 	residency := c.App.Pool.Residency()
 	st := State{
-		Models:   c.App.Registry.List(),
+		Models:   c.modelViews(),
 		Resident: residency.Models,
 		Setup:    c.App.Provisioner.Status(),
 		Config:   redactConfig(cfg),

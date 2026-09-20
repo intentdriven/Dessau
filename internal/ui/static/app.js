@@ -51,17 +51,34 @@ function tokensLabel(n) {
 }
 
 // contextLabel is the card's word on the model's windows: the declared one,
-// and the served one when the operator has set it below. A model that
-// declares none gets no label, never a zero. The served window is resolved
-// the fold-aware way every other reader resolves it.
-function contextLabel(m, config) {
+// and the served one when it is below — the operator's figure, or the default
+// the server derived to fit the budget at the batched requests in force, in
+// which case the label says so. A model that declares none gets no label,
+// never a zero.
+function contextLabel(m, sequences) {
   const n = m.context_length;
   if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '';
-  const served = servedContext(config, m.repo_id, n);
+  const served = servedContext(m);
   if (served > 0 && served < n) {
-    return `context ${tokensLabel(n)} declared · ${tokensLabel(served)} served`;
+    const why = m.served_context_default ? ` (${servedDefaultNote(sequences)})` : '';
+    return `context ${tokensLabel(n)} declared · ${tokensLabel(served)} served${why}`;
   }
   return `max context ${tokensLabel(n)}`;
+}
+
+// servedDefaultNote says what a derived served window is: the largest that
+// fits the memory budget at the batched requests the pool is running with.
+function servedDefaultNote(sequences) {
+  return `default: fits the budget at ${sequences || 0} batched requests`;
+}
+
+// sequencesInForce is the decode concurrency the pool is running with, from
+// the machine block: the saved value on state.config does not reach the pool
+// until a restart, and a charge worked out from it would be one the pool does
+// not agree with for as long as a save is waiting for one
+// (iss-2609190021445846).
+function sequencesInForce() {
+  return (state.machine && state.machine.decode_concurrency) || 0;
 }
 
 // modelInfoLine is the whole info line of a model's card: what it says
@@ -69,13 +86,13 @@ function contextLabel(m, config) {
 // function of the model, so the panel's one piece of real logic can be
 // tested without a DOM (see panel_test.go); renderModels does nothing with
 // it but place the string it returns.
-function modelInfoLine(m, config) {
+function modelInfoLine(m, sequences) {
   if (m.state === 'downloading') {
     const of = m.size_bytes ? ` of ${bytes(m.size_bytes)}` : '';
     return `downloading… ${m.progress.toFixed(0)}%${of}`;
   }
   if (m.state === 'failed') return escapeHtml(m.err || 'failed');
-  const ctx = contextLabel(m, config);
+  const ctx = contextLabel(m, sequences);
   return ctx ? `${bytes(m.bytes)} · ${ctx}` : bytes(m.bytes);
 }
 
@@ -366,7 +383,7 @@ function renderModels() {
     const pinText = pinLabel(m, pinned, loaded);
     if (pinText) pill += `<span class="pill pinned">${pinText}</span>`;
 
-    const info = modelInfoLine(m, state.config);
+    const info = modelInfoLine(m, sequencesInForce());
     const measured = measurementText(m, state.idle_jobs, state.probe_queue);
     const tools = m.state === 'ready' ? toolCallText(m) : '';
 
@@ -1309,18 +1326,15 @@ function checkedPinModels() {
 }
 
 // servedContext is the window Dessau serves a model at, which is what it is
-// charged for and what the gateway holds a request to: the operator's figure
-// for that model, or the window the model itself declares when they have set
-// none or set one the model cannot address. It is config.Config.ServedContext
-// written out again here, and a test in internal/ui holds the two together.
-function servedContext(config, repoID, declared) {
-  const models = (config || {}).models || {};
-  let set = 0;
-  Object.keys(models).forEach((id) => {
-    if (foldRepoID(id) === foldRepoID(repoID)) set = models[id].served_context || 0;
-  });
-  if (set <= 0 || (declared > 0 && set > declared)) return declared || 0;
-  return set;
+// charged for and what the gateway holds a request to, as the server
+// published it on the model: the operator's figure, or the default the server
+// derived to fit the memory budget (App.ServedWindow). The panel does not work
+// it out for itself — the derivation needs the budget, the concurrency and
+// the model's charge together, and only the server holds them — so a model
+// the server published no window for has none.
+function servedContext(m) {
+  const served = (m || {}).served_context;
+  return typeof served === 'number' && Number.isFinite(served) && served > 0 ? served : 0;
 }
 
 // modelCharge is what one model costs the memory budget, and it is the Go
@@ -1333,14 +1347,14 @@ function servedContext(config, repoID, declared) {
 // here either — what the models list carries is already the charged cost per
 // token, so the panel multiplies and nothing more. A test in internal/ui holds
 // this to the Go figure; if you change one, change both.
-function modelCharge(model, config, sequences) {
+function modelCharge(model, sequences) {
   const m = model || {};
   // A model still downloading is charged the size it declares, because ticking
   // its box now is a promise about the memory it will take when it lands.
   const bytes = m.bytes || m.size_bytes || 0;
   const flat = bytes + Math.floor(bytes / 5);
   const perToken = m.kv_charge_per_token || 0;
-  const window = servedContext(config, m.repo_id, m.context_length || 0);
+  const window = servedContext(m);
   const seq = sequences || 0;
   if (perToken <= 0 || window <= 0 || seq <= 0) return flat;
   return flat + perToken * window * seq;
@@ -1348,11 +1362,11 @@ function modelCharge(model, config, sequences) {
 
 // pinnedCharge is what the pinned models cost against the memory budget. A pin
 // naming a model this Mac does not have at all has no size to charge.
-function pinnedCharge(models, pinned, config, sequences) {
+function pinnedCharge(models, pinned, sequences) {
   const want = new Set((pinned || []).map(foldRepoID));
   return (models || []).reduce((sum, m) => {
     if (!want.has(foldRepoID(m.repo_id))) return sum;
-    return sum + modelCharge(m, config, sequences);
+    return sum + modelCharge(m, sequences);
   }, 0);
 }
 
@@ -1485,7 +1499,7 @@ function updatePinBudget() {
   // long as a save was waiting for one (iss-2609190021445846); concurrencyNotice
   // says so beside the field.
   const sequences = (state.machine && state.machine.decode_concurrency) || 0;
-  const charge = pinnedCharge(state.models || [], checkedPinModels(), state.config, sequences);
+  const charge = pinnedCharge(state.models || [], checkedPinModels(), sequences);
   if (!budget) {
     line.textContent = charge ? `Pinned models use about ${size(charge)}.` : '';
     line.className = 'hint';
@@ -1526,10 +1540,26 @@ function renderMergeSwitches() {
   });
 }
 
+// contextPlaceholder is what a blank Served context field means for a model:
+// the default the server derived to fit the budget and what it fits, or the
+// model's own window when that is the default. For a model the operator has
+// set a figure on, the field carries the figure and the placeholder says what
+// clearing it would mean.
+function contextPlaceholder(m, sequences) {
+  const served = servedContext(m);
+  if (m.served_context_default && served > 0) {
+    const own = served === m.context_length ? "the model's own window" : servedDefaultNote(sequences);
+    return `${served} — ${own}`;
+  }
+  if (served > 0) return 'the largest window that fits the memory budget';
+  return "the model's own window";
+}
+
 // renderContextFields draws one window field per downloaded model. A blank
-// field is the model's own declared window, which is what the placeholder
-// shows, so the operator types a figure only for a model they want served
-// shorter than it was built for.
+// field is the default the server derives — the largest window that fits the
+// budget, up to the model's own — which is what the placeholder shows, so the
+// operator types a figure only for a model they want served at a window of
+// their own choosing.
 function renderContextFields() {
   const box = $('contextList');
   if (!box) return;
@@ -1549,7 +1579,7 @@ function renderContextFields() {
     input.type = 'number';
     input.min = '0';
     input.dataset.model = m.repo_id;
-    input.placeholder = m.context_length ? String(m.context_length) : 'the model\'s own window';
+    input.placeholder = contextPlaceholder(m, sequencesInForce());
     const set = per[m.repo_id] && per[m.repo_id].served_context;
     input.value = set ? String(set) : '';
     input.addEventListener('input', () => { settingsTouched = true; updatePinBudget(); });
