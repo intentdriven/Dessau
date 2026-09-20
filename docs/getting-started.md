@@ -241,7 +241,11 @@ the [logging page](logging.md).
 
 The first time an account runs with the shared cache, its list of models starts
 empty and is rebuilt from the models already in the shared folder — nothing is
-downloaded again. If that account had used the shared cache before this became
+downloaded again. Those models are offered for chat from the first start: a
+model that carries a chat template counts as able to chat until the Hub's own
+words for it arrive, which Dessau fetches in the background after each start
+(see [Choose which models are offered for chat](chat-models.md)). If that
+account had used the shared cache before this became
 the rule, the settings it kept in the shared folder are moved into its own on
 that first start, and are no longer readable by anyone else on the Mac.
 

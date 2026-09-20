@@ -8,7 +8,10 @@ message sent to one is wasted.
 Dessau records what HuggingFace says each model is when you download it, and
 publishes those words on the models list. A rule decides which of them count as
 able to chat. There are two places to change it: the server, which is what every
-client is told, and Dessau Chat, which applies its own.
+client is told, and Dessau Chat, which applies its own. A model the Hub has
+said nothing about — one this account found in the shared cache rather than
+downloaded — is judged by its own files instead, as [described
+below](#a-model-with-no-words).
 
 ## On the server
 
@@ -57,8 +60,33 @@ model and is exempt from the rule: it is offered whenever the Mac can run it.
   the repository's pipeline tag and tags as they are written on the Hub, and the
   search tab shows each result's pipeline tag — or "no tag" — before you
   download anything.
-- **A model with no tags is marked as unable to chat** under the shipped rule,
-  because the rule asks for a pipeline tag it does not have. Models downloaded
-  before Dessau recorded these words carry none: nothing on disk says what kind
-  of model it is, so download such a model again to give it its words, or clear
-  the pipeline-tag field to stop testing that half.
+- **A model the Hub has tagged, but not as the rule asks, is marked as unable
+  to chat** — a speech or OCR model under the shipped rule, or a repository
+  whose tags carry no `conversational`. Clear the field that is hiding a model
+  you want, or add the words the repository does carry.
+- **A model with no words at all is not judged by the rule.** See below.
+
+## A model with no words
+
+A model carries no pipeline tag and no tags when the Hub was never heard for
+it: this account did not download it but found it in the
+[shared cache](getting-started.md#9-sharing-across-user-accounts-optional),
+put there by another account on this Mac; or HuggingFace could not be reached
+when the download finished; or a Dessau that predates these words recorded
+it. The rule has nothing to test, so it is not consulted. The model's own
+files decide instead: a model whose `tokenizer_config.json` carries a
+`chat_template`, or that has a `chat_template.jinja` file beside it, counts
+as able to chat, and a model with neither does not. The chat template is
+what the model's server renders a conversation through, so this is the
+question the rule approximates, asked of the files themselves. The models
+list carries the answer as `chat_template`, beside `chat`.
+
+Dessau also asks the Hub for the missing words in the background after each
+start, one model at a time, and records what it hears; from then on the rule
+decides for that model exactly as it does for one this account downloaded.
+Nothing waits on this: the server, its models and the chat clients are usable
+throughout. A model the Hub cannot be reached for is asked again at the next
+start, and one the Hub has no words for is asked once and left alone. The
+request is the server's own and appears in no request statistic. Dessau Chat
+follows the server's `chat` for a model with no words, since it has no words
+to apply its own rule to.
