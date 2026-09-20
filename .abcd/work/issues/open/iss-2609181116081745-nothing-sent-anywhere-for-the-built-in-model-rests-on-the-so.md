@@ -20,3 +20,7 @@ Left open for the maintainer: the shipping decision line records a hand check on
 ## Deferral 2026-09-19
 
 Waits on the maintainer: the correcting line in the append-only DECISIONS.md records a hand check only they can have made.
+
+## Decision 2026-09-20
+
+The maintainer says at interview: NOT done. The check is owed; deferred out loud in `.abcd/work/DECISIONS.md`. Stays open until they make it.

@@ -16,3 +16,10 @@ The hub download path follows a redirect to any host, and for a file the tree li
 ## Deferral 2026-09-19
 
 Waits on the maintainer: narrowing the download exception to LFS objects rests on an unverified claim about when the real Hub redirects a non-LFS file, and being wrong breaks every download outright; PR 114 bounds the body and PR 107 pins the origin of every listing, so what remains is a policy call on what a git-stored file must be verified against.
+
+## Decision 2026-09-20
+
+Maintainer's decision at interview: verify a non-LFS file against the tree's
+git blob id (SHA-1 over `blob <len>\0<bytes>`); LFS files keep sha256; the
+off-origin exception then holds for every file because every file is hashed.
+Recorded in `.abcd/work/DECISIONS.md`.

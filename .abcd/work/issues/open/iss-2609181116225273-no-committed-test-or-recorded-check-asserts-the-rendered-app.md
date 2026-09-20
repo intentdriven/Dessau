@@ -20,3 +20,10 @@ Left open for the maintainer: asserting a rendered appearance needs a UI test ta
 ## Deferral 2026-09-19
 
 Waits on the maintainer: asserting rendered appearance needs a UI test target the client does not have; standing one up is a decision about how this client is tested, and the other rendering findings wait on it.
+
+## Decision 2026-09-20
+
+Maintainer's decision at interview: a full XCUITest target, run only when
+client code is touched (CI path filter on `client/**`); a Swift unit-test target
+over the parser and block model runs on every change. Recorded in
+`.abcd/work/DECISIONS.md`. The six gated rendering findings are unblocked.

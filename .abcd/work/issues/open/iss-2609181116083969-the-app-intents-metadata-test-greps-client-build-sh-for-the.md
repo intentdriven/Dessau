@@ -20,3 +20,7 @@ Left open for the maintainer: holding a built bundle needs the Swift toolchain i
 ## Deferral 2026-09-19
 
 Waits on the maintainer: a real check of the App Intents metadata needs the Swift toolchain inside CI, an infrastructure decision.
+
+## Decision 2026-09-20
+
+Maintainer's decision at interview: the client CI tier builds the bundle and asserts the metadata; the grep test stays as the cheap guard. Recorded in `.abcd/work/DECISIONS.md`.

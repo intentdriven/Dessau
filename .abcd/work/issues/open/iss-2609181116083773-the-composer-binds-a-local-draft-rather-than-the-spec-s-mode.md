@@ -20,3 +20,7 @@ Left open for the maintainer: the local draft and the spec's model binding diffe
 ## Deferral 2026-09-19
 
 Waits on the maintainer: where a half-typed prompt survives a view's recreation is a design call; the test pins what ships.
+
+## Decision 2026-09-20
+
+Maintainer's decision at interview: keep the delivered behaviour; the shipped promise is corrected by a decision line in `.abcd/work/DECISIONS.md`. Resolved on that grounds.
