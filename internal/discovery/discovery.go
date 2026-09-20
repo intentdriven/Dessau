@@ -33,7 +33,9 @@ const maxDNSLabel = 63
 
 // labelHeadroom keeps room for the suffix dnssd appends when it renames a
 // service to resolve a genuine mDNS name conflict, so the renamed label stays
-// within maxDNSLabel too.
+// within maxDNSLabel too. Four bytes covers " (2)" through " (9)": the tenth
+// Mac of an identical 59-byte name on one link gets a 64-octet label and is
+// not advertised, which is accepted rather than paid for on every other Mac.
 const labelHeadroom = 4
 
 // clampLabel caps s at max bytes without splitting a UTF-8 rune. The ceiling is
@@ -94,6 +96,11 @@ func serviceHost(localHostName string) string {
 // mDNS transport with every API still reporting success. Nothing else is done
 // to it: no case folding and no character mapping, because a DNS-SD instance
 // name is arbitrary UTF-8 and the point is that it reads as the Mac's name.
+//
+// One thing dnssd does on its own: a name that already ends in " (N)" has that
+// suffix trimmed before it is announced, because that is the shape of its own
+// conflict rename. A Mac called "Studio (2)" is therefore announced as
+// "Studio", and gets its " (2)" back only if a "Studio" is already on the link.
 func serviceName(computerName string) string {
 	name := clampLabel(computerName, maxDNSLabel-labelHeadroom)
 	if name == "" {

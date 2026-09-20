@@ -1,10 +1,12 @@
 package config
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 // LocalHostName returns the name this Mac answers to on the network, i.e. the
@@ -60,7 +62,7 @@ func ComputerName() string {
 func resolveComputerName() string {
 	// scutil, by absolute path, exactly as resolveLocalHostName does and for
 	// the reasons spelled out there.
-	if out, err := exec.Command("/usr/sbin/scutil", "--get", "ComputerName").Output(); err == nil {
+	if out, err := scutilGet("ComputerName"); err == nil {
 		if name := strings.TrimSpace(string(out)); name != "" {
 			return name
 		}
@@ -83,7 +85,7 @@ func resolveLocalHostName() string {
 	// several accounts, where a group-writable directory ahead of /usr/sbin on
 	// this account's PATH is another account's way into this process; and even
 	// with nobody hostile, a bare name is no proof of which tool answered.
-	if out, err := exec.Command("/usr/sbin/scutil", "--get", "LocalHostName").Output(); err == nil {
+	if out, err := scutilGet("LocalHostName"); err == nil {
 		if name := strings.TrimSpace(string(out)); name != "" {
 			return name
 		}
@@ -94,4 +96,14 @@ func resolveLocalHostName() string {
 		return ""
 	}
 	return strings.TrimSuffix(h, ".local")
+}
+
+// scutilGet asks scutil for one key, bounded in time. Both readers run once,
+// memoized, but the advertiser calls them under its own lock at start, so a
+// wedged configd must not hold that lock for ever: a few seconds is longer
+// than scutil ever takes and short enough that Stop is not blocked behind it.
+func scutilGet(key string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "/usr/sbin/scutil", "--get", key).Output()
 }
