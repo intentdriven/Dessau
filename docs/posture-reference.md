@@ -25,7 +25,7 @@ stored configuration, which a save changes before a restart applies it.
 | **This control panel** | That the panel and its own API answer on this Mac alone on every bind, and that every account on this Mac can open it. | A fact about Dessau, not of this server. |
 | **A request from another machine** | Whether a request arriving from another machine has to carry the API key, whether one is set, and, when the bind reaches no other machine, that nothing arrives from one. | Whether a key is set; the bind's reach. |
 | **A request from this Mac** | That a request from this Mac to a loopback address is served without the key, including a request from another account on this Mac. | Whether a key is set. |
-| **The local network** | Whether Dessau is announcing this server over Bonjour to every machine on the local network, as a service named after this Mac's name, and what the announcement carries: this Mac's addresses, the port the listeners took, how many models are ready, whether a key is required, and the fixed words saying it speaks the OpenAI API under `/v1`. When it is not announcing, which of three things kept it off when Dessau started. | The decision made at start from the `advertise` setting and the bind then in force; the mode in force; the bind's reach; the port the listeners took; this Mac's name. |
+| **The local network** | Whether Dessau is announcing this server over Bonjour to every machine on the local network, as a service named after this Mac's Computer Name, and what the announcement carries: this Mac's addresses, the port the listeners took, how many models are ready, whether a key is required, and the fixed words saying it speaks the OpenAI API under `/v1`. When it is not announcing, which of three things kept it off when Dessau started. | The decision made at start from the `advertise` setting and the bind then in force; the mode in force; the bind's reach; the port the listeners took; this Mac's name. |
 | **The request log** | That each request to the API is written to the server log as method, path, status and duration, with no client address, prompt, answer or key; the level the log is at, and that it is kept in the logs folder of this account's data folder in a file created for this account alone. | The `log_level` setting, which is applied live. |
 | **Request statistics** | Whether request statistics are being recorded; what a record holds and what it never holds; that the same store also records when a model was loaded or evicted and the settings in force; for how many months and within how much room records are kept, and where; how far back the records on disk reach and how much room they take, or that the store could not be opened; and that every account on this Mac can read them. When recording is off, that no request is recorded. | The statistics switch, the two retention settings, and the store's status. |
 | **Self-test** | Whether the self-test is on: that while the Mac is idle Dessau loads one of its models at a time where it fits beside what is loaded, measures it with a fixed set of prompts and unloads what it loaded; that any request ends the run; and that the figures go to a file in this account's data folder and hold no prompt and no answer. When it is off, that Dessau loads no model on its own. | The `self_test` setting, which is applied live. |
@@ -63,8 +63,8 @@ is true of the network and false of this Mac.
   the stored configuration and not in the sockets or the announcement, so the
   page reports what is running and the change takes effect at the next start.
 - **The service name exactly as published.** The announcement's service name
-  is built from this Mac's name and shortened when the name is too long for
-  one; the page shows the name it was built from.
+  is this Mac's Computer Name, shortened when the name is too long for one DNS
+  label; the page shows the name it was built from.
 - **Where the log goes.** The request log is written to the server's own
   output; where the process running Dessau sends that output is the launcher's
   business.
@@ -80,9 +80,13 @@ this Mac reaches no other machine and so announces to none. A configuration
 file Dessau could not read locks the bind to this Mac and switches announcing
 off with it, and the page reports that state as it finds it.
 
-The service is published as `Dessau (name)`, with this Mac's name filled in,
-under a host name of Dessau's own rather than this Mac's `.local` name, which
-macOS owns. A Mac whose name cannot be read is announced as `dessau`.
+The service is published under this Mac's Computer Name — the name **System
+Settings** shows, "Alice's Mac" — with no product name in front of it, the
+service type being what says which service it is. A name too long for one DNS
+label is shortened. The address record carries a host name of Dessau's own
+rather than this Mac's `.local` name, which macOS owns. A Mac whose Computer
+Name cannot be read is announced under its local host name, and a Mac with
+neither as `dessau`.
 
 ## Where to go next
 

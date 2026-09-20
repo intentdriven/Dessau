@@ -106,9 +106,8 @@ that half, so a rule with both lists empty marks every model as able to chat; no
 [Choose which models are offered for chat](chat-models.md).
 
 **The flag is this server's answer, not the last word.** A client is free to
-read `pipeline_tag` and `tags` and apply its own rule — which is what the
-DessauChat client does, with the same rule as its own default, changeable in
-its Settings.
+read `pipeline_tag` and `tags` and apply its own rule — which is what Dessau
+Chat does, with the same rule as its own default, changeable in its Settings.
 
 ## The context figure
 

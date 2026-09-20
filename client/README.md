@@ -2,13 +2,19 @@
 
 A native chat app for the Mac and the iPad. It chats with the device's own
 model out of the box — the language model Apple ships with the system, on the
-device, with nothing sent anywhere — and when a [Dessau](../README.md) server
-is on your network it offers that server's MLX models in the same picker:
-streaming replies, no browser, no configuration.
+device, with nothing sent anywhere — and it talks to any OpenAI-compatible
+server: give it a base URL and that server's models appear in the same picker,
+with streaming replies, no browser and no configuration.
+
+[Dessau Server](../README.md) is the server it finds by itself, over Bonjour on
+the local network, and the two are released together. It is not a component of
+the server and the server is not a requirement of it: anything answering
+`GET /v1/models` and `POST /v1/chat/completions` is a server this client can
+use, and the Mac's own model needs no server at all.
 
 **Requires macOS 27** and Apple Silicon, which is every Mac that runs macOS 27.
-The server it talks to has the same floor, so one requirement covers both; a
-Mac below it is refused by `install.sh` before anything is downloaded.
+Dessau Server has the same floor, so one requirement covers both; a Mac below
+it is refused by `install.sh` before anything is downloaded.
 
 ## Build
 
@@ -39,22 +45,26 @@ Apple Silicon `dist/DessauChat.app`.
    that fit alongside the message you just typed. A single message too long for
    the window is a different matter — it is not sent at all, and the chat says
    so and points at a server.
-2. To use a Dessau server, click the picker. Under **Servers on your network**
-   it lists every Dessau server it can find while the picker is open: each row
-   names the server, says whether it needs an API key, and how many models it
-   can serve. Click one and its chat models appear under its name; click a
-   model and the conversation carries on there. Nothing switches by itself,
-   and **On this Mac** is always one click away.
+2. To use a server on the network, click the picker. Under **Servers on your
+   network** it lists every Dessau Server it can find while the picker is
+   open: each row names the Mac the server runs on — "Alice's Mac", the name
+   that Mac carries in System Settings, with no product name in front of it —
+   and says whether it needs an API key and how many models it can serve.
+   Click one and its chat models appear under its name; click a model and the
+   conversation carries on there. Nothing switches by itself, and **On this
+   Mac** is always one click away.
 
    macOS asks for permission to search the local network the first time the
    picker opens — the client browses for servers only while the picker is
    open. When a server answered last, the client does reconnect to its stored
-   address at launch, so a `.local` address can bring that question then. Without it the list stays empty;
-   a server elsewhere can be typed into **Settings** (Cmd-,): the Mac's `.local`
-   name or its LAN address with port `11535` and no path, for example
-   `http://your-mac.local:11535`. A server that needs an API key asks for it
-   when you pick it, once: the key is kept in your Keychain, sent only to the
-   server it was entered for, and changeable later in Settings.
+   address at launch, so a `.local` address can bring that question then.
+   Without it the list stays empty; a server elsewhere — another Dessau Server,
+   or anything else that speaks the OpenAI API — can be typed into **Settings**
+   (Cmd-,) as a base URL: the Mac's `.local` name or its LAN address with port
+   `11535` and no path, for example `http://your-mac.local:11535`. A server
+   that needs an API key asks for it when you pick it, once: the key is kept in
+   your Keychain, sent only to the server it was entered for, and changeable
+   later in Settings.
 3. **Return** sends; **Option-Return** starts a new line; the arrow button sends
    too, and the stop button interrupts a reply. Drop a text file on the message
    box and its content becomes part of the prompt. Select text in the box or in
@@ -122,8 +132,8 @@ version.
 On an iPad that can run Apple Intelligence — an M1 or later, or the iPad mini
 with the A17 Pro — the picker reads **On this iPad** and the iPad answers on
 the device, with nothing sent anywhere. On any other iPad the empty chat says the iPad cannot answer and
-offers a server instead: pick one of the Dessau servers on your network and
-the conversation carries on there, exactly as it does on a Mac.
+offers a server instead: pick a Dessau Server on your network and the
+conversation carries on there, exactly as it does on a Mac.
 
 The app is built for **your own iPad**, signed with your own Apple ID's free
 personal team, and installed over USB from the Mac you build on. Nothing is
