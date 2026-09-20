@@ -890,7 +890,7 @@ func TestLoopbackWithNoKeyIgnoresForeignOrigin(t *testing.T) {
 	}
 }
 
-// The client's token is Dessau' business; the model server has no use for it.
+// The client's token is Dessau's business; the model server has no use for it.
 func TestClientTokenIsNotForwardedUpstream(t *testing.T) {
 	cfg := config.Default()
 	cfg.APIKey = "bh_secret"

@@ -1,4 +1,4 @@
-// Package discovery advertises the Dessau server over Bonjour/mDNS so other
+// Package discovery advertises Dessau Server over Bonjour/mDNS so other
 // machines on the network can find it without being told an IP address.
 package discovery
 
@@ -16,7 +16,7 @@ import (
 	"github.com/intentdriven/Dessau/internal/config"
 )
 
-// ServiceType is Dessau' own mDNS service type.
+// ServiceType is Dessau's own mDNS service type.
 //
 // A dedicated type rather than _http._tcp: clients looking for an inference
 // endpoint should not have to sift through every web server on the network.
@@ -36,15 +36,25 @@ const maxDNSLabel = 63
 // within maxDNSLabel too.
 const labelHeadroom = 4
 
-// truncateLabel caps s at max bytes without splitting a UTF-8 rune, then drops
-// any hyphens left trailing (a DNS host label must not end with one, and a cut
-// can expose one).
-func truncateLabel(s string, max int) string {
+// clampLabel caps s at max bytes without splitting a UTF-8 rune. The ceiling is
+// in octets and applies to every kind of label alike, so this is what both the
+// host label and the instance name go through.
+func clampLabel(s string, max int) string {
 	for len(s) > max {
 		_, size := utf8.DecodeLastRuneInString(s)
 		s = s[:len(s)-size]
 	}
-	return strings.TrimRight(s, "-")
+	return s
+}
+
+// truncateLabel clamps s and then drops any hyphens left trailing (a DNS HOST
+// label must not end with one, and a cut can expose one).
+//
+// That last step is why an instance name does not go through here: an instance
+// name is an arbitrary UTF-8 label rather than a host label, and this Mac's
+// Computer Name is published exactly as System Settings spells it.
+func truncateLabel(s string, max int) string {
+	return strings.TrimRight(clampLabel(s, max), "-")
 }
 
 // serviceHost derives the name Dessau publishes its own address records under.
@@ -70,12 +80,28 @@ func serviceHost(localHostName string) string {
 	return prefix + safe
 }
 
-// serviceName builds the human-visible service instance name. An instance name
-// is a single DNS label just like the host label, so the hostname it embeds is
-// capped to keep the whole name legal.
-func serviceName(host string) string {
-	const wrap = len("Dessau ()")
-	return "Dessau (" + truncateLabel(host, maxDNSLabel-wrap-labelHeadroom) + ")"
+// serviceName is the human-visible service instance name: this Mac's own
+// Computer Name, undecorated.
+//
+// No product prefix and no parentheses (adr-2609200729102059, decision 4). The
+// service TYPE already says what the service is, so a prefix would repeat it in
+// every browser list; and the Computer Name is what the same Mac answers to on
+// the tailnet, so decorating it here would split one machine's identity in two.
+// RFC 6762 §9 handles the duplicate that two Macs of the same name produce.
+//
+// An instance name is a single label like the host label, so it is capped to
+// keep the whole name legal — an over-long label is dropped deep inside the
+// mDNS transport with every API still reporting success. Nothing else is done
+// to it: no case folding and no character mapping, because a DNS-SD instance
+// name is arbitrary UTF-8 and the point is that it reads as the Mac's name.
+func serviceName(computerName string) string {
+	name := clampLabel(computerName, maxDNSLabel-labelHeadroom)
+	if name == "" {
+		// A Mac that answers neither its Computer Name nor its host name is
+		// still advertised, under the family name, rather than under nothing.
+		return "dessau"
+	}
+	return name
 }
 
 // Advertiser publishes the service on the local network.
@@ -173,13 +199,17 @@ func (a *Advertiser) Start(ctx context.Context) error {
 		a.announce = dnssdAnnouncer{}
 	}
 
+	// Two names, read from two different settings, because they answer two
+	// different questions. The host label has to be a DNS label nothing else
+	// owns, and is derived from the LocalHostName; the instance name is what a
+	// person reads in a browser list, and is this Mac's Computer Name.
 	host := config.LocalHostName()
 	if host == "" {
 		host = "dessau"
 	}
 
 	cfg := dnssd.Config{
-		Name: serviceName(host),
+		Name: serviceName(config.ComputerName()),
 		Type: ServiceType,
 
 		// Host is the name in OUR address records — and it must NEVER be the

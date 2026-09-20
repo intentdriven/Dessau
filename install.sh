@@ -2,10 +2,10 @@
 #
 # One-line installer for Dessau.
 #
-#   Server (menu-bar, Apple Silicon, macOS 27):
+#   Server (Dessau Server, menu-bar, Apple Silicon, macOS 27):
 #     curl -fsSL https://raw.githubusercontent.com/intentdriven/Dessau/main/install.sh | bash
 #
-#   Client (DessauChat, Apple Silicon, macOS 27 — the same floor as the server):
+#   Client (Dessau Chat, Apple Silicon, macOS 27 — the same floor as the server):
 #     curl -fsSL https://raw.githubusercontent.com/intentdriven/Dessau/main/install.sh | bash -s -- client
 #
 # This is a BOOTSTRAP, and only a bootstrap: it does what has to happen before a
@@ -66,14 +66,21 @@ REPO="intentdriven/Dessau"
 # environment variable would otherwise substitute the whole integrity control
 # silently — this is the script the README tells people to pipe into bash.
 
+# APP is the BUNDLE name, which carries no space and is what the archive
+# unpacks to and what is placed in /Applications. NAME is the display name a
+# person reads in a message from this script. They differ on purpose
+# (adr-2609200729102059): the component is "Dessau Server", its bundle is
+# DessauServer.app, and the executable inside it is neither — it is `dessau`.
 mode="${1:-server}"
 case "$mode" in
 server)
-	APP="Dessau"
+	APP="DessauServer"
+	NAME="Dessau Server"
 	ASSET="DessauServer.app.zip"
 	;;
 client)
 	APP="DessauChat"
+	NAME="Dessau Chat"
 	ASSET="DessauChat.app.zip"
 	# The archive the placer is taken from. The client has no binary of its
 	# own, so the one that places its bundle is the server's.
@@ -90,7 +97,7 @@ die() {
 	exit 1
 }
 
-[ "$(/usr/bin/uname -s)" = "Darwin" ] || die "Dessau is macOS only."
+[ "$(/usr/bin/uname -s)" = "Darwin" ] || die "$NAME is macOS only."
 
 # Both bundles declare the same minimum, so Launch Services refuses either on
 # anything older. Refuse here instead — before the download and before anything
@@ -108,7 +115,7 @@ MIN_MACOS_MAJOR=27
 macos_version="$(/usr/bin/sw_vers -productVersion 2>/dev/null)" || macos_version=""
 macos_major="${macos_version%%.*}"
 [ "${macos_major:-0}" -ge "$MIN_MACOS_MAJOR" ] ||
-	die "$APP requires macOS $MIN_MACOS_MAJOR (this Mac runs ${macos_version:-an unreadable version})."
+	die "$NAME requires macOS $MIN_MACOS_MAJOR (this Mac runs ${macos_version:-an unreadable version})."
 # Where every asset comes from: the latest release, and only ever that one. The
 # client's bundle and the placer that puts it in place are both fetched from
 # here, so the SHA256SUMS.txt fetched once below is the checksums file for
@@ -125,7 +132,7 @@ RELEASE_PATH="latest/download"
 # Homebrew), so also ask the kernel whether the hardware is Apple Silicon.
 if [ "$(/usr/bin/uname -m)" != "arm64" ] &&
 	[ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" != "1" ]; then
-	die "$APP requires macOS $MIN_MACOS_MAJOR on Apple Silicon (this Mac is $(/usr/bin/uname -m)). macOS $MIN_MACOS_MAJOR runs on no Intel Mac, and there is no build for one."
+	die "$NAME requires macOS $MIN_MACOS_MAJOR on Apple Silicon (this Mac is $(/usr/bin/uname -m)). macOS $MIN_MACOS_MAJOR runs on no Intel Mac, and there is no build for one."
 fi
 
 tmp="$(/usr/bin/mktemp -d)"
@@ -187,7 +194,7 @@ fetch() {
 		die "could not download $name from releases/$RELEASE_PATH. Check your network and retry, or build from source (see the README)."
 }
 
-echo "Downloading ${APP}…"
+echo "Downloading ${NAME}…"
 fetch "$ASSET" "$zip"
 
 # Verify the download is exactly what the release workflow built, BEFORE
@@ -364,7 +371,7 @@ if [ "$mode" = "client" ]; then
 	fi
 	echo "Installing ${APP}.app to ${DEST}…"
 else
-	echo "Unpacking ${APP}…"
+	echo "Unpacking ${NAME}…"
 fi
 
 /usr/bin/ditto -x -k "$zip" "$tmp/extract" || die "could not unpack $ASSET."
@@ -411,7 +418,7 @@ if [ "$mode" = "server" ]; then
 	status=0
 	"${handover[@]}" || status=$?
 	if [ "$status" -eq 2 ]; then
-		die "the downloaded $APP does not carry the lifecycle verbs: its binary refused \`install\` with exit 2, which is how a build older than this bootstrap refuses an argument it has never heard of. The script and the bundle are different builds. Nothing was launched."
+		die "the downloaded $NAME does not carry the lifecycle verbs: its binary refused \`install\` with exit 2, which is how a build older than this bootstrap refuses an argument it has never heard of. The script and the bundle are different builds. Nothing was launched."
 	elif [ "$status" -ne 0 ]; then
 		die "dessau install stopped (exit $status) — the message above says at which stage. Nothing was launched."
 	fi
@@ -425,14 +432,14 @@ fi
 # already-running process instead of launching the new binary, so an upgrade
 # over a live app would report success while the old version keeps running.
 if /usr/bin/pgrep -qf "$DEST/$APP.app/Contents/MacOS/" 2>/dev/null; then
-	echo "Quitting the running ${APP}…"
+	echo "Quitting the running ${NAME}…"
 	/usr/bin/osascript -e "quit app \"$APP\"" >/dev/null 2>&1 || true
 	for _ in $(/usr/bin/seq 1 20); do
 		/usr/bin/pgrep -qf "$DEST/$APP.app/Contents/MacOS/" || break
 		/bin/sleep 0.5
 	done
 	if /usr/bin/pgrep -qf "$DEST/$APP.app/Contents/MacOS/" 2>/dev/null; then
-		echo "warning: $APP is still running; quit it and relaunch to finish the upgrade." >&2
+		echo "warning: $NAME is still running; quit it and relaunch to finish the upgrade." >&2
 	fi
 fi
 
@@ -482,7 +489,7 @@ PLACER="$tmp/placer/DessauServer.app/Contents/MacOS/dessau"
 status=0
 "$PLACER" place --bundle "$tmp/extract/$APP.app" --into "$DEST" || status=$?
 if [ "$status" -eq 2 ]; then
-	die "the downloaded Dessau does not carry the \`place\` verb: its binary refused the argument with exit 2, which is how a build older than this bootstrap refuses an argument it has never heard of. The script and the release are different builds. $APP.app was not placed."
+	die "the downloaded Dessau Server does not carry the \`place\` verb: its binary refused the argument with exit 2, which is how a build older than this bootstrap refuses an argument it has never heard of. The script and the release are different builds. $APP.app was not placed."
 elif [ "$status" -ne 0 ]; then
 	die "dessau place stopped (exit $status) — the message above says why. $APP.app was not placed."
 fi
@@ -497,7 +504,7 @@ else
 fi
 /bin/cat <<'DONE'
 
-Open DessauChat, then point it at your Dessau server: the address from the
-server's Connect tab without the trailing /v1 (DessauChat adds the path
+Open Dessau Chat, then point it at your Dessau Server: the address from the
+server's Connect tab without the trailing /v1 (Dessau Chat adds the path
 itself).
 DONE

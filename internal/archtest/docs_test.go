@@ -115,7 +115,7 @@ func TestSamplingReferenceStatesTheRealRanges(t *testing.T) {
 		if b.Max == 1 {
 			continue // "between 0 and 1", below
 		}
-		// Any other ceiling is Dessau' own rather than the model server's, so
+		// Any other ceiling is Dessau's own rather than the model server's, so
 		// the page has to give the figure — read off the bound, not repeated
 		// here, or the page and the code drift apart while this test is green.
 		want := fmt.Sprintf("%d", int(b.Max))
@@ -128,7 +128,7 @@ func TestSamplingReferenceStatesTheRealRanges(t *testing.T) {
 	}
 	// And why the ceilings Dessau sets are not the model server's.
 	if !containsAll(page, "Top-k has an upper limit of") {
-		t.Error("the reference gives top_k's ceiling without saying it is Dessau' own")
+		t.Error("the reference gives top_k's ceiling without saying it is Dessau's own")
 	}
 }
 

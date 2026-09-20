@@ -32,6 +32,45 @@ func LocalHostName() string {
 	return hostnameVal
 }
 
+// ComputerName returns the name System Settings shows for this Mac — "Alice's
+// Mac", spaces, apostrophes and all.
+//
+// It is a DIFFERENT setting from LocalHostName, and the two are routinely
+// spelled differently: macOS derives "Alices-Mac" from "Alice's Mac" for the
+// DNS label and leaves the readable one alone. Anything a person reads wants
+// this one; anything that has to be a DNS label wants LocalHostName. The
+// Bonjour instance name is the first kind (adr-2609200729102059): a DNS-SD
+// instance name is an arbitrary UTF-8 label, not a host label, and naming the
+// service after the Mac the way everything else on the network does is what
+// makes one machine one identity.
+//
+// Memoized behind its own sync.Once, and for the same reason LocalHostName is:
+// it forks a subprocess, and the advertiser re-derives its configuration on
+// every refresh tick.
+var (
+	computerOnce sync.Once
+	computerVal  string
+)
+
+func ComputerName() string {
+	computerOnce.Do(func() { computerVal = resolveComputerName() })
+	return computerVal
+}
+
+func resolveComputerName() string {
+	// scutil, by absolute path, exactly as resolveLocalHostName does and for
+	// the reasons spelled out there.
+	if out, err := exec.Command("/usr/sbin/scutil", "--get", "ComputerName").Output(); err == nil {
+		if name := strings.TrimSpace(string(out)); name != "" {
+			return name
+		}
+	}
+	// A Mac that answers nothing here still has a host label, and a slightly
+	// wrong readable name beats no advertisement at all. The caller supplies
+	// the last resort when even this is empty.
+	return LocalHostName()
+}
+
 func resolveLocalHostName() string {
 	// scutil is the authoritative source; it is what System Settings edits and
 	// what mDNSResponder publishes.

@@ -23,7 +23,7 @@ func quitMenuBar() { systray.Quit() }
 func runMenuBar(a *app.App, log *slog.Logger) {
 	systray.Run(func() {
 		systray.SetTemplateIcon(menuIcon, menuIcon)
-		systray.SetTooltip("Dessau — MLX model server")
+		systray.SetTooltip("Dessau Server — MLX model server")
 
 		status := systray.AddMenuItem("Starting…", "")
 		status.Disable()
@@ -34,7 +34,7 @@ func runMenuBar(a *app.App, log *slog.Logger) {
 		open := systray.AddMenuItem("Open Control Panel", "Manage models and settings")
 		copyURL := systray.AddMenuItem("Copy Endpoint URL", "Copy the API base URL")
 		systray.AddSeparator()
-		quitItem := systray.AddMenuItem("Quit Dessau", "Stop the server and quit")
+		quitItem := systray.AddMenuItem("Quit Dessau Server", "Stop the server and quit")
 
 		// Keep the menu in step with reality: models load and unload, downloads
 		// finish, the network address can change.
@@ -90,7 +90,7 @@ func runMenuBar(a *app.App, log *slog.Logger) {
 func runClientMenuBar(cfg config.Config) {
 	systray.Run(func() {
 		systray.SetTemplateIcon(menuIcon, menuIcon)
-		systray.SetTooltip("Dessau — connected to the server on this Mac")
+		systray.SetTooltip("Dessau Server — connected to the server on this Mac")
 
 		status := systray.AddMenuItem("Server running in another account", "")
 		status.Disable()
