@@ -691,3 +691,25 @@ Proposal (the maintainer): record the number of follow-ups clicked per model ove
 Verdict proposed: FILE-AS-IS with the location open. Verdict adopted: filed
 with the location decided (the server's statistics). Grade: routing survived,
 narrowed by the maintainer's choice of location.
+
+## 2026-09-20 — the two queue drafts: a place in line, and a fair turn
+
+Proposal (the maintainer, as two quoted-text seeds): Bob sees his place in
+the queue while he waits; every person on the network gets a fair turn at a
+busy model.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| A client tags its request and asks the server where that request stands; Dessau Chat shows the answer after a threshold | capability | itd-2609202108185678, `builds_on` the eviction-grace intent and the pairing intent; spec spc-2609202141358048 |
+| A turn queue at a loaded model: paired clients by least debt, the unpaired class from what is left, contention logged and counted | capability | itd-2609202108180709, same `builds_on`; spec spc-2609202154054806 |
+| Who counts as one client for scheduling — the identity question both reviews held for a decision record | ADR | adr-2609202200197975, refining the pool's "an address is not a client" rule and iss-2609070252377294 rather than reversing them |
+| A hard per-client rate limit as a later switch against a runaway client | future-work seed | iss-2609202200256227, captured after the interview, declined for both intents |
+
+Verdict proposed: the reviewers' routing — the two records plus a decision
+record for identity, and the rate limit captured as a seed. Verdict adopted:
+FILE-AS-PROPOSED, confirmed by the maintainer at the interview; the seed was
+not captured at the interview and is captured now. The interview also chose
+the mechanism the design review's most severe finding turned on (the client
+asks the server about its own tagged request, not SSE comment lines) and
+sequenced the fair turn first, because its ordering rule is what a place
+means. Grade: routing survived; one capture landed late.
