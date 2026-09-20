@@ -660,3 +660,20 @@ Proposal (the maintainer): an option to store/export an entire conversation.
 
 Verdict proposed: FILE-AS-IS. Verdict adopted: filed, confirmed by the
 maintainer. Grade: routing survived.
+
+## 2026-09-20 — Brave search
+
+Proposal (the maintainer): add Brave search API functionality; research
+whether the key belongs on the client or the server.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| Bob's own Brave key in Dessau Chat's Keychain; the client runs the search loop, shows Brave attribution and sources, stores answers and links, never snippets | capability | itd-2609201407580721, `builds_on` itd-2609151701196720; `refines` the 2026-09-10 ideate verdict with the client-side shape it did not weigh |
+| An opt-in MCP search sidecar beside the server with Alice's key, granted per paired client (some users, not all) | capability | itd-2609201407587936, `builds_on` the pairing intent and the client-side draft; carries the 2026-09-10 reframing |
+| The gateway holds no key, adds no outbound host, never reads tool messages, relays them untouched | trust-boundary rule | already held by adr-2609061503319212 and adr-2609061610102325; two passthrough tests owed, as a criterion |
+| Key custody and who is Brave's Customer | research | 2026-09-20-brave-search-key-custody-sota.md |
+
+Verdict proposed: FILE-AS-IS, one intent (client-held). Verdict adopted:
+SPLIT into two — the maintainer wants the sidecar too, shared with some
+paired clients rather than all. Grade: the routing widened by one record at
+the maintainer's confirmation.
