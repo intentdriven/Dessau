@@ -43,7 +43,7 @@ a word:
   warning too, naming what that model needs at the served window and the
   batched requests it is charged at. Every request is refused until one of
   those changes: its served context, the batched requests, a smaller
-  quantization, or the budget.
+  quantisation, or the budget.
 
 A figure that arrives already over this Mac — a settings file carried from a
 bigger one, or written during a start where the machine's memory could not be

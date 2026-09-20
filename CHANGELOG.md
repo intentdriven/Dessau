@@ -39,7 +39,7 @@ GitHub release notes.
   it is the default in `served_context_default`; the model's card and the
   Served context field show the derived figure and what it fits. The warning
   for a budget too small for the smallest model names the served window, the
-  batched requests and a smaller quantization as the things to change, rather
+  batched requests and a smaller quantisation as the things to change, rather
   than the budget alone.
 
 ## [0.8.1] - 2026-09-20

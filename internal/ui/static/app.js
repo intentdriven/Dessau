@@ -1493,13 +1493,9 @@ function updatePinBudget() {
   const budget = (state.machine && state.machine.budget) || 0;
   // The decode concurrency is part of the charge: each sequence a server may
   // run at once holds its own cache. Both figures come from the machine block,
-  // which is what the pool is running with — not from state.config, whose
-  // decode concurrency is the saved value and does not reach the pool until a
-  // restart. Mixing the two gave a charge the pool would not agree with for as
-  // long as a save was waiting for one (iss-2609190021445846); concurrencyNotice
-  // says so beside the field.
-  const sequences = (state.machine && state.machine.decode_concurrency) || 0;
-  const charge = pinnedCharge(state.models || [], checkedPinModels(), sequences);
+  // which is what the pool is running with (sequencesInForce says why not
+  // state.config); concurrencyNotice says so beside the field.
+  const charge = pinnedCharge(state.models || [], checkedPinModels(), sequencesInForce());
   if (!budget) {
     line.textContent = charge ? `Pinned models use about ${size(charge)}.` : '';
     line.className = 'hint';

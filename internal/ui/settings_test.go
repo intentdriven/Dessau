@@ -507,12 +507,17 @@ func extractConst(t *testing.T, src, name string) string {
 // agree with, under a comment claiming it read the figure in force
 // (iss-2609190021445846).
 func TestThePinnedChargeReadsTheDecodeConcurrencyInForce(t *testing.T) {
-	body := extractFunction(t, readPanelSource(t), "updatePinBudget")
-	if !strings.Contains(body, "state.machine.decode_concurrency") {
-		t.Errorf("updatePinBudget does not read state.machine.decode_concurrency, so its charge is not the pool's:\n%s", body)
+	src := readPanelSource(t)
+	body := extractFunction(t, src, "updatePinBudget")
+	if !strings.Contains(body, "sequencesInForce()") {
+		t.Errorf("updatePinBudget does not read the concurrency through sequencesInForce, so its charge is not the pool's:\n%s", body)
 	}
 	if strings.Contains(body, "state.config.decode_concurrency") {
 		t.Errorf("updatePinBudget still reads the saved concurrency, which the pool has not picked up until a restart:\n%s", body)
+	}
+	helper := extractFunction(t, src, "sequencesInForce")
+	if !strings.Contains(helper, "state.machine.decode_concurrency") || strings.Contains(helper, "state.config") {
+		t.Errorf("sequencesInForce does not read state.machine.decode_concurrency alone:\n%s", helper)
 	}
 }
 
