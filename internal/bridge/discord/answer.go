@@ -161,6 +161,14 @@ func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, 
 		s.say(ctx, msg.ChannelID, msg.ID, "This server has no chat model to answer with yet.")
 		return
 	}
+	// Asked per request, not at the time the channel chose: a model excepted
+	// in Settings after `/model` picked it is refused from the next message
+	// on, and nothing of the message goes to the gateway
+	// (itd-2609091715089488).
+	if s.bridge.opts.NoTranscript(model) {
+		s.say(ctx, msg.ChannelID, msg.ID, noTranscriptRefusal)
+		return
+	}
 
 	// Appended and read back under the short lock, not held across the
 	// generation: what this channel is about to be asked is decided here, and
@@ -300,9 +308,10 @@ func deltaText(payload []byte) string {
 	return ev.Choices[0].Text
 }
 
-// defaultModel is the model a channel starts on: the first the server offers.
+// defaultModel is the model a channel starts on: the first the server offers
+// over this bridge, which leaves out a model that keeps no transcript.
 func (s *session) defaultModel() string {
-	models := s.bridge.opts.ChatModels()
+	models := s.offered()
 	if len(models) == 0 {
 		return ""
 	}

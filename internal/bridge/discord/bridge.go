@@ -67,6 +67,14 @@ type Options struct {
 	// ServedContext is the window a model is served at on this Mac, or 0 when
 	// that is not known. A channel's history is bounded by it.
 	ServedContext func(model string) int64
+	// NoTranscript reports whether a model keeps no transcript on this Mac
+	// (itd-2609091715089488) — the server's folded reader, config.Config.
+	// NoTranscript. Such a model is not offered over the bridge at all: it
+	// is left out of `/model`'s listing, refused when `/model` names it,
+	// and refused at the next message of a channel already on it, because
+	// Discord keeps what Dessau would not. It is asked per request, never
+	// remembered on the channel. Nil means no model is excepted.
+	NoTranscript func(model string) bool
 	// Log is the operator's log. Nothing of a message ever reaches it.
 	Log *slog.Logger
 	// GatewayURL is Discord's gateway, overridden by tests. Empty means the
@@ -179,6 +187,9 @@ func New(opts Options) *Bridge {
 	}
 	if opts.ServedContext == nil {
 		opts.ServedContext = func(string) int64 { return 0 }
+	}
+	if opts.NoTranscript == nil {
+		opts.NoTranscript = func(string) bool { return false }
 	}
 	return &Bridge{opts: opts, log: opts.Log, now: opts.Now, state: StateOff}
 }

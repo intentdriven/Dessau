@@ -94,6 +94,11 @@ field.
 
 - The bot answers anyone who can reach it. Control that by where you invite it
   and by leaving **Public Bot** off.
+- A model that [keeps no transcript](transcript.md) is not offered here:
+  `/model` leaves it out, naming it is refused with the reason, and a channel
+  already on a model that is excepted afterwards is refused at its next
+  message. Discord keeps what Dessau would not, and the bridge does not
+  pretend otherwise.
 - A conversation is kept to the most recent turns that fit the model's served
   window; older turns drop off rather than the request being refused.
 - The bridge holds a limited number of conversations and answers a small number

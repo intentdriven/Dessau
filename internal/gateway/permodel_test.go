@@ -157,3 +157,26 @@ func TestSavingSettingsWithAPerModelNullClearsIt(t *testing.T) {
 		t.Errorf("per-model settings after a posted null = %+v, want none", got)
 	}
 }
+
+// The transcript exception is settable on a model that has not been
+// downloaded, on the terms TestSettingsRejectsAPerModelKeyThatIsNotAModelID
+// sets: a key shaped like a repo id is accepted whether or not the registry
+// holds it, and the exception is
+// then read folded from the first request that model ever serves
+// (itd-2609091715089488). A flag that began working after the first download
+// is the kind of thing discovered after the first leak.
+func TestTheExceptionIsSettableOnAModelNotYetDownloaded(t *testing.T) {
+	srv, a := newTestControlApp(t, config.Default())
+
+	got := perModelAfterSave(t, srv, srv.URL,
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0,`+
+			`"models":{"org/not-yet-downloaded":{"no_transcript":true}}}`,
+		http.StatusOK)
+
+	if !got["org/not-yet-downloaded"].NoTranscript {
+		t.Errorf("per-model settings = %+v, want the exception stored for a model the registry does not hold", got)
+	}
+	if !a.Config().NoTranscript("ORG/Not-Yet-Downloaded") {
+		t.Error("the exception is not read folded for the model the save named")
+	}
+}

@@ -11,6 +11,35 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **Some models keep no transcript, even while recording is on.**
+  `impact: additive`. Settings gains a **Transcript** group with one box per
+  model: tick a model and nothing it is asked and nothing it answers is
+  written to the server's transcript, from the next request it serves, while
+  every other model goes on as it was. The exception is a per-model setting
+  (`no_transcript` under `models` in `config.json`), off by default, matched
+  whichever way the repository id is spelled, and settable on a model that is
+  not downloaded yet, so it bites from the first request that model ever
+  serves. Every models-list entry now carries `recording`, to every client
+  with or without a key, saying whether a conversation with that model is
+  written down; Dessau Chat's picker and the control panel's model cards show
+  it as an icon labelled in words before the model is chosen. The decision is
+  made on the model that answers a request: a request a recorded model
+  answers is written down whole, including earlier turns from an excepted
+  model that the client carried back, and the transcript page says so. An
+  excepted model is not offered over the Discord bridge — `/model` leaves it
+  out, naming it is refused with the reason, and a channel already on it is
+  refused at its next message — and arming per-model debug logging on it is
+  refused, with both controls saying so before anyone tries.
+- **A settings save merges the per-model map field by field.** The save
+  used to replace the whole map with what the form sent, so a per-model
+  setting written into `config.json` by hand after the panel loaded — a pin,
+  a window, an exception — was dropped in silence by the next unrelated
+  save. It is now kept unless the form posted that field for that model, for
+  every per-model setting; a save of an untouched form is still accepted,
+  and a cross-field refusal still names a field the save changed.
+
 ## [0.9.2] - 2026-09-21
 
 ### Added

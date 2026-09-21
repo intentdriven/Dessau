@@ -536,11 +536,14 @@ And one addition the maintainer made rather than a question they answered.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+
 
 **Answers 2026-09-20:** unentitled models-list field; the exception refuses a debug arm; not offered over a bridge; merge-save for every per-model field; severity major; heading rewritten; recording decided on the serving model, prior context recorded whole. Recorded in `.abcd/work/DECISIONS.md`.
 
 **Addition 2026-09-20:** the transcript state is shown as an icon wherever a person picks a model (client picker, panel model cards; a word in the bridge's `/model` listing). Recorded in `.abcd/work/DECISIONS.md`.
+
+<!-- abcd-review: OWED receipt=rcp-2b6a87d4eae8 -->
+Fidelity review OWED (receipt rcp-2b6a87d4eae8).
 
 ## Grounds
 

@@ -48,6 +48,7 @@ curl http://localhost:11535/v1/models
 | `chat` | Whether the model counts as able to hold a conversation: under the rule this server runs when `pipeline_tag` or `tags` is present, and from `chat_template` when both are absent. Always present. See below. |
 | `chat_template` | Whether the model's own files carry a chat template — the text a conversation is rendered through before the model sees it — as Dessau found in the model's directory. Always present. See below. |
 | `tool_calling` | Whether the model answers with a tool call when one is declared, as Dessau found by asking it once on this Mac: `yes`, `no`, or `unknown` while it has not been asked under the runtime in force. Always present. See below. |
+| `recording` | Whether a conversation with this model is written to the transcript on the Mac that runs the server: `true` only while the server's transcript is switched on and this model is not excepted from it; `false` while the transcript is off, and for a model whose transcript setting is off however the server is set. Always present, to every client — with or without a key, on the LAN or on this Mac — so the fact reaches everyone before a model is chosen. |
 | `context_length` | The model's maximum context, in tokens. See below. |
 | `max_model_len` | The same figure again, under the name vLLM-derived clients read. |
 | `served_context` | The window this Mac will actually serve the model at, in tokens: the operator's setting, or the default derived to fit the memory budget. A request estimated to be larger is refused. See below. |

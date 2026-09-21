@@ -75,14 +75,6 @@ type Control struct {
 	// them.
 	Notices config.Notices
 
-	// TranscriptExcepted says whether a model carries the transcript exception
-	// (itd-2609091715089488): a model promised that no prompt of its is ever
-	// written down. Arming debug logging for such a model is refused with the
-	// reason, because the exception means no prompts on disk, not "not in this
-	// one file". The app sets it; nil reads as "never excepted", which is what
-	// the app supplies until the per-model field the predicate reads exists.
-	TranscriptExcepted func(repoID string) bool
-
 	// loadMu guards loading, the set of models the Load button already has a
 	// background load running for, keyed by folded repo id.
 	//
@@ -1524,8 +1516,12 @@ func decodeDebugLogRequest(w http.ResponseWriter, r *http.Request) (debugLogRequ
 // writes the configuration, and the mark is derived from nothing but this
 // request.
 //
-// A model carrying the transcript exception refuses the arm with the reason.
-// Disarming it is not refused: there is nothing to keep from being written.
+// A model carrying the transcript exception (itd-2609091715089488) — a model
+// promised that no prompt of its is ever written down — refuses the arm with
+// the reason, because the exception means no prompts on disk, not "not in
+// this one file". It is read from the configuration in force through the one
+// folded reader, so an exception saved a moment ago bites on this arm.
+// Disarming is not refused: there is nothing to keep from being written.
 func (c *Control) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 	req, ok := decodeDebugLogRequest(w, r)
 	if !ok {
@@ -1543,7 +1539,7 @@ func (c *Control) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "disarmed", "model": req.Model})
 		return
 	}
-	if c.TranscriptExcepted != nil && c.TranscriptExcepted(req.Model) {
+	if c.App.Config().NoTranscript(req.Model) {
 		writeError(w, http.StatusConflict,
 			"this model keeps no transcript, so debug logging is refused: at the model server's debug level its log would hold every prompt sent to it")
 		return
@@ -1671,11 +1667,28 @@ func (c *Control) applySettings(raw []byte) (map[string]any, error) {
 	// One collection, one guard. There were two of these maps and a list
 	// beside them, each of which had to be remembered here
 	// (iss-2609062213413447).
-	if namesModels(raw) {
+	//
+	// Within a named model, though, the rule about fields holds again: the
+	// panel rebuilds the map from the snapshot it last loaded, so a
+	// per-model field written into config.json by hand after that load is
+	// absent from the body, and replacing the entry would drop it in
+	// silence. The entries the body names are therefore merged field by
+	// field over what is stored (config.MergeModelSettings,
+	// itd-2609091715089488); the decode below runs with the map cleared so
+	// it decides nothing about it.
+	posted, ok := postedModels(raw)
+	if ok {
 		incoming.Models = nil
 	}
 	if err := json.Unmarshal(raw, &incoming); err != nil {
 		return nil, errors.New("settings body is not valid JSON")
+	}
+	if ok {
+		merged, err := config.MergeModelSettings(current.Models, posted)
+		if err != nil {
+			return nil, err
+		}
+		incoming.Models = merged
 	}
 	// The UI is served the redacted placeholder; echoing it back must not
 	// overwrite the real secret with literal asterisks.
@@ -1892,27 +1905,49 @@ func encodedSettings(c config.Config) map[string]json.RawMessage {
 	return out
 }
 
-// namesModels reports whether the posted body carries a models field at all,
-// however it is spelled — including as null. It is the one collection a save
-// replaces rather than merges into.
-func namesModels(body []byte) bool { return namesField(body, "models") }
-
-// namesField reports whether the posted body carries this field at all,
-// however it is spelled — including as null.
-func namesField(body []byte, field string) bool {
+// postedModels is the models field of the posted body, as the per-model
+// objects it carries still encoded, and whether the body carries the field
+// at all — however it is spelled, and including as null, which reads as an
+// empty object: naming the collection means "these are its members". It is
+// the one collection a save replaces the membership of rather than merges
+// into; within a member, fields are merged.
+//
+// EVERY spelling of the field is read, in sorted order with a later one
+// overriding an earlier one per model, for the reason postedASecret reads
+// every spelling: encoding/json folds them into one struct field by a rule
+// of its own, and reading whichever a map range reached first would make
+// the same body save differently from one request to the next.
+func postedModels(body []byte) (map[string]json.RawMessage, bool) {
 	var named map[string]json.RawMessage
 	if err := json.Unmarshal(body, &named); err != nil {
-		return false
+		return nil, false
 	}
-	// Folded, because the decode this guards matches struct field names
-	// case-insensitively: an exact lookup would let one spelling skip the
-	// reset and reinstate every entry the caller asked to remove.
+	var spellings []string
 	for k := range named {
-		if strings.EqualFold(k, field) {
-			return true
+		if strings.EqualFold(k, "models") {
+			spellings = append(spellings, k)
 		}
 	}
-	return false
+	if len(spellings) == 0 {
+		return nil, false
+	}
+	sort.Strings(spellings)
+	out := map[string]json.RawMessage{}
+	for _, k := range spellings {
+		raw := named[k]
+		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			continue
+		}
+		var entries map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			// Not an object at all; the struct decode refuses the body.
+			return nil, false
+		}
+		for id, entry := range entries {
+			out[id] = entry
+		}
+	}
+	return out, true
 }
 
 // samplingReloads names the loaded models whose sampling defaults changed with
