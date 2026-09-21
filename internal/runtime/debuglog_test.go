@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -193,5 +194,61 @@ func TestDisarmTakesTheMarkBackWhateverTheSpelling(t *testing.T) {
 	release()
 	if l.specFor("org/m").DebugLog {
 		t.Error("a disarmed model was launched at debug")
+	}
+}
+
+// A mark is armed against a model on disk. Removing the model takes the mark
+// with it, whether or not the model is loaded, so a model downloaded again
+// under the same id — a model the operator did not arm — launches at INFO
+// like any other. Remove keeps Unload's rule for a busy model: it refuses,
+// and the mark stays with the model that is staying.
+func TestRemovingAModelDropsItsMark(t *testing.T) {
+	l := newFakeLauncher()
+	src := &fakeSource{models: map[string]int64{"org/m": 1 << 20, "org/busy": 1 << 20}}
+	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30})
+
+	if err := p.ArmDebugLog("org/m"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Remove("ORG/M"); !errors.Is(err, ErrNotLoaded) {
+		t.Fatalf("Remove of a model that is not loaded = %v, want ErrNotLoaded as Unload reports", err)
+	}
+	if got := p.DebugArmed(); len(got) != 0 {
+		t.Fatalf("DebugArmed = %v after the model was removed, want none", got)
+	}
+	_, release, err := p.Acquire(context.Background(), "org/m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if l.specFor("org/m").DebugLog {
+		t.Error("a model downloaded again after its removal was launched at debug")
+	}
+
+	// Armed after the launch, so the mark is waiting rather than spent.
+	_, releaseBusy, err := p.Acquire(context.Background(), "org/busy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.ArmDebugLog("org/busy"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Remove("org/busy"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("Remove of a busy model = %v, want ErrBusy", err)
+	}
+	if got := p.DebugArmed(); len(got) != 1 {
+		t.Errorf("DebugArmed = %v after a refused removal, want the mark kept", got)
+	}
+	releaseBusy()
+	if err := p.Remove("org/busy"); err != nil {
+		t.Fatalf("Remove of an idle loaded model: %v", err)
+	}
+	if got := p.DebugArmed(); len(got) != 0 {
+		t.Errorf("DebugArmed = %v after the loaded model was removed, want none", got)
+	}
+	for _, r := range p.Resident() {
+		if r.RepoID == "org/busy" {
+			t.Error("the removed model is still resident")
+		}
 	}
 }

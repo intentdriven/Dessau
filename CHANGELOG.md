@@ -30,7 +30,9 @@ GitHub release notes.
   log as `<org>@<name>.previous.log` instead of emptying the file, so the
   restart that ends the mode leaves the evidence to read. It is per model,
   never on by default, never reached from the statistics switch or
-  `log_level`, and a model that keeps no transcript refuses it; nothing is
+  `log_level`, and a model that keeps no transcript refuses it; deleting the
+  model drops its mark, so a copy downloaded later under the same id is
+  not armed; nothing is
   sent anywhere, and clients are not told. The control plane serves it as
   `POST /api/models/debug-log`, and the state snapshot carries `debug_armed`
   and each resident entry's `debug_log`. No setting is added and
