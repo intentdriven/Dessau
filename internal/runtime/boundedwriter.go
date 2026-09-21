@@ -5,17 +5,6 @@ import (
 	"sync"
 )
 
-// DebugLogMaxBytes bounds what one armed run of a model server writes to its
-// log. At DEBUG the server writes every request body and every response, so
-// the bytes in the file are chosen by whoever is sending requests; the bound
-// is what keeps a looping client from filling the disk. It is large enough to
-// hold thousands of ordinary request-and-answer pairs and many times the
-// largest single body the server ever sees — the context probe's generated
-// filler — which is why the bound holds per write rather than per file. With
-// the previous run's file kept beside the current one, one model's worst case
-// on disk is two of these.
-const DebugLogMaxBytes = 64 << 20
-
 // debugLogBoundLine is the one line written when the bound is reached. It
 // says what happened and that nothing else did: the model keeps serving,
 // only its log has stopped.

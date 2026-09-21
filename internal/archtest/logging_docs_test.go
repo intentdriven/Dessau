@@ -8,6 +8,7 @@ import (
 
 	"github.com/intentdriven/Dessau/internal/applog"
 	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
 // The logging page is a reference page, and a reference page that prints a
@@ -107,5 +108,31 @@ func TestTheLoggingPageIsLinked(t *testing.T) {
 	}
 	if !strings.Contains(readDoc(t, "getting-started.md"), "logging.md") {
 		t.Error("the getting-started walk-through does not point at the logging page")
+	}
+}
+
+// The model servers' level is no longer something no setting asks for: one
+// per-model action does, and the page says which, what it writes, what bounds
+// it, that it begins at the model's next start, and that the previous run's
+// file is kept rather than emptied. The figure is the code's, not the page's.
+func TestTheLoggingPageDescribesThePerModelDebugAction(t *testing.T) {
+	page := readDoc(t, "logging.md")
+
+	if containsAll(page, "no setting in Dessau asks for it") {
+		t.Error("docs/logging.md still says no setting asks for the model servers' debug level; the per-model action does")
+	}
+	for _, want := range []string{
+		"Debug logging",
+		"its card",
+		"every request",
+		"every answer",
+		"next start",
+		fmt.Sprintf("%d MB", runtime.DebugLogMaxBytes>>20),
+		".previous.log",
+		"kept",
+	} {
+		if !containsAll(page, want) {
+			t.Errorf("docs/logging.md does not say %q", want)
+		}
 	}
 }
