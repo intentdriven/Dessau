@@ -2258,7 +2258,31 @@ func (p *Pool) IdleTimeout() time.Duration { return p.opts.IdleTimeout }
 func (p *Pool) Unload(repoID string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	return p.unloadLocked(repoID)
+}
 
+// Remove is Unload for a model that is being deleted. It stops the server
+// under Unload's rule — a busy model is refused and nothing changes — and
+// drops what the pool holds about the model beyond its process: the
+// debug-logging mark. The mark is armed against the model on disk, and a
+// model downloaded again under the same id is one the operator did not arm;
+// without this it would launch at debug with no arm on this instance. The
+// mark goes whether or not the model was loaded, so ErrNotLoaded here means
+// what it means for Unload and the caller may ignore it the same way.
+func (p *Pool) Remove(repoID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	key := config.FoldRepoID(repoID)
+	if e, ok := p.entries[key]; ok && e.inFlight > 0 {
+		return fmt.Errorf("%s is serving %d request(s); try again in a moment: %w",
+			repoID, e.inFlight, ErrBusy)
+	}
+	delete(p.debugArmed, key)
+	return p.unloadLocked(repoID)
+}
+
+// unloadLocked is Unload's body. Callers must hold p.mu.
+func (p *Pool) unloadLocked(repoID string) error {
 	e, ok := p.entries[config.FoldRepoID(repoID)]
 	if !ok {
 		return fmt.Errorf("%s: %w", repoID, ErrNotLoaded)

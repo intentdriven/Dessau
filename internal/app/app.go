@@ -1856,7 +1856,10 @@ func (a *App) Delete(repoID string) error {
 		<-dl.done
 	}
 
-	if err := a.Pool.Unload(repoID); err != nil {
+	// Remove rather than Unload: the pool also drops what it holds about the
+	// model beyond its process, so nothing armed against this copy reaches a
+	// copy downloaded later under the same id.
+	if err := a.Pool.Remove(repoID); err != nil {
 		// "Not loaded" is expected and fine — we are about to delete it anyway.
 		// "Busy" is not: deleting a model mid-request would pull the weights out
 		// from under an in-flight completion.
