@@ -31,6 +31,15 @@ function pinLabel(m, pinned, loaded) {
   return loaded ? 'pinned' : 'pinned, not loaded';
 }
 
+// debugArmedFor says whether a model's debug-logging mark is waiting for a
+// launch (itd-2609062346072707), joined on the folded id like every other
+// join on a repo id here. The mark is spent by the launch, so a model whose
+// running process is at debug is not in the set: its resident entry says so.
+function debugArmedFor(m, debugArmed) {
+  const want = foldRepoID(m.repo_id);
+  return (debugArmed || []).some((id) => foldRepoID(id) === want);
+}
+
 // size is bytes() for a figure that is genuinely a measurement: nothing pinned
 // is "0 B", not the em dash bytes() shows for a size it does not know. This
 // line is read before anything is ticked, so zero is its opening state.
@@ -149,6 +158,14 @@ const postModel = (path, model) => api(path, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ model }),
+});
+
+// postDebugLog arms or disarms debug logging for one model. It is the one
+// model action with a second field, saying which way the mark goes.
+const postDebugLog = (model, armed) => api('/api/models/debug-log', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ model, armed }),
 });
 
 // ── tabs ─────────────────────────────────────────────────
@@ -359,7 +376,7 @@ function renderModels() {
   $('graceQueue').textContent = queue;
   $('graceQueue').hidden = queue === '';
   const models = state.models || [];
-  const resident = new Set((state.resident || []).map((r) => r.repo_id));
+  const resident = new Map((state.resident || []).map((r) => [r.repo_id, r]));
   // The set the pool is actually enforcing, not the stored settings: those two
   // are the same except for the moment between a model arriving and the pin
   // for it being reconciled, and this surface is the one an operator would act
@@ -382,6 +399,12 @@ function renderModels() {
     else if (m.state === 'failed') pill = '<span class="pill failed">failed</span>';
     const pinText = pinLabel(m, pinned, loaded);
     if (pinText) pill += `<span class="pill pinned">${pinText}</span>`;
+    // Armed and running are different runs and are drawn differently: the
+    // mark waiting, read from the snapshot's armed set, and the process
+    // launched with it, read from its own entry. A model that is neither
+    // draws nothing.
+    if (m.state === 'ready' && debugArmedFor(m, state.debug_armed)) pill += '<span class="pill debug">debug armed</span>';
+    if (loaded && resident.get(m.repo_id).debug_log) pill += '<span class="pill debug">logging at debug</span>';
 
     const info = modelInfoLine(m, sequencesInForce());
     const measured = measurementText(m, state.idle_jobs, state.probe_queue);
@@ -428,6 +451,14 @@ function renderModels() {
         actions.append(btn('Use this window', 'ghost', () =>
           postModel('/api/models/adopt', m.repo_id).catch(alertErr)));
       }
+      // Debug logging for one run of this model: a deliberate act, so the
+      // same two clicks Delete takes. The button's title is the plain-words
+      // paragraph in this pane, read at render time so the two cannot drift.
+      const armed = debugArmedFor(m, state.debug_armed);
+      const debug = confirmBtn(armed ? 'Stop debug logging' : 'Debug logging', 'Confirm?', 'ghost', () =>
+        postDebugLog(m.repo_id, !armed).catch(alertErr));
+      debug.title = $('debugLogBlurb').textContent.replace(/\s+/g, ' ').trim();
+      actions.append(debug);
       // A ready model is real data, so require a deliberate second click.
       actions.append(confirmBtn('Delete', 'Confirm?', 'danger', () =>
         postModel('/api/models/delete', m.repo_id).catch(alertErr)));
@@ -954,6 +985,27 @@ function postureLines(state) {
   lines.push({ id: 'stats', heading: 'Request statistics', text: stats,
     reads: ['config.statistics', 'config.stats_months', 'config.stats_max_bytes',
       'stats_store.refused', 'stats_store.oldest', 'stats_store.bytes', 'stats_store.files', 'stats_store.stalled'] });
+
+  // Debug logging for one model (itd-2609062346072707, adr-2609201008477513):
+  // present only while a model is armed or running at debug, the shape the
+  // private-network line takes. Armed is read from the snapshot's armed set
+  // and running from each resident entry, because they are different runs.
+  const debugArmed = state.debug_armed || [];
+  const debugOn = (state.resident || []).filter((r) => r.debug_log).map((r) => r.repo_id);
+  if (debugArmed.length || debugOn.length) {
+    const parts = [];
+    if (debugArmed.length) parts.push(`armed for ${list(debugArmed)}, which is logged from its next start`);
+    if (debugOn.length) parts.push(`on for ${list(debugOn)}, whose model server was started with it`);
+    const text = `Debug logging is ${parts.join(', and ')}. While it is on, that model server's own log holds ` +
+      'every request sent to it and every answer it produced — the prompts and the completions, whoever ' +
+      "sent them — and the requests Dessau's own probes and self-test send as well. It ends when that model " +
+      "server next starts, which memory pressure or another client's request can cause at any moment, and " +
+      'the run after is back to the ordinary level. The file is in the logs folder of this account\'s Dessau ' +
+      "data folder, created for this account alone; it stops at 64 MB, and the previous run's file is kept " +
+      'beside it. Nothing is sent anywhere, and clients are not told.';
+    lines.push({ id: 'debug_log', heading: 'Debug logging', text,
+      reads: ['debug_armed', 'resident.repo_id', 'resident.debug_log'] });
+  }
 
   // The self-test loads models on its own while the Mac is idle, which is a
   // thing that can be on; the page says so from the setting, which applies
