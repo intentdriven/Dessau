@@ -9,6 +9,10 @@ found_during: "live server v0.9.1 on 2026-09-21, 503 for every chat request"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/contextprobe/probe.go"
+resolution: "The pool watches the child's log while it waits for readiness and ends the wait on a fatal traceback line with that reason (TestAFatalLineInTheChildLogEndsTheLoadWaitAtOnce); a load failure is recorded on the model with its provenance, skipped by the probe and the self-test, refused with the reason at once, and lifted by a moved provenance, a re-download, Load or Measure now (TestAFailedModelIsSkippedByIdleWorkAndRefusedWithItsReason). The step floor is left: it is the gateway's own base and covers the cold load."
+impact: fix
+resolved_by:
+  commit: "190d7172"
 ---
 
 While the context probe calibrates a model, the model is loading/in_flight and charged the whole memory budget (charge_bytes = budget: 82.46 GB for a 2.2 GB model), so it is not evictable and every real request for another model is refused 503 for the length of the step; the step timeout floor is eleven minutes (defaultStepTimeout in internal/contextprobe/probe.go: at least ten minutes plus a minute's margin), and after a failed step the probe can pick the same model again. Idle work starved real requests on the live server for the whole period the maintainer tried several chat clients. An idle job should yield the budget to a real request (abort the step, release the model) rather than the request yielding to the job.

@@ -40,6 +40,30 @@ GitHub release notes.
   every per-model setting; a save of an untouched form is still accepted,
   and a cross-field refusal still names a field the save changed.
 
+### Fixed
+
+- **A model the server cannot load no longer holds every chat request off
+  for hours.** `impact: fix`. On a server with the context probe switched
+  on, the probe picked a model the runtime has no support for — an OCR
+  model, which the models list already said was not a chat model — and
+  loaded it thirty-two times over six hours, each time waiting the whole
+  ten-minute readiness timeout while the model's charge filled the memory
+  budget, so every request Alice sent was refused for want of memory.
+  Three things change. The probe measures only models the server offers to
+  chat, and **Measure now** on any other says so. A load the model server
+  has already given up on — its own log says the model type is not
+  supported, or a module is missing — fails in seconds with that reason,
+  not after ten minutes; a model that failed to load is marked on its card
+  ("did not load", with the reason) and is left alone by the probe and the
+  self-test, and a request for it is refused at once with the reason, until
+  the runtime, the memory budget or its served window changes, or Alice
+  presses **Load** or **Measure now** to try it again. And when a request
+  is refused for want of memory while the server's own idle work holds it,
+  the refusal says so to a client on this Mac or one holding the API key —
+  which model, which job, for how long, and that **Unload** on its card
+  releases it — and the card says "loading for the context probe" rather
+  than "loaded". A stranger on the network is still told nothing.
+
 ## [0.9.2] - 2026-09-21
 
 ### Added

@@ -9,6 +9,10 @@ found_during: "live server v0.9.1 on 2026-09-21, 503 for every chat request"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/app/contextprobe.go"
+resolution: "Candidates() and Measure now read registry.Model.CanChat with the rule in force; an image-to-text model with chat: false is never a candidate (TestTheProbeConsidersOnlyChatModels)"
+impact: fix
+resolved_by:
+  commit: "52dcef7a"
 ---
 
 The context probe measures models that are not chat models: it takes every Ready() model as a candidate (internal/app/contextprobe.go Candidates), so on the live server it picked mlx-community/GLM-OCR-bf16 (pipeline image-to-text, chat: false in the models list), spawned an mlx_lm server for it and POSTed /v1/chat/completions, which never answered (the child idle at 0% CPU answering /health in under a millisecond, in_flight 1 for over ten minutes at 'calibrating at 1024 tokens'). A served window is only meaningful for a model the server offers to chat; the probe should skip chat: false models, and a step whose child answers /health but not a completion should fail fast rather than wait for the step timeout.
