@@ -812,6 +812,14 @@ type ModelSettings struct {
 	// Config.ServedContextSetting, never off this field, so that the folding
 	// and the cap are applied in one place.
 	ServedContext int64 `json:"served_context,omitempty"`
+
+	// NoTranscript takes this model out of the recording
+	// (itd-2609091715089488): while it is set, nothing this model is asked
+	// and nothing it answers is written to the transcript store, whether or
+	// not the machine-wide switch is on. Off unless the operator sets it for
+	// this model. Read through Config.NoTranscript, never off this field, so
+	// that the folding is applied in one place.
+	NoTranscript bool `json:"no_transcript,omitempty"`
 }
 
 // MaxContextLength bounds every context window Dessau will believe, declared
@@ -833,7 +841,7 @@ const MaxContextLength = 1 << 23
 // embedded or promoted one would report a pinned model with no sampling
 // override as having no settings.
 func (m ModelSettings) IsZero() bool {
-	return !m.MergeSystemMessages && !m.Pinned && m.ServedContext == 0 && m.Sampling.IsZero()
+	return !m.MergeSystemMessages && !m.Pinned && m.ServedContext == 0 && m.Sampling.IsZero() && !m.NoTranscript
 }
 
 // ServedContextSetting is the operator's served window for the named model,
@@ -878,6 +886,30 @@ func (c Config) ServedContextSetting(repoID string, declared int64) int64 {
 		return declared
 	}
 	return set
+}
+
+// NoTranscript reports whether this model is excepted from the recording
+// (itd-2609091715089488). Every path that decides whether to write goes
+// through this reader, never through a raw index into Models.
+//
+// Folded, as ServedContextSetting is: a request resolves to the registry's
+// spelling and the settings file is written by hand as often as by the
+// panel. Every variant is read and ANY that carries the exception wins.
+// Two spellings of one id are refused on the settings path and dropped on
+// the file path, so a map holding both reached here some other way; the
+// reader answers the same on every run of the same binary either way, and
+// it fails closed — the operator asked for nothing to be written.
+func (c Config) NoTranscript(repoID string) bool {
+	if c.Models[repoID].NoTranscript {
+		return true
+	}
+	folded := FoldRepoID(repoID)
+	for id, ms := range c.Models {
+		if ms.NoTranscript && FoldRepoID(id) == folded {
+			return true
+		}
+	}
+	return false
 }
 
 // Clone returns a copy that shares no pointer with the original — the sampling
