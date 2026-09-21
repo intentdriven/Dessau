@@ -1140,6 +1140,7 @@ func TestModelActionsRefuseAnOversizedBody(t *testing.T) {
 		"/api/models/delete",
 		"/api/models/load",
 		"/api/models/unload",
+		"/api/models/debug-log",
 	}
 
 	huge := `{"model":"` + strings.Repeat("a", config.MaxConfigBytes) + `"}`
