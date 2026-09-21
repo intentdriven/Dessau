@@ -546,9 +546,141 @@ empty one.
 
 **Answer 2026-09-20 (Question 2):** (i) the child's level, conditional on the 0.31.3 verification. **(Question 3):** (i) next restart, plus a size bound, plus keeping the previous run's file. Recorded in `.abcd/work/DECISIONS.md`.
 
-<!-- abcd-review: OWED receipt=rcp-adb86bbdc558 -->
-Fidelity review OWED (receipt rcp-adb86bbdc558).
+<!-- abcd-review: INGESTED receipt=rcp-adb86bbdc558 -->
+Fidelity review — receipt rcp-adb86bbdc558 (verifier intent-auditor claude-opus-5).
 
+Provenance: intent-auditor@claude-opus-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:fafa96a88f16f4296d99b98ece2cb9e2e9d496e87d3d12c02ce2fb042bec32ad
+Input attestations: diff:12a42cfb4ba0fdef1b18b0712090fa0e3e0d8c8e..638ea61c981e083859ac5a7ed83390040ac0616a@sha256:c29dc967cd6cf5a705eb1ca7b49962a1dad1c662a193fb8e2acd7ebcda71f69b;
+
+Acceptance rollup: MET 8 · MET_WITH_CONCERNS 3 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Pool.ArmDebugLog only writes a map entry under p.mu; TestArmingTouchesNoRunningProcess arms against a running fake and asserts one launch, same process, not stopped, no request sent, spec unchanged; the panel blurb says the run begins at the model's next start.
+  evidence: internal/runtime/pool.go:721 — "func (p *Pool) ArmDebugLog(repoID string) error {"
+  evidence: internal/runtime/debuglog_test.go:14 — "func TestArmingTouchesNoRunningProcess(t *testing.T) {"
+  evidence: internal/runtime/debuglog_test.go:35 — "t.Error("arming replaced the running process")"
+  evidence: internal/ui/static/index.html:71 — "From that model's next start until the start after it"
+- ac-2 — MET: launchArgs sets level from Spec.DebugLog; startLocked reads the mark and deletes it only after Launch returns nil; TestAnArmedLaunchIsAtDebugAndTheNextIsAtInfo asserts INFO/DEBUG/INFO with --log-level counted once per launch, and TestALaunchThatFailsToSpawnLeavesTheMarkArmed asserts the mark survives a failed spawn and is spent by the next success.
+  evidence: internal/runtime/launcher.go:256 — "level := "INFO""
+  evidence: internal/runtime/pool.go:1354 — "delete(p.debugArmed, key)"
+  evidence: internal/runtime/debuglog_test.go:96 — "for i, want := range []string{"INFO", "DEBUG", "INFO"} {"
+  evidence: internal/runtime/debuglog_test.go:140 — "func TestALaunchThatFailsToSpawnLeavesTheMarkArmed(t *testing.T) {"
+- ac-3 — MET: index.html carries the debugLogBlurb paragraph with every promised phrase; app.js sets the card button's title from that paragraph at render time; TestThePanelSaysWhatDebugLoggingWrites holds the phrases with the same containsAll shape logging_docs_test uses.
+  evidence: internal/ui/static/index.html:70 — "< p class="hint" id="debugLogBlurb">Debug logging is a per-model diagnostic and is off unless you arm it."
+  evidence: internal/ui/static/index.html:72 — "request sent to it and every answer it produced — the prompts and the completions, whoever sent"
+  evidence: internal/archtest/debug_mark_test.go:140 — "func TestThePanelSaysWhatDebugLoggingWrites(t *testing.T) {"
+  evidence: internal/archtest/debug_mark_test.go:170 — "if !containsAll(para, want) {"
+- ac-4 — MET_WITH_CONCERNS: State.DebugArmed and Resident.DebugLog are served (TestTheSnapshotCarriesTheDebugState) and the card draws two distinct pills from those two fields with nothing for a model that is neither (TestTheCardDrawsTheDebugPills); concern: the recorded hand check went through /api/state and resident[].debug_log rather than the web panel, so 'appears without a reload' in the DOM was not the check performed.
+  evidence: internal/gateway/control.go:352 — "DebugArmed []string `json:"debug_armed"`"
+  evidence: internal/runtime/pool.go:123 — "DebugLog bool `json:"debug_log"`"
+  evidence: internal/ui/static/app.js:406 — "pill += '< span class="pill debug">debug armed< /span>'"
+  evidence: internal/ui/static/app.js:407 — "pill += '< span class="pill debug">logging at debug< /span>'"
+  evidence: internal/gateway/debuglog_test.go:65 — "func TestTheSnapshotCarriesTheDebugState(t *testing.T) {"
+  evidence: internal/archtest/debug_mark_test.go:195 — "func TestTheCardDrawsTheDebugPills(t *testing.T) {"
+  evidence: .abcd/work/DECISIONS.md:383 — "Row 4 checked by hand on the scratch root with the small model: arming appears in `/api/state` on a fresh read"
+- ac-5 — MET: debugMarkReaders lists five files with a reason each; TestTheDebugMarkIsNamedOnlyByItsReaders walks the tree and fails on any other file naming the mark; TestTheDebugMarkIsDerivedFromNothingElse forbids .Statistics/.LogLevel/"log_level" in pool.go, launcher.go and the handleDebugLog body; TestDebugMarkReadersAllExist is the liveness rule; TestTheDebugArmWritesNoSettings shows arming leaves Config and config.json byte-identical with Statistics on.
+  evidence: internal/archtest/debug_mark_test.go:25 — "var debugMarkReaders = map[string]string{"
+  evidence: internal/archtest/debug_mark_test.go:39 — "func TestTheDebugMarkIsNamedOnlyByItsReaders(t *testing.T) {"
+  evidence: internal/archtest/debug_mark_test.go:90 — "forbidden := []string{".Statistics", "Statistics bool", ".LogLevel", `"log_level"`}"
+  evidence: internal/archtest/debug_mark_test.go:122 — "func TestDebugMarkReadersAllExist(t *testing.T) {"
+  evidence: internal/gateway/debuglog_test.go:159 — "func TestTheDebugArmWritesNoSettings(t *testing.T) {"
+- ac-6 — MET: The archtest is renamed TestTheModelServerLevelComesOnlyFromThePerModelDebugMark with a comment block naming adr-2609201008477513 and why the exception exists; it still counts --log-level exactly once, requires level := "INFO" for the unarmed path, allows exactly one "DEBUG" spelling as debugLogLevel used once inside the `if spec.DebugLog` block, and forbids .Statistics/.LogLevel/"log_level" in launcher.go.
+  evidence: internal/archtest/statistics_switch_test.go:108 — "func TestTheModelServerLevelComesOnlyFromThePerModelDebugMark(t *testing.T) {"
+  evidence: internal/archtest/statistics_switch_test.go:97 — "// Why there is an exception at all. adr-2609201008477513 narrows"
+  evidence: internal/archtest/statistics_switch_test.go:118 — "if n := strings.Count(src, `"--log-level"`); n != 1 {"
+  evidence: internal/archtest/statistics_switch_test.go:124 — "if n := strings.Count(src, `"DEBUG"`); n != 1 {"
+  evidence: internal/runtime/launcher_test.go:177 — "func TestAnUnarmedModelServerIsLaunchedAtInfoAndAnArmedOneAtDebug(t *testing.T) {"
+- ac-7 — MET: An armed launch routes both streams through boundedWriter with DebugLogMaxBytes = 64 MiB; TestTheDebugLogStopsAtItsBound has a looping-client case, a single-write-larger-than-the-bound case and a concurrency case, TestAnArmedLaunchStopsItsLogAtTheBound exercises it through the real Launch pipe, and docs/logging.md states the 64 MB bound (figure tied to the constant by the docs test); the writer swallowing write errors is captured as iss-2609210903529294.
+  evidence: internal/runtime/launcher.go:55 — "const DebugLogMaxBytes = 64 << 20"
+  evidence: internal/runtime/launcher.go:355 — "bounded := newBoundedWriter(logFile, max)"
+  evidence: internal/runtime/boundedwriter_test.go:43 — "t.Run("a single write larger than the bound is cut at the bound", func(t *testing.T) {"
+  evidence: internal/runtime/launcher_test.go:318 — "func TestAnArmedLaunchStopsItsLogAtTheBound(t *testing.T) {"
+  evidence: docs/logging.md:86 — "so its log stops at 64 MB: what fits is written, one final line says the log"
+- ac-8 — MET: keepPreviousLog runs at launcher.go:309 before the O_CREATE|O_TRUNC open at :331, renaming through an os.Root to < name>.previous.log; TestALaunchKeepsThePreviousRunsLog asserts the old content survives under the previous name and the new file is fresh, TestTwoConsecutiveLaunchesKeepOnlyOnePreviousLog asserts exactly two files after two launches.
+  evidence: internal/runtime/launcher.go:309 — "if err := keepPreviousLog(l.LogDir, spec.RepoID); err != nil {"
+  evidence: internal/runtime/launcher.go:332 — "os.O_CREATE|os.O_WRONLY|os.O_TRUNC|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0o600)"
+  evidence: internal/runtime/launcher.go:443 — "return root.Rename(name, previousLogFileName(repoID))"
+  evidence: internal/runtime/launcher_test.go:258 — "func TestALaunchKeepsThePreviousRunsLog(t *testing.T) {"
+  evidence: internal/runtime/launcher_test.go:282 — "func TestTwoConsecutiveLaunchesKeepOnlyOnePreviousLog(t *testing.T) {"
+- ac-9 — MET: docs/logging.md no longer says 'no setting in Dessau asks for it' and now names the per-model Debug logging action, what it writes, the 64 MB bound and the kept .previous.log; TestTheLoggingPageDescribesThePerModelDebugAction in the shipped logging_docs_test.go refuses the old sentence and requires each new claim.
+  evidence: docs/logging.md:69 — "One action does. **Debug logging**, on a model's card in the control panel,"
+  evidence: docs/logging.md:92 — "`<org>@<name>.previous.log`, and replaces the one before that — so the run"
+  evidence: internal/archtest/logging_docs_test.go:118 — "func TestTheLoggingPageDescribesThePerModelDebugAction(t *testing.T) {"
+  evidence: internal/archtest/logging_docs_test.go:121 — "if containsAll(page, "no setting in Dessau asks for it") {"
+- ac-10 — MET_WITH_CONCERNS: handleDebugLog refuses with 409 and the reason when Control.TranscriptExcepted says so, TestAnExceptedModelRefusesTheDebugArm drives it through an injected predicate, and the Models-pane blurb and docs say a no-transcript model refuses; concern: nothing in internal/app sets TranscriptExcepted (only the test does), so in the shipped tree the predicate is nil and no model is refused — itd-2609091715089488 is still in planned/ and the spec records the wiring as owed to it; and only the web panel's blurb carries the sentence at the control, no second panel surface was found.
+  evidence: internal/gateway/control.go:1546 — "if c.TranscriptExcepted != nil && c.TranscriptExcepted(req.Model) {"
+  evidence: internal/gateway/control.go:1548 — ""this model keeps no transcript, so debug logging is refused: at the model server's debug level its log would hold every prompt sent to it")"
+  evidence: internal/gateway/debuglog_test.go:120 — "func TestAnExceptedModelRefusesTheDebugArm(t *testing.T) {"
+  evidence: internal/gateway/debuglog_test.go:43 — "ctrl := &Control{App: a, TranscriptExcepted: excepted}"
+  evidence: internal/ui/static/index.html:76 — "A model that keeps no"
+  evidence: .abcd/development/specs/closed/spc-2609201007359229-debug-logging-for-one-model-until-it-is-restarted-alice-pick.md:378 — "**`internal/app` is untouched and `Control.TranscriptExcepted` is not"
+- ac-11 — MET_WITH_CONCERNS: adr-2609201008477513 exists with status accepted, states all seven conditions in the maintainer's terms and Condition 7 says plainly the client is not told; adr-2609061503319212's status field links forward to it and adr-2609061610102325 is untouched in the range; the amended archtest cites the id. Concerns: the intent record itself cites the ADR only as 'the ADR that narrows adr-2609061503319212' and never by id (0 occurrences), so the hand check's second half fails; the ADR landed in 44a72c12 before the delivered range; the forward link lives in the old ADR's status prose while its related_adrs stays [], and abcd lint surfaces no ADR link-integrity result to cite.
+  evidence: .abcd/development/decisions/adrs/2609201008477513-a-deliberately-invoked-per-model-diagnostic-may-write-prompt.md:4 — "status: accepted"
+  evidence: .abcd/development/decisions/adrs/2609201008477513-a-deliberately-invoked-per-model-diagnostic-may-write-prompt.md:145 — "**Condition 7 — the client is not told, and the record says so plainly.**"
+  evidence: .abcd/development/decisions/adrs/2609061503319212-no-public-telemetry-local-telemetry-only-as-a-strict-opt-in.md:4 — "narrowed in part by adr-2609201008477513, on the per-model diagnostic"
+  evidence: .abcd/development/decisions/adrs/2609061503319212-no-public-telemetry-local-telemetry-only-as-a-strict-opt-in.md:10 — "related_adrs: []"
+  evidence: internal/archtest/statistics_switch_test.go:97 — "// Why there is an exception at all. adr-2609201008477513 narrows"
+  evidence: .abcd/development/intents/shipped/itd-2609062346072707-debug-logging-for-one-model-until-it-is-restarted-alice-pick.md:258 — "when the record is read, then the ADR that narrows adr-2609061503319212"
+
+Gap audit:
+- honoured:
+  - arming is an in-memory mark that touches no running process and is spent by the next successful launch only
+    evidence: internal/runtime/pool.go:1342 — "_, debugLog := p.debugArmed[key]"
+    evidence: internal/runtime/debuglog_test.go:14 — "func TestArmingTouchesNoRunningProcess(t *testing.T) {"
+  - the level is derived from the mark alone, held by the mirror readers' list, the liveness rule and the amended launcher archtest
+    evidence: internal/archtest/debug_mark_test.go:25 — "var debugMarkReaders = map[string]string{"
+    evidence: internal/archtest/statistics_switch_test.go:108 — "func TestTheModelServerLevelComesOnlyFromThePerModelDebugMark(t *testing.T) {"
+  - an armed run's log is bounded per write at 64 MB and the previous run's file is kept as .previous.log
+    evidence: internal/runtime/boundedwriter.go:32 — "func (b *boundedWriter) Write(p []byte) (int, error) {"
+    evidence: internal/runtime/launcher.go:426 — "func keepPreviousLog(dir, repoID string) error {"
+  - the panel, the posture line and docs/logging.md say in plain words what the file holds, that probes' traffic is in it, and that clients are not told
+    evidence: internal/ui/static/index.html:70 — "id="debugLogBlurb""
+    evidence: internal/ui/static/app.js:1006 — "lines.push({ id: 'debug_log', heading: 'Debug logging', text,"
+    evidence: docs/logging.md:82 — "anywhere, and clients are not told. A model that keeps no transcript refuses"
+  - a deleted model takes its mark with it so a re-download is not launched at debug (review fix beyond the press release)
+    evidence: internal/app/app.go:1862 — "if err := a.Pool.Remove(repoID); err != nil {"
+    evidence: internal/runtime/pool.go:2280 — "delete(p.debugArmed, key)"
+- diverged:
+  - a no-transcript model refuses the arm: delivered as a seam (Control.TranscriptExcepted) that the app never sets, so the refusal is not live until itd-2609091715089488 lands
+    evidence: internal/gateway/control.go:84 — "TranscriptExcepted func(repoID string) bool"
+    evidence: .abcd/development/specs/closed/spc-2609201007359229-debug-logging-for-one-model-until-it-is-restarted-alice-pick.md:378 — "**`internal/app` is untouched and `Control.TranscriptExcepted` is not"
+  - the row-4 hand check was performed through /api/state rather than in the web panel without a reload
+    evidence: .abcd/work/DECISIONS.md:383 — "arming appears in `/api/state` on a fresh read"
+  - the two named tests were renamed: TestTheModelServerIsAlwaysLaunchedAtInfo → TestTheModelServerLevelComesOnlyFromThePerModelDebugMark, and the runtime sibling TestEveryModelServerIsLaunchedAtInfo → TestAnUnarmedModelServerIsLaunchedAtInfoAndAnArmedOneAtDebug (amended, not deleted, as promised)
+    evidence: internal/archtest/statistics_switch_test.go:108 — "func TestTheModelServerLevelComesOnlyFromThePerModelDebugMark(t *testing.T) {"
+    evidence: internal/runtime/launcher_test.go:177 — "func TestAnUnarmedModelServerIsLaunchedAtInfoAndAnArmedOneAtDebug(t *testing.T) {"
+- missing:
+  - the intent record citing adr-2609201008477513 by id (the hand check in ac-11); the record names the ADR only by description
+    evidence: .abcd/development/intents/shipped/itd-2609062346072707-debug-logging-for-one-model-until-it-is-restarted-alice-pick.md:258 — "then the ADR that narrows adr-2609061503319212"
+  - the wiring in internal/app that makes TranscriptExcepted true for a real model (owed to itd-2609091715089488, still in planned/)
+    evidence: internal/gateway/debuglog_test.go:147 — "// the per-model field the predicate reads exists."
+    evidence: .abcd/development/intents/planned/itd-2609091715089488-some-models-keep-no-transcript-even-while-recording-is-on-al.md:1 — "---"
+
+Scope-condition dispositions:
+- cond-2609201007358534 — survived: the pin is still mlx-lm==0.31.3 (requirements and provision.go untouched in the range) and the recorded hand check saw the prompt in the model's log at DEBUG, as the note says that version writes
+  evidence: internal/runtime/mlx-requirements.txt:211 — "mlx-lm==0.31.3 \"
+  evidence: .abcd/work/DECISIONS.md:383 — "the model's log at DEBUG with the prompt in it"
+- cond-2609201007350925 — survived: the mark is keyed per folded repo id, spent at the one launch that carries it, and the level is a launch flag so the run ends with the process however it stops
+  evidence: internal/runtime/pool.go:1354 — "delete(p.debugArmed, key)"
+  evidence: internal/runtime/debuglog_test.go:63 — "func TestAnArmedLaunchIsAtDebugAndTheNextIsAtInfo(t *testing.T) {"
+- cond-2609201007357647 — survived: the only arming surface is the control-plane route POST /api/models/debug-log; the archtests forbid deriving the mark from .Statistics/.LogLevel/"log_level" and the arm writes nothing to config
+  evidence: internal/gateway/control.go:149 — "mux.HandleFunc("POST /api/models/debug-log", c.handleDebugLog)"
+  evidence: internal/archtest/debug_mark_test.go:82 — "func TestTheDebugMarkIsDerivedFromNothingElse(t *testing.T) {"
+  evidence: internal/gateway/debuglog_test.go:159 — "func TestTheDebugArmWritesNoSettings(t *testing.T) {"
+- cond-2609201007353261 — survived: the open is unchanged (0600, O_NOFOLLOW, O_NONBLOCK, regular-file check) and the rename stays inside the same logs directory through an os.Root, so the file's place and mode are as the condition assumed; the ADR states the shared-cache cost in the condition's own words
+  evidence: internal/runtime/launcher.go:332 — "os.O_CREATE|os.O_WRONLY|os.O_TRUNC|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0o600)"
+  evidence: internal/runtime/launcher.go:427 — "root, err := os.OpenRoot(dir)"
+  evidence: .abcd/development/decisions/adrs/2609201008477513-a-deliberately-invoked-per-model-diagnostic-may-write-prompt.md:206 — "- The shared-cache install is where this costs most."
+- cond-2609201007354397 — survived: the delivery adds no egress path — the armed run's bytes go to the local log file only — and the narrowing ADR re-links the invariant to the records that own it rather than re-promising it
+  evidence: internal/runtime/launcher.go:355 — "bounded := newBoundedWriter(logFile, max)"
+  evidence: .abcd/development/decisions/adrs/2609201008477513-a-deliberately-invoked-per-model-diagnostic-may-write-prompt.md:212 — "- Nothing leaves the Mac. The records that own that invariant"
+- cond-2609201007351874 — narrowed: the refusal, its 409 and its reason exist behind Control.TranscriptExcepted, but nothing sets that predicate and no model in the tree can carry the transcript exception, so the refusal holds only for models a caller names through the seam
+  narrowing: holds only once internal/app wires Control.TranscriptExcepted to itd-2609091715089488's per-model field; in the shipped tree the predicate is nil and no model is refused
+  evidence: internal/gateway/control.go:1546 — "if c.TranscriptExcepted != nil && c.TranscriptExcepted(req.Model) {"
+  evidence: internal/gateway/debuglog_test.go:148 — "func TestANilTranscriptSeamRefusesNothing(t *testing.T) {"
+- cond-2609201007352211 — survived: the bound holds per write (a single write larger than the bound is cut at it) and the panel blurb, posture line and docs name Dessau's own probes and self-test as writers
+  evidence: internal/runtime/boundedwriter_test.go:43 — "t.Run("a single write larger than the bound is cut at the bound", func(t *testing.T) {"
+  evidence: internal/ui/static/index.html:73 — "them — and the requests Dessau's own probes and self-test send as well."
 ## Grounds
 
 - pursued: the maintainer answered every open question at the 2026-09-20 interview and the itd-1 sections were written from the answers; what would show this wrong is a criterion that cannot be held by the test it names
