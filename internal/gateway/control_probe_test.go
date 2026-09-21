@@ -66,6 +66,8 @@ func TestMeasureNowQueuesAndAdoptWritesTheServedWindow(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 	if err := a.Registry.Put(registry.Model{
 		RepoID: "org/m", Path: a.Paths.ModelDir("org/m"), State: registry.StateReady, Bytes: 1, ContextLength: 131072,
+		// A chat model: the probe measures nothing else.
+		ChatTemplate: true,
 	}); err != nil {
 		t.Fatal(err)
 	}

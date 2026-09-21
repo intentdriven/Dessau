@@ -100,7 +100,9 @@ func probeStack(t *testing.T, refuseAbove int) (*app.App, string) {
 	if err := os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte("weights"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Registry.Put(registry.Model{RepoID: "org/m", Path: dir, State: registry.StateReady, Bytes: 7, ContextLength: 131072}); err != nil {
+	// A chat model (the template stands in for the Hub's word): the probe
+	// measures nothing else.
+	if err := a.Registry.Put(registry.Model{RepoID: "org/m", Path: dir, State: registry.StateReady, Bytes: 7, ContextLength: 131072, ChatTemplate: true}); err != nil {
 		t.Fatal(err)
 	}
 
