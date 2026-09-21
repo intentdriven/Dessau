@@ -7,7 +7,9 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
+	"unicode"
 )
 
 // LoadLogger is a Process that can say where its output is being written.
@@ -66,7 +68,12 @@ func fatalLoadLine(path string) (string, bool) {
 	if path == "" {
 		return "", false
 	}
-	f, err := os.Open(path)
+	// Opened the way the launcher opened it for writing: a link left under
+	// the name is refused rather than followed, a FIFO cannot block the
+	// open, and the handle is checked to be a regular file before it is
+	// read. The directory is this account's own; this is the same
+	// hardening on the reading side.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return "", false
 	}
@@ -84,30 +91,67 @@ func fatalLoadLine(path string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
+	// Only whole lines: the child may be mid-write, and a terminal line cut
+	// short would be recorded as the reason.
+	if i := bytes.LastIndexByte(tail, '\n'); i < 0 {
+		return "", false
+	} else {
+		tail = tail[:i]
+	}
 	// The last such line, not the first: a chained exception ends in the
 	// one the child actually raised — "Model type … not supported" after
 	// the ModuleNotFoundError it was handling — and that is the line a
-	// person reading the log's end would quote.
+	// person reading the log's end would quote. A traceback is its header
+	// and the indented frames after it; the terminal line is read only
+	// straight after a frame, so a matching line the child writes on its
+	// own later — a logged message, a traceback it survived and went on
+	// from — is not taken for the verdict.
 	inTraceback, found := false, ""
 	for _, raw := range bytes.Split(tail, []byte("\n")) {
 		line := strings.TrimRight(string(raw), "\r")
 		switch {
 		case line == tracebackHeader:
 			inTraceback = true
+		case line == "":
+			// Blank lines separate a chained exception's parts.
+		case strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t"):
+			// A frame, its source line, or a caret marker.
 		case inTraceback && fatalLine.MatchString(line):
 			found = sanitizeFatalLine(line)
+			inTraceback = false
+		case strings.HasPrefix(line, "During handling of the above exception"),
+			strings.HasPrefix(line, "The above exception was the direct cause"):
+			// The chain's own joins; the next header follows.
+		default:
+			inTraceback = false
 		}
 	}
 	return found, found != ""
 }
 
-// sanitizeFatalLine bounds the line and blanks anything path-shaped in it.
+// sanitizeFatalLine bounds the line, drops anything unprintable, and
+// blanks everything from the first path-shaped token to the last as one
+// path: a path with spaces in it — a directory name of the person's own —
+// would otherwise leak its inner words one token at a time.
 func sanitizeFatalLine(line string) string {
+	line = strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' || (unicode.IsPrint(r) && !unicode.IsControl(r)) {
+			return r
+		}
+		return -1
+	}, line)
 	fields := strings.Fields(line)
+	first, last := -1, -1
 	for i, w := range fields {
 		if strings.Contains(w, "/") {
-			fields[i] = "<path>"
+			if first < 0 {
+				first = i
+			}
+			last = i
 		}
+	}
+	if first >= 0 {
+		fields = append(append(fields[:first:first], "<path>"), fields[last+1:]...)
 	}
 	out := strings.Join(fields, " ")
 	if len(out) > maxFatalLineBytes {

@@ -195,6 +195,15 @@ func (a *App) recordLoadFailure(repoID string, err error) {
 	if !errors.As(err, &notReady) || notReady.Interrupted {
 		return
 	}
+	// Reports arrive on their own goroutines, in no fixed order. A failure
+	// reported after a hand retry has lifted the mark and started a fresh
+	// load must not mark the model over that load: the pool holding an
+	// entry for the model now is the retry, and its own report decides.
+	for _, res := range a.Pool.Residency().Models {
+		if config.FoldRepoID(res.RepoID) == config.FoldRepoID(repoID) {
+			return
+		}
+	}
 	reason := notReady.Reason
 	if reason == "" {
 		reason = "did not become ready"
@@ -204,7 +213,7 @@ func (a *App) recordLoadFailure(repoID string, err error) {
 	}
 	prov := probeSources{a}.Provenance(repoID)
 	if err := a.Registry.SetLoadFailure(repoID, &registry.LoadFailure{
-		Reason: reason, At: time.Now().Unix(),
+		Reason: reason, At: time.Now().Unix(), Transient: notReady.Transient,
 		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes,
 		DecodeConcurrency: prov.DecodeConcurrency, ServedContext: prov.ServedContext,
 	}); err != nil {

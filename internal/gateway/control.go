@@ -1473,12 +1473,35 @@ func (c *Control) handleUnload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := c.App.Pool.Unload(model); err != nil {
+	// A model an idle job is holding has the job's own request in flight,
+	// and the pool refuses to unload a model that is serving. The job is
+	// asked to let go first — it yields, releases its request and unloads
+	// the model itself — and the unload here waits, bounded, for that to
+	// land rather than answering 409 to the one person who can take the
+	// memory back (iss-2609211334576018).
+	err := c.App.Pool.Unload(model)
+	interrupted := false
+	if errors.Is(err, runtime.ErrBusy) && c.App.SelfTest.Interrupt(model) {
+		interrupted = true
+		deadline := time.Now().Add(idleJobReleaseWait)
+		for errors.Is(err, runtime.ErrBusy) && time.Now().Before(deadline) {
+			time.Sleep(50 * time.Millisecond)
+			err = c.App.Pool.Unload(model)
+		}
+	}
+	// A job that let go unloads the model itself, so finding it gone is the
+	// unload asked for; a model that was never loaded is still a conflict.
+	if err != nil && !(interrupted && errors.Is(err, runtime.ErrNotLoaded)) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "unloaded", "model": model})
 }
+
+// idleJobReleaseWait bounds how long Unload waits for an interrupted idle job
+// to release its request and its model: the gateway gives up a cancelled
+// request when its handler notices, and the job unloads straight after.
+const idleJobReleaseWait = 15 * time.Second
 
 // debugLogRequest is the body of the one model action that says which way it
 // goes: arm the mark, or take an unspent one back.

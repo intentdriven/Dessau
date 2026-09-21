@@ -26,6 +26,13 @@ type LoadFailure struct {
 	Reason string `json:"reason"`
 	// At is when the load failed, Unix seconds UTC.
 	At int64 `json:"at"`
+	// Transient says the reason is the pool's own bound — the readiness
+	// timeout, an exit by signal — rather than the child's assertion that
+	// the model cannot load. It stands for this process, so idle work does
+	// not loop on a slow load and a client is told why at once, and is
+	// dropped at the next start (Open), where the load may well go
+	// differently.
+	Transient bool `json:"transient,omitempty"`
 	// The provenance: what was in force when the load failed.
 	Runtime           string `json:"runtime"`
 	BudgetBytes       int64  `json:"budget_bytes"`

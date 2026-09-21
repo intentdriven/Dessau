@@ -155,3 +155,43 @@ func TestAPlantedLoadFailureIsClearedOnLoad(t *testing.T) {
 		t.Errorf("a plausible failure did not survive the load: %+v", m.LoadFailure)
 	}
 }
+
+// A transient failure — the pool's own bound, the readiness timeout or an
+// exit by signal, not the child's verdict — stands for the process that
+// wrote it and is dropped at the next start: a slow load under memory
+// pressure must not keep a good model refused across restarts.
+func TestATransientLoadFailureDoesNotOutliveTheProcess(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "registry.json")
+	r, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Put(Model{RepoID: "org/m", Path: dir, State: StateReady, Bytes: 1, ContextLength: 131_072}); err != nil {
+		t.Fatal(err)
+	}
+	f := failed()
+	f.Reason, f.Transient = "did not become ready within 10m0s", true
+	if err := r.SetLoadFailure("org/m", f); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := r.Get("org/m"); !m.LoadFailed() {
+		t.Fatal("a transient failure does not stand in the process that recorded it")
+	}
+	again, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := again.Get("org/m"); m.LoadFailed() {
+		t.Errorf("a transient failure survived a restart: %+v", m.LoadFailure)
+	}
+	if err := r.SetLoadFailure("org/m", failed()); err != nil {
+		t.Fatal(err)
+	}
+	if again, err = Open(path); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := again.Get("org/m"); !m.LoadFailed() {
+		t.Error("the child's own verdict did not survive a restart")
+	}
+}

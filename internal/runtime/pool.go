@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os/exec"
 	"sort"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/intentdriven/Dessau/internal/capability"
@@ -1403,7 +1405,7 @@ func (p *Pool) waitReady(e *entry) {
 	if err != nil && !stopped {
 		var notReady *NotReadyError
 		if errors.As(err, &notReady) {
-			reported = &NotReadyError{Err: notReady.Err, Reason: notReady.Reason, Interrupted: true}
+			reported = &NotReadyError{Err: notReady.Err, Reason: notReady.Reason, Transient: notReady.Transient, Interrupted: true}
 		}
 		if e.proc != nil {
 			// Another path took this entry out of the pool while it was
@@ -1482,7 +1484,11 @@ func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 		case <-e.proc.Done():
 			if err := e.proc.Err(); err != nil {
 				return &NotReadyError{Err: fmt.Errorf("model server for %s exited during startup: %w", e.repoID, err),
-					Reason: fmt.Sprintf("the model server exited during startup: %v", err)}
+					Reason: fmt.Sprintf("the model server exited during startup: %v", err),
+					// An exit status is the child's own verdict; a signal
+					// is somebody else's — the system under memory
+					// pressure, a stop from outside.
+					Transient: exitedBySignal(err)}
 			}
 			return &NotReadyError{Err: fmt.Errorf("model server for %s exited during startup", e.repoID),
 				Reason: "the model server exited during startup"}
@@ -1512,7 +1518,7 @@ func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 					Reason: "could not load: " + fatal.Line}
 			}
 			return &NotReadyError{Err: fmt.Errorf("%s did not become ready within %s", e.repoID, p.opts.ReadyTimeout),
-				Reason: fmt.Sprintf("did not become ready within %s", p.opts.ReadyTimeout)}
+				Reason: fmt.Sprintf("did not become ready within %s", p.opts.ReadyTimeout), Transient: true}
 		case <-time.After(backoff):
 		}
 		// Cap the retry interval low: this loop only spins while the server socket
@@ -2690,4 +2696,15 @@ func residentOnlyFrom(ctx context.Context) bool {
 func sourceFrom(ctx context.Context) string {
 	s, _ := ctx.Value(sourceKey{}).(string)
 	return s
+}
+
+// exitedBySignal reports whether a process's exit error says it was ended
+// by a signal rather than exiting with a status of its own.
+func exitedBySignal(err error) bool {
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		return false
+	}
+	status, ok := exit.Sys().(syscall.WaitStatus)
+	return ok && status.Signaled()
 }

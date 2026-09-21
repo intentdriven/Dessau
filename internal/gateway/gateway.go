@@ -1488,16 +1488,18 @@ func (g *Gateway) idleHolder(err error) string {
 		case "self-test":
 			job = "the self-test"
 		}
-		doing := "holding"
-		if res.State == runtime.ResidencyLoading {
-			doing = "loading"
-		}
+		// The run's age, not this load's: the probe unloads and reloads
+		// between steps, and it is the run that has had the memory.
 		held := ""
 		if !st.Since.IsZero() {
 			held = " for " + time.Since(st.Since).Round(time.Second).String()
 		}
-		return fmt.Sprintf("; the memory is held by %s, which %s has been %s%s — the server's own idle work, not the size of the model asked for. It is released when the run ends, or at once with Unload on that model's card",
-			res.RepoID, job, doing, held)
+		state := "in memory"
+		if res.State == runtime.ResidencyLoading {
+			state = "loading"
+		}
+		return fmt.Sprintf("; the memory is held by %s, %s, which %s has been at%s — the server's own idle work, not the size of the model asked for. It is released when the run ends, or at once with Unload on that model's card",
+			res.RepoID, state, job, held)
 	}
 	return ""
 }

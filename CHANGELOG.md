@@ -57,12 +57,15 @@ GitHub release notes.
   ("did not load", with the reason) and is left alone by the probe and the
   self-test, and a request for it is refused at once with the reason, until
   the runtime, the memory budget or its served window changes, or Alice
-  presses **Load** or **Measure now** to try it again. And when a request
+  presses **Load** or **Measure now** to try it again (a mark that is only
+  Dessau's own timeout also goes at the next restart). And when a request
   is refused for want of memory while the server's own idle work holds it,
   the refusal says so to a client on this Mac or one holding the API key —
   which model, which job, for how long, and that **Unload** on its card
-  releases it — and the card says "loading for the context probe" rather
-  than "loaded". A stranger on the network is still told nothing.
+  releases it — which it now does even while the job's own request is in
+  flight, where it used to answer that the model was busy — and the card
+  says "loading for the context probe" rather than "loaded". A stranger on
+  the network is still told nothing.
 
 ## [0.9.2] - 2026-09-21
 

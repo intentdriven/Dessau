@@ -49,6 +49,14 @@ func TestALoadFailureIsRecordedWithItsProvenanceAndAnInterruptedLoadIsNot(t *tes
 	if m, _ := a.Registry.Get("org/m"); m.LoadFailed() {
 		t.Error("a load another path interrupted was recorded as the model's failure")
 	}
+	// The pool's own bound is recorded as transient, so it does not outlive
+	// this process; the child's verdict is not.
+	obs.LoadFinished("org/m", time.Second, &runtime.NotReadyError{
+		Err: errors.New("x"), Reason: "did not become ready within 10m0s", Transient: true,
+	}, config.Sampling{})
+	if m, _ := a.Registry.Get("org/m"); !m.LoadFailed() || !m.LoadFailure.Transient {
+		t.Errorf("a timeout was recorded as %+v, want a transient failure", m.LoadFailure)
+	}
 	// A reason that would not pass the registry's bound is still recorded,
 	// cut to it, rather than lost: the mark is what stops the retries.
 	obs.LoadFinished("org/m", time.Second, &runtime.NotReadyError{

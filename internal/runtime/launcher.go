@@ -186,6 +186,11 @@ type NotReadyError struct {
 	// kept on the model itself (registry.LoadFailure), where the name is
 	// the entry's own.
 	Reason string
+	// Transient says the verdict is the pool's own bound rather than the
+	// child's assertion — the readiness timeout ran out, or the process was
+	// ended by a signal — so the same load may well go differently on a
+	// quieter machine. A record kept of it does not outlive this process.
+	Transient bool
 	// Interrupted says the load did not fail on its own: another path took
 	// the entry out of the pool while it was loading — a client that hung
 	// up, an unload, an eviction — and the process was stopped for it. It

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -29,8 +30,11 @@ import (
 // without Python or a GPU.
 type fakeLauncher struct {
 	refuseAbove int
-	mu          sync.Mutex
-	launched    int
+	// responseDelay holds every answer back, so a test can catch the probe
+	// with its request in flight.
+	responseDelay time.Duration
+	mu            sync.Mutex
+	launched      int
 }
 
 type fakeProc struct {
@@ -47,7 +51,7 @@ func (l *fakeLauncher) Launch(_ context.Context, spec runtime.Spec) (runtime.Pro
 	l.mu.Unlock()
 	srv := mlxtest.Start(mlxtest.Options{
 		ModelArg: spec.ModelPath, Port: spec.Port,
-		PromptTokensFromBody: true, RefuseAbove: l.refuseAbove,
+		PromptTokensFromBody: true, RefuseAbove: l.refuseAbove, ResponseDelay: l.responseDelay,
 	})
 	return &fakeProc{srv: srv, done: make(chan struct{})}, nil
 }
@@ -65,6 +69,12 @@ func (p *fakeProc) Pid() int              { return 0 }
 // test cadence with the probe as its job.
 func probeStack(t *testing.T, refuseAbove int) (*app.App, string) {
 	t.Helper()
+	return probeStackWith(t, refuseAbove, 0)
+}
+
+// probeStackWith is probeStack with the fake server's answers held back.
+func probeStackWith(t *testing.T, refuseAbove int, responseDelay time.Duration) (*app.App, string) {
+	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +84,7 @@ func probeStack(t *testing.T, refuseAbove int) (*app.App, string) {
 	paths := config.NewPaths(t.TempDir())
 	cfg := config.Default()
 	cfg.Port = port
-	launcher := &fakeLauncher{refuseAbove: refuseAbove}
+	launcher := &fakeLauncher{refuseAbove: refuseAbove, responseDelay: responseDelay}
 	a, err := app.New(app.Options{
 		Paths: paths, Config: cfg, Launcher: launcher, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		// The loop and the probe on a test cadence.
@@ -244,5 +254,48 @@ func TestASaveDuringALoadDoesNotDeadlock(t *testing.T) {
 	case <-done:
 	case <-time.After(30 * time.Second):
 		t.Fatal("a save and a load wedged each other")
+	}
+}
+
+// Unload on the card of a model the probe is holding takes the model back:
+// the run yields, the probe's own request is released and its server
+// unloaded, and the panel answers 200 rather than the 409 a model with a
+// request in flight gets — the way out the refusal promises
+// (iss-2609211334576018). The probe resumes at the next idle tick.
+func TestUnloadFromThePanelTakesTheModelBackFromTheProbe(t *testing.T) {
+	a, _ := probeStackWith(t, 20_000, 3*time.Second)
+	ctrl := &Control{App: a}
+	mux := http.NewServeMux()
+	ctrl.Routes(mux)
+	panel := httptest.NewServer(mux)
+	t.Cleanup(panel.Close)
+
+	if err := a.MeasureNow("org/m"); err != nil {
+		t.Fatal(err)
+	}
+	// Mid-run, with the probe's request in flight on the model: the state
+	// in which the pool refuses a plain Unload as busy.
+	inFlight := func() bool {
+		res := a.Pool.Residency().Models
+		return a.SelfTest.Status().Job != "" && len(res) == 1 && res[0].InFlight > 0
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for !inFlight() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !inFlight() {
+		t.Fatalf("the probe never held the model with a request in flight: %+v %+v", a.SelfTest.Status(), a.Pool.Residency())
+	}
+	resp, err := http.Post(panel.URL+"/api/models/unload", "application/json", strings.NewReader(`{"model":"org/m"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Unload on the probe's model got %d: %s", resp.StatusCode, raw)
+	}
+	if res := a.Pool.Residency(); len(res.Models) != 0 {
+		t.Errorf("the model is still resident after Unload: %+v", res.Models)
 	}
 }

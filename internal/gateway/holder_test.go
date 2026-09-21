@@ -53,7 +53,7 @@ func TestARefusalNamesTheModelAnIdleJobIsHolding(t *testing.T) {
 		if w.Code != http.StatusServiceUnavailable {
 			t.Fatalf("status = %d, want 503", w.Code)
 		}
-		for _, want := range []string{plain, "org/ocr", "context probe", "4m", "the server's own idle work"} {
+		for _, want := range []string{plain, "org/ocr, loading", "the context probe has been at for 4m12s", "the server's own idle work", "Unload on that model's card"} {
 			if !strings.Contains(body, want) {
 				t.Errorf("body = %s, want it to carry %q", body, want)
 			}

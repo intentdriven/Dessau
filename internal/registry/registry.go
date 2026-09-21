@@ -346,8 +346,10 @@ func Open(path string) (*Registry, error) {
 			m.ToolCalling = nil
 		}
 		// And the load failure, shown on the card and told to entitled
-		// clients: cleared, not repaired.
-		if m.LoadFailure != nil && !plausibleLoadFailure(m.LoadFailure) {
+		// clients: cleared, not repaired. A transient one — the pool's own
+		// bound, not the child's verdict — was for the process that wrote
+		// it, and does not outlive it.
+		if m.LoadFailure != nil && (!plausibleLoadFailure(m.LoadFailure) || m.LoadFailure.Transient) {
 			m.LoadFailure = nil
 		}
 		r.models[key(m.RepoID)] = m

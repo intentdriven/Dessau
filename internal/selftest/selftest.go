@@ -245,6 +245,11 @@ type Runner struct {
 	file       *file
 	// status is what the panel reads; see Status.
 	status Status
+	// current is the run in progress's watch, and currentModel its model,
+	// so Interrupt can end the run the way a client's arrival does. Nil
+	// between runs. Guarded by mu.
+	current      *watch
+	currentModel string
 }
 
 // New builds a Runner. It opens nothing and starts nothing.
@@ -347,6 +352,31 @@ func (r *Runner) Status() Status {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.status
+}
+
+// Interrupt ends the run in progress if it is on this model, the way a
+// client's arrival ends it — a yield, not a failure: the job releases its
+// own request and unloads the model it was holding, its bounds are kept, and
+// the loop brings the model back at the next idle tick. It reports whether
+// there was such a run. It is what Unload on the model's card calls first,
+// so the memory an idle job holds can be taken back by hand while the job's
+// request is in flight (iss-2609211334576018).
+func (r *Runner) Interrupt(model string) bool {
+	r.mu.Lock()
+	w, held := r.current, r.currentModel
+	r.mu.Unlock()
+	if w == nil || config.FoldRepoID(held) != config.FoldRepoID(model) {
+		return false
+	}
+	w.preempt()
+	return true
+}
+
+// setCurrent records the run in progress for Interrupt; nil ends it.
+func (r *Runner) setCurrent(w *watch, model string) {
+	r.mu.Lock()
+	r.current, r.currentModel = w, model
+	r.mu.Unlock()
 }
 
 func (r *Runner) setStatus(f func(*Status)) {
@@ -652,6 +682,8 @@ func (r *Runner) run(ctx context.Context, model string, wasResident bool) {
 	w := r.startWatch(ctx, model, true)
 	runCtx := w.ctx
 	claim := w.claim
+	r.setCurrent(w, model)
+	defer r.setCurrent(nil, "")
 	r.setStatus(func(st *Status) { st.Job, st.Model, st.Step, st.Since = "self-test", model, "", now })
 	defer r.setStatus(func(st *Status) { st.Job, st.Model, st.Step, st.Since = "", "", "", time.Time{} })
 	// ended stops the watcher and names the outcome of a run cut short.
@@ -846,8 +878,10 @@ func (w *watch) stop() {
 // runJob gives a job one run on a model under the loop's watch.
 func (r *Runner) runJob(ctx context.Context, job Job, model string) {
 	w := r.startWatch(ctx, model, job.Parks())
+	r.setCurrent(w, model)
 	r.setStatus(func(st *Status) { st.Job, st.Model, st.Step, st.Since = job.Name(), model, "", r.opts.Now() })
 	defer func() {
+		r.setCurrent(nil, "")
 		w.stop()
 		r.mu.Lock()
 		r.touched[config.FoldRepoID(model)] = time.Now()
