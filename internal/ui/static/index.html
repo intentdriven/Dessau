@@ -643,6 +643,24 @@
     </fieldset>
 
     <fieldset class="group">
+      <legend>Transcript</legend>
+      <p class="hint">Off for every model unless you switch it on here. Tick a model and nothing
+        it is asked and nothing it answers is written to the transcript, whether or not the
+        transcript is on, from the next request it serves; every other model goes on as it
+        was. The exception is a fact about the model that answers a request: a request a
+        recorded model answers is written down whole, including earlier turns from an
+        excepted model that the client carried back. Every client is told, in the models
+        list, whether a model is recorded, and Dessau Chat shows it beside the model before
+        you pick it. A model that keeps no transcript is not offered over the Discord bridge,
+        because Discord would keep what Dessau does not, and debug logging cannot be armed on
+        it: the arming is refused with the reason, and ticking this box takes a model off the
+        debug-logging list. The
+        <a href="https://github.com/intentdriven/Dessau/blob/main/docs/transcript.md">transcript
+        page</a> says all of this.</p>
+      <div id="transcriptList"></div>
+    </fieldset>
+
+    <fieldset class="group">
       <legend>Pinned models</legend>
       <p class="hint">A pinned model stays in memory: Dessau never unloads it to make
         room for another, and the idle timeout above does not touch it. A request for a

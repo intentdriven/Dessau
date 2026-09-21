@@ -32,14 +32,19 @@ func evalPanelValue(t *testing.T, expr string, functions ...string) map[string]a
 	return v
 }
 
-// The per-model settings a save posts are the whole map, not a patch: the
-// server replaces what it holds with what the form sends, which is how a model
-// left out of the form has its merging switched off and its pin dropped. A
-// model with a setting this form does not own keeps it either way, so a later
-// per-model setting is not wiped by someone ticking a box.
+// The per-model settings a save posts name every model the form drew a box
+// for, and for each of them every box, explicitly: a ticked box is true, a
+// clear box is false, a blank window is 0. The server merges what it holds
+// with what the form sends field by field (itd-2609091715089488), so an
+// absent key means "keep what is stored" — which is what lets a per-model
+// setting the form never drew survive a save — and a clear box therefore has
+// to say it is clear. The server drops an entry whose every field is zero,
+// so posting the zeros stores nothing extra. A model the form does not list
+// keeps what it has, because a form with no box for it has nothing to say.
 //
-// One map, so one function: merging, pinning and the sampling override are
-// three rows of the same form and three fields of the same entry.
+// One map, so one function: merging, pinning, the window, the transcript
+// exception and the sampling override are five rows of the same form and
+// five fields of the same entry.
 func TestSettingsFormPostsThePerModelMapWhole(t *testing.T) {
 	const qwen = "mlx-community/Qwen3-8B-4bit"
 	cases := []struct {
@@ -49,32 +54,36 @@ func TestSettingsFormPostsThePerModelMapWhole(t *testing.T) {
 	}{
 		{
 			name: "a box that is ticked switches merging on",
-			expr: `modelSettings({}, {}, ["` + qwen + `"], ["` + qwen + `"], [], [])`,
+			expr: `modelSettings({}, {}, ["` + qwen + `"], ["` + qwen + `"], [], [], [], {}, [], [])`,
 			want: map[string]any{qwen: map[string]any{"merge_system_messages": true}},
 		},
 		{
-			name: "a box that is clear leaves the model out",
-			expr: `modelSettings({"` + qwen + `":{"merge_system_messages":true}}, {}, ["` + qwen + `"], [], [], [])`,
-			want: map[string]any{},
+			name: "a box that is clear says so",
+			expr: `modelSettings({"` + qwen + `":{"merge_system_messages":true}}, {}, ["` + qwen + `"], [], [], [], [], {}, [], [])`,
+			want: map[string]any{qwen: map[string]any{"merge_system_messages": false}},
 		},
 		{
 			name: "a ticked pin box pins the model",
-			expr: `modelSettings({}, {}, [], [], ["org/a"], ["org/a"])`,
+			expr: `modelSettings({}, {}, [], [], ["org/a"], ["org/a"], [], {}, [], [])`,
 			want: map[string]any{"org/a": map[string]any{"pinned": true}},
 		},
 		{
 			name: "an unticked pin box unpins it and leaves its other settings",
-			expr: `modelSettings({"org/a":{"pinned":true,"merge_system_messages":true}}, {}, [], [], ["org/a"], [])`,
-			want: map[string]any{"org/a": map[string]any{"merge_system_messages": true}},
+			expr: `modelSettings({"org/a":{"pinned":true,"merge_system_messages":true}}, {}, [], [], ["org/a"], [], [], {}, [], [])`,
+			want: map[string]any{"org/a": map[string]any{"merge_system_messages": true, "pinned": false}},
 		},
 		{
-			name: "the override editor holds the whole sampling set",
-			expr: `modelSettings({"org/a":{"sampling":{"temperature":0.7}}}, {}, [], [], [], [])`,
-			want: map[string]any{},
+			// The override editor holds every override there is while it is
+			// open, so a model whose override it no longer holds posts an
+			// empty one: a key the body never named would keep the stored
+			// override in force.
+			name: "an override the editor removed is posted cleared",
+			expr: `modelSettings({"org/a":{"sampling":{"temperature":0.7}}}, {}, [], [], [], [], [], {}, [], [])`,
+			want: map[string]any{"org/a": map[string]any{"sampling": map[string]any{}}},
 		},
 		{
 			name: "a sampling override sits beside the switches on one model",
-			expr: `modelSettings({"org/a":{"pinned":true}}, {"org/a":{"temperature":0.7}}, ["org/a"], ["org/a"], ["org/a"], ["org/a"])`,
+			expr: `modelSettings({"org/a":{"pinned":true}}, {"org/a":{"temperature":0.7}}, ["org/a"], ["org/a"], ["org/a"], ["org/a"], [], {}, [], [])`,
 			want: map[string]any{"org/a": map[string]any{
 				"sampling":              map[string]any{"temperature": 0.7},
 				"merge_system_messages": true,
@@ -89,9 +98,10 @@ func TestSettingsFormPostsThePerModelMapWhole(t *testing.T) {
 			// read, and its settings are carried through rather than deleted
 			// by an unrelated save.
 			name: "a model the form does not list keeps its settings",
-			expr: `modelSettings({"org/not-downloaded":{"merge_system_messages":true}}, {}, ["org/a"], [], [], [])`,
+			expr: `modelSettings({"org/not-downloaded":{"merge_system_messages":true}}, {}, ["org/a"], [], [], [], [], {}, [], [])`,
 			want: map[string]any{
 				"org/not-downloaded": map[string]any{"merge_system_messages": true},
+				"org/a":              map[string]any{"merge_system_messages": false},
 			},
 		},
 	}
@@ -118,10 +128,12 @@ func TestSettingsFormIsWiredToThePerModelSwitches(t *testing.T) {
 		regexp.MustCompile(`models:\s*modelSettings\(\s*state\.config\.models,\s*overrides,\s*` +
 			`listedMergeModels\(\),\s*checkedMergeModels\(\),\s*` +
 			`listedPinModels\(\),\s*checkedPinModels\(\),\s*` +
-			`listedContextModels\(\),\s*typedContextModels\(\),?\s*\)`),
+			`listedContextModels\(\),\s*typedContextModels\(\),\s*` +
+			`listedTranscriptModels\(\),\s*checkedTranscriptModels\(\),?\s*\)`),
 		regexp.MustCompile(`\brenderMergeSwitches\(\)`),
 		regexp.MustCompile(`\brenderPinSwitches\(\)`),
 		regexp.MustCompile(`\brenderContextFields\(\)`),
+		regexp.MustCompile(`\brenderTranscriptSwitches\(\)`),
 	} {
 		if !want.MatchString(src) {
 			t.Errorf("the control panel no longer matches %s — the per-model switches are then asserted by nothing", want)
@@ -265,16 +277,18 @@ func TestTheServedContextPlaceholderSaysWhatABlankFieldMeans(t *testing.T) {
 
 // The window is a per-model setting like the pin and the merging switch, and
 // it posts on the same map: a figure typed into a model's field reaches the
-// save, a blank field means the model's own window and leaves nothing behind,
-// and a model the form does not list keeps what it has.
+// save, a blank field means the model's own window and is posted as 0 so the
+// merge clears the stored figure, and a model the form does not list keeps
+// what it has.
 func TestSettingsFormPostsTheServedContext(t *testing.T) {
 	got := evalPanelValue(t,
 		`{"out": modelSettings({"org/kept":{"served_context":1000},"org/cleared":{"served_context":2000}}, {},
-			[], [], [], [], ["org/typed","org/cleared"], {"org/typed":4096,"org/cleared":0})}`,
+			[], [], [], [], ["org/typed","org/cleared"], {"org/typed":4096,"org/cleared":0}, [], [])}`,
 		"foldRepoID", "modelSettings", "applyModelSwitch", "applyModelNumber")
 	want := map[string]any{"out": map[string]any{
-		"org/kept":  map[string]any{"served_context": float64(1000)},
-		"org/typed": map[string]any{"served_context": float64(4096)},
+		"org/kept":    map[string]any{"served_context": float64(1000)},
+		"org/typed":   map[string]any{"served_context": float64(4096)},
+		"org/cleared": map[string]any{"served_context": float64(0)},
 	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("modelSettings = %v, want %v", got, want)

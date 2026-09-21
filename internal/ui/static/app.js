@@ -40,6 +40,39 @@ function debugArmedFor(m, debugArmed) {
   return (debugArmed || []).some((id) => foldRepoID(id) === want);
 }
 
+// noTranscriptFor says whether a model is excepted from the transcript
+// (itd-2609091715089488): the per-model map read folded, the way every
+// other join on a repo id in this panel is, so an exception set under
+// another spelling than the registry's still bites. Any spelling that
+// carries it wins, as Config.NoTranscript decides on the server.
+function noTranscriptFor(perModel, repoID) {
+  const want = foldRepoID(repoID);
+  return Object.keys(perModel || {}).some((id) =>
+    foldRepoID(id) === want && !!(perModel[id] && perModel[id].no_transcript));
+}
+
+// transcriptState is whether a conversation with a model is written to the
+// transcript, and the words for it, computed from the snapshot the card
+// already holds: the machine-wide switch AND the model not excepted, the
+// same value /v1/models publishes per entry as `recording`. The card does
+// not read that field; it applies the same rule to the same two facts, so
+// the two surfaces agree by construction rather than by a second fetch.
+// The words are the chat client's picker's words for the same fact.
+function transcriptState(config, repoID) {
+  const c = config || {};
+  const recorded = !!c.transcript && !noTranscriptFor(c.models, repoID);
+  return { recorded, words: recorded ? 'recorded' : 'keeps no transcript' };
+}
+
+// transcriptPill is the icon a card carries for that state, labelled in
+// words rather than by the glyph's name, so a screen reader says what the
+// model does rather than what the symbol is called.
+function transcriptPill(config, repoID) {
+  const s = transcriptState(config, repoID);
+  const cls = s.recorded ? 'pill transcript' : 'pill transcript off';
+  return `<span class="${cls}" role="img" aria-label="${s.words}" title="${s.words}">&#x270E;</span>`;
+}
+
 // size is bytes() for a figure that is genuinely a measurement: nothing pinned
 // is "0 B", not the em dash bytes() shows for a size it does not know. This
 // line is read before anything is ticked, so zero is its opening state.
@@ -405,6 +438,11 @@ function renderModels() {
     // draws nothing.
     if (m.state === 'ready' && debugArmedFor(m, state.debug_armed)) pill += '<span class="pill debug">debug armed</span>';
     if (loaded && resident.get(m.repo_id).debug_log) pill += '<span class="pill debug">logging at debug</span>';
+    // Whether a conversation with this model is written down, shown before
+    // the model is chosen rather than learned from the answer: the same
+    // rule the models list applies, over the snapshot this card is built
+    // from (itd-2609091715089488).
+    if (m.state === 'ready') pill += transcriptPill(state.config, m.repo_id);
 
     const info = modelInfoLine(m, sequencesInForce());
     const measured = measurementText(m, state.idle_jobs, state.probe_queue);
@@ -1308,6 +1346,7 @@ function renderSettings() {
   renderMergeSwitches();
   renderPinSwitches();
   renderContextFields();
+  renderTranscriptSwitches();
 }
 
 // renderPinSwitches draws one box per downloaded model, and the figure that
@@ -1375,6 +1414,72 @@ function listedPinModels() {
 // checkedPinModels lists the models whose box is ticked.
 function checkedPinModels() {
   return pinBoxes().filter((cb) => cb.checked).map((cb) => cb.dataset.model);
+}
+
+// renderTranscriptSwitches draws one box per model the exception can be
+// removed from: every model on this Mac, and every excepted model this Mac
+// does not have (transcriptRows). Ticked means the model keeps no
+// transcript.
+function renderTranscriptSwitches() {
+  const box = $('transcriptList');
+  if (!box) return;
+  const rows = transcriptRows(state.models || [], state.config.models || {});
+  box.innerHTML = '';
+  if (!rows.length) {
+    box.innerHTML = '<p class="hint">Download a model and it appears here.</p>';
+    return;
+  }
+  rows.forEach((r) => {
+    const row = document.createElement('label');
+    row.className = 'switch';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.model = r.id;
+    cb.checked = r.checked;
+    cb.addEventListener('change', () => { settingsTouched = true; });
+    const name = document.createElement('span');
+    name.textContent = r.absent ? `${r.id} (not on this Mac)` : r.id;
+    row.appendChild(cb);
+    row.appendChild(name);
+    box.appendChild(row);
+  });
+}
+
+// transcriptRows is the whole list of transcript boxes the form draws: one
+// per model on this Mac, then one per excepted model this Mac does not
+// have — the pin rows' shape, for the pin rows' reason. An exception can be
+// set by hand on a model that has not been downloaded, so that it bites from
+// the first request the model ever serves (itd-2609091715089488), and a
+// form that carries through what it does not list would otherwise leave
+// that exception with no box to clear it from. Matched folded, so a spelling
+// typed by hand finds its box.
+function transcriptRows(models, perModel) {
+  const have = new Set((models || []).map((m) => foldRepoID(m.repo_id)));
+  const rows = (models || []).map((m) => ({
+    id: m.repo_id,
+    checked: noTranscriptFor(perModel, m.repo_id),
+    absent: false,
+  }));
+  Object.keys(perModel || {})
+    .filter((id) => perModel[id] && perModel[id].no_transcript && !have.has(foldRepoID(id)))
+    .forEach((id) => { rows.push({ id, checked: true, absent: true }); });
+  return rows;
+}
+
+// transcriptBoxes are the boxes drawn above, one per model the form lists.
+function transcriptBoxes() {
+  return Array.from(document.querySelectorAll('#transcriptList input[type=checkbox]'));
+}
+
+// listedTranscriptModels lists the models the form drew a transcript box for.
+function listedTranscriptModels() {
+  return transcriptBoxes().map((cb) => cb.dataset.model);
+}
+
+// checkedTranscriptModels lists the models whose transcript box is ticked:
+// the ones that keep no transcript.
+function checkedTranscriptModels() {
+  return transcriptBoxes().filter((cb) => cb.checked).map((cb) => cb.dataset.model);
 }
 
 // servedContext is the window Dessau serves a model at, which is what it is
@@ -1672,26 +1777,32 @@ function checkedMergeModels() {
 }
 
 // modelSettings returns the whole per-model map a save posts: one map holding
-// every setting that belongs to a model rather than to the machine — merging,
-// pinning and the sampling override.
+// every setting that belongs to a model rather than to the machine —
+// merging, pinning, the served window, the transcript exception and the
+// sampling override.
 //
-// The server replaces what it holds with this, so a model whose box is clear
-// is simply left out and the setting goes off — a map cannot be switched off
-// by omission any other way. Two things are therefore carried through rather
-// than rebuilt. A setting this form does not own stays on the model that has
-// it, so ticking one box never wipes another setting. And a model the form
-// does not list keeps everything it has, because a model can be given settings
-// before it is downloaded and a form with no box for it has nothing to say
-// about it.
+// The server merges what it holds with this, field by field, for every model
+// the map names (itd-2609091715089488): a key the body never names keeps its
+// stored value, which is what lets a per-model setting this form never drew —
+// one written into config.json by hand after the form loaded — survive a
+// save. The other side of that rule is that a box has to SAY what it says:
+// every model the form drew a box for is posted with that field explicitly,
+// a clear box as false and a blank window as 0, because an absent key would
+// keep the stored value in force and a switch could then never be switched
+// off from here. The server drops an entry whose every field is zero, so the
+// zeros store nothing extra. A model the form does not list keeps everything
+// it has, because a model can be given settings before it is downloaded and
+// a form with no box for it has nothing to say about it.
 //
 // The sampling overrides are not a box but a whole editor, which holds every
 // override there is while it is open, so they are assigned rather than
-// toggled: a model missing from them has had its override removed.
-function modelSettings(current, overrides, listedMerge, checkedMerge, listedPin, checkedPin, listedContext, typedContext) {
+// toggled — and a model whose override the editor no longer holds is posted
+// with an empty one, for the reason a clear box is posted as false.
+function modelSettings(current, overrides, listedMerge, checkedMerge, listedPin, checkedPin, listedContext, typedContext, listedTranscript, checkedTranscript) {
   const out = {};
   Object.keys(current || {}).forEach((id) => {
     out[id] = Object.assign({}, current[id]);
-    delete out[id].sampling;
+    if (out[id].sampling !== undefined) out[id].sampling = {};
   });
   Object.keys(overrides || {}).forEach((id) => {
     out[id] = Object.assign({}, out[id] || {}, { sampling: overrides[id] });
@@ -1699,37 +1810,28 @@ function modelSettings(current, overrides, listedMerge, checkedMerge, listedPin,
   applyModelSwitch(out, 'merge_system_messages', listedMerge, checkedMerge);
   applyModelSwitch(out, 'pinned', listedPin, checkedPin);
   applyModelNumber(out, 'served_context', listedContext, typedContext);
-  // A model left with no settings at all is left out entirely, so that
-  // clearing every box for a model removes it rather than storing an empty
-  // object under its name.
-  Object.keys(out).forEach((id) => {
-    if (!Object.keys(out[id]).length) delete out[id];
-  });
+  applyModelSwitch(out, 'no_transcript', listedTranscript, checkedTranscript);
   return out;
 }
 
-// applyModelSwitch writes one row of boxes into the map being posted: every
-// model the form drew a box for loses the setting, and every model whose box
-// is ticked gets it back. A model with no box is not touched.
+// applyModelNumber writes one row of fields into the map being posted: every
+// model the form drew a field for is posted with the figure typed, or 0 for
+// a blank or unusable field, which the server reads as the absence of the
+// setting. A model with no field is not touched.
 function applyModelNumber(models, field, listed, typed) {
   (listed || []).forEach((id) => {
-    if (models[id]) delete models[id][field];
-  });
-  Object.keys(typed || {}).forEach((id) => {
-    const n = typed[id];
-    // A blank or unusable field is the model's own window, which is the
-    // absence of the setting rather than a figure of zero.
-    if (!(n > 0)) return;
-    models[id] = Object.assign({}, models[id] || {}, { [field]: n });
+    const n = (typed || {})[id];
+    models[id] = Object.assign({}, models[id] || {}, { [field]: n > 0 ? n : 0 });
   });
 }
 
+// applyModelSwitch writes one row of boxes into the map being posted: every
+// model the form drew a box for is posted with the setting as the box says,
+// true for ticked and false for clear. A model with no box is not touched.
 function applyModelSwitch(models, field, listed, checked) {
+  const on = new Set(checked || []);
   (listed || []).forEach((id) => {
-    if (models[id]) delete models[id][field];
-  });
-  (checked || []).forEach((id) => {
-    models[id] = Object.assign({}, models[id] || {}, { [field]: true });
+    models[id] = Object.assign({}, models[id] || {}, { [field]: on.has(id) });
   });
 }
 
@@ -1961,6 +2063,7 @@ $('settingsForm').addEventListener('submit', async (e) => {
       listedMergeModels(), checkedMergeModels(),
       listedPinModels(), checkedPinModels(),
       listedContextModels(), typedContextModels(),
+      listedTranscriptModels(), checkedTranscriptModels(),
     ),
   };
   try {
