@@ -160,8 +160,22 @@ struct ModelPickerView: View {
                 Button {
                     model.chooseServerModel(id)
                 } label: {
-                    Label(Answerer.server(model: id).displayName,
-                          systemImage: model.answerer == .server(model: id) ? "checkmark.circle.fill" : "circle")
+                    HStack {
+                        Label(Answerer.server(model: id).displayName,
+                              systemImage: model.answerer == .server(model: id) ? "checkmark.circle.fill" : "circle")
+                        Spacer()
+                        // Whether a conversation with this model is written
+                        // down on the server, shown before it is chosen: a
+                        // pencil while it is, struck through while it is
+                        // not, and nothing when the server did not say.
+                        // Labelled in words, so a screen reader says what
+                        // the model does rather than the symbol's name.
+                        if let recorded = transcriptRecorded(id, in: model.recordedModels) {
+                            Image(systemName: recorded ? "pencil" : "pencil.slash")
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel(recorded ? "recorded" : "keeps no transcript")
+                        }
+                    }
                 }
             }
         }
