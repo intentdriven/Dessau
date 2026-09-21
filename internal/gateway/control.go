@@ -75,14 +75,6 @@ type Control struct {
 	// them.
 	Notices config.Notices
 
-	// TranscriptExcepted says whether a model carries the transcript exception
-	// (itd-2609091715089488): a model promised that no prompt of its is ever
-	// written down. Arming debug logging for such a model is refused with the
-	// reason, because the exception means no prompts on disk, not "not in this
-	// one file". The app sets it; nil reads as "never excepted", which is what
-	// the app supplies until the per-model field the predicate reads exists.
-	TranscriptExcepted func(repoID string) bool
-
 	// loadMu guards loading, the set of models the Load button already has a
 	// background load running for, keyed by folded repo id.
 	//
@@ -1524,8 +1516,12 @@ func decodeDebugLogRequest(w http.ResponseWriter, r *http.Request) (debugLogRequ
 // writes the configuration, and the mark is derived from nothing but this
 // request.
 //
-// A model carrying the transcript exception refuses the arm with the reason.
-// Disarming it is not refused: there is nothing to keep from being written.
+// A model carrying the transcript exception (itd-2609091715089488) — a model
+// promised that no prompt of its is ever written down — refuses the arm with
+// the reason, because the exception means no prompts on disk, not "not in
+// this one file". It is read from the configuration in force through the one
+// folded reader, so an exception saved a moment ago bites on this arm.
+// Disarming is not refused: there is nothing to keep from being written.
 func (c *Control) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 	req, ok := decodeDebugLogRequest(w, r)
 	if !ok {
@@ -1543,7 +1539,7 @@ func (c *Control) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "disarmed", "model": req.Model})
 		return
 	}
-	if c.TranscriptExcepted != nil && c.TranscriptExcepted(req.Model) {
+	if c.App.Config().NoTranscript(req.Model) {
 		writeError(w, http.StatusConflict,
 			"this model keeps no transcript, so debug logging is refused: at the model server's debug level its log would hold every prompt sent to it")
 		return

@@ -24,12 +24,12 @@ import (
 // keeps no transcript, and that arming writes nothing to the settings.
 
 // newDebugLogControl is newTestControlApp with one ready model in the
-// registry and the seam the app sets, so a test can decide which models keep
-// no transcript.
-func newDebugLogControl(t *testing.T, excepted func(string) bool) (*httptest.Server, *app.App) {
+// registry, under the configuration given — which is where a test says
+// which models keep no transcript.
+func newDebugLogControl(t *testing.T, cfg config.Config) (*httptest.Server, *app.App) {
 	t.Helper()
 	paths := config.NewPaths(t.TempDir())
-	a, err := app.New(app.Options{Paths: paths, Config: config.Default()})
+	a, err := app.New(app.Options{Paths: paths, Config: cfg})
 	if err != nil {
 		t.Fatalf("app.New: %v", err)
 	}
@@ -40,7 +40,7 @@ func newDebugLogControl(t *testing.T, excepted func(string) bool) (*httptest.Ser
 	}); err != nil {
 		t.Fatal(err)
 	}
-	ctrl := &Control{App: a, TranscriptExcepted: excepted}
+	ctrl := &Control{App: a}
 	mux := http.NewServeMux()
 	ctrl.Routes(mux)
 	srv := httptest.NewServer(mux)
@@ -63,7 +63,7 @@ func refusalMessage(t *testing.T, resp *http.Response) string {
 // the pool the way the pinned set is, and the running fact on each resident
 // entry — two fields, because armed and running are different runs.
 func TestTheSnapshotCarriesTheDebugState(t *testing.T) {
-	srv, a := newDebugLogControl(t, nil)
+	srv, a := newDebugLogControl(t, config.Default())
 
 	if got := fetchState(t, srv).DebugArmed; len(got) != 0 {
 		t.Fatalf("state.debug_armed = %v before anything was armed, want nothing", got)
@@ -115,12 +115,14 @@ func TestTheSnapshotCarriesTheDebugState(t *testing.T) {
 
 // A model carrying the transcript exception refuses the arm with the reason:
 // the exception means no prompts on disk, not "not in this one file"
-// (itd-2609091715089488). Disarming such a model is not refused — there is
+// (itd-2609091715089488). The exception is read from the configuration in
+// force, folded — the operator's spelling in Settings and the registry's
+// need not agree — and disarming such a model is not refused: there is
 // nothing to keep from being written.
 func TestAnExceptedModelRefusesTheDebugArm(t *testing.T) {
-	srv, a := newDebugLogControl(t, func(repoID string) bool {
-		return config.FoldRepoID(repoID) == "org/keeper"
-	})
+	cfg := config.Default()
+	cfg.Models = map[string]config.ModelSettings{"ORG/Keeper": {NoTranscript: true}}
+	srv, a := newDebugLogControl(t, cfg)
 
 	resp := postJSON(t, srv, "/api/models/debug-log", `{"model":"org/keeper","armed":true}`)
 	if resp.StatusCode != http.StatusConflict {
@@ -143,21 +145,29 @@ func TestAnExceptedModelRefusesTheDebugArm(t *testing.T) {
 	}
 }
 
-// A nil seam reads as "never excepted", which is what the app supplies until
-// the per-model field the predicate reads exists.
-func TestANilTranscriptSeamRefusesNothing(t *testing.T) {
-	srv, _ := newDebugLogControl(t, nil)
-	resp := postJSON(t, srv, "/api/models/debug-log", `{"model":"org/keeper","armed":true}`)
+// The exception takes effect on the arm the moment it is saved: a model
+// excepted through the settings route is refused on the next arm, with no
+// restart and nothing wired between the two.
+func TestExceptingAModelInSettingsRefusesItsNextDebugArm(t *testing.T) {
+	srv, _ := newDebugLogControl(t, config.Default())
+	resp := postJSON(t, srv, "/api/settings",
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0,`+
+			`"models":{"org/keeper":{"no_transcript":true}}}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status = %d with no seam set, want 200", resp.StatusCode)
+		t.Fatalf("status = %d saving the exception, want 200", resp.StatusCode)
+	}
+	resp = postJSON(t, srv, "/api/models/debug-log", `{"model":"org/keeper","armed":true}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("status = %d arming a model just excepted in Settings, want 409", resp.StatusCode)
 	}
 }
 
 // The mark is an action and not a setting: arming it writes nothing to the
 // configuration in force and nothing to config.json, in either direction.
 func TestTheDebugArmWritesNoSettings(t *testing.T) {
-	srv, a := newDebugLogControl(t, nil)
+	srv, a := newDebugLogControl(t, config.Default())
 	cfg := a.Config()
 	cfg.Statistics = true
 	cfg.Models = pinnedModels("org/keeper")
@@ -191,7 +201,7 @@ func TestTheDebugArmWritesNoSettings(t *testing.T) {
 // The route takes a model the registry holds and a body that says which way
 // the mark goes; anything else is refused before the pool is touched.
 func TestTheDebugArmRefusesWhatItCannotAct(t *testing.T) {
-	srv, a := newDebugLogControl(t, nil)
+	srv, a := newDebugLogControl(t, config.Default())
 	cases := []struct {
 		body   string
 		status int
