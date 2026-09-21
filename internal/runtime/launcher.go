@@ -183,6 +183,11 @@ type ExecLauncher struct {
 	// accepted); zero means the current effective uid. See trustedExecutable.
 	Owner int
 
+	// debugLogMaxBytes is the bound on an armed run's log; zero means
+	// DebugLogMaxBytes. A field so a test can reach the bound with a stub,
+	// not a setting: the figure the product ships is the constant.
+	debugLogMaxBytes int64
+
 	ledgerOnce sync.Once
 	ledger     *pidLedger
 }
@@ -324,8 +329,25 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 		}
 		return nil, fmt.Errorf("create log %s: %w", logPath, err)
 	}
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+	// An unarmed launch hands the file to the child directly, as it always
+	// has: no pipe, no goroutine, nothing changed for anyone who does not arm.
+	// An armed launch writes every prompt and every answer, so its bytes are
+	// chosen by whoever is sending requests, and they pass through the bound.
+	// The one value on both streams makes os/exec open one pipe and one
+	// copying goroutine, so stdout and stderr stay interleaved as they are
+	// with the file.
+	if spec.DebugLog {
+		max := l.debugLogMaxBytes
+		if max <= 0 {
+			max = DebugLogMaxBytes
+		}
+		bounded := newBoundedWriter(logFile, max)
+		cmd.Stdout = bounded
+		cmd.Stderr = bounded
+	} else {
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+	}
 
 	if err := cmd.Start(); err != nil {
 		logFile.Close()

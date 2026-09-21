@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -322,4 +323,51 @@ func TestAFirstLaunchHasNoPreviousLogToKeep(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(l.LogDir, previousLogFileName("org/name"))); err == nil {
 		t.Error("a first launch left a previous file behind")
 	}
+}
+
+// An armed launch writes through the bounded writer and an unarmed one does
+// not: the unarmed path hands the file to the child directly, as it always
+// has, so nothing changes for anyone who does not arm. The bound is exercised
+// through the real Launch, pipe and all, with the bound made small enough for
+// a shell stub to reach.
+func TestAnArmedLaunchStopsItsLogAtTheBound(t *testing.T) {
+	// The stub prints more than the bound: 500 short lines.
+	const line = "a line of nineteen\n"
+	script := "i=0; while [ $i -lt 500 ]; do echo 'a line of nineteen'; i=$((i+1)); done"
+
+	t.Run("armed", func(t *testing.T) {
+		l := stubbedLauncher(t, script)
+		l.debugLogMaxBytes = 1000
+		launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1, DebugLog: true})
+		b, err := os.ReadFile(filepath.Join(l.LogDir, logFileName("org/name")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, after, ok := strings.Cut(string(b), debugLogBoundLine)
+		if !ok {
+			t.Fatalf("the armed log has no final line; it holds %d bytes", len(b))
+		}
+		if len(body) != 1000 {
+			t.Errorf("the armed log holds %d bytes before the final line, want the bound of 1000", len(body))
+		}
+		if after != "" {
+			t.Errorf("bytes reached the file after the bound: %q", after)
+		}
+	})
+
+	t.Run("unarmed", func(t *testing.T) {
+		l := stubbedLauncher(t, script)
+		l.debugLogMaxBytes = 1000
+		launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+		b, err := os.ReadFile(filepath.Join(l.LogDir, logFileName("org/name")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(b) != 500*len(line) {
+			t.Errorf("the unarmed log holds %d bytes, want all %d the server wrote: the bound applies to an armed run only", len(b), 500*len(line))
+		}
+		if strings.Contains(string(b), debugLogBoundLine) {
+			t.Error("an unarmed run's log carries the bound's final line")
+		}
+	})
 }
