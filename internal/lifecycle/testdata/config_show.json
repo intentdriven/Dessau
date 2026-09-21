@@ -24,6 +24,7 @@
     "log_level": "sparse",
     "max_resident_bytes": 0,
     "models.mlx-community/Qwen3-8B-4bit.merge_system_messages": false,
+    "models.mlx-community/Qwen3-8B-4bit.no_transcript": false,
     "models.mlx-community/Qwen3-8B-4bit.pinned": true,
     "models.mlx-community/Qwen3-8B-4bit.sampling.max_tokens": null,
     "models.mlx-community/Qwen3-8B-4bit.sampling.min_p": null,
