@@ -99,7 +99,7 @@ func TestAFailedModelIsSkippedByIdleWorkAndRefusedWithItsReason(t *testing.T) {
 	if !errors.As(err, &notReady) {
 		t.Fatalf("Acquire = %T %v, want a NotReadyError carrying the recorded reason", err, err)
 	}
-	if !strings.Contains(err.Error(), "ValueError: Model type glm_ocr not supported.") || !strings.Contains(err.Error(), "Measure now") {
+	if !strings.Contains(err.Error(), "ValueError: Model type glm_ocr not supported") || !strings.Contains(err.Error(), "Measure now") {
 		t.Errorf("the refusal does not carry the reason and the way out: %q", err)
 	}
 	if time.Since(started) > time.Second {

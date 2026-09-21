@@ -580,7 +580,7 @@ function residencyLabel(r, jobs) {
 function loadFailureText(m) {
   const f = m.load_failure;
   if (!f) return '';
-  return `Did not load: ${f.reason} — not tried again on its own until the runtime, the memory budget or the served window changes; press Load or Measure now to try it again`;
+  return `Did not load the last time it was tried (${f.reason.replace(/\.$/, '')}) — not tried again on its own until the runtime, the memory budget or the served window changes; press Load or Measure now to try it again`;
 }
 
 // toolCallText is the card's line about the tool-call probe: whether the

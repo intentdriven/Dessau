@@ -14,7 +14,7 @@ func TestTheCardSaysWhyAModelDidNotLoadAndHowToRetryIt(t *testing.T) {
 		return evalPanel(t, expr, "loadFailureText")
 	}
 	got := line(`loadFailureText({repo_id:"org/m", load_failure:{reason:"could not load: ValueError: Model type glm_ocr not supported.", at:1, runtime:"0.31.3"}})`)
-	want := "Did not load: could not load: ValueError: Model type glm_ocr not supported. — not tried again on its own until the runtime, the memory budget or the served window changes; press Load or Measure now to try it again"
+	want := "Did not load the last time it was tried (could not load: ValueError: Model type glm_ocr not supported) — not tried again on its own until the runtime, the memory budget or the served window changes; press Load or Measure now to try it again"
 	if got != want {
 		t.Errorf("the line reads %q, want %q", got, want)
 	}

@@ -1407,8 +1407,8 @@ func (s modelSource) Resolve(repoID string) (runtime.ResolvedModel, error) {
 	// entitled client the text (iss-2609211334570516).
 	if m.LoadFailed() {
 		return runtime.ResolvedModel{}, &runtime.NotReadyError{
-			Err: fmt.Errorf("%s %s the last time it was tried; it is not tried again on its own until the runtime, the memory budget or its served window changes — press Load or Measure now on its card to try it again",
-				repoID, m.LoadFailure.Reason),
+			Err: fmt.Errorf("%s did not load the last time it was tried (%s); it is not tried again on its own until the runtime, the memory budget or its served window changes — press Load or Measure now on its card to try it again",
+				repoID, strings.TrimSuffix(m.LoadFailure.Reason, ".")),
 			Reason: m.LoadFailure.Reason,
 		}
 	}
