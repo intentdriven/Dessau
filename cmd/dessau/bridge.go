@@ -14,10 +14,10 @@ import (
 //
 // It lives here rather than in internal/app because the bridge asks the
 // gateway for completions and the gateway is built from the app, so the app
-// cannot build the bridge without the import running in a circle. The three
+// cannot build the bridge without the import running in a circle. The four
 // closures below are the whole of what the bridge knows about this Mac: how
-// to ask for a completion, which models a channel may pick, and how large a
-// window each is served at.
+// to ask for a completion, which models a channel may pick, how large a
+// window each is served at, and which keep no transcript.
 //
 // Building it opens no connection. The bridge is off until App.SetBridge puts
 // the stored settings in force, and off is what the stored settings say until
@@ -27,7 +27,12 @@ func newDiscordBridge(a *app.App, g *gateway.Gateway, log *slog.Logger) app.Brid
 		Ask:           g.Ask,
 		ChatModels:    func() []string { return chatModels(a) },
 		ServedContext: func(model string) int64 { return servedContext(a, model) },
-		Log:           log,
+		// The one folded reader of the exception (itd-2609091715089488), read
+		// from the configuration in force at each request rather than once,
+		// so a model excepted in Settings while the bridge is running is off
+		// the bridge from the next message.
+		NoTranscript: func(model string) bool { return a.Config().NoTranscript(model) },
+		Log:          log,
 	})
 }
 
