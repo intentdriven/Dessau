@@ -133,9 +133,12 @@ func (s *session) runCommand(ctx context.Context, in interaction) {
 // A name that is not one of the server's chat models is refused with the list,
 // rather than being stored and failing at the next message. The list is what
 // this Mac serves, which is a fact about the models rather than about the
-// machine, and is the same list /v1/models publishes to every client.
+// machine, and is the same list /v1/models publishes to every client — less
+// the models that keep no transcript, which are not on offer here at all
+// (itd-2609091715089488). Naming one of those is refused with the reason,
+// so that Bob learns why rather than being told the model does not exist.
 func (s *session) modelCommand(conv *conversation, in interaction) string {
-	models := s.bridge.opts.ChatModels()
+	models := s.offered()
 	asked := strings.TrimSpace(optionString(in, "name"))
 	if asked == "" {
 		current := conv.modelOf()
@@ -153,11 +156,42 @@ func (s *session) modelCommand(conv *conversation, in interaction) string {
 			return "This channel is now answered by `" + m + "`."
 		}
 	}
+	for _, m := range s.bridge.opts.ChatModels() {
+		if strings.EqualFold(m, asked) || strings.EqualFold(shortName(m), asked) {
+			return noTranscriptRefusal + "\n" + modelList(models)
+		}
+	}
 	return "That is not a model this server offers.\n" + modelList(models)
 }
 
+// noTranscriptRefusal is what a channel is told when it asks for, or is
+// already on, a model that keeps no transcript. It names the reason: the
+// model is excepted on this server, and a message sent through Discord
+// would be kept by Discord, which is the promise the exception cannot make
+// here. The fact it discloses is one the models list already publishes to
+// every client.
+const noTranscriptRefusal = "That model keeps no transcript on this server, so it is not offered here: " +
+	"a message sent through Discord would be kept by Discord."
+
+// offered is the models a channel may be answered by over this bridge: the
+// server's chat models, less those that keep no transcript, in the server's
+// order. Read afresh each time, as ChatModels is, so an exception saved
+// while the bridge is running holds from the next request.
+func (s *session) offered() []string {
+	var out []string
+	for _, m := range s.bridge.opts.ChatModels() {
+		if !s.bridge.opts.NoTranscript(m) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // modelList renders the models on offer, bounded: a server with a hundred
-// models would otherwise produce a reply too long for Discord to accept.
+// models would otherwise produce a reply too long for Discord to accept. It
+// says the models it names are recorded, because on this bridge they are
+// the only ones offered: the word in the bridge's prose for what the chat
+// client's picker and the panel's card draw as an icon.
 func modelList(models []string) string {
 	if len(models) == 0 {
 		return "This server has no chat models to offer."
@@ -169,7 +203,8 @@ func modelList(models []string) string {
 		shown = shown[:most]
 		suffix = "\n…and more."
 	}
-	return "Available: `" + strings.Join(shown, "`, `") + "`" + suffix
+	return "Available, each recorded while this server's transcript is on: `" +
+		strings.Join(shown, "`, `") + "`" + suffix
 }
 
 // shortName is the part of a repo id after the slash, which is how most

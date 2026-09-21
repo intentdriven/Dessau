@@ -88,6 +88,13 @@ type Options struct {
 	// every model at its declared window, as the default: the gateway reads
 	// no setting of its own.
 	ServedWindow func(registry.Model) (window int64, isDefault bool)
+	// TranscriptOn reports whether the machine-wide transcript switch is on
+	// (itd-2609091707499248): the store that writes every prompt and answer
+	// down, which the per-model exception takes a model out of. The switch
+	// and its store belong to that record; until it lands there is no store
+	// and nothing is recorded, which is what nil reads as. The gateway
+	// reads it beside the exception and never the other way round.
+	TranscriptOn func() bool
 }
 
 // Gateway routes OpenAI requests to model servers.
@@ -105,6 +112,8 @@ type Gateway struct {
 	refusalLog *logEvery
 	// servedWindow is Options.ServedWindow, never nil.
 	servedWindow func(registry.Model) (int64, bool)
+	// transcriptOn is Options.TranscriptOn, never nil.
+	transcriptOn func() bool
 }
 
 // New builds a Gateway.
@@ -133,6 +142,10 @@ func New(opts Options) *Gateway {
 	if served == nil {
 		served = func(m registry.Model) (int64, bool) { return m.ContextLength, true }
 	}
+	transcriptOn := opts.TranscriptOn
+	if transcriptOn == nil {
+		transcriptOn = func() bool { return false }
+	}
 	return &Gateway{
 		cfg:          cfgFn,
 		pool:         opts.Pool,
@@ -142,7 +155,21 @@ func New(opts Options) *Gateway {
 		stats:        opts.Stats,
 		refusalLog:   newLogEvery(refusalLogEvery),
 		servedWindow: served,
+		transcriptOn: transcriptOn,
 	}
+}
+
+// recorded reports whether a conversation with this model is written to the
+// transcript (itd-2609091715089488): the machine-wide switch is on AND the
+// model is not excepted, read through the one folded reader. It is the
+// value the models list publishes per entry, and it is the one decision the
+// retainer on the completions path is to ask, of the model that SERVES a
+// request once the pool has handed it back — the gateway has requests, not
+// conversations, so a request a recorded model serves is recorded whole,
+// earlier turns from an excepted model included, and a request an excepted
+// model serves reaches the store in no form at all.
+func (g *Gateway) recorded(cfg config.Config, repoID string) bool {
+	return g.transcriptOn() && !cfg.NoTranscript(repoID)
 }
 
 // Handler returns the OpenAI-compatible routes.
@@ -417,8 +444,9 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 
 	// One reading of the rule for the whole listing, so two entries in one
 	// answer can never be judged by two different rules because the operator
-	// saved between them.
-	chatRule := g.cfg().EffectiveChatRule()
+	// saved between them. The same one reading serves the transcript state.
+	cfg := g.cfg()
+	chatRule := cfg.EffectiveChatRule()
 
 	data := make([]any, 0, len(ready))
 	for _, m := range ready {
@@ -492,6 +520,17 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 		}
 		entry["chat_template"] = m.ChatTemplate
 		entry["chat"] = m.CanChat(chatRule)
+		// And whether a conversation with this model is written down on
+		// this Mac (itd-2609091715089488): the machine-wide switch and the
+		// model's own exception, folded. Always present, for the reason chat
+		// is, and in the base half rather than the entitled one on purpose:
+		// disclosure is the fact that must reach everyone the promise is
+		// for, and the anonymous LAN client on a keyless install is the one
+		// least able to learn it any other way (the 2026-09-20 decision).
+		// It says what this server does with a model, which decides
+		// nothing about what is served: an excepted model answers exactly
+		// as it did before.
+		entry["recording"] = g.recorded(cfg, m.RepoID)
 		// And whether the model calls tools, as the tool-call probe found on
 		// this runtime (itd-2609201445423499): one of three words, always
 		// present, for the reason chat is always present. An absent key

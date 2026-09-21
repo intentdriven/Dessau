@@ -132,6 +132,11 @@ private struct ModelsResponse: Decodable {
         /// server's own rule. Absent on a server that does not publish the
         /// capability.
         let chat: Bool?
+        /// Whether a conversation with this model is written down on the Mac
+        /// that runs the server (itd-2609091715089488). Absent on a server
+        /// that does not publish it, which is "not said" rather than either
+        /// answer: the picker draws no icon from it.
+        let recording: Bool?
         /// What HuggingFace says this model is: the repo's pipeline tag and its
         /// tags, recorded by the server when the model was downloaded.
         let pipeline_tag: String?
@@ -238,6 +243,10 @@ final class AppModel: ObservableObject {
     /// Every model the server serves, and the subset the picker offers.
     @Published var models: [String] = []
     @Published var chatModels: [String] = []
+    /// Whether a conversation with each served model is recorded on the
+    /// server, by folded repo id, for the models whose entry said
+    /// (TranscriptState.swift). The picker's icon reads this.
+    @Published var recordedModels: [String: Bool] = [:]
     @Published var status: String = "No server chosen"
     @Published var connected: Bool = false
     @Published var connecting: Bool = false
@@ -633,6 +642,7 @@ final class AppModel: ObservableObject {
             // hold a conversation; the rest stay served over the API by name.
             let rule = chatRule
             chatModels = list.data.filter { rule.offers($0) }.map(\.id).sorted()
+            recordedModels = transcriptStates(list.data.map { (id: $0.id, recording: $0.recording) })
             // The chosen model is never moved here: a server that does not
             // serve it is shown as not offering it, and the person picks.
             connected = true

@@ -1019,9 +1019,12 @@ func TestListModelsPublishesContextLengthUnderBothNames(t *testing.T) {
 	// chat is on every entry, for the reason the handler gives: the flag's
 	// whole value is telling a model that can hold a conversation from one
 	// that cannot, so an absent key would read as a server that cannot say.
+	// recording is on every entry too, in the base half beside chat, so a
+	// client that wants to show which models keep no transcript has the
+	// fact before the model is chosen (itd-2609091715089488).
 	want := map[string]bool{"id": true, "object": true, "created": true, "owned_by": true,
 		"context_length": true, "max_model_len": true, "served_context": true, "served_context_default": true,
-		"chat": true, "chat_template": true, "tool_calling": true}
+		"chat": true, "chat_template": true, "tool_calling": true, "recording": true}
 	for k := range entry {
 		if !want[k] {
 			t.Errorf("unexpected field %q on the models list", k)
@@ -1424,7 +1427,11 @@ func TestListModelsCarriesNoResidencyWithoutAnAPIKey(t *testing.T) {
 		// withholds is what this Mac is doing right now.
 		// tool_calling is the same class of fact: what the model does with a
 		// tool declared, found once on this runtime.
-		want := map[string]bool{"id": true, "object": true, "created": true, "owned_by": true, "chat": true, "chat_template": true, "tool_calling": true}
+		// recording is published to the unentitled LAN on purpose: disclosure
+		// is the fact that must reach everyone the promise is for, and the
+		// anonymous client is the one least able to learn it any other way
+		// (itd-2609091715089488, the 2026-09-20 decision).
+		want := map[string]bool{"id": true, "object": true, "created": true, "owned_by": true, "chat": true, "chat_template": true, "tool_calling": true, "recording": true}
 		for k := range entry {
 			if !want[k] {
 				t.Errorf("an unkeyed listing carries %q; it must be exactly today's list", k)
