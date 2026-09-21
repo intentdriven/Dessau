@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/intentdriven/Dessau/internal/config"
 	"github.com/intentdriven/Dessau/internal/contextprobe"
@@ -32,7 +33,10 @@ func (s probeSources) Candidates() []contextprobe.Candidate {
 	rule := s.a.Config().EffectiveChatRule()
 	out := make([]contextprobe.Candidate, 0, len(models))
 	for _, m := range models {
-		if !m.CanChat(rule) {
+		// Nor is a model whose last load failed under the provenance in
+		// force: the record on it stands until that moves or a person
+		// retries by hand, and idle work is neither (iss-2609211334570516).
+		if !m.CanChat(rule) || m.LoadFailed() {
 			continue
 		}
 		served, _ := s.a.ServedWindow(m)
@@ -139,6 +143,9 @@ func (a *App) MeasureNow(repoID string) error {
 	if !m.CanChat(a.Config().EffectiveChatRule()) {
 		return fmt.Errorf("%s is not offered to chat, and the probe measures through chat completions", repoID)
 	}
+	// A hand retry: a load failure on the model is lifted, so the probe
+	// may load it again.
+	a.ForgetLoadFailure(m.RepoID)
 	// Under the save lock, so a save that reads the queue empty cannot
 	// switch the loop off between the queueing and the start.
 	a.saveMu.Lock()
@@ -171,4 +178,49 @@ func (a *App) AdoptMeasurement(repoID string) error {
 	models[key] = ms
 	c.Models = models
 	return a.SetConfig(c)
+}
+
+// recordLoadFailure is the pool observer's other half for a load that never
+// became ready: the pool's reason is written onto the model with the
+// provenance in force, where it stands until that moves or a person retries
+// the model by hand (registry.LoadFailure). A load another path interrupted
+// is not the model's failure and leaves no mark; a load that succeeded lifts
+// one. Called off the pool's lock, on the observer's own goroutine.
+func (a *App) recordLoadFailure(repoID string, err error) {
+	if err == nil {
+		a.ForgetLoadFailure(repoID)
+		return
+	}
+	var notReady *runtime.NotReadyError
+	if !errors.As(err, &notReady) || notReady.Interrupted {
+		return
+	}
+	reason := notReady.Reason
+	if reason == "" {
+		reason = "did not become ready"
+	}
+	if len(reason) > registry.MaxLoadFailureReasonBytes {
+		reason = reason[:registry.MaxLoadFailureReasonBytes]
+	}
+	prov := probeSources{a}.Provenance(repoID)
+	if err := a.Registry.SetLoadFailure(repoID, &registry.LoadFailure{
+		Reason: reason, At: time.Now().Unix(),
+		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes,
+		DecodeConcurrency: prov.DecodeConcurrency, ServedContext: prov.ServedContext,
+	}); err != nil {
+		a.Log.Warn("could not record the load failure on the model", "model", repoID, "err", err)
+	}
+}
+
+// ForgetLoadFailure lifts a load failure from a model: the hand retry, which
+// Load and Measure now on the card are. A model with none, or one the
+// registry does not hold, is left alone.
+func (a *App) ForgetLoadFailure(repoID string) {
+	m, err := a.Registry.Get(repoID)
+	if err != nil || !m.LoadFailed() {
+		return
+	}
+	if err := a.Registry.SetLoadFailure(m.RepoID, nil); err != nil {
+		a.Log.Warn("could not lift the load failure from the model", "model", repoID, "err", err)
+	}
 }

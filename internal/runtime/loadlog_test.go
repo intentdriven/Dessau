@@ -113,3 +113,37 @@ func TestOnlyAFatalTracebackLineIsReadAsALoadFailure(t *testing.T) {
 		t.Errorf("a log that does not exist yet read as %q, %v", got, ok)
 	}
 }
+
+// The observer is told whose failure a load was. One that failed on its own
+// — the process died, the log said the model cannot load, the timeout ran
+// out — is the model's, with the reason kept apart from the model's name so
+// a record on the model can carry it. One whose entry another path took out
+// of the pool while it loaded — here, the only waiter hanging up — was
+// interrupted, and is reported as such rather than as the model's failure.
+func TestTheObserverIsToldWhetherALoadFailedOnItsOwnOrWasInterrupted(t *testing.T) {
+	obs := &recordingObserver{}
+	l := newFakeLauncher()
+	l.dieAfter = map[string]bool{"org/broken": true}
+	l.loadDelayFor["org/slow"] = time.Hour
+	src := &fakeSource{models: map[string]int64{"org/broken": 100, "org/slow": 100}}
+	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30, Observer: obs, ReadyTimeout: 2 * time.Second})
+
+	if _, _, err := p.Acquire(context.Background(), "org/broken"); err == nil {
+		t.Fatal("a model whose process died during startup was acquired successfully")
+	}
+	if got := awaitLoad(t, obs, "org/broken"); !got.failed || got.interrupted || !strings.Contains(got.reason, "exited during startup") || strings.Contains(got.reason, "org/broken") {
+		t.Errorf("a process that died on its own was reported as %+v, want the model's own failure with a reason free of its name", got)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+	if _, _, err := p.Acquire(ctx, "org/slow"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Acquire = %v, want the caller's cancellation", err)
+	}
+	if got := awaitLoad(t, obs, "org/slow"); !got.failed || !got.interrupted {
+		t.Errorf("a load abandoned by its only waiter was reported as %+v, want an interrupted failure", got)
+	}
+}

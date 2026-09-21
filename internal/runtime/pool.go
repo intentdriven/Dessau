@@ -1371,7 +1371,6 @@ func (p *Pool) waitReady(e *entry) {
 	started := p.opts.now()
 	err := p.probeReady(ctx, e)
 	took := p.opts.now().Sub(started)
-	p.notify(func(o PoolObserver) { o.LoadFinished(e.repoID, took, err, e.sampling) })
 
 	p.mu.Lock()
 	e.readyErr = err
@@ -1396,16 +1395,28 @@ func (p *Pool) waitReady(e *entry) {
 	}
 	p.mu.Unlock()
 
-	if err != nil && !stopped && e.proc != nil {
-		// Another path took this entry out of the pool while it was loading and
-		// owns the stop of its process. Stop it here too rather than rely on
-		// that: this path is what would otherwise leak it, and Stop is
-		// idempotent. Nothing is charged, because whoever removed the entry
-		// charged it.
-		stopCtx, stopCancel := context.WithTimeout(context.Background(), stopBound)
-		_ = e.proc.Stop(stopCtx)
-		stopCancel()
+	// Reported once the pool knows whose failure it is: a load that failed
+	// on its own is the model's, and is recorded against it; one whose entry
+	// another path took out of the pool meanwhile was interrupted, and the
+	// observer is told so rather than told the model failed.
+	reported := err
+	if err != nil && !stopped {
+		var notReady *NotReadyError
+		if errors.As(err, &notReady) {
+			reported = &NotReadyError{Err: notReady.Err, Reason: notReady.Reason, Interrupted: true}
+		}
+		if e.proc != nil {
+			// Another path took this entry out of the pool while it was
+			// loading and owns the stop of its process. Stop it here too
+			// rather than rely on that: this path is what would otherwise
+			// leak it, and Stop is idempotent. Nothing is charged, because
+			// whoever removed the entry charged it.
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), stopBound)
+			_ = e.proc.Stop(stopCtx)
+			stopCancel()
+		}
 	}
+	p.notify(func(o PoolObserver) { o.LoadFinished(e.repoID, took, reported, e.sampling) })
 	if err == nil && e.proc != nil {
 		go p.watchExit(e)
 	}
@@ -1470,9 +1481,11 @@ func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 		select {
 		case <-e.proc.Done():
 			if err := e.proc.Err(); err != nil {
-				return &NotReadyError{Err: fmt.Errorf("model server for %s exited during startup: %w", e.repoID, err)}
+				return &NotReadyError{Err: fmt.Errorf("model server for %s exited during startup: %w", e.repoID, err),
+					Reason: fmt.Sprintf("the model server exited during startup: %v", err)}
 			}
-			return &NotReadyError{Err: fmt.Errorf("model server for %s exited during startup", e.repoID)}
+			return &NotReadyError{Err: fmt.Errorf("model server for %s exited during startup", e.repoID),
+				Reason: "the model server exited during startup"}
 		default:
 		}
 
@@ -1495,9 +1508,11 @@ func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 		case <-ctx.Done():
 			var fatal *FatalLoadError
 			if errors.As(context.Cause(ctx), &fatal) {
-				return &NotReadyError{Err: fmt.Errorf("%s could not load: %s", e.repoID, fatal.Line)}
+				return &NotReadyError{Err: fmt.Errorf("%s could not load: %s", e.repoID, fatal.Line),
+					Reason: "could not load: " + fatal.Line}
 			}
-			return &NotReadyError{Err: fmt.Errorf("%s did not become ready within %s", e.repoID, p.opts.ReadyTimeout)}
+			return &NotReadyError{Err: fmt.Errorf("%s did not become ready within %s", e.repoID, p.opts.ReadyTimeout),
+				Reason: fmt.Sprintf("did not become ready within %s", p.opts.ReadyTimeout)}
 		case <-time.After(backoff):
 		}
 		// Cap the retry interval low: this loop only spins while the server socket

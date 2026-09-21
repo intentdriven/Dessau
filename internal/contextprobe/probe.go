@@ -220,7 +220,9 @@ func (p *Probe) Queued() []string {
 // Due implements selftest.Job: a queued model first, then — with the switch
 // on — the first ready model with a declared window and no current
 // measurement that is not marked incomplete (an interrupted or failed probe
-// is retried only by "Measure now").
+// is retried only by "Measure now"). Both read only the app's candidates,
+// which is where a model the server does not offer to chat, and one whose
+// last load failed, are left out.
 func (p *Probe) Due(ready []string, now time.Time) string {
 	byKey := map[string]Candidate{}
 	for _, c := range p.opts.Sources.Candidates() {
@@ -232,6 +234,17 @@ func (p *Probe) Due(ready []string, now time.Time) string {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// A queued model that is no longer a candidate — deleted, no longer
+	// offered to chat, or its last load failed and the record on it stands
+	// — is dropped rather than kept forever: the queue is what holds the
+	// idle loop on, and a hand retry queues the model afresh.
+	kept := p.queue[:0]
+	for _, q := range p.queue {
+		if _, ok := byKey[config.FoldRepoID(q)]; ok {
+			kept = append(kept, q)
+		}
+	}
+	p.queue = kept
 	for _, q := range p.queue {
 		if c, ok := byKey[config.FoldRepoID(q)]; ok && isReady[config.FoldRepoID(q)] && c.Declared > 0 {
 			return c.RepoID

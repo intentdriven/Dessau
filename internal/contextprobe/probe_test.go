@@ -632,3 +632,25 @@ func TestAPlantedDeclaredWindowIsCappedAndTheCalibrationClamped(t *testing.T) {
 		t.Errorf("window = %d beyond the ceiling", m.Window)
 	}
 }
+
+// A queued model that stops being a candidate — its load failed and the
+// record on it stands, it was deleted, it is no longer offered to chat — is
+// dropped from the queue rather than kept there forever holding the idle
+// loop on; a hand retry queues it afresh (iss-2609211334570516).
+func TestAQueuedModelThatIsNoLongerACandidateIsDropped(t *testing.T) {
+	src := newFakeSources("http://127.0.0.1:1", model)
+	p := probeOf(src, false)
+	p.MeasureNow("org/m")
+	if due := p.Due([]string{"org/m"}, time.Now()); due != "org/m" {
+		t.Fatalf("Due = %q after Measure now", due)
+	}
+	src.mu.Lock()
+	src.cands = nil
+	src.mu.Unlock()
+	if due := p.Due([]string{"org/m"}, time.Now()); due != "" {
+		t.Errorf("Due = %q for a model that is no longer a candidate", due)
+	}
+	if q := p.Queued(); len(q) != 0 {
+		t.Errorf("the queue still holds %v", q)
+	}
+}

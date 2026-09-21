@@ -23,10 +23,16 @@ const selfTestSource = "dessau-self-test"
 // one read and hands back a copy.
 type selfTestServer struct{ a *App }
 
+// Ready is every ready model but one whose last load failed under the
+// provenance in force: the record on it stands until that moves or a person
+// retries by hand, and idle work is neither (iss-2609211334570516).
 func (s selfTestServer) Ready() []string {
 	models := s.a.Registry.Ready()
 	ids := make([]string, 0, len(models))
 	for _, m := range models {
+		if m.LoadFailed() {
+			continue
+		}
 		ids = append(ids, m.RepoID)
 	}
 	return ids

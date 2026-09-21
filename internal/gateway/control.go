@@ -1421,6 +1421,9 @@ func (c *Control) handleLoad(w http.ResponseWriter, r *http.Request) {
 	// finds a load already running is answered with the same status, because
 	// it is the same true answer — this model is loading.
 	if c.beginLoad(model) {
+		// The hand retry: a load failure recorded on the model is lifted
+		// before the pool is asked, or the pool would answer with it.
+		c.App.ForgetLoadFailure(model)
 		go func() {
 			defer c.endLoad(model)
 			ctx, cancel := contextWithTimeout(15 * time.Minute)

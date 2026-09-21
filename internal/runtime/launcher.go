@@ -181,6 +181,16 @@ func (e *LaunchError) Unwrap() error { return e.Err }
 // path-shaped stripped out (fatalLoadLine), never from a path on this machine.
 type NotReadyError struct {
 	Err error
+	// Reason is the failure without the model's name — "did not become
+	// ready within 10m0s", "could not load: ValueError: …" — for a record
+	// kept on the model itself (registry.LoadFailure), where the name is
+	// the entry's own.
+	Reason string
+	// Interrupted says the load did not fail on its own: another path took
+	// the entry out of the pool while it was loading — a client that hung
+	// up, an unload, an eviction — and the process was stopped for it. It
+	// is not the model's failure and leaves no record on the model.
+	Interrupted bool
 }
 
 func (e *NotReadyError) Error() string { return e.Err.Error() }

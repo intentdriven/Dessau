@@ -34,6 +34,9 @@ type loadReport struct {
 	model  string
 	took   time.Duration
 	failed bool
+	// interrupted is what a NotReadyError said about whose failure it was.
+	interrupted bool
+	reason      string
 }
 
 type stopReport struct {
@@ -61,7 +64,12 @@ func (o *recordingObserver) LoadFinished(model string, took time.Duration, err e
 	o.wait()
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	o.finishes = append(o.finishes, loadReport{model: model, took: took, failed: err != nil})
+	rep := loadReport{model: model, took: took, failed: err != nil}
+	var notReady *NotReadyError
+	if errors.As(err, &notReady) {
+		rep.interrupted, rep.reason = notReady.Interrupted, notReady.Reason
+	}
+	o.finishes = append(o.finishes, rep)
 }
 
 func (o *recordingObserver) FootprintSampled(model string, bytes int64) {
