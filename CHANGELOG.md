@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-09-21
+
 ### Added
 
 - **Debug logging for one model, for one run.** `impact: additive`. A model's
