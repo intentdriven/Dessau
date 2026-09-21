@@ -21,10 +21,20 @@ var ErrNoMeasurement = errors.New("the model has no current measurement")
 // configuration's own lock for one read.
 type probeSources struct{ a *App }
 
+// Candidates is every ready model the probe may measure. The probe measures
+// through chat completions, so a model the server does not offer to chat —
+// the verdict the models list publishes as `chat`, read from its one home,
+// registry.Model.CanChat — is not one: a served window means nothing for it,
+// and its server never answers the request that would measure it
+// (iss-2609211334563318).
 func (s probeSources) Candidates() []contextprobe.Candidate {
 	models := s.a.Registry.Ready()
+	rule := s.a.Config().EffectiveChatRule()
 	out := make([]contextprobe.Candidate, 0, len(models))
 	for _, m := range models {
+		if !m.CanChat(rule) {
+			continue
+		}
 		served, _ := s.a.ServedWindow(m)
 		out = append(out, contextprobe.Candidate{
 			RepoID:           m.RepoID,
@@ -125,6 +135,9 @@ func (a *App) MeasureNow(repoID string) error {
 	}
 	if m.ContextLength <= 0 {
 		return fmt.Errorf("%s declares no context window; there is nothing to measure between", repoID)
+	}
+	if !m.CanChat(a.Config().EffectiveChatRule()) {
+		return fmt.Errorf("%s is not offered to chat, and the probe measures through chat completions", repoID)
 	}
 	// Under the save lock, so a save that reads the queue empty cannot
 	// switch the loop off between the queueing and the start.
