@@ -176,8 +176,9 @@ func (e *LaunchError) Unwrap() error { return e.Err }
 // different failures: the first is a broken installation or a vanished model
 // directory, the second is usually a model too large for this Mac or weights
 // that will not load. Its message is safe to relay, unlike a LaunchError's:
-// it comes from the process's own exit status or from the probe's timeout, not
-// from a path on this machine.
+// it comes from the process's own exit status, from the probe's timeout, or
+// from the terminal line of a traceback in the child's log with anything
+// path-shaped stripped out (fatalLoadLine), never from a path on this machine.
 type NotReadyError struct {
 	Err error
 }

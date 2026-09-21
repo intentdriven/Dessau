@@ -63,9 +63,14 @@ type fakeProc struct {
 	// footprint is what Footprint reports; zero means the process cannot
 	// report one, as a process without the optional interface would.
 	footprint int64
+	// logPath is what LogPath reports: where this process's output goes, as
+	// the real launcher's process reports it. Empty means the pool has no
+	// log to watch, as for a process without the optional interface.
+	logPath string
 }
 
 func (p *fakeProc) Footprint() int64 { return p.footprint }
+func (p *fakeProc) LogPath() string  { return p.logPath }
 
 func (p *fakeProc) Done() <-chan struct{} { return p.done }
 func (p *fakeProc) Err() error            { return p.err }
@@ -106,6 +111,9 @@ type fakeLauncher struct {
 	// loadDelayFor overrides loadDelay for one model, so a test can have one
 	// model never become ready while the others load at once.
 	loadDelayFor map[string]time.Duration
+	// logPathFor names the file a model's process reports as its log, so a
+	// test can write what a real child writes while it loads.
+	logPathFor map[string]string
 
 	mu        sync.Mutex
 	prechecks int
@@ -127,6 +135,7 @@ func newFakeLauncher() *fakeLauncher {
 		servers:      map[string]*mlxtest.Server{},
 		dieAfter:     map[string]bool{},
 		loadDelayFor: map[string]time.Duration{},
+		logPathFor:   map[string]string{},
 	}
 }
 
@@ -167,6 +176,7 @@ func (l *fakeLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 	// custom HTTP client in the tests below.
 	p := &fakeProc{
 		footprint: l.footprint,
+		logPath:   l.logPathFor[spec.RepoID],
 
 		srv:      srv,
 		done:     make(chan struct{}),

@@ -1438,8 +1438,23 @@ func (p *Pool) watchExit(e *entry) {
 // /health is not sufficient: mlx_lm.server answers it "ok" the moment the socket
 // is up, long before the weights are in memory. The only trustworthy readiness
 // signal is a completion that succeeds.
+//
+// Nor is a completion that never comes back sufficient to say the model is
+// still loading: a child whose generate thread has died on the first request
+// keeps its httpd up, so the one request below blocks for the whole readiness
+// timeout. The child's own log is what says so, and a process that reports
+// where it writes it (LoadLogger) is watched while the request is out: a
+// traceback there that means the load cannot succeed ends the wait at once,
+// with the child's own reason (iss-2609211334570516).
 func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 	base := fmt.Sprintf("http://127.0.0.1:%d", e.port)
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	if lg, ok := e.proc.(LoadLogger); ok {
+		if path := lg.LogPath(); path != "" {
+			go p.watchLoadLog(ctx, path, cancel)
+		}
+	}
 
 	body, _ := json.Marshal(map[string]any{
 		"model":      e.modelArg,
@@ -1478,6 +1493,10 @@ func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 
 		select {
 		case <-ctx.Done():
+			var fatal *FatalLoadError
+			if errors.As(context.Cause(ctx), &fatal) {
+				return &NotReadyError{Err: fmt.Errorf("%s could not load: %s", e.repoID, fatal.Line)}
+			}
 			return &NotReadyError{Err: fmt.Errorf("%s did not become ready within %s", e.repoID, p.opts.ReadyTimeout)}
 		case <-time.After(backoff):
 		}
