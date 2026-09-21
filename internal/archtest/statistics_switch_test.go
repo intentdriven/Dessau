@@ -91,10 +91,21 @@ func TestTheStatisticsSwitchDoesNotReachTheRuntime(t *testing.T) {
 }
 
 // The other half of the same rule, from the launcher's side: a model server is
-// started at one level, that level is INFO, and it is written down in one
-// place. A second spelling anywhere is how a switch elsewhere would come to
-// govern what a model server writes to its log.
-func TestTheModelServerIsAlwaysLaunchedAtInfo(t *testing.T) {
+// started at one level, that level is INFO unless the per-model debug mark says
+// otherwise, and both are written down in one place each.
+//
+// Why there is an exception at all. adr-2609201008477513 narrows
+// adr-2609061503319212 for one diagnostic: an operator arms debug logging for
+// one model from its card, the NEXT launch of that model runs at DEBUG, and the
+// launch after it is back at INFO. The mark is transient, per model,
+// operator-invoked, never on by default, and never reachable from the
+// statistics switch or from log_level — which is what this test now protects
+// instead of the absence of the level. The level's value comes from Spec.DebugLog
+// and from nothing else: DEBUG is spelled once, as debugLogLevel, and that
+// constant is used once, inside the block that reads the mark. A second
+// spelling anywhere, or a use of the constant outside that block, is how a
+// switch elsewhere would come to govern what a model server writes to its log.
+func TestTheModelServerLevelComesOnlyFromThePerModelDebugMark(t *testing.T) {
 	repoRoot, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
@@ -107,11 +118,35 @@ func TestTheModelServerIsAlwaysLaunchedAtInfo(t *testing.T) {
 	if n := strings.Count(src, `"--log-level"`); n != 1 {
 		t.Errorf("the launcher names --log-level %d times, want exactly 1", n)
 	}
-	if !strings.Contains(src, `"--log-level", "INFO",`) {
-		t.Error("the launcher no longer starts every model server at INFO")
+	if !strings.Contains(src, `level := "INFO"`) {
+		t.Error("the launcher no longer starts an unarmed model server at INFO")
 	}
-	if strings.Contains(src, `"DEBUG"`) {
-		t.Error("the launcher names DEBUG, at which the model server writes every prompt and completion to its log")
+	if n := strings.Count(src, `"DEBUG"`); n != 1 {
+		t.Errorf("the launcher spells DEBUG %d times, want exactly 1 — as debugLogLevel's value and nowhere else", n)
+	}
+	if !strings.Contains(src, `debugLogLevel = "DEBUG"`) {
+		t.Error("the one spelling of DEBUG is not debugLogLevel's value")
+	}
+	// The constant is declared once and used once, and the use is inside the
+	// block that reads the mark.
+	if n := strings.Count(src, "debugLogLevel"); n != 2 {
+		t.Errorf("debugLogLevel is named %d times, want 2: its declaration and its one use", n)
+	}
+	block := between(src, "if spec.DebugLog {", "}")
+	if block == "" {
+		t.Fatal("the launcher has no `if spec.DebugLog {` block, so the level is not derived from the per-model mark")
+	}
+	if !strings.Contains(block, "level = debugLogLevel") {
+		t.Errorf("the mark's block does not set the level to debugLogLevel: %q", block)
+	}
+	// And the file itself reaches neither of the two things the mark must never
+	// be derived from: the statistics switch, and the setting log_level — as a
+	// field or as any of config's LogLevel constants, so ".LogLevel" rather
+	// than the bare word, which debugLogLevel itself contains.
+	for _, forbidden := range []string{".Statistics", "Statistics bool", ".LogLevel", `"log_level"`} {
+		if strings.Contains(src, forbidden) {
+			t.Errorf("the launcher names %s, from which the model server's level must never be derived", forbidden)
+		}
 	}
 }
 

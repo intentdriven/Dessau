@@ -33,7 +33,20 @@ type Spec struct {
 	// request's own value replaces them for that request alone — which is why
 	// they belong on the command line rather than in the relayed body.
 	Sampling config.Sampling
+	// DebugLog says this one launch runs at the model server's debug level, at
+	// which it writes every request body and every response to its log —
+	// prompts and completions, whoever sent them. It is derived from the
+	// pool's per-model mark and from nothing else: not from the statistics
+	// switch, not from log_level. The pool spends the mark at the launch that
+	// carries it, so the launch after this one is back at INFO with nothing to
+	// remember (adr-2609201008477513).
+	DebugLog bool
 }
+
+// The model server's debug level, spelled here and nowhere else. Its one use
+// is inside launchArgs, in the block that reads Spec.DebugLog;
+// internal/archtest holds it to that.
+const debugLogLevel = "DEBUG"
 
 // samplingFlagsVerifiedAgainst is the mlx-lm release whose source the flag
 // spellings below, and the ranges in internal/config, were read from. Nothing
@@ -215,14 +228,19 @@ func (l *ExecLauncher) Precheck(spec Spec) error {
 
 // launchArgs is the model server's whole command line, spec by spec.
 //
-// It is a function of the Spec alone, and the Spec carries nothing about
-// logging: the level is a constant here. That is the point. At DEBUG the model
+// It is a function of the Spec alone, and the one thing the Spec says about
+// logging is the per-model debug mark. That is the point. At DEBUG the model
 // server writes every request body and every response to its log, prompts and
 // completions included, so the level is never something another feature can
 // reach — recording request statistics leaves this vector byte for byte as it
-// was. Raising it is a separate, deliberate action per model, and it says in
-// plain words what it writes.
+// was. Raising it is a separate, deliberate action per model that the panel
+// describes in plain words, spent at the one launch that carries it
+// (adr-2609201008477513, which narrows adr-2609061503319212 to exactly this).
 func launchArgs(spec Spec) []string {
+	level := "INFO"
+	if spec.DebugLog {
+		level = debugLogLevel
+	}
 	// `python -m mlx_lm.server` is deprecated in 0.31; `python -m mlx_lm server`
 	// is the supported spelling.
 	args := []string{
@@ -232,7 +250,7 @@ func launchArgs(spec Spec) []string {
 		// so it alone enforces auth and rewrites requests.
 		"--host", "127.0.0.1",
 		"--port", strconv.Itoa(spec.Port),
-		"--log-level", "INFO",
+		"--log-level", level,
 	}
 	args = append(args, samplingArgs(spec.Sampling)...)
 	if spec.DecodeConcurrency > 1 {

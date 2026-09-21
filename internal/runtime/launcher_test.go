@@ -161,15 +161,19 @@ func TestLaunchDoesNotBlockOnFIFOLogFile(t *testing.T) {
 	}
 }
 
-// Every model server is started at INFO, whatever else its Spec carries.
+// An unarmed model server is started at INFO, whatever else its Spec carries,
+// and an armed one at DEBUG — named once, and only then.
 //
-// At the level above, the pinned model server writes every request body and
-// every response it produces to its log — prompts and completions. So this is
-// not a formatting detail: it is the line between the content-free record the
-// operator opted into and a full transcript on disk. The architecture tests
-// keep the switch out of this package; this one asserts what a model server is
-// actually launched with, off the argument vector rather than off the source.
-func TestEveryModelServerIsLaunchedAtInfo(t *testing.T) {
+// At DEBUG the pinned model server writes every request body and every
+// response it produces to its log — prompts and completions. So this is not a
+// formatting detail: it is the line between the content-free record the
+// operator opted into and a full transcript on disk. The level comes from
+// Spec.DebugLog and from nothing else (adr-2609201008477513 narrows
+// adr-2609061503319212 to exactly that). The architecture tests keep the
+// statistics switch out of this package; this one asserts what a model server
+// is actually launched with, off the argument vector rather than off the
+// source.
+func TestAnUnarmedModelServerIsLaunchedAtInfoAndAnArmedOneAtDebug(t *testing.T) {
 	temp := 0.7
 	specs := map[string]Spec{
 		"a plain spec":            {RepoID: "org/a", ModelPath: "/models/org/a", Port: 1},
@@ -188,9 +192,34 @@ func TestEveryModelServerIsLaunchedAtInfo(t *testing.T) {
 			}
 			for _, arg := range argv {
 				if arg == "DEBUG" {
-					t.Errorf("the argument vector names DEBUG: %v", argv)
+					t.Errorf("the argument vector of an unarmed launch names DEBUG: %v", argv)
 				}
 			}
 		})
+		t.Run(name+", armed", func(t *testing.T) {
+			spec.DebugLog = true
+			argv := launchArgs(spec)
+			got, ok := flagValue(argv, "--log-level")
+			if !ok {
+				t.Fatalf("the armed model server is launched with no log level at all: %v", argv)
+			}
+			if got != "DEBUG" {
+				t.Errorf("the armed model server is launched at %q, want DEBUG", got)
+			}
+			if n := countArg(argv, "--log-level"); n != 1 {
+				t.Errorf("the armed argument vector names --log-level %d times, want exactly once: %v", n, argv)
+			}
+		})
 	}
+}
+
+// countArg is how many times an argument appears in argv.
+func countArg(argv []string, arg string) int {
+	n := 0
+	for _, a := range argv {
+		if a == arg {
+			n++
+		}
+	}
+	return n
 }
