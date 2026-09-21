@@ -1534,3 +1534,29 @@ func pinnedModels(ids ...string) map[string]config.ModelSettings {
 	}
 	return out
 }
+
+// Deleting a model takes its debug-logging mark with it
+// (itd-2609062346072707): the mark is armed against the model on disk, and a
+// model downloaded again under the same id is one the operator did not arm.
+// Without this, a mark armed and then forgotten launches the re-downloaded
+// model at the model server's debug level with no arm on this instance.
+func TestDeleteDropsTheDebugLoggingMark(t *testing.T) {
+	a := newTestApp(t)
+	hub := fakeHub(t)
+	a.Hub.BaseURL = hub.URL
+
+	a.Download("org/repo")
+	waitFor(t, "the model to become ready", func() bool {
+		m, err := a.Registry.Get("org/repo")
+		return err == nil && m.Ready()
+	})
+	if err := a.Pool.ArmDebugLog("org/repo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Delete("org/repo"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if got := a.Pool.DebugArmed(); len(got) != 0 {
+		t.Errorf("the pool still holds a debug-logging mark for %v after the model was deleted", got)
+	}
+}

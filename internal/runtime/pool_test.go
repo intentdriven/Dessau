@@ -111,9 +111,11 @@ type fakeLauncher struct {
 	prechecks int
 	launched  []string
 	// specs records the last Spec each model was launched with, so a test can
-	// see what the process would have been given on its command line.
-	specs map[string]Spec
-	procs map[string]*fakeProc
+	// see what the process would have been given on its command line; history
+	// keeps every one in launch order.
+	specs   map[string]Spec
+	history []Spec
+	procs   map[string]*fakeProc
 	// servers maps repoID -> the fake server, so tests can inspect requests.
 	servers map[string]*mlxtest.Server
 }
@@ -174,6 +176,7 @@ func (l *fakeLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 
 	l.launched = append(l.launched, spec.RepoID)
 	l.specs[spec.RepoID] = spec
+	l.history = append(l.history, spec)
 	l.procs[spec.RepoID] = p
 	l.servers[spec.RepoID] = srv
 
@@ -213,6 +216,13 @@ func (l *fakeLauncher) specFor(repoID string) Spec {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.specs[repoID]
+}
+
+// specHistory is every Spec handed to Launch, in order.
+func (l *fakeLauncher) specHistory() []Spec {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]Spec(nil), l.history...)
 }
 
 func (l *fakeLauncher) serverFor(repoID string) *mlxtest.Server {

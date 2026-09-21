@@ -369,3 +369,47 @@ not a courtesy.
 - **Rotation** of the per-model log. This is a bound and one kept previous
   file, not a rotation with a generation count.
 - **Migration.** Nothing stored changes shape; the mark is never written down.
+
+## Departures
+
+Recorded at the close, from the two implementers' reports, the fix report and
+the two reviews.
+
+- **`internal/app` is untouched and `Control.TranscriptExcepted` is not
+  wired.** The per-model field the predicate reads is itd-2609091715089488's
+  and is not in the tree, so there is nothing to wire; the seam, its
+  nil-reads-as-never-excepted rule, the 409 and its reason are built and
+  tested here, as the sequencing note says. Row 10's end-to-end check is owed
+  to that intent's shipping line.
+- **`App.Delete` drops the mark** through a new `Pool.Remove` (Unload for a
+  model being deleted: the same busy refusal, the mark dropped whether or not
+  the model was loaded). The ruthless review found that a mark armed for a
+  model then deleted survived a later download of the same repo id, which
+  would have launched at DEBUG with no fresh arm; the record's own rule —
+  never on for a model Alice did not arm — decides it. The panel's Unload
+  still spends nothing.
+- **`Pool.debugArmed` is `map[string]string`** (folded id → the spelling
+  armed under), so `DebugArmed()` reports the spelling as `Pinned()` does.
+- **`DebugLogMaxBytes` lives in `launcher.go`**, not the bounded writer's
+  file, so the readers' list stays the five files the spec names;
+  `ExecLauncher.debugLogMaxBytes` (unexported, zero = the constant) exists so
+  the real launch path is tested at a reachable bound. Not a setting.
+- **`keepPreviousLog` refuses a link or FIFO under the log name before
+  renaming**, rather than renaming it aside: a planted name would otherwise
+  become a "kept" file and the existing refusal tests would invert.
+- **The archtest matches `.LogLevel`**, not the bare word, which is a
+  substring of the spec's own `debugLogLevel`.
+- **Both body fields are required**: a body without `"armed"` is 400, since a
+  default would arm on a typo. `ErrClosed` from the pool answers 503, as
+  `app.ErrShuttingDown` does.
+- **The posture line says "created for this account alone"**, not
+  "owner-only": the posture strings test forbids the word "only". The card
+  keeps the spec's paragraph verbatim.
+- **Beyond the criteria, in the tree's existing shapes:** `debugArmedFor`
+  with a folded-match test, a posture-line test in `internal/ui`, a row in
+  `docs/posture-reference.md` (required by the reference-page test once the
+  line exists), one `.pill.debug` rule.
+- **Captured, not fixed:** the bounded writer swallows write errors past the
+  bound (security review, low; iss-2609210903529294). The never-error,
+  never-block contract is this spec's decision; how an I/O failure during an
+  armed run is surfaced is undecided and in `internal/runtime`.

@@ -11,6 +11,34 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **Debug logging for one model, for one run.** `impact: additive`. A model's
+  card in the control panel gains **Debug logging**, a two-click action that
+  arms that one model so its next start runs the model server at its debug
+  level. From that start until the start after it, the model server's own log
+  holds every request sent to it and every answer it produced — the prompts
+  and the completions, whoever sent them, and the requests Dessau's own probes
+  and self-test send — so an operator can see what a client is actually
+  sending when a model answers strangely. Arming changes nothing about the
+  run going on now; unloading the model starts the logged run, and the run
+  after that is back at INFO. The card shows "debug armed" while the mark
+  waits and "logging at debug" while the run is on, the Posture tab names the
+  model while either is true, and the paragraph at the control says in plain
+  words what is written. The armed run's log stops at 64 MB rather than
+  filling the disk, and every model server start now keeps the previous run's
+  log as `<org>@<name>.previous.log` instead of emptying the file, so the
+  restart that ends the mode leaves the evidence to read. It is per model,
+  never on by default, never reached from the statistics switch or
+  `log_level`, and a model that keeps no transcript refuses it; deleting the
+  model drops its mark, so a copy downloaded later under the same id is
+  not armed; nothing is
+  sent anywhere, and clients are not told. The control plane serves it as
+  `POST /api/models/debug-log`, and the state snapshot carries `debug_armed`
+  and each resident entry's `debug_log`. No setting is added and
+  `config.json` is unchanged. adr-2609201008477513 records the exception this
+  makes to the telemetry decision.
+
 ## [0.9.1] - 2026-09-21
 
 ### Fixed

@@ -370,7 +370,9 @@ func TestEveryPostureLineTracesToTheSnapshot(t *testing.T) {
 		"endpoints": [{"url":"http://PRIV:11535/v1","network":"private network"}],
 		"bind": {"mode":"private-network","selected":"PRIV","candidates":["PRIV"],"refusal":"",
 		         "mode_in_force":"private-network","bound":"PRIV","wildcard":false,"reaches_other_machines":true,"port":11535,"advertising":false},
-		"stats_store": {"files":1,"bytes":10,"oldest":1}}`)))
+		"stats_store": {"files":1,"bytes":10,"oldest":1},
+		"debug_armed": ["org/armed"],
+		"resident": [{"repo_id":"org/on","debug_log":true}]}`)))
 	state := reflect.TypeOf(gateway.State{})
 	src := readPanelSource(t)
 	code := extractFunction(t, src, "postureLines") + extractFunction(t, src, "advertising")
@@ -590,7 +592,8 @@ func TestTheReferencePageDocumentsEveryLine(t *testing.T) {
 	lines := posture(t, edited(t, priv(`{
 		"config": {"statistics":true},
 		"endpoints": [{"url":"http://PRIV:11535/v1","network":"private network"}],
-		"stats_store": {"files":0,"bytes":0,"oldest":0}}`)))
+		"stats_store": {"files":0,"bytes":0,"oldest":0},
+		"debug_armed": ["org/armed"]}`)))
 	documented := 0
 	for id, l := range lines {
 		heading, _ := l["heading"].(string)

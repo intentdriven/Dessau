@@ -540,11 +540,14 @@ empty one.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+
 
 **Answer 2026-09-20 (Question 1):** (a) — a new ADR narrowing the telemetry ADR; the client is not told, and the record says so. Recorded in `.abcd/work/DECISIONS.md`.
 
 **Answer 2026-09-20 (Question 2):** (i) the child's level, conditional on the 0.31.3 verification. **(Question 3):** (i) next restart, plus a size bound, plus keeping the previous run's file. Recorded in `.abcd/work/DECISIONS.md`.
+
+<!-- abcd-review: OWED receipt=rcp-adb86bbdc558 -->
+Fidelity review OWED (receipt rcp-adb86bbdc558).
 
 ## Grounds
 
