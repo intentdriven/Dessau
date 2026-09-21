@@ -542,9 +542,134 @@ And one addition the maintainer made rather than a question they answered.
 
 **Addition 2026-09-20:** the transcript state is shown as an icon wherever a person picks a model (client picker, panel model cards; a word in the bridge's `/model` listing). Recorded in `.abcd/work/DECISIONS.md`.
 
-<!-- abcd-review: OWED receipt=rcp-2b6a87d4eae8 -->
-Fidelity review OWED (receipt rcp-2b6a87d4eae8).
+<!-- abcd-review: INGESTED receipt=rcp-2b6a87d4eae8 -->
+Fidelity review — receipt rcp-2b6a87d4eae8 (verifier intent-auditor claude-opus-5).
 
+Provenance: intent-auditor@claude-opus-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:ec2aea6020113721b5aa8349f19eb9d1948be143c62c1ca9a7c4dfe4f799961e
+Input attestations: diff:91abb93819f8b6a2a002209e440819f6a5733d04..6789ba0fce5754eef33aadae2e4b1e8295aba744@sha256:b20193b55a9997487d540fb49b4e52a1b60e329d1cf65831a1d006da58a9fedd;
+
+Acceptance rollup: MET 8 · MET_WITH_CONCERNS 4 · NOT_MET 1 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: ModelSettings gains NoTranscript (bool, omitempty, zero by default) as the only store; TestConfigHoldsExactlyOnePerModelMap passes with notKeyedByModelID unchanged (one entry, Clients) and the diff touches neither table
+  evidence: internal/config/config.go:822 — "NoTranscript bool `json:"no_transcript,omitempty"`"
+  evidence: internal/config/notranscript_test.go:51 — "func TestNoTranscriptIsAPerModelFieldOffByDefault"
+  evidence: internal/archtest/per_model_settings_test.go:28 — "var notKeyedByModelID = map[string]string{ "Clients": ..."
+- ac-2 — MET: TestEverySettingHasAPanelControlOrAnExemption passes on the delivered tree with settingsPaneExemptions untouched by the diff; app.js posts no_transcript through applyModelSwitch and the markup carries transcriptList
+  evidence: internal/ui/static/app.js:1813 — "applyModelSwitch(out, 'no_transcript', listedTranscript, checkedTranscript);"
+  evidence: internal/ui/static/index.html:660 — "< div id="transcriptList">< /div>"
+  evidence: internal/archtest/settings_surface_test.go:78 — "var settingsPaneExemptions = map[string]settingExemption{"
+- ac-3 — MET: transcriptRows draws one box per model (plus absent excepted ones) and modelSettings posts no_transcript true/false for every model the form drew a box for; held by the round-trip tests in internal/ui and the script regex in settings_test.go
+  evidence: internal/ui/transcript_test.go:25 — "func TestSettingsFormPostsTheTranscriptBox"
+  evidence: internal/ui/transcript_test.go:77 — "func TestSettingsFormDrawsARowForEveryException"
+  evidence: internal/ui/transcript_test.go:143 — "func TestSettingsFormIsWiredToTheTranscriptSwitches"
+- ac-4 — MET: applySettings merges the posted per-model map field by field via config.MergeModelSettings; TestAPerModelFieldThePanelDidNotRenderSurvivesASave walks every ModelSettings field by reflection, plants it after the snapshot, and asserts the surviving value
+  evidence: internal/gateway/permodel_merge_test.go:35 — "func TestAPerModelFieldThePanelDidNotRenderSurvivesASave"
+  evidence: internal/gateway/control.go:1687 — "merged, err := config.MergeModelSettings(current.Models, posted)"
+  evidence: internal/config/modelmerge.go:35 — "func MergeModelSettings(stored map[string]ModelSettings, posted map[string]json.RawMessage)"
+- ac-5 — MET: Both named tests are unchanged by the diff and the internal/gateway package passes on the delivered tree (go test -count=1 ./internal/gateway/ ok)
+  evidence: internal/gateway/control_untouched_test.go:145 — "func TestASaveOfAnUneditedFormIsAccepted"
+  evidence: internal/gateway/control_untouched_test.go:31 — "func TestACrossFieldRefusalNamesAChangedField"
+- ac-6 — NOT_MET: Promised: a request is recorded whole under the serving model, held by a gateway test over a mixed message array. Delivered: no recording path exists — Gateway.recorded is called only from handleListModels, TranscriptOn defaults to false and is never wired in cmd/dessau, and no gateway test drives a mixed message array; only the docs sentence exists. The ledger itself records criterion 6's gateway test as not held on this tree
+  evidence: internal/gateway/gateway.go:533 — "entry["recording"] = g.recorded(cfg, m.RepoID)"
+  evidence: internal/gateway/gateway.go:147 — "transcriptOn = func() bool { return false }"
+  evidence: .abcd/work/DECISIONS.md:385 — "Not held on this tree: criteria 6 and 8's gateway tests (a mixed message array recorded whole; ...) need the parent's store"
+  evidence: docs/transcript.md:54 — "a request answered by a recorded model is written down whole, including earlier turns from an excepted model"
+- ac-7 — MET_WITH_CONCERNS: Config.NoTranscript folds through FoldRepoID and fails closed, and the listing test on the pattern of TestListModelsJoinsResidencyWhateverTheSpelling proves an exception under ORG/WARM bites for org/warm. Concern: the outcome 'nothing is written' is vacuous on this tree — there is no write path for the folded reader to gate, so the fold is proved on the reader and the listing only
+  evidence: internal/gateway/notranscript_test.go:40 — "func TestListModelsSaysAnExceptedModelIsNotRecordedWhateverTheSpelling"
+  evidence: internal/config/notranscript_test.go:14 — "func TestNoTranscriptIsReadFoldedAndFailsClosed"
+  evidence: internal/config/config.go:902 — "func (c Config) NoTranscript(repoID string) bool"
+- ac-8 — MET_WITH_CONCERNS: The settings half is held: TestTheExceptionIsSettableOnAModelNotYetDownloaded accepts an unknown repo-id key and reads it folded, and TestUnknownModelReturns404 still refuses a request naming an unheld model. Concern: the gateway test over the first served request does not exist and nothing on the completions path consults the exception; the ledger records that half as owed to the parent's integration
+  evidence: internal/gateway/permodel_test.go:169 — "func TestTheExceptionIsSettableOnAModelNotYetDownloaded"
+  evidence: internal/gateway/gateway_test.go:459 — "func TestUnknownModelReturns404"
+  evidence: .abcd/work/DECISIONS.md:385 — "the first served request of an excepted model writing nothing) need the parent's store and are owed to its integration"
+- ac-9 — MET: entry["recording"] is written on every models-list entry in the base half beside chat; both pinned field-set tests name it and TestModelsListReferenceDocumentsEveryFieldServed holds docs/models-list.md to it (row present); gateway package passes
+  evidence: internal/gateway/gateway.go:533 — "entry["recording"] = g.recorded(cfg, m.RepoID)"
+  evidence: internal/gateway/gateway_test.go:1027 — ""chat": true, "chat_template": true, "tool_calling": true, "recording": true}"
+  evidence: internal/gateway/gateway_test.go:1434 — ""tool_calling": true, "recording": true}"
+  evidence: docs/models-list.md:51 — "| `recording` | Whether a conversation with this model is written to the transcript"
+- ac-10 — MET_WITH_CONCERNS: The picker draws pencil/pencil.slash from the models-list recording field with accessibilityLabel in words (archtest over Picker.swift, Swift unit tier via transcript-state.sh, both green), and the card's pill carries role=img and aria-label from the node-evaluated transcriptPill. Concerns: (1) the panel card does not read the models-list field — transcriptState recomputes from config.transcript, a snapshot key this tree does not carry; (2) with TranscriptOn never wired, every model on a live server reads 'keeps no transcript', so the criterion's Given (one excepted, one recorded) cannot be told apart at runtime — captured as iss-2609211218478273, major, open
+  evidence: client/DessauChat/Picker.swift:176 — ".accessibilityLabel(recorded ? "recorded" : "keeps no transcript")"
+  evidence: internal/archtest/chat_client_transcript_icon_test.go:57 — "func TestChatClientPickerShowsTheTranscriptStateWithWords"
+  evidence: internal/archtest/chat_client_transcript_state_test.go:24 — "func TestChatClientTranscriptStateRule"
+  evidence: internal/ui/transcript_test.go:125 — "func TestTheCardDrawsTheTranscriptPillWithItsWords"
+  evidence: internal/ui/static/app.js:63 — "const recorded = !!c.transcript && !noTranscriptFor(c.models, repoID);"
+  evidence: .abcd/work/issues/open/iss-2609211218478273-no-transcript-lane-built-without-its-parent.md:14 — "the panel's cards and Dessau Chat's picker read 'keeps no transcript' for every model"
+- ac-11 — MET: offered() filters ChatModels through NoTranscript, bare /model lists only offered models, naming an excepted one returns noTranscriptRefusal with the reason; one test per arm in internal/bridge/discord, plus a third for a channel excepted after choosing
+  evidence: internal/bridge/discord/notranscript_test.go:81 — "func TestTheModelCommandOmitsAnExceptedModel"
+  evidence: internal/bridge/discord/notranscript_test.go:102 — "func TestTheModelCommandRefusesAnExceptedModel"
+  evidence: internal/bridge/discord/commands.go:173 — "const noTranscriptRefusal = "That model keeps no transcript on this server, so it is not offered here: ""
+- ac-12 — MET: handleDebugLog reads Config.NoTranscript per request and answers 409 with the reason; TestAnExceptedModelRefusesTheDebugArm holds the endpoint and TestBothPanelsSayHowTheExceptionMeetsDebugLogging holds both sentences in the markup
+  evidence: internal/gateway/control.go:1542 — "if c.App.Config().NoTranscript(req.Model) {"
+  evidence: internal/gateway/debuglog_test.go:122 — "func TestAnExceptedModelRefusesTheDebugArm"
+  evidence: internal/ui/transcript_test.go:166 — "func TestBothPanelsSayHowTheExceptionMeetsDebugLogging"
+  evidence: internal/ui/static/index.html:76 — "A model that keeps no transcript refuses this."
+- ac-13 — MET_WITH_CONCERNS: docs/transcript.md states per-model and off by default, folded, settable before download, published to every client, icon in client and panel, refused over the bridge, refused as a debug-log target, recorded whole under the serving model, and that an ordinary OpenAI client shows none of it; the field row is on docs/models-list.md. Concerns: neither page says the state is shown 'as a word in the bridge' (only that the bridge does not offer it); the pages describe a transcript switch the tree does not hold; and the hand check is recorded in DECISIONS.md but the release that ships this has not been cut and iss-2609211218478273 owes a re-read of the four pages against the parent's tree
+  evidence: docs/transcript.md:17 — "The box is off for every model until you tick it."
+  evidence: docs/transcript.md:21 — "is matched whichever way its repository id is spelled"
+  evidence: docs/transcript.md:25 — "You can except a model that is not on this Mac yet."
+  evidence: docs/transcript.md:44 — "An ordinary OpenAI-compatible client reads a model's name and displays none of"
+  evidence: docs/transcript.md:61 — "An excepted model is not offered over the [Discord bridge] (discord-bridge.md)."
+  evidence: docs/transcript.md:73 — "Arming it on an excepted model is refused with the reason"
+  evidence: .abcd/work/DECISIONS.md:385 — "docs currency CURRENT over `docs/transcript.md`, `docs/models-list.md` and `docs/discord-bridge.md`"
+
+Gap audit:
+- honoured:
+  - The exception is a per-model field on config.ModelSettings, off by default, reachable from the panel, config.json and Go
+    evidence: internal/config/config.go:822 — "NoTranscript bool `json:"no_transcript,omitempty"`"
+    evidence: internal/ui/static/index.html:646 — "< legend>Transcript< /legend>"
+  - A settings save merges the per-model map field by field so a hand-planted field survives
+    evidence: internal/gateway/permodel_merge_test.go:35 — "func TestAPerModelFieldThePanelDidNotRenderSurvivesASave"
+  - Every models-list entry carries recording, to keyless LAN clients too
+    evidence: internal/gateway/gateway.go:533 — "entry["recording"] = g.recorded(cfg, m.RepoID)"
+  - An excepted model is not offered over the Discord bridge and naming it is refused with the reason
+    evidence: internal/bridge/discord/commands.go:173 — "const noTranscriptRefusal"
+  - Arming per-model debug logging on an excepted model is refused and both controls say so
+    evidence: internal/gateway/control.go:1542 — "if c.App.Config().NoTranscript(req.Model) {"
+    evidence: internal/ui/transcript_test.go:166 — "func TestBothPanelsSayHowTheExceptionMeetsDebugLogging"
+  - The chat client's picker shows the transcript state as an icon labelled in words before the model is chosen
+    evidence: client/DessauChat/Picker.swift:176 — ".accessibilityLabel(recorded ? "recorded" : "keeps no transcript")"
+- diverged:
+  - Three surfaces render the state read from the models-list field — the panel card recomputes it from a config.transcript snapshot key that does not exist rather than reading the field
+    evidence: internal/ui/static/app.js:63 — "const recorded = !!c.transcript && !noTranscriptFor(c.models, repoID);"
+  - 'Some models keep no transcript even while recording is on' — delivered on a tree with no recording switch, so every entry, card and picker row reads recording:false / 'keeps no transcript' regardless of the exception
+    evidence: .abcd/work/issues/open/iss-2609211218478273-no-transcript-lane-built-without-its-parent.md:14 — "Until the parent lands, /v1/models publishes recording:false for every model"
+    evidence: internal/gateway/gateway.go:147 — "transcriptOn = func() bool { return false }"
+  - Control.TranscriptExcepted seam replaced by a per-request Config.NoTranscript read; docs/transcript.md created as a page rather than gained as a section
+    evidence: internal/gateway/control.go:1542 — "if c.App.Config().NoTranscript(req.Model) {"
+    evidence: docs/transcript.md:1 — "# Keep some models out of the transcript"
+- missing:
+  - A request served by a recorded model is recorded whole including an excepted model's prior turns — no recording path and no mixed-message-array gateway test exist
+    evidence: .abcd/work/DECISIONS.md:385 — "Not held on this tree: criteria 6 and 8's gateway tests"
+  - The first request an excepted model ever serves writes nothing — no gateway test over the first served request; Gateway.recorded is not consulted on the completions path
+    evidence: internal/gateway/gateway.go:171 — "func (g *Gateway) recorded(cfg config.Config, repoID string) bool"
+  - The documentation states the state is shown as a word in the bridge's /model listing
+    evidence: docs/transcript.md:61 — "An excepted model is not offered over the [Discord bridge] (discord-bridge.md)."
+
+Scope-condition dispositions:
+- cond-2609201007367769 — survived: NoTranscript is a bool on ModelSettings, zero by default, and TestConfigHoldsExactlyOnePerModelMap still counts one per-model map with no new exemption
+  evidence: internal/config/config.go:822 — "NoTranscript bool `json:"no_transcript,omitempty"`"
+  evidence: internal/archtest/per_model_settings_test.go:32 — "func TestConfigHoldsExactlyOnePerModelMap"
+- cond-2609201007366437 — survived: Every reader goes through Config.NoTranscript, which folds through FoldRepoID: the listing, the debug arm, the bridge closure, and the panel's noTranscriptFor fold likewise
+  evidence: internal/config/config.go:902 — "func (c Config) NoTranscript(repoID string) bool"
+  evidence: cmd/dessau/bridge.go:34 — "NoTranscript: func(model string) bool { return a.Config().NoTranscript(model) },"
+- cond-2609201007362675 — narrowed: The save accepts an exception on a repo-id key the registry does not hold and reads it folded; the 'bites from the first request' half is not exercised because no completions path consults the exception on this tree
+  narrowing: holds for the save's acceptance and the folded read of the stored exception only; the first-served-request bite is owed to the parent's integration
+  evidence: internal/gateway/permodel_test.go:169 — "func TestTheExceptionIsSettableOnAModelNotYetDownloaded"
+- cond-2609201007367665 — survived: TestUnknownModelReturns404 is unchanged and passes: a completion naming a model the registry does not hold is refused
+  evidence: internal/gateway/gateway_test.go:459 — "func TestUnknownModelReturns404"
+- cond-2609201007365982 — survived: /model lists offered() which excludes excepted models, naming one is refused with noTranscriptRefusal, and a channel already on one is refused at its next message before the gateway is asked
+  evidence: internal/bridge/discord/answer.go:169 — "s.say(ctx, msg.ChannelID, msg.ID, noTranscriptRefusal)"
+  evidence: internal/bridge/discord/notranscript_test.go:102 — "func TestTheModelCommandRefusesAnExceptedModel"
+- cond-2609201007364816 — survived: handleDebugLog answers 409 with the reason for an excepted model, and both the debug blurb and the transcript hint say so in the markup
+  evidence: internal/gateway/debuglog_test.go:122 — "func TestAnExceptedModelRefusesTheDebugArm"
+  evidence: internal/ui/static/index.html:76 — "A model that keeps no transcript refuses this."
+- cond-2609201007364849 — narrowed: The documentation states plainly that a recorded model's request is written whole with an excepted model's prior turns; the recording behaviour itself is not exercised because nothing on this tree records
+  narrowing: holds for the documentation's statement only; the recorded-whole behaviour is not exercised on a tree with no recording path
+  evidence: docs/transcript.md:54 — "a request answered by a recorded model is written down whole, including earlier turns from an excepted model"
+- cond-2609201007366686 — survived: The icon is drawn only in the server-model rows from transcriptRecorded, which is nil for anything not in the models list, and the client README says the Mac's own model carries none
+  evidence: client/DessauChat/Picker.swift:173 — "if let recorded = transcriptRecorded(id, in: model.recordedModels) {"
+  evidence: client/README.md:82 — "The Mac's own model reaches no server"
 ## Grounds
 
 - pursued: the maintainer answered every open question at the 2026-09-20 interview and the itd-1 sections were written from the answers; what would show this wrong is a criterion that cannot be held by the test it names
