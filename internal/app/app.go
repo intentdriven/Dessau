@@ -324,7 +324,7 @@ func New(opts Options) (*App, error) {
 		// The pool reports loads and removals to the recorder, which ignores
 		// them while recording is off. Adapting here keeps internal/stats a
 		// leaf package that imports nothing of ours.
-		Observer:        poolObserver{rec: a.Stats, log: opts.Log, loaded: a.modelLoaded},
+		Observer:        poolObserver{rec: a.Stats, log: opts.Log, loaded: a.modelLoaded, failed: a.recordLoadFailure},
 		Pinned:          a.cfg.PinnedIDs(),
 		EvictionGrace:   grace,
 		MaxEvictionWait: maxWait,
@@ -935,6 +935,11 @@ type poolObserver struct {
 	// probe's queue (App.modelLoaded). Nil in a test that builds the
 	// observer alone.
 	loaded func(repoID string)
+	// failed, when set, is told how every load ended — the error, or nil
+	// for a load that succeeded — so a failure is recorded on the model and
+	// a success lifts one (App.recordLoadFailure). Nil in a test that builds
+	// the observer alone.
+	failed func(repoID string, err error)
 }
 
 func (o poolObserver) LoadStarted(repoID string) { o.rec.LoadStarted(repoID) }
@@ -982,6 +987,9 @@ func samplingValues(s config.Sampling) map[string]float64 {
 // detailed level, where the operator has asked for them.
 func (o poolObserver) LoadFinished(repoID string, took time.Duration, err error, sampling config.Sampling) {
 	o.rec.LoadFinished(repoID, took, err, samplingValues(sampling))
+	if o.failed != nil {
+		o.failed(repoID, err)
+	}
 	if err != nil {
 		o.log.Info("model failed to load", "model", repoID)
 		o.log.Debug("model failed to load", "model", repoID, "took", took, "err", err)
@@ -1390,6 +1398,19 @@ func (s modelSource) Resolve(repoID string) (runtime.ResolvedModel, error) {
 	}
 	if !m.Ready() {
 		return runtime.ResolvedModel{}, fmt.Errorf("%s is not ready (%s)", repoID, m.State)
+	}
+	// A model whose last load failed under the provenance in force is not
+	// launched again for anyone: the request is told the recorded reason at
+	// once rather than paying another readiness timeout, and the way out —
+	// the hand retry on its card, which lifts the record. As a NotReadyError,
+	// so the gateway classes it as the not-ready refusal it is and tells an
+	// entitled client the text (iss-2609211334570516).
+	if m.LoadFailed() {
+		return runtime.ResolvedModel{}, &runtime.NotReadyError{
+			Err: fmt.Errorf("%s did not load the last time it was tried (%s); it is not tried again on its own until the runtime, the memory budget or its served window changes — press Load or Measure now on its card to try it again",
+				repoID, strings.TrimSuffix(m.LoadFailure.Reason, ".")),
+			Reason: m.LoadFailure.Reason,
+		}
 	}
 	// The window is the one this model is served at — the operator's, or the
 	// default derived to fit the budget — so the pool charges what the gateway

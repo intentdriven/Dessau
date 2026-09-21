@@ -11,11 +11,15 @@ import (
 	"github.com/intentdriven/Dessau/internal/runtime"
 )
 
+// readyModel puts a ready chat model in the registry: one with a chat
+// template and no Hub word, which is how an adopted model reads as a chat
+// model, and which the probe measures.
 func readyModel(t *testing.T, a *App, id string, declared int64) {
 	t.Helper()
 	if err := a.Registry.Put(registry.Model{
 		RepoID: id, Path: a.Paths.ModelDir(id), State: registry.StateReady,
 		Bytes: 1 << 20, ContextLength: declared, KVChargePerToken: 64,
+		ChatTemplate: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -179,3 +183,40 @@ func TestTheProvenanceIsWhatThePoolAndTheRuntimeSay(t *testing.T) {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// The probe measures through chat completions, so only a model the server
+// offers to chat is a candidate: the same verdict the models list publishes
+// as `chat`, read from its one home. A ready image-to-text model is not one,
+// and on the live server it was the one the probe picked, loaded thirty-two
+// times and never got an answer from (iss-2609211334563318).
+func TestTheProbeConsidersOnlyChatModels(t *testing.T) {
+	a := newTestApp(t)
+	put := func(id, pipeline string, tags []string) {
+		t.Helper()
+		if err := a.Registry.Put(registry.Model{
+			RepoID: id, Path: a.Paths.ModelDir(id), State: registry.StateReady,
+			Bytes: 1 << 20, ContextLength: 131072, KVChargePerToken: 64,
+			PipelineTag: pipeline, Tags: tags,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("org/ocr", "image-to-text", []string{"ocr"})
+	put("org/chat", "text-generation", []string{"conversational"})
+	if ocr, _ := a.Registry.Get("org/ocr"); ocr.CanChat(a.Config().EffectiveChatRule()) {
+		t.Fatal("the fixture is wrong: the image-to-text model reads as a chat model")
+	}
+	var ids []string
+	for _, c := range (probeSources{a}).Candidates() {
+		ids = append(ids, c.RepoID)
+	}
+	if len(ids) != 1 || ids[0] != "org/chat" {
+		t.Errorf("candidates = %v, want only the chat model", ids)
+	}
+	if err := a.MeasureNow("org/ocr"); err == nil {
+		t.Error("Measure now queued a model the server does not offer to chat")
+	}
+	if err := a.MeasureNow("org/chat"); err != nil {
+		t.Errorf("Measure now refused the chat model: %v", err)
+	}
+}

@@ -176,10 +176,26 @@ func (e *LaunchError) Unwrap() error { return e.Err }
 // different failures: the first is a broken installation or a vanished model
 // directory, the second is usually a model too large for this Mac or weights
 // that will not load. Its message is safe to relay, unlike a LaunchError's:
-// it comes from the process's own exit status or from the probe's timeout, not
-// from a path on this machine.
+// it comes from the process's own exit status, from the probe's timeout, or
+// from the terminal line of a traceback in the child's log with anything
+// path-shaped stripped out (fatalLoadLine), never from a path on this machine.
 type NotReadyError struct {
 	Err error
+	// Reason is the failure without the model's name — "did not become
+	// ready within 10m0s", "could not load: ValueError: …" — for a record
+	// kept on the model itself (registry.LoadFailure), where the name is
+	// the entry's own.
+	Reason string
+	// Transient says the verdict is the pool's own bound rather than the
+	// child's assertion — the readiness timeout ran out, or the process was
+	// ended by a signal — so the same load may well go differently on a
+	// quieter machine. A record kept of it does not outlive this process.
+	Transient bool
+	// Interrupted says the load did not fail on its own: another path took
+	// the entry out of the pool while it was loading — a client that hung
+	// up, an unload, an eviction — and the process was stopped for it. It
+	// is not the model's failure and leaves no record on the model.
+	Interrupted bool
 }
 
 func (e *NotReadyError) Error() string { return e.Err.Error() }

@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os/exec"
 	"sort"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/intentdriven/Dessau/internal/capability"
@@ -1371,7 +1373,6 @@ func (p *Pool) waitReady(e *entry) {
 	started := p.opts.now()
 	err := p.probeReady(ctx, e)
 	took := p.opts.now().Sub(started)
-	p.notify(func(o PoolObserver) { o.LoadFinished(e.repoID, took, err, e.sampling) })
 
 	p.mu.Lock()
 	e.readyErr = err
@@ -1396,16 +1397,28 @@ func (p *Pool) waitReady(e *entry) {
 	}
 	p.mu.Unlock()
 
-	if err != nil && !stopped && e.proc != nil {
-		// Another path took this entry out of the pool while it was loading and
-		// owns the stop of its process. Stop it here too rather than rely on
-		// that: this path is what would otherwise leak it, and Stop is
-		// idempotent. Nothing is charged, because whoever removed the entry
-		// charged it.
-		stopCtx, stopCancel := context.WithTimeout(context.Background(), stopBound)
-		_ = e.proc.Stop(stopCtx)
-		stopCancel()
+	// Reported once the pool knows whose failure it is: a load that failed
+	// on its own is the model's, and is recorded against it; one whose entry
+	// another path took out of the pool meanwhile was interrupted, and the
+	// observer is told so rather than told the model failed.
+	reported := err
+	if err != nil && !stopped {
+		var notReady *NotReadyError
+		if errors.As(err, &notReady) {
+			reported = &NotReadyError{Err: notReady.Err, Reason: notReady.Reason, Transient: notReady.Transient, Interrupted: true}
+		}
+		if e.proc != nil {
+			// Another path took this entry out of the pool while it was
+			// loading and owns the stop of its process. Stop it here too
+			// rather than rely on that: this path is what would otherwise
+			// leak it, and Stop is idempotent. Nothing is charged, because
+			// whoever removed the entry charged it.
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), stopBound)
+			_ = e.proc.Stop(stopCtx)
+			stopCancel()
+		}
 	}
+	p.notify(func(o PoolObserver) { o.LoadFinished(e.repoID, took, reported, e.sampling) })
 	if err == nil && e.proc != nil {
 		go p.watchExit(e)
 	}
@@ -1438,8 +1451,23 @@ func (p *Pool) watchExit(e *entry) {
 // /health is not sufficient: mlx_lm.server answers it "ok" the moment the socket
 // is up, long before the weights are in memory. The only trustworthy readiness
 // signal is a completion that succeeds.
+//
+// Nor is a completion that never comes back sufficient to say the model is
+// still loading: a child whose generate thread has died on the first request
+// keeps its httpd up, so the one request below blocks for the whole readiness
+// timeout. The child's own log is what says so, and a process that reports
+// where it writes it (LoadLogger) is watched while the request is out: a
+// traceback there that means the load cannot succeed ends the wait at once,
+// with the child's own reason (iss-2609211334570516).
 func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 	base := fmt.Sprintf("http://127.0.0.1:%d", e.port)
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	if lg, ok := e.proc.(LoadLogger); ok {
+		if path := lg.LogPath(); path != "" {
+			go p.watchLoadLog(ctx, path, cancel)
+		}
+	}
 
 	body, _ := json.Marshal(map[string]any{
 		"model":      e.modelArg,
@@ -1455,9 +1483,15 @@ func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 		select {
 		case <-e.proc.Done():
 			if err := e.proc.Err(); err != nil {
-				return &NotReadyError{Err: fmt.Errorf("model server for %s exited during startup: %w", e.repoID, err)}
+				return &NotReadyError{Err: fmt.Errorf("model server for %s exited during startup: %w", e.repoID, err),
+					Reason: fmt.Sprintf("the model server exited during startup: %v", err),
+					// An exit status is the child's own verdict; a signal
+					// is somebody else's — the system under memory
+					// pressure, a stop from outside.
+					Transient: exitedBySignal(err)}
 			}
-			return &NotReadyError{Err: fmt.Errorf("model server for %s exited during startup", e.repoID)}
+			return &NotReadyError{Err: fmt.Errorf("model server for %s exited during startup", e.repoID),
+				Reason: "the model server exited during startup"}
 		default:
 		}
 
@@ -1478,7 +1512,13 @@ func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 
 		select {
 		case <-ctx.Done():
-			return &NotReadyError{Err: fmt.Errorf("%s did not become ready within %s", e.repoID, p.opts.ReadyTimeout)}
+			var fatal *FatalLoadError
+			if errors.As(context.Cause(ctx), &fatal) {
+				return &NotReadyError{Err: fmt.Errorf("%s could not load: %s", e.repoID, fatal.Line),
+					Reason: "could not load: " + fatal.Line}
+			}
+			return &NotReadyError{Err: fmt.Errorf("%s did not become ready within %s", e.repoID, p.opts.ReadyTimeout),
+				Reason: fmt.Sprintf("did not become ready within %s", p.opts.ReadyTimeout), Transient: true}
 		case <-time.After(backoff):
 		}
 		// Cap the retry interval low: this loop only spins while the server socket
@@ -2656,4 +2696,15 @@ func residentOnlyFrom(ctx context.Context) bool {
 func sourceFrom(ctx context.Context) string {
 	s, _ := ctx.Value(sourceKey{}).(string)
 	return s
+}
+
+// exitedBySignal reports whether a process's exit error says it was ended
+// by a signal rather than exiting with a status of its own.
+func exitedBySignal(err error) bool {
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		return false
+	}
+	status, ok := exit.Sys().(syscall.WaitStatus)
+	return ok && status.Signaled()
 }

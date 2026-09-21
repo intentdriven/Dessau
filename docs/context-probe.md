@@ -22,8 +22,11 @@ Read this before switching it on. A measurement is not free:
 - **About forty minutes of GPU time per model**, at full prefill, on the
   2026-09-06 campaign's figures. Six models is an evening, one after another.
 - **A single step can take half an hour**: the gateway allows a prompt
-  about a second per 150 tokens plus a minute before it gives up, and a
-  262,144-token prompt is near the top of that.
+  about a second per 150 tokens plus a minute before it gives up, and never
+  less than ten minutes, and a 262,144-token prompt is near the top of
+  that. The probe's own limit on a step is that allowance plus a minute, so
+  no step outlives eleven minutes without an answer at the smallest size,
+  nor about thirty at the largest.
 - **An unload and a reload between steps**, so a retained prompt cache
   cannot flatter the next reading. Each reload reads the weights from disk
   again.
@@ -47,6 +50,30 @@ downloading, Dessau measures the first model that has no current
 measurement, one model at a time. A model you download later is measured
 the next time the Mac is idle. In `config.json` the switch is
 `"context_probe": true` and the threshold `"idle_threshold_sec"`.
+
+## Which models it measures
+
+Only a model the server offers to chat: one the
+[models list](models-list.md) publishes with `"chat": true`. The probe
+measures by sending chat completions, so a served window means nothing for
+a model that cannot hold a conversation — a speech model, an OCR model — and
+its server never answers the request that would measure it. Such a model is
+never picked, and **Measure now** on its card says so.
+
+Nor is a model whose last load failed. A model server that starts and never
+becomes ready — its own log says the model type is not supported or a
+module is missing, it exits, or ten minutes pass without an answer — is
+marked on its card: **did not load**, with the reason. While that mark
+stands, neither the probe nor the [self-test](self-test.md) picks the model
+again, a queued measurement of it is dropped, and a request for it is
+refused at once with the same reason rather than waiting through another
+load. The mark is lifted when the runtime, the memory budget or the model's
+served window changes — the load may go differently under them — when the
+model is downloaded again, and when you press **Load** or **Measure now**
+on its card, which is how to try it once more by hand. A mark whose reason
+is Dessau's own bound rather than the model server's verdict — the ten
+minutes ran out, or the server was ended by a signal — also goes when
+Dessau restarts: a slow load on a busy Mac says nothing about the next one.
 
 To measure one model without switching the probe on, open the **My Models** tab
 and press **Measure now** on its card. The run starts at the next idle
@@ -114,6 +141,16 @@ Clear the box and save, or quit Dessau. A run in progress stops at once,
 writes no figure, leaves the model unloaded, and the card says the probe was
 incomplete. It is not retried on its own; press **Measure now** to run it
 again.
+
+While a run holds a model, the memory that model is charged is not free for
+anyone else, and a client whose model would need it is refused. The card's
+pill says **loading for the context probe** or **held by the context
+probe** rather than only that the model is in memory, and a client on this
+Mac, or one holding the API key, is told in the refusal which model the
+probe holds and for how long. **Unload** on that card releases it at once,
+even while the probe's own request is in flight: the run stands down the
+way it does for a client's request, keeps its bounds, and carries on at the
+next idle minute.
 
 ## Related
 

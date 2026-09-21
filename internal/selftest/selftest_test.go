@@ -1074,3 +1074,70 @@ func TestTheLoopDoesNotYieldToItsOwnAcquisitions(t *testing.T) {
 		t.Fatalf("run = %+v; want an ok run with the whole set: nobody but the loop asked for the model", run)
 	}
 }
+
+// blockingJob is a job that runs once, waits until its session is
+// cancelled, and says how it ended.
+type blockingJob struct {
+	due     string
+	ran     atomic.Bool
+	started chan struct{}
+	yielded atomic.Bool
+	ended   chan struct{}
+}
+
+func (j *blockingJob) Name() string { return "blocking" }
+func (j *blockingJob) Due(_ []string, _ time.Time) string {
+	if j.ran.Load() {
+		return ""
+	}
+	return j.due
+}
+func (j *blockingJob) Parks() bool { return false }
+func (j *blockingJob) Run(s *Session, _ string) {
+	if !j.ran.CompareAndSwap(false, true) {
+		return
+	}
+	close(j.started)
+	<-s.Ctx.Done()
+	j.yielded.Store(s.Yielded())
+	close(j.ended)
+}
+
+// Interrupt ends the run in progress on the model named, as a yield, and
+// leaves a run on any other model alone; between runs there is nothing to
+// interrupt (iss-2609211334576018).
+func TestInterruptEndsTheRunOnThatModelAsAYield(t *testing.T) {
+	srv := newFakeServer(t, "org/a")
+	job := &blockingJob{due: "org/a", started: make(chan struct{}), ended: make(chan struct{})}
+	r := New(Options{
+		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond,
+		Jobs: []Job{job}, SelfTest: func() bool { return false },
+		Log: slog.New(slog.DiscardHandler),
+	})
+	t.Cleanup(r.Close)
+	if r.Interrupt("org/a") {
+		t.Error("Interrupt found a run before the loop started")
+	}
+	r.SetEnabled(true)
+	<-job.started
+	if r.Interrupt("org/other") {
+		t.Error("Interrupt on another model ended this run")
+	}
+	select {
+	case <-job.ended:
+		t.Fatal("the run ended without being interrupted")
+	case <-time.After(30 * time.Millisecond):
+	}
+	if !r.Interrupt("Org/A") {
+		t.Fatal("Interrupt did not find the run on its model")
+	}
+	select {
+	case <-job.ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the interrupted run did not end")
+	}
+	if !job.yielded.Load() {
+		t.Error("the interrupted run did not read as a yield")
+	}
+}

@@ -130,8 +130,11 @@ type Probe struct {
 	opts Options
 
 	mu sync.Mutex
-	// queue holds the "Measure now" requests, in order.
-	queue []string
+	// queue holds the "Measure now" requests, in order; queueGen moves with
+	// every addition, so Due can tell a queue it snapshotted the candidates
+	// against from one a hand retry reached meanwhile.
+	queue    []string
+	queueGen uint64
 	// bounds holds a model's bisection so far, so a yielded run resumes.
 	bounds map[string]*bounds
 }
@@ -208,6 +211,7 @@ func (p *Probe) MeasureNow(repoID string) {
 		}
 	}
 	p.queue = append(p.queue, repoID)
+	p.queueGen++
 }
 
 // Queued lists the models waiting for "Measure now".
@@ -220,8 +224,13 @@ func (p *Probe) Queued() []string {
 // Due implements selftest.Job: a queued model first, then — with the switch
 // on — the first ready model with a declared window and no current
 // measurement that is not marked incomplete (an interrupted or failed probe
-// is retried only by "Measure now").
+// is retried only by "Measure now"). Both read only the app's candidates,
+// which is where a model the server does not offer to chat, and one whose
+// last load failed, are left out.
 func (p *Probe) Due(ready []string, now time.Time) string {
+	p.mu.Lock()
+	gen := p.queueGen
+	p.mu.Unlock()
 	byKey := map[string]Candidate{}
 	for _, c := range p.opts.Sources.Candidates() {
 		byKey[config.FoldRepoID(c.RepoID)] = c
@@ -232,6 +241,22 @@ func (p *Probe) Due(ready []string, now time.Time) string {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// A queued model that is no longer a candidate — deleted, no longer
+	// offered to chat, or its last load failed and the record on it stands
+	// — is dropped rather than kept forever: the queue is what holds the
+	// idle loop on, and a hand retry queues the model afresh. Only against
+	// the queue the candidates were read for: a hand retry that lifted a
+	// model's failure and queued it between the read and here is not
+	// pruned on the stale snapshot, and the next tick judges it afresh.
+	if gen == p.queueGen {
+		kept := p.queue[:0]
+		for _, q := range p.queue {
+			if _, ok := byKey[config.FoldRepoID(q)]; ok {
+				kept = append(kept, q)
+			}
+		}
+		p.queue = kept
+	}
 	for _, q := range p.queue {
 		if c, ok := byKey[config.FoldRepoID(q)]; ok && isReady[config.FoldRepoID(q)] && c.Declared > 0 {
 			return c.RepoID

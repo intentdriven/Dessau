@@ -416,8 +416,14 @@ rules.
   with a request in flight is never the one chosen, a model still loading is
   not either, and a pinned model is not either. If nothing can be freed, the
   request is refused with an error naming the memory pressure, on the rule
-  above. That refusal names no model: which models this Mac is protecting stays
-  off the network.
+  above. That refusal names no protected model: which models this Mac is
+  protecting stays off the network. It does name a model the server's own
+  idle work is holding — one the [context probe](context-probe.md) is
+  measuring or the [self-test](self-test.md) is testing — to the clients
+  the residency fields go to: which model, which job, for how long, and that
+  **Unload** on that model's card releases it, so the refusal is not read as
+  the requested model being too large. A client the listing tells nothing is
+  told nothing here either.
 - Requests waiting for a server to exit are waiting for memory like any other,
   and share the same queue: a small number of places overall, and a smaller
   number per caller. Callers that present no API key — which is every caller on

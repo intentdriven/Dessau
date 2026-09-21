@@ -82,7 +82,9 @@ A run touches the model the way a request does, so when
 unloads appear in the load and eviction views there, and a model the
 self-test measured counts as recently used for the idle timeout.
 
-The self-test never runs a model the Mac does not already have, never sends
+The self-test never runs a model the Mac does not already have, never picks
+a model whose last load failed while that mark stands on its card (the
+[context probe](context-probe.md) page says what lifts it), never sends
 anything anywhere but to the model server on this Mac, and never records a
 prompt, an answer, a key or an address.
 

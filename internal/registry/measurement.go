@@ -159,8 +159,8 @@ func (r *Registry) SetProbeIncomplete(repoID string, on bool) error {
 	return err
 }
 
-// RefreshStaleness compares every measurement, and every tool-call verdict,
-// with what is in force now for its model — the served window is a per-model
+// RefreshStaleness compares every measurement, every tool-call verdict and
+// every load failure with what is in force now for its model — the served window is a per-model
 // setting, so the provenance is asked per model — writes the verdict onto
 // each, and returns the ids of the models whose verdict changed. It is called
 // at start and after every save, so staleness is a stored fact rather than an
@@ -182,11 +182,15 @@ func (r *Registry) RefreshStaleness(inForce func(m Model) Provenance) []string {
 		stale   string
 		tcWas   *ToolCalling
 		tcStale string
+		// lfWas is a load failure whose provenance has moved; it is lifted
+		// rather than marked, since a failure under another provenance says
+		// nothing about this one.
+		lfWas *LoadFailure
 	}
 	r.mu.RLock()
 	var snapshot []Model
 	for _, m := range r.models {
-		if m.Measured != nil || m.ToolCalling != nil {
+		if m.Measured != nil || m.ToolCalling != nil || m.LoadFailure != nil {
 			snapshot = append(snapshot, m)
 		}
 	}
@@ -206,7 +210,10 @@ func (r *Registry) RefreshStaleness(inForce func(m Model) Provenance) []string {
 				j.tcWas, j.tcStale = m.ToolCalling, stale
 			}
 		}
-		if j.was != nil || j.tcWas != nil {
+		if m.LoadFailure != nil && m.LoadFailure.StaleAgainst(p) != "" {
+			j.lfWas = m.LoadFailure
+		}
+		if j.was != nil || j.tcWas != nil || j.lfWas != nil {
 			verdicts = append(verdicts, j)
 		}
 	}
@@ -232,6 +239,10 @@ func (r *Registry) RefreshStaleness(inForce func(m Model) Provenance) []string {
 			copied := *m.ToolCalling
 			copied.Stale = v.tcStale
 			m.ToolCalling = &copied
+			moved = true
+		}
+		if v.lfWas != nil && m.LoadFailure == v.lfWas {
+			m.LoadFailure = nil
 			moved = true
 		}
 		if !moved {

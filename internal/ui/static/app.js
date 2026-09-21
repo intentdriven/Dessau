@@ -427,9 +427,10 @@ function renderModels() {
     const loaded = resident.has(m.repo_id);
     let pill = '';
     if (m.state === 'ready')       pill = loaded
-      ? '<span class="pill loaded">loaded</span>'
+      ? `<span class="pill loaded">${escapeHtml(residencyLabel(resident.get(m.repo_id), state.idle_jobs))}</span>`
       : '<span class="pill ready">ready</span>';
     else if (m.state === 'failed') pill = '<span class="pill failed">failed</span>';
+    if (m.state === 'ready' && m.load_failure) pill += '<span class="pill failed">did not load</span>';
     const pinText = pinLabel(m, pinned, loaded);
     if (pinText) pill += `<span class="pill pinned">${pinText}</span>`;
     // Armed and running are different runs and are drawn differently: the
@@ -447,11 +448,13 @@ function renderModels() {
     const info = modelInfoLine(m, sequencesInForce());
     const measured = measurementText(m, state.idle_jobs, state.probe_queue);
     const tools = m.state === 'ready' ? toolCallText(m) : '';
+    const failed = m.state === 'ready' ? loadFailureText(m) : '';
 
     card.innerHTML = `
       <div class="meta">
         <div class="name">${escapeHtml(m.repo_id)}${pill}</div>
         <div class="info">${info}</div>
+        ${failed ? `<div class="info loadfailure">${escapeHtml(failed)}</div>` : ''}
         ${measured ? `<div class="info measured">${escapeHtml(measured)}</div>` : ''}
         ${tools ? `<div class="info toolcalls">${escapeHtml(tools)}</div>` : ''}
         ${m.state === 'downloading'
@@ -553,6 +556,31 @@ function measurementText(m, jobs, queue) {
   }
   if (m.probe_incomplete) return 'Measurement incomplete: the last probe was interrupted; press Measure now to run it again';
   return '';
+}
+
+// residencyLabel is the pill for a model in memory: what the memory is
+// doing, not only that it is spoken for. A model still loading says so, and
+// one the idle loop's run is holding names the job, so a person who finds
+// every client refused for want of memory can see the server's own work
+// holds it and press Unload (iss-2609211334576018). Empty for a model not
+// in memory. A pure function a test holds.
+function residencyLabel(r, jobs) {
+  if (!r) return '';
+  const j = jobs || {};
+  const same = (a, b) => (a || '').toLowerCase() === (b || '').toLowerCase();
+  const job = { 'context-probe': 'the context probe', 'self-test': 'the self-test' }[j.job] || j.job;
+  const held = j.job && same(j.model, r.repo_id);
+  if (r.state === 'loading') return held ? `loading for ${job}` : 'loading';
+  return held ? `held by ${job}` : 'loaded';
+}
+
+// loadFailureText is the card's line about a load that never became ready:
+// the pool's own reason, that nothing idle retries it, and the way out. A
+// pure function a test holds. Empty when no failure stands.
+function loadFailureText(m) {
+  const f = m.load_failure;
+  if (!f) return '';
+  return `Did not load the last time it was tried (${f.reason.replace(/\.$/, '')}) — not tried again on its own until the runtime, the memory budget or the served window changes; press Load or Measure now to try it again`;
 }
 
 // toolCallText is the card's line about the tool-call probe: whether the

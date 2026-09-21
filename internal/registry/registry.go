@@ -111,6 +111,13 @@ type Model struct {
 	// about these files: a re-download's Put carries none
 	// (itd-2609201445423499).
 	ToolCalling *ToolCalling `json:"tool_calling,omitempty"`
+	// LoadFailure says the model's server started and never became ready
+	// under the provenance it carries, and stands until that moves or a
+	// person retries the model by hand: while it does, no idle job picks the
+	// model and a request for it is refused with the reason at once
+	// (iss-2609211334570516). Like Measured it is a fact about these files:
+	// a re-download's Put carries none.
+	LoadFailure *LoadFailure `json:"load_failure,omitempty"`
 }
 
 // MaxTags and MaxTagBytes bound the category. A repo's tags are typed by its
@@ -337,6 +344,13 @@ func Open(path string) (*Registry, error) {
 		// same rule: cleared, not repaired.
 		if m.ToolCalling != nil && !plausibleToolCalling(m.ToolCalling) {
 			m.ToolCalling = nil
+		}
+		// And the load failure, shown on the card and told to entitled
+		// clients: cleared, not repaired. A transient one — the pool's own
+		// bound, not the child's verdict — was for the process that wrote
+		// it, and does not outlive it.
+		if m.LoadFailure != nil && (!plausibleLoadFailure(m.LoadFailure) || m.LoadFailure.Transient) {
+			m.LoadFailure = nil
 		}
 		r.models[key(m.RepoID)] = m
 	}
