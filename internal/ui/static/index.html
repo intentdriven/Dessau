@@ -65,6 +65,16 @@
     <p><strong>No models yet.</strong></p>
     <p>Go to <a href="#" onclick="showTab('search');return false">Find Models</a> to download one.</p>
   </div>
+  <!-- The plain words behind each card's Debug logging button, which takes its
+       title from this paragraph at render time so the two cannot drift. -->
+  <p class="hint" id="debugLogBlurb">Debug logging is a per-model diagnostic and is off unless you arm it.
+    From that model's next start until the start after it, the model server's own log holds every
+    request sent to it and every answer it produced — the prompts and the completions, whoever sent
+    them — and the requests Dessau's own probes and self-test send as well. Arming changes nothing
+    about the run going on now: unload the model to start the run that is logged. The run after that
+    is back to the ordinary level. The file is owner-only, stops at 64 MB, and the previous run's file
+    is kept beside it; nothing is sent anywhere, and clients are not told. A model that keeps no
+    transcript refuses this.</p>
 </section>
 
 <!-- ── Find Models ───────────────────────────────────────── -->

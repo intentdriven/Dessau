@@ -115,6 +115,12 @@ type Resident struct {
 	LoadedAt time.Time `json:"loaded_at"`
 	LastUsed time.Time `json:"last_used"`
 	InFlight int       `json:"in_flight"`
+	// DebugLog says this process was launched at the model server's debug
+	// level, so its log holds every request and every answer. It is a fact
+	// about the running process, recorded from the Spec at launch, and not
+	// about the mark: a model that is armed and not yet relaunched reports
+	// false here and appears in DebugArmed instead.
+	DebugLog bool `json:"debug_log"`
 }
 
 // PoolOptions configures a Pool.
@@ -248,6 +254,15 @@ type Pool struct {
 	// under, so the pool can both match a pin and report one. Guarded by mu,
 	// the same lock the eviction paths that read it already hold.
 	pinned map[string]string
+	// debugArmed is the per-model debug mark: folded repo id -> the spelling
+	// it was armed under, so the pool can both match it and report it. It is
+	// transient by design — never written down, dead with this process — and
+	// spent by the next successful launch of the model it names, so the run
+	// that launch starts is at the model server's debug level and every run
+	// after it is at INFO again (adr-2609201008477513). Derived from nothing:
+	// not the statistics switch, not log_level. Guarded by mu, the lock the
+	// launch path that consumes it already holds.
+	debugArmed map[string]string
 	// grace and maxWait are the eviction-grace intervals in force. They live
 	// here rather than in opts for the reason maxResident does: the operator
 	// changes them while the pool is running, and every path that reads them
@@ -320,6 +335,9 @@ type entry struct {
 	// sampling is what the server was launched with, carried on the load
 	// report so the recorder need not stitch two reports together.
 	sampling config.Sampling
+	// debugLog is whether this process was launched at the model server's
+	// debug level, from the Spec it was launched with.
+	debugLog bool
 
 	// sem bounds how many requests run against this one model server at once. Its
 	// capacity is a small multiple of the server's --decode-concurrency: mlx-lm
@@ -493,6 +511,7 @@ func NewPool(opts PoolOptions) *Pool {
 		entries:     map[string]*entry{},
 		maxResident: opts.MaxResidentBytes,
 		pinned:      pinnedSet(opts.Pinned),
+		debugArmed:  map[string]string{},
 		grace:       opts.EvictionGrace,
 		maxWait:     opts.MaxEvictionWait,
 		stuck:       map[uint64]stuckServer{},
@@ -687,6 +706,53 @@ func pinnedSet(ids []string) map[string]string {
 		set[config.FoldRepoID(id)] = id
 	}
 	return set
+}
+
+// ArmDebugLog marks one model so that its NEXT launch runs at the model
+// server's debug level, at which the server writes every request sent to it
+// and every answer it produced to its own log — prompts and completions,
+// whoever sent them. It is an action, not a setting: the mark lives in memory,
+// is spent by the launch that carries it, and dies with this process.
+//
+// It touches no process. A model that is resident stays resident and keeps
+// serving at the level it was launched at: the level is a launch flag, and a
+// running model server has no switch for it. Unloading the model is what
+// starts the run that is logged, and that is the caller's separate action.
+func (p *Pool) ArmDebugLog(repoID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return ErrClosed
+	}
+	p.debugArmed[config.FoldRepoID(repoID)] = repoID
+	return nil
+}
+
+// DisarmDebugLog takes an unspent mark back. It is the inverse of ArmDebugLog
+// and, like it, touches no process: a run already at debug stays at debug
+// until the model server next stops.
+func (p *Pool) DisarmDebugLog(repoID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return ErrClosed
+	}
+	delete(p.debugArmed, config.FoldRepoID(repoID))
+	return nil
+}
+
+// DebugArmed lists the models whose mark is waiting for a launch, in the
+// spelling each was armed under. A model whose current run is at debug has
+// spent its mark and is not here; Resident says so for it.
+func (p *Pool) DebugArmed() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]string, 0, len(p.debugArmed))
+	for _, id := range p.debugArmed {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // isPinnedLocked reports whether a model is protected. Callers must hold p.mu.
@@ -1266,19 +1332,30 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 	if p.opts.SamplingFor != nil {
 		sampling = p.opts.SamplingFor(repoID)
 	}
+	// The debug mark is read here and cleared below, under the one acquisition
+	// of p.mu this whole function runs under — so two launches of the same
+	// model cannot both consume it — but the clear waits for Launch to return
+	// without error. A launch that fails to spawn leaves the mark armed: the
+	// run the operator asked for never started, and the next one is still the
+	// one that will carry it.
+	key := config.FoldRepoID(repoID)
+	_, debugLog := p.debugArmed[key]
 	proc, err := p.opts.Launcher.Launch(context.Background(), Spec{
 		RepoID:            repoID,
 		ModelPath:         path,
 		Port:              port,
 		DecodeConcurrency: p.opts.DecodeConcurrency,
 		Sampling:          sampling,
+		DebugLog:          debugLog,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
 	}
+	delete(p.debugArmed, key)
 	e.proc = proc
 	e.sampling = sampling
-	p.entries[config.FoldRepoID(repoID)] = e
+	e.debugLog = debugLog
+	p.entries[key] = e
 	p.notify(func(o PoolObserver) { o.LoadStarted(repoID) })
 
 	go p.waitReady(e)
@@ -2225,6 +2302,7 @@ func (p *Pool) residentLocked() []Resident {
 			LoadedAt: e.loadedAt,
 			LastUsed: e.lastUsed,
 			InFlight: e.inFlight,
+			DebugLog: e.debugLog,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].LastUsed.After(out[j].LastUsed) })

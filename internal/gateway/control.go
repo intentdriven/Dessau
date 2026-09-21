@@ -75,6 +75,14 @@ type Control struct {
 	// them.
 	Notices config.Notices
 
+	// TranscriptExcepted says whether a model carries the transcript exception
+	// (itd-2609091715089488): a model promised that no prompt of its is ever
+	// written down. Arming debug logging for such a model is refused with the
+	// reason, because the exception means no prompts on disk, not "not in this
+	// one file". The app sets it; nil reads as "never excepted", which is what
+	// the app supplies until the per-model field the predicate reads exists.
+	TranscriptExcepted func(repoID string) bool
+
 	// loadMu guards loading, the set of models the Load button already has a
 	// background load running for, keyed by folded repo id.
 	//
@@ -138,6 +146,7 @@ func (c *Control) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/models/delete", c.handleDelete)
 	mux.HandleFunc("POST /api/models/load", c.handleLoad)
 	mux.HandleFunc("POST /api/models/unload", c.handleUnload)
+	mux.HandleFunc("POST /api/models/debug-log", c.handleDebugLog)
 	mux.HandleFunc("GET /api/settings", c.handleGetSettings)
 	mux.HandleFunc("POST /api/settings", c.handleSetSettings)
 	mux.HandleFunc("GET /api/stats", c.handleStats)
@@ -334,6 +343,13 @@ type State struct {
 	// actually refuses an eviction, and a pin reconciled with its model after a
 	// download reaches the pool before it reaches the stored settings.
 	Pinned []string `json:"pinned"`
+	// DebugArmed is the models whose debug-logging mark is waiting for a
+	// launch (itd-2609062346072707), read from the pool because the pool is
+	// what spends it. A model whose RUNNING process was launched at debug has
+	// spent its mark and is not here: each resident entry says that for
+	// itself, as debug_log, so the panel can tell an armed run from a logged
+	// one and move its pill from the one to the other without a reload.
+	DebugArmed []string `json:"debug_armed"`
 	// Waiting is how many requests are parked for want of memory under an
 	// eviction grace. It is the one thing about that queue nothing else on
 	// this snapshot can show: a waiting request holds no model, so it appears
@@ -524,6 +540,7 @@ func (c *Control) snapshot() State {
 			IdleThresholdSec:   config.DefaultIdleThresholdSec,
 		},
 		Pinned:       c.App.Pool.Pinned(),
+		DebugArmed:   c.App.Pool.DebugArmed(),
 		Waiting:      c.App.Pool.Waiting(),
 		Endpoints:    Endpoints(cfg, c.App.Bind()),
 		Bind:         bindState(cfg, c.App.Bind()),
@@ -1466,6 +1483,76 @@ func (c *Control) handleUnload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "unloaded", "model": model})
+}
+
+// debugLogRequest is the body of the one model action that says which way it
+// goes: arm the mark, or take an unspent one back.
+type debugLogRequest struct {
+	Model string `json:"model"`
+	Armed *bool  `json:"armed"`
+}
+
+// decodeDebugLogRequest is decodeModelRequest's sibling for the debug-logging
+// route, under the same cap for the same reason. Both fields are required:
+// arming is a deliberate act, and a body that leaves the direction to a
+// default would arm on a typo.
+func decodeDebugLogRequest(w http.ResponseWriter, r *http.Request) (debugLogRequest, bool) {
+	var req debugLogRequest
+	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, config.MaxConfigBytes)).Decode(&req)
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		writeError(w, http.StatusBadRequest, "request body is too large")
+		return req, false
+	}
+	if err != nil || req.Model == "" {
+		writeError(w, http.StatusBadRequest, `a "model" field is required`)
+		return req, false
+	}
+	if req.Armed == nil {
+		writeError(w, http.StatusBadRequest, `an "armed" field is required`)
+		return req, false
+	}
+	return req, true
+}
+
+// handleDebugLog arms or disarms debug logging for one model
+// (itd-2609062346072707, adr-2609201008477513). Arming marks the model in the
+// pool so that its NEXT launch runs at the model server's debug level, at
+// which the server's own log holds every request sent to it and every answer
+// it produced; it touches no running process, and it is spent by the launch
+// that carries it. It is an action and not a setting: nothing here reads or
+// writes the configuration, and the mark is derived from nothing but this
+// request.
+//
+// A model carrying the transcript exception refuses the arm with the reason.
+// Disarming it is not refused: there is nothing to keep from being written.
+func (c *Control) handleDebugLog(w http.ResponseWriter, r *http.Request) {
+	req, ok := decodeDebugLogRequest(w, r)
+	if !ok {
+		return
+	}
+	if _, err := c.App.Registry.Get(req.Model); err != nil {
+		writeError(w, modelErrorStatus(err), err.Error())
+		return
+	}
+	if !*req.Armed {
+		if err := c.App.Pool.DisarmDebugLog(req.Model); err != nil {
+			writeError(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"status": "disarmed", "model": req.Model})
+		return
+	}
+	if c.TranscriptExcepted != nil && c.TranscriptExcepted(req.Model) {
+		writeError(w, http.StatusConflict,
+			"this model keeps no transcript, so debug logging is refused: at the model server's debug level its log would hold every prompt sent to it")
+		return
+	}
+	if err := c.App.Pool.ArmDebugLog(req.Model); err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "armed", "model": req.Model})
 }
 
 func (c *Control) handleGetSettings(w http.ResponseWriter, r *http.Request) {

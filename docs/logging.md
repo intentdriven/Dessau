@@ -61,13 +61,37 @@ and how long it took.
 
 ## This is not the model servers' log level
 
-The model servers keep their own logs, one per model, in the same folder. They
-are always run at their INFO level. At their debug level they write prompts and
-answers to those logs, so no setting in Dessau asks for it — `log_level` here
-is Dessau's own and reaches nothing else.
+The model servers keep their own logs, one per model, in the same folder, as
+`<org>@<name>.log`. They run at their INFO level, and `log_level` here is
+Dessau's own and reaches nothing else: neither it nor the statistics switch
+changes what a model server writes.
 
-Those logs are also not rotated the way this one is: each is emptied when its
-model server next starts.
+One action does. **Debug logging**, on a model's card in the control panel,
+arms that one model so that its next start runs the model server at its
+debug level. From that start until the start after it, the model server's own
+log holds every request sent to it and every answer it produced — the prompts
+and the completions, whoever sent them, and the requests Dessau's own probes
+and self-test send as well. Nothing in it is redacted, so an API key a client
+puts in a message is written as sent. It is per model and off unless you arm
+it; arming changes nothing about the run going on now, so unload the model to
+start the run that is logged, and the run after that is back at INFO. A model
+server also restarts when memory pressure evicts it or the idle timeout
+unloads it, which any client's request can cause, so the logged run can end at
+a moment you did not choose. While a model is armed or running at its debug
+level its card says so, and the Posture tab names it. Nothing is sent
+anywhere, and clients are not told. A model that keeps no transcript refuses
+the arm.
+
+A run at the debug level writes bytes chosen by whoever is sending requests,
+so its log stops at 64 MB: what fits is written, one final line says the log
+stopped there and the model is still serving, and the rest is dropped while
+the model keeps answering. A run at INFO has no bound of its own.
+
+Those logs are not rotated the way this one is. Each model server's start
+keeps the previous run's file beside the new one, as
+`<org>@<name>.previous.log`, and replaces the one before that — so the run
+you armed is still there to read after the restart that ends it, and one
+model's logs take at most two files.
 
 ## How big it gets
 

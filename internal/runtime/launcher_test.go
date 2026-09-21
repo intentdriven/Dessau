@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -161,15 +162,19 @@ func TestLaunchDoesNotBlockOnFIFOLogFile(t *testing.T) {
 	}
 }
 
-// Every model server is started at INFO, whatever else its Spec carries.
+// An unarmed model server is started at INFO, whatever else its Spec carries,
+// and an armed one at DEBUG — named once, and only then.
 //
-// At the level above, the pinned model server writes every request body and
-// every response it produces to its log — prompts and completions. So this is
-// not a formatting detail: it is the line between the content-free record the
-// operator opted into and a full transcript on disk. The architecture tests
-// keep the switch out of this package; this one asserts what a model server is
-// actually launched with, off the argument vector rather than off the source.
-func TestEveryModelServerIsLaunchedAtInfo(t *testing.T) {
+// At DEBUG the pinned model server writes every request body and every
+// response it produces to its log — prompts and completions. So this is not a
+// formatting detail: it is the line between the content-free record the
+// operator opted into and a full transcript on disk. The level comes from
+// Spec.DebugLog and from nothing else (adr-2609201008477513 narrows
+// adr-2609061503319212 to exactly that). The architecture tests keep the
+// statistics switch out of this package; this one asserts what a model server
+// is actually launched with, off the argument vector rather than off the
+// source.
+func TestAnUnarmedModelServerIsLaunchedAtInfoAndAnArmedOneAtDebug(t *testing.T) {
 	temp := 0.7
 	specs := map[string]Spec{
 		"a plain spec":            {RepoID: "org/a", ModelPath: "/models/org/a", Port: 1},
@@ -188,9 +193,181 @@ func TestEveryModelServerIsLaunchedAtInfo(t *testing.T) {
 			}
 			for _, arg := range argv {
 				if arg == "DEBUG" {
-					t.Errorf("the argument vector names DEBUG: %v", argv)
+					t.Errorf("the argument vector of an unarmed launch names DEBUG: %v", argv)
 				}
 			}
 		})
+		t.Run(name+", armed", func(t *testing.T) {
+			spec.DebugLog = true
+			argv := launchArgs(spec)
+			got, ok := flagValue(argv, "--log-level")
+			if !ok {
+				t.Fatalf("the armed model server is launched with no log level at all: %v", argv)
+			}
+			if got != "DEBUG" {
+				t.Errorf("the armed model server is launched at %q, want DEBUG", got)
+			}
+			if n := countArg(argv, "--log-level"); n != 1 {
+				t.Errorf("the armed argument vector names --log-level %d times, want exactly once: %v", n, argv)
+			}
+		})
 	}
+}
+
+// countArg is how many times an argument appears in argv.
+func countArg(argv []string, arg string) int {
+	n := 0
+	for _, a := range argv {
+		if a == arg {
+			n++
+		}
+	}
+	return n
+}
+
+// stubbedLauncher is an ExecLauncher whose interpreter is a shell script, so
+// Launch can be exercised end to end — the log's rename, open and write —
+// without Python or a model.
+func stubbedLauncher(t *testing.T, script string) *ExecLauncher {
+	t.Helper()
+	paths := config.NewPaths(t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(paths.VenvPython()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.VenvPython(), []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(paths.Logs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return &ExecLauncher{Paths: paths, LogDir: paths.Logs}
+}
+
+// launchAndWait launches spec and waits for the stub to exit.
+func launchAndWait(t *testing.T, l *ExecLauncher, spec Spec) {
+	t.Helper()
+	if spec.ModelPath == "" {
+		spec.ModelPath = t.TempDir()
+	}
+	p, err := l.Launch(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	<-p.Done()
+}
+
+// The restart that ends a debug run must leave Alice the file. Every launch
+// opens the per-model log O_TRUNC, so before that open the previous run's log
+// is renamed to <name>.previous.log — on every launch, not only an armed one —
+// and the content the run wrote survives the launch that follows it.
+func TestALaunchKeepsThePreviousRunsLog(t *testing.T) {
+	l := stubbedLauncher(t, "echo the new run")
+	current := filepath.Join(l.LogDir, logFileName("org/name"))
+	previous := filepath.Join(l.LogDir, previousLogFileName("org/name"))
+	if err := os.WriteFile(current, []byte("the run Alice armed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+
+	if b, err := os.ReadFile(previous); err != nil || string(b) != "the run Alice armed\n" {
+		t.Errorf("the previous run's log was not kept under %s: %q, %v", filepath.Base(previous), b, err)
+	}
+	if b, err := os.ReadFile(current); err != nil || string(b) != "the new run\n" {
+		t.Errorf("the new run's log is not a fresh file: %q, %v", b, err)
+	}
+	if info, err := os.Lstat(previous); err == nil && info.Mode().Perm() != 0o600 {
+		t.Errorf("the kept file is mode %04o, want 0600", info.Mode().Perm())
+	}
+}
+
+// One generation only: the rename replaces any previous file of that name, so
+// consecutive launches leave exactly one previous log behind rather than
+// accumulating without bound.
+func TestTwoConsecutiveLaunchesKeepOnlyOnePreviousLog(t *testing.T) {
+	l := stubbedLauncher(t, "echo run $DESSAU_TEST_RUN")
+	current := filepath.Join(l.LogDir, logFileName("org/name"))
+	previous := filepath.Join(l.LogDir, previousLogFileName("org/name"))
+	if err := os.WriteFile(current, []byte("run 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("DESSAU_TEST_RUN", "1")
+	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	t.Setenv("DESSAU_TEST_RUN", "2")
+	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+
+	if b, _ := os.ReadFile(previous); string(b) != "run 1\n" {
+		t.Errorf("the previous log holds %q, want the run before this one", b)
+	}
+	if b, _ := os.ReadFile(current); string(b) != "run 2\n" {
+		t.Errorf("the current log holds %q, want this run", b)
+	}
+	entries, err := os.ReadDir(l.LogDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if len(names) != 2 {
+		t.Errorf("the logs folder holds %v, want exactly the current and one previous file", names)
+	}
+}
+
+// A first launch has no previous file, and that is not an error.
+func TestAFirstLaunchHasNoPreviousLogToKeep(t *testing.T) {
+	l := stubbedLauncher(t, "exit 0")
+	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	if _, err := os.Lstat(filepath.Join(l.LogDir, previousLogFileName("org/name"))); err == nil {
+		t.Error("a first launch left a previous file behind")
+	}
+}
+
+// An armed launch writes through the bounded writer and an unarmed one does
+// not: the unarmed path hands the file to the child directly, as it always
+// has, so nothing changes for anyone who does not arm. The bound is exercised
+// through the real Launch, pipe and all, with the bound made small enough for
+// a shell stub to reach.
+func TestAnArmedLaunchStopsItsLogAtTheBound(t *testing.T) {
+	// The stub prints more than the bound: 500 short lines.
+	const line = "a line of nineteen\n"
+	script := "i=0; while [ $i -lt 500 ]; do echo 'a line of nineteen'; i=$((i+1)); done"
+
+	t.Run("armed", func(t *testing.T) {
+		l := stubbedLauncher(t, script)
+		l.debugLogMaxBytes = 1000
+		launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1, DebugLog: true})
+		b, err := os.ReadFile(filepath.Join(l.LogDir, logFileName("org/name")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, after, ok := strings.Cut(string(b), debugLogBoundLine)
+		if !ok {
+			t.Fatalf("the armed log has no final line; it holds %d bytes", len(b))
+		}
+		if len(body) != 1000 {
+			t.Errorf("the armed log holds %d bytes before the final line, want the bound of 1000", len(body))
+		}
+		if after != "" {
+			t.Errorf("bytes reached the file after the bound: %q", after)
+		}
+	})
+
+	t.Run("unarmed", func(t *testing.T) {
+		l := stubbedLauncher(t, script)
+		l.debugLogMaxBytes = 1000
+		launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+		b, err := os.ReadFile(filepath.Join(l.LogDir, logFileName("org/name")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(b) != 500*len(line) {
+			t.Errorf("the unarmed log holds %d bytes, want all %d the server wrote: the bound applies to an armed run only", len(b), 500*len(line))
+		}
+		if strings.Contains(string(b), debugLogBoundLine) {
+			t.Error("an unarmed run's log carries the bound's final line")
+		}
+	})
 }
