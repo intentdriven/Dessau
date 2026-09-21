@@ -146,6 +146,9 @@ type Status struct {
 	Job   string `json:"job,omitempty"`
 	Model string `json:"model,omitempty"`
 	Step  string `json:"step,omitempty"`
+	// Since is when the run in progress began, so a surface can say how
+	// long the job has held its model; zero when nothing is running.
+	Since time.Time `json:"since,omitzero"`
 	// HeldBy names what kept a due run from starting at the last tick:
 	// "in_flight", "waiting", "downloading", "recent" or "no_room"; empty when
 	// nothing did, or nothing was due. Due names the model that run would be
@@ -649,8 +652,8 @@ func (r *Runner) run(ctx context.Context, model string, wasResident bool) {
 	w := r.startWatch(ctx, model, true)
 	runCtx := w.ctx
 	claim := w.claim
-	r.setStatus(func(st *Status) { st.Job, st.Model, st.Step = "self-test", model, "" })
-	defer r.setStatus(func(st *Status) { st.Job, st.Model, st.Step = "", "", "" })
+	r.setStatus(func(st *Status) { st.Job, st.Model, st.Step, st.Since = "self-test", model, "", now })
+	defer r.setStatus(func(st *Status) { st.Job, st.Model, st.Step, st.Since = "", "", "", time.Time{} })
 	// ended stops the watcher and names the outcome of a run cut short.
 	ended := func() {
 		w.stop()
@@ -843,13 +846,13 @@ func (w *watch) stop() {
 // runJob gives a job one run on a model under the loop's watch.
 func (r *Runner) runJob(ctx context.Context, job Job, model string) {
 	w := r.startWatch(ctx, model, job.Parks())
-	r.setStatus(func(st *Status) { st.Job, st.Model, st.Step = job.Name(), model, "" })
+	r.setStatus(func(st *Status) { st.Job, st.Model, st.Step, st.Since = job.Name(), model, "", r.opts.Now() })
 	defer func() {
 		w.stop()
 		r.mu.Lock()
 		r.touched[config.FoldRepoID(model)] = time.Now()
 		r.mu.Unlock()
-		r.setStatus(func(st *Status) { st.Job, st.Model, st.Step = "", "", "" })
+		r.setStatus(func(st *Status) { st.Job, st.Model, st.Step, st.Since = "", "", "", time.Time{} })
 	}()
 	job.Run(&Session{
 		Ctx:     w.ctx,

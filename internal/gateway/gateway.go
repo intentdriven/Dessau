@@ -25,6 +25,7 @@ import (
 	"github.com/intentdriven/Dessau/internal/pairing"
 	"github.com/intentdriven/Dessau/internal/registry"
 	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/selftest"
 	"github.com/intentdriven/Dessau/internal/stats"
 )
 
@@ -95,6 +96,12 @@ type Options struct {
 	// and nothing is recorded, which is what nil reads as. The gateway
 	// reads it beside the exception and never the other way round.
 	TranscriptOn func() bool
+	// IdleJobs reports the idle loop's run in progress — which job holds
+	// which model since when — so a refusal for want of memory can name a
+	// holder that is the server's own idle work (iss-2609211334576018).
+	// Nil means no idle job ever holds anything, and every such refusal is
+	// the plain sentence.
+	IdleJobs func() selftest.Status
 }
 
 // Gateway routes OpenAI requests to model servers.
@@ -114,6 +121,8 @@ type Gateway struct {
 	servedWindow func(registry.Model) (int64, bool)
 	// transcriptOn is Options.TranscriptOn, never nil.
 	transcriptOn func() bool
+	// idleJobs is Options.IdleJobs, never nil.
+	idleJobs func() selftest.Status
 }
 
 // New builds a Gateway.
@@ -146,6 +155,10 @@ func New(opts Options) *Gateway {
 	if transcriptOn == nil {
 		transcriptOn = func() bool { return false }
 	}
+	idleJobs := opts.IdleJobs
+	if idleJobs == nil {
+		idleJobs = func() selftest.Status { return selftest.Status{} }
+	}
 	return &Gateway{
 		cfg:          cfgFn,
 		pool:         opts.Pool,
@@ -156,6 +169,7 @@ func New(opts Options) *Gateway {
 		refusalLog:   newLogEvery(refusalLogEvery),
 		servedWindow: served,
 		transcriptOn: transcriptOn,
+		idleJobs:     idleJobs,
 	}
 }
 
@@ -767,7 +781,7 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 		// genericRefusal. The status code and the wait headers already set
 		// above are the same either way, so a client backing off is unaffected.
 		if g.entitled(r) {
-			writeError(w, http.StatusServiceUnavailable, err.Error())
+			writeError(w, http.StatusServiceUnavailable, err.Error()+g.idleHolder(err))
 			return
 		}
 		// The operator keeps what the client no longer gets. Without this the
@@ -1442,6 +1456,51 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // withheld here on the same predicate. The status code and every header are
 // unchanged, because a client backing off honestly reads those, not this text.
 const genericRefusal = "cannot serve this model right now"
+
+// idleHolder is the sentence added to a no-room refusal when the memory is
+// held by a model an idle job is holding — the context probe measuring it,
+// the self-test testing it: which model, which job, and for how long, and
+// that it is the server's own work rather than the size of the model asked
+// for. The pool's refusal names no model on purpose (runtime.NoRoomError),
+// and this one reaches only a client this server owes an account of itself
+// — the caller gates on entitled — which is the client the models list
+// tells what is resident anyway. Empty for any other refusal, for a run
+// whose model is not in memory, and when no run is in progress
+// (iss-2609211334576018).
+func (g *Gateway) idleHolder(err error) string {
+	var noRoom *runtime.NoRoomError
+	if !errors.As(err, &noRoom) {
+		return ""
+	}
+	st := g.idleJobs()
+	if st.Job == "" || st.Model == "" {
+		return ""
+	}
+	key := config.FoldRepoID(st.Model)
+	for _, res := range g.pool.Resident() {
+		if config.FoldRepoID(res.RepoID) != key {
+			continue
+		}
+		job := st.Job
+		switch job {
+		case "context-probe":
+			job = "the context probe"
+		case "self-test":
+			job = "the self-test"
+		}
+		doing := "holding"
+		if res.State == runtime.ResidencyLoading {
+			doing = "loading"
+		}
+		held := ""
+		if !st.Since.IsZero() {
+			held = " for " + time.Since(st.Since).Round(time.Second).String()
+		}
+		return fmt.Sprintf("; the memory is held by %s, which %s has been %s%s — the server's own idle work, not the size of the model asked for. It is released when the run ends, or at once with Unload on that model's card",
+			res.RepoID, job, doing, held)
+	}
+	return ""
+}
 
 // notServedError is the 404 for a model this server will not serve, and it
 // carries two texts because the fuller one describes this Mac.
