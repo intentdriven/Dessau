@@ -280,7 +280,8 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 	// mlx_lm can spawn helpers that would otherwise outlive it.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	logPath := filepath.Join(l.LogDir, logFileName(spec.RepoID))
+	logName := logFileName(spec.RepoID)
+	logPath := filepath.Join(l.LogDir, logName)
 	// EnsureDirs created LogDir at startup as a real directory. Re-check rather
 	// than MkdirAll: a path-based MkdirAll would follow a link left under that
 	// name and put this account's log file inside a directory it did not choose.
@@ -289,9 +290,14 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 	} else if !fi.IsDir() {
 		return nil, fmt.Errorf("log directory %s is not a directory", l.LogDir)
 	}
+	if err := keepPreviousLog(l.LogDir, spec.RepoID); err != nil {
+		return nil, fmt.Errorf("keep previous log %s: %w", logPath, err)
+	}
 	// 0600, not the 0644 os.Create would give: the model server logs at INFO —
-	// request-level detail nobody else has business reading. O_TRUNC keeps the
-	// per-model log from growing without bound across restarts.
+	// request-level detail nobody else has business reading — and at DEBUG,
+	// when armed, every prompt and every answer. O_TRUNC keeps the per-model
+	// log from growing without bound across restarts; the previous run's file
+	// was renamed aside just above, so the truncation destroys nothing.
 	//
 	// LogDir is this account's own directory (config.Paths.Logs resolves through
 	// accountDir), which is what makes the open reachable at all: while the logs
@@ -365,6 +371,51 @@ func logFileName(repoID string) string {
 		safe = append(safe, r)
 	}
 	return string(safe) + ".log"
+}
+
+// keepPreviousLog renames the previous run's log aside before the truncating
+// open that follows it, on every launch and not only an armed one. The open
+// is what would otherwise destroy the run the operator armed: an unattended
+// reload overnight would leave an empty file where the evidence was. One
+// generation only — the rename replaces what was under the previous name, so
+// consecutive launches do not accumulate.
+//
+// The rename goes through an os.Root on the logs directory, the discipline the
+// rest of the tree applies to these files (internal/applog's OpenIn): both
+// names are in the one directory, so the rename cannot cross a filesystem or
+// the account boundary the shared-cache install creates, and a name that
+// leaves the directory is refused rather than followed. A link or a FIFO left
+// under the log's name is refused here, before the open would refuse it, so
+// that renaming it aside never turns a planted name into a kept one. No
+// previous file is normal; any other failure refuses the launch, in the same
+// class as the open failing — silently truncating the run the operator armed
+// is the failure this exists to prevent.
+func keepPreviousLog(dir, repoID string) error {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	name := logFileName(repoID)
+	info, err := root.Lstat(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", name)
+	}
+	return root.Rename(name, previousLogFileName(repoID))
+}
+
+// previousLogFileName is where the previous run's log is kept: logFileName's
+// name with ".previous" before the extension. One generation only — a launch
+// renames the current file over this name, so what was here before is gone.
+func previousLogFileName(repoID string) string {
+	name := logFileName(repoID)
+	return strings.TrimSuffix(name, ".log") + ".previous.log"
 }
 
 type execProcess struct {

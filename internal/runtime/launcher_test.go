@@ -223,3 +223,103 @@ func countArg(argv []string, arg string) int {
 	}
 	return n
 }
+
+// stubbedLauncher is an ExecLauncher whose interpreter is a shell script, so
+// Launch can be exercised end to end — the log's rename, open and write —
+// without Python or a model.
+func stubbedLauncher(t *testing.T, script string) *ExecLauncher {
+	t.Helper()
+	paths := config.NewPaths(t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(paths.VenvPython()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.VenvPython(), []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(paths.Logs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return &ExecLauncher{Paths: paths, LogDir: paths.Logs}
+}
+
+// launchAndWait launches spec and waits for the stub to exit.
+func launchAndWait(t *testing.T, l *ExecLauncher, spec Spec) {
+	t.Helper()
+	if spec.ModelPath == "" {
+		spec.ModelPath = t.TempDir()
+	}
+	p, err := l.Launch(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	<-p.Done()
+}
+
+// The restart that ends a debug run must leave Alice the file. Every launch
+// opens the per-model log O_TRUNC, so before that open the previous run's log
+// is renamed to <name>.previous.log — on every launch, not only an armed one —
+// and the content the run wrote survives the launch that follows it.
+func TestALaunchKeepsThePreviousRunsLog(t *testing.T) {
+	l := stubbedLauncher(t, "echo the new run")
+	current := filepath.Join(l.LogDir, logFileName("org/name"))
+	previous := filepath.Join(l.LogDir, previousLogFileName("org/name"))
+	if err := os.WriteFile(current, []byte("the run Alice armed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+
+	if b, err := os.ReadFile(previous); err != nil || string(b) != "the run Alice armed\n" {
+		t.Errorf("the previous run's log was not kept under %s: %q, %v", filepath.Base(previous), b, err)
+	}
+	if b, err := os.ReadFile(current); err != nil || string(b) != "the new run\n" {
+		t.Errorf("the new run's log is not a fresh file: %q, %v", b, err)
+	}
+	if info, err := os.Lstat(previous); err == nil && info.Mode().Perm() != 0o600 {
+		t.Errorf("the kept file is mode %04o, want 0600", info.Mode().Perm())
+	}
+}
+
+// One generation only: the rename replaces any previous file of that name, so
+// consecutive launches leave exactly one previous log behind rather than
+// accumulating without bound.
+func TestTwoConsecutiveLaunchesKeepOnlyOnePreviousLog(t *testing.T) {
+	l := stubbedLauncher(t, "echo run $DESSAU_TEST_RUN")
+	current := filepath.Join(l.LogDir, logFileName("org/name"))
+	previous := filepath.Join(l.LogDir, previousLogFileName("org/name"))
+	if err := os.WriteFile(current, []byte("run 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("DESSAU_TEST_RUN", "1")
+	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	t.Setenv("DESSAU_TEST_RUN", "2")
+	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+
+	if b, _ := os.ReadFile(previous); string(b) != "run 1\n" {
+		t.Errorf("the previous log holds %q, want the run before this one", b)
+	}
+	if b, _ := os.ReadFile(current); string(b) != "run 2\n" {
+		t.Errorf("the current log holds %q, want this run", b)
+	}
+	entries, err := os.ReadDir(l.LogDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if len(names) != 2 {
+		t.Errorf("the logs folder holds %v, want exactly the current and one previous file", names)
+	}
+}
+
+// A first launch has no previous file, and that is not an error.
+func TestAFirstLaunchHasNoPreviousLogToKeep(t *testing.T) {
+	l := stubbedLauncher(t, "exit 0")
+	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	if _, err := os.Lstat(filepath.Join(l.LogDir, previousLogFileName("org/name"))); err == nil {
+		t.Error("a first launch left a previous file behind")
+	}
+}
