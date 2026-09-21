@@ -713,3 +713,27 @@ the mechanism the design review's most severe finding turned on (the client
 asks the server about its own tagged request, not SSE comment lines) and
 sequenced the fair turn first, because its ordering rule is what a place
 means. Grade: routing survived; one capture landed late.
+
+## 2026-09-21 — itd-2609211335097114, a stuck model never holds the server hostage
+
+Filed as a seed from the live-box incident of the same day; two adversarial
+reviews (design/feasibility, record discipline) before the interview, both
+REVISE on the same ground: most of the seed was already shipped.
+
+| part | type | home |
+|---|---|---|
+| A real request pre-empts idle work, including a loading model; the pin wins; a bounded park | capability | itd-2609211335097114 (planned, spc-2609211753023984) |
+| A load the child has given up on fails in seconds; a failed model is not re-queued; the probe measures only chat models; the 503 names the holder | already shipped | PR 144, 0.9.3 — struck from the intent, cited in Why This Matters |
+| The probe's own unload ignores pins | bug | iss-2609211754251373 |
+| A silent child (answers /health, no traceback, no completion) still costs the readiness timeout | bug, reversal-flagged | iss-2609211754253878 |
+| Which holders are preemptible; a loading soft-only entry may be torn down; no HTTP client can carry a soft hold | decision (candidate ADR) | the 2026-09-21 decision line (supersedes one clause of 2026-09-11, reverses 2026-08-02 for idle holders); promote to an ADR when the spec's design review confirms the lock order |
+| The card's "for how long" | plumbing | criterion 7 of the intent, not its own record |
+
+Verdict proposed by the reviewers: REVISE — strike the shipped claims, scope
+to the residual, name the reversals. Verdict adopted: the full residual,
+FILE-AS-REVISED, confirmed by the maintainer at the interview; the reversals
+were put to the maintainer as choices (pool-side soft hold; tear down a
+loading idle-held model; the pin wins) and each was chosen, not assumed. Two
+captures landed at the interview, not late. Grade: routing survived; the
+reviewers' "candidate ADR" is carried as a decision line pending the design
+review, which is a deferral of the ADR, not a disagreement with the routing.
