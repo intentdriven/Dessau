@@ -9,8 +9,8 @@ found_during: "maintainer manual test of the chat client, 2026-09-20"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "client/DessauChat/DessauChat.swift"
-deferred_after: "v0.9.2"
-deferral_reason: "Re-deferred at the 0.9.2 cut: a client appearance defect (System to Dark to System leaves Settings dark) found in the maintainer's manual test; the maintainer tests by hand against this release, and the fix is next up in the client lanes; recorded here rather than stepped over."
+deferred_after: "v0.9.3"
+deferral_reason: "Re-deferred at the 0.9.3 cut: a client appearance defect (System to Dark to System leaves Settings dark) found in the maintainer's manual test; the maintainer tests by hand against this release, and the fix is next up in the client lanes; recorded here rather than stepped over."
 ---
 
 Switching Appearance from System to Dark and back to System leaves the Settings window dark and blanks the main window's chat content: the main window turns light but shows no messages until the Settings window is closed, at which point the conversation reappears. Seen on macOS with the Settings window open beside the main window; the Appearance picker reads System while the Settings window is still rendered dark. Every window applies preferredColorScheme from the same AppStorage value, so a nil scheme (System) after an explicit one is not re-evaluated the same way in each scene.

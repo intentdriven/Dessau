@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-09-21
+
 ### Added
 
 - **Some models keep no transcript, even while recording is on.**
