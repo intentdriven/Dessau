@@ -286,6 +286,36 @@ func TestDefaultRootIsThisAccountsOwnDirectory(t *testing.T) {
 	}
 }
 
+// The three ways the code asks where this account's data lives agree, and
+// every one of them answers with the account's own Application Support
+// directory: there is no machine-wide root for any of them to pick instead.
+// This is the behaviour archtest's TestNoMachineWideDataRoot guards by
+// spelling; this test is what holds it when the spelling changes.
+func TestEveryRootIsThisAccountsOwnDirectory(t *testing.T) {
+	t.Setenv("DESSAU_ROOT", "") // restored afterwards; unset for the test
+	if err := os.Unsetenv("DESSAU_ROOT"); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	want := filepath.Join(home, "Library", "Application Support", "Dessau")
+
+	for name, root := range map[string]func() (string, error){
+		"DefaultRoot":   DefaultRoot,
+		"InstalledRoot": InstalledRoot,
+		"AccountHome":   AccountHome,
+	} {
+		got, err := root()
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("%s() = %q, want %q", name, got, want)
+		}
+	}
+}
+
 // A layout directory the operator pointed elsewhere (models on an external
 // disk) keeps working.
 func TestEnsureDirsFollowsSymlinkedLayoutDir(t *testing.T) {
