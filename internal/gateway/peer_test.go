@@ -1,50 +1,99 @@
 package gateway
 
 import (
+	"bufio"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
-	goruntime "runtime"
+	"os"
+	"os/exec"
+	"syscall"
 	"testing"
 	"time"
 )
 
-// loopbackPair is an accepted connection and the address pair the server
-// sees for it.
-func loopbackPair(t *testing.T) (local, remote netip.AddrPort) {
+// loopbackPair is an accepted connection, the address pair the server sees
+// for it, and the client's end, which a test may close.
+func loopbackPair(t testing.TB) (local, remote netip.AddrPort, client net.Conn) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { ln.Close() })
-	accepted := make(chan net.Conn, 1)
+	type accepted struct {
+		c   net.Conn
+		err error
+	}
+	got := make(chan accepted, 1)
 	go func() {
 		c, err := ln.Accept()
-		if err == nil {
-			accepted <- c
-		}
+		got <- accepted{c, err}
 	}()
-	client, err := net.Dial("tcp", ln.Addr().String())
+	client, err = net.Dial("tcp", ln.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { client.Close() })
-	server := <-accepted
-	t.Cleanup(func() { server.Close() })
-	return netip.MustParseAddrPort(server.LocalAddr().String()), netip.MustParseAddrPort(server.RemoteAddr().String())
+	var a accepted
+	select {
+	case a = <-got:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the listener accepted nothing")
+	}
+	if a.err != nil {
+		t.Fatal(a.err)
+	}
+	t.Cleanup(func() { a.c.Close() })
+	return netip.MustParseAddrPort(a.c.LocalAddr().String()), netip.MustParseAddrPort(a.c.RemoteAddr().String()), client
+}
+
+// The decision on the kernel's answer, for every answer: only a socket found
+// and held by this account is this account's. A socket held by another
+// account — which one account's test cannot open on a Mac without root —
+// is not, and neither is one not found or a lookup that failed
+// (spc-2610031016319710 step 1).
+func TestOnlyASocketThisAccountHoldsIsThisAccounts(t *testing.T) {
+	me := uint32(os.Geteuid())
+	failed := errors.New("the kernel would not say")
+	for name, c := range map[string]struct {
+		uid   uint32
+		found bool
+		err   error
+		want  bool
+	}{
+		"held by this account":    {me, true, nil, true},
+		"held by another account": {me + 1, true, nil, false},
+		"held by root":            {0, true, nil, me == 0},
+		"not found":               {me, false, nil, false},
+		"lookup failed":           {me, true, failed, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			old := peerUIDLookup
+			t.Cleanup(func() { peerUIDLookup = old })
+			peerUIDLookup = func(netip.AddrPort, netip.AddrPort) (uint32, bool, error) { return c.uid, c.found, c.err }
+			ours, err := peerIsThisAccount(netip.MustParseAddrPort("127.0.0.1:1"), netip.MustParseAddrPort("127.0.0.1:2"))
+			if ours != c.want {
+				t.Errorf("ours = %v, want %v", ours, c.want)
+			}
+			if c.err != nil && !errors.Is(err, c.err) {
+				t.Errorf("err = %v, want the lookup's own", err)
+			}
+		})
+	}
 }
 
 // A loopback connection from this account is attributed to it, and a pair
 // no socket holds — what a connection from a process this account cannot
-// inspect looks like — is not (spc-2610031016319710 step 1). Off macOS the
-// lookup says it cannot answer, and the answer is no.
+// inspect looks like — is not. Without libproc the lookup says it cannot answer,
+// and the answer is no.
 func TestAConnectionFromThisAccountIsAttributedToIt(t *testing.T) {
-	local, remote := loopbackPair(t)
+	local, remote, client := loopbackPair(t)
 	ours, err := peerIsThisAccount(local, remote)
-	if goruntime.GOOS != "darwin" {
+	if !peerLookupSupported {
 		if ours || !errors.Is(err, errPeerLookupUnsupported) {
-			t.Errorf("off macOS: ours = %v, err = %v; want no, unsupported", ours, err)
+			t.Errorf("without libproc: ours = %v, err = %v; want no, unsupported", ours, err)
 		}
 		return
 	}
@@ -67,15 +116,93 @@ func TestAConnectionFromThisAccountIsAttributedToIt(t *testing.T) {
 	if per > time.Second {
 		t.Errorf("one lookup takes %v, which a connection cannot wait for", per)
 	}
+
+	// The lookup must find the CLIENT's socket, never the server's own. Both
+	// ends are this process's here, so a lookup that reversed the pair would
+	// find the server's accepted socket and still answer yes — and in use that
+	// would attribute every connection to the serving account, since Dessau
+	// always holds the server end. With the client's end closed and the
+	// server's still open, the answer must be no (adversarial review of #153).
+	client.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		ours, err := peerIsThisAccount(local, remote)
+		if !ours && err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("with only the server's end open: ours = %v, err = %v; want no — the lookup matched the server's own socket", ours, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A connection from another account's process is not this account's. It
+// needs root to start a process as another account, so it runs only as root
+// on a Mac and skips with that reason otherwise.
+func TestAConnectionFromAnotherAccountIsNotAttributedToThisOne(t *testing.T) {
+	if !peerLookupSupported {
+		t.Skip("the lookup answers only in a macOS build with cgo")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("starting a process as another account needs root; run this test as root on a Mac to exercise it")
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestPeerHelperProcess$")
+	cmd.Env = append(os.Environ(), "DESSAU_PEER_HELPER_ADDR="+ln.Addr().String())
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 4294967294, Gid: 4294967294}} // nobody
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdin.Close()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer cmd.Wait()
+	ln.(*net.TCPListener).SetDeadline(time.Now().Add(10 * time.Second))
+	conn, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	local := netip.MustParseAddrPort(conn.LocalAddr().String())
+	remote := netip.MustParseAddrPort(conn.RemoteAddr().String())
+	// Root may inspect every process, so the socket is found; it is held by
+	// another account, and the answer is no.
+	if ours, err := peerIsThisAccount(local, remote); ours || err != nil {
+		t.Errorf("a connection from another account: ours = %v, err = %v; want no", ours, err)
+	}
+}
+
+// TestPeerHelperProcess is not a test: it is the other account's process in
+// the test above, which dials the address it is given and holds the
+// connection until its standard input closes.
+func TestPeerHelperProcess(t *testing.T) {
+	addr := os.Getenv("DESSAU_PEER_HELPER_ADDR")
+	if addr == "" {
+		t.Skip("a helper for TestAConnectionFromAnotherAccountIsNotAttributedToThisOne")
+	}
+	c, err := net.Dial("tcp", addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer c.Close()
+	bufio.NewReader(os.Stdin).ReadString('\n')
+	os.Exit(0)
 }
 
 // BenchmarkPeerLookup measures the lookup a connection pays once.
 func BenchmarkPeerLookup(b *testing.B) {
-	if goruntime.GOOS != "darwin" {
-		b.Skip("the lookup answers only on macOS")
+	if !peerLookupSupported {
+		b.Skip("the lookup answers only in a macOS build with cgo")
 	}
-	t := &testing.T{}
-	local, remote := loopbackPair(t)
+	local, remote, _ := loopbackPair(b)
 	b.ResetTimer()
 	for range b.N {
 		peerIsThisAccount(local, remote)

@@ -11,6 +11,11 @@ import (
 // but macOS, which is the only place Dessau runs.
 var errPeerLookupUnsupported = errors.New("this system cannot say which account a connection comes from")
 
+// peerUIDLookup is the kernel lookup behind peerIsThisAccount, a variable so
+// a test can stand in for the answers a single account cannot produce: a
+// socket found but held by another account.
+var peerUIDLookup = lookupPeerUID
+
 // peerIsThisAccount reports whether the process at the other end of a TCP
 // connection to this server — the connection's local and remote addresses as
 // the server sees them — runs as the account Dessau serves from
@@ -22,7 +27,7 @@ var errPeerLookupUnsupported = errors.New("this system cannot say which account 
 // is not found; a connection that is not found, and any lookup that fails, is
 // "not this account". It never answers yes on anything but the kernel's word.
 func peerIsThisAccount(local, remote netip.AddrPort) (bool, error) {
-	uid, found, err := lookupPeerUID(local, remote)
+	uid, found, err := peerUIDLookup(local, remote)
 	if err != nil || !found {
 		return false, err
 	}

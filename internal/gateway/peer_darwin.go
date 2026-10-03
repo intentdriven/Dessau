@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && cgo
 
 package gateway
 
@@ -77,6 +77,9 @@ import (
 	"net/netip"
 	"unsafe"
 )
+
+// peerLookupSupported says whether lookupPeerUID can answer in this build.
+const peerLookupSupported = true
 
 var errPeerLookupFailed = errors.New("the list of processes could not be read")
 
