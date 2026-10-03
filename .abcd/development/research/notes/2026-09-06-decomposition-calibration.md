@@ -792,3 +792,22 @@ maintainer chose an opt-in check, which the 2026-09-08 precedent puts outside
 adr-2609201008476813, and adr-2610030857208746 was accepted without
 superseding it. Revised grade: routing survived in part; one part the reviewers
 would have split was kept in by the maintainer.
+
+## 2026-10-03 — itd-2610030932551549 and itd-2610030932556747, builds of the same model
+
+Filed from the maintainer's one-paragraph request (several builds of one model;
+clients need human-readable descriptions).
+
+| part | type | home |
+|---|---|---|
+| The models list and panel group builds of one model and publish their facts | capability | itd-2610030932551549 (planned, spc-2610030950480763) |
+| Dessau Chat offers a model's builds as described choices | capability | itd-2610030932556747 (planned, spc-2610030950592909), blocked by the server intent |
+| Pairing Flash with full builds | capability, infeasible from Hub data | left out by the maintainer |
+| Grouping by name or model shape | reversal-flagged (no taxonomy of our own) | declined: Hub label only |
+| Operator-written descriptions | new setting | declined: facts worded by the client |
+
+Verdict proposed: FILE-AS-IS (one intent). Verdict adopted: SPLIT into server and
+client, the maintainer's choice at filing, then delivered separately in order.
+Both reversals the record review flagged (the no-taxonomy rule; the per-chat
+picker rule) were put to the maintainer and each resolved without reversing.
+Grade: routing did not survive; the maintainer split what was proposed as one.
