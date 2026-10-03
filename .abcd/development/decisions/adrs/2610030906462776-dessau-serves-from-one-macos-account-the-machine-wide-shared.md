@@ -1,7 +1,7 @@
 ---
 id: adr-2610030906462776
 slug: dessau-serves-from-one-macos-account-the-machine-wide-shared
-status: accepted
+status: accepted; superseded in part by adr-2610031016411351 (the control-panel clause of Alternative 3)
 date: 2026-10-03
 supersedes: [adr-2609201008470380, adr-2609201008476813, adr-2609061610107154]
 superseded_by: null

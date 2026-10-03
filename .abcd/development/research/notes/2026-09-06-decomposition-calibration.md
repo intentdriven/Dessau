@@ -811,3 +811,19 @@ client, the maintainer's choice at filing, then delivered separately in order.
 Both reversals the record review flagged (the no-taxonomy rule; the per-chat
 picker rule) were put to the maintainer and each resolved without reversing.
 Grade: routing did not survive; the maintainer split what was proposed as one.
+
+## 2026-10-03 — itd-2610031004535845, who can open the control panel
+
+Request: options "User Account / local Machine / Local Network".
+
+| part | type | home |
+|---|---|---|
+| Choose this account only or anyone on this Mac | capability | itd-2610031004535845 (planned, spc-2610031016319710) |
+| Opening the panel to the local network | trust-boundary rule | declined by the maintainer (decision line), not filed |
+| Telling the serving account's connections apart | trust-boundary rule | adr-2610031016411351 (accepted), refining adr-2609091123526871 |
+
+Verdict proposed: SPLIT (intent plus an ADR for the network option). Verdict
+adopted at routing: intent only, no network, no ADR. The record review then
+showed the account check itself reverses a recorded statement, and the
+maintainer accepted an ADR for it at the interview. Grade: routing survived in
+part; an ADR the routing ruled out came back for a different part.
