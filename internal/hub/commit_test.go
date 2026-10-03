@@ -15,7 +15,9 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // testCommit is the commit every fake Hub in this package reports as current.
@@ -323,5 +325,84 @@ func TestAFileWithNoHashIsDownloadedButNotRecorded(t *testing.T) {
 	}
 	if snap.Files["config.json"] == "" {
 		t.Error("a verified file was not recorded")
+	}
+}
+
+// Something at a file's name that is not a regular file — a FIFO left by
+// accident — is removed and fetched, never opened to be hashed, which would
+// block the download for good.
+func TestAFifoAtAFilesNameIsReplacedUnread(t *testing.T) {
+	repo := standardRepo()
+	fh := newFakeHub(repo)
+	srv := fh.server(t)
+	dest := t.TempDir()
+	if err := syscall.Mkfifo(filepath.Join(dest, "config.json"), 0o644); err != nil {
+		t.Skipf("no FIFOs here: %v", err)
+	}
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Download: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the download blocked on a FIFO at a file's name")
+	}
+	got, _ := os.ReadFile(filepath.Join(dest, "config.json"))
+	if !bytes.Equal(got, repo["config.json"]) {
+		t.Error("the FIFO was not replaced by the file")
+	}
+}
+
+// Hashing stops when the download is cancelled, and a hash cut short never
+// removes the file it was reading.
+func TestAHashCutShortByCancellationKeepsTheFile(t *testing.T) {
+	big := weights(8 << 20)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "w"), big, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	f := File{Path: "w", Size: int64(len(big))}
+	f.LFS = &struct {
+		OID  string `json:"oid"`
+		Size int64  `json:"size"`
+	}{OID: sha256Hex(big), Size: int64(len(big))}
+	if _, err := verifyFile(ctx, root, "w", f); !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want the cancellation", err)
+	}
+
+	fh := newFakeHub(standardRepo())
+	srv := fh.server(t)
+	dest := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dest, "config.json"), standardRepo()["config.json"], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	if _, err := c.Download(ctx, DownloadRequest{RepoID: "org/repo", Dest: dest}); err == nil {
+		t.Fatal("a cancelled download succeeded")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "config.json")); err != nil {
+		t.Errorf("a cancelled download removed a good file: %v", err)
+	}
+}
+
+// The recorded hash is lowercase whatever case the listing used, so an
+// uppercase id that verified is recorded rather than dropped.
+func TestAnUppercaseHashIsRecordedLowercase(t *testing.T) {
+	f := File{Path: "config.json", OID: strings.ToUpper(testCommit)}
+	if got := expectedHash(f); got != testCommit {
+		t.Errorf("expectedHash = %q", got)
 	}
 }

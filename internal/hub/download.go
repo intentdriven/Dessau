@@ -355,12 +355,23 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 	// require an exact match; when it does not (size 0 = unknown), accept only a
 	// non-empty file — a zero-byte "complete" file is never a real weight/config.
 	if fi, err := root.Stat(final); err == nil {
-		complete := (f.Size > 0 && fi.Size() == f.Size) || (f.Size == 0 && fi.Size() > 0)
+		complete := fi.Mode().IsRegular() &&
+			((f.Size > 0 && fi.Size() == f.Size) || (f.Size == 0 && fi.Size() > 0))
 		// The right size is not the right version: a file left by an attempt
 		// at another commit can be exactly as long as this one. Where the
 		// listing gives a hash, the file is held to it, and one that fails is
-		// fetched again rather than recorded as this commit's.
-		ok, verr := verifyFile(root, final, f)
+		// fetched again rather than recorded as this commit's. Only a regular
+		// file of the right size is read: anything else is removed unread.
+		var ok bool
+		var verr error
+		if complete {
+			ok, verr = verifyFile(ctx, root, final, f)
+			// A hash cut short by the download ending says nothing about the
+			// file, which stays for the next attempt.
+			if err := ctx.Err(); err != nil {
+				return false, err
+			}
+		}
 		if complete && verr == nil {
 			// Drop any leftover .part orphaned beside a completed file, so it does
 			// not linger across every future run. Its bytes were added to the
@@ -537,7 +548,7 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 	// length body, nor corruption that predates a resume (the appended tail is
 	// size-checked, the resumed prefix is not). A file the listing gave no
 	// usable hash for is size-checked only, and reported unverified.
-	ok, err := verifyFile(root, part, f)
+	ok, err := verifyFile(ctx, root, part, f)
 	if err != nil {
 		root.Remove(part)
 		return false, fmt.Errorf("download %s: %w", f.Path, err)
@@ -691,23 +702,23 @@ func discardPart(root *os.Root, part, path string, tr *progressTracker) error {
 // sha256 for a file stored in LFS, otherwise the git blob id.
 func expectedHash(f File) string {
 	if f.LFS != nil && f.LFS.OID != "" {
-		return f.LFS.OID
+		return strings.ToLower(f.LFS.OID)
 	}
-	return f.OID
+	return strings.ToLower(f.OID)
 }
 
 // verifyFile checks the file at name against the hash the listing gave for f,
 // and reports whether there was one to check it against. An error means the
 // bytes are not the ones the listing described.
-func verifyFile(root *os.Root, name string, f File) (bool, error) {
+func verifyFile(ctx context.Context, root *os.Root, name string, f File) (bool, error) {
 	if f.LFS != nil && f.LFS.OID != "" {
-		if err := verifySHA256(root, name, f.LFS.OID); err != nil {
+		if err := verifySHA256(ctx, root, name, f.LFS.OID); err != nil {
 			return false, err
 		}
 		return true, nil
 	}
 	if f.LFS == nil && isHex(f.OID, 40) {
-		if err := verifyGitBlob(root, name, f.OID); err != nil {
+		if err := verifyGitBlob(ctx, root, name, f.OID); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -729,7 +740,7 @@ func isHex(s string, n int) bool {
 
 // verifyGitBlob streams the file at name through git's blob hash — SHA-1 over
 // "blob <length>\x00" and the content — and compares it to the expected id.
-func verifyGitBlob(root *os.Root, name, wantHex string) error {
+func verifyGitBlob(ctx context.Context, root *os.Root, name, wantHex string) error {
 	f, err := root.Open(name)
 	if err != nil {
 		return err
@@ -741,7 +752,7 @@ func verifyGitBlob(root *os.Root, name, wantHex string) error {
 	}
 	h := sha1.New()
 	fmt.Fprintf(h, "blob %d\x00", fi.Size())
-	if _, err := io.Copy(h, f); err != nil {
+	if _, err := io.Copy(h, ctxReader{ctx, f}); err != nil {
 		return err
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); !strings.EqualFold(got, wantHex) {
@@ -750,16 +761,31 @@ func verifyGitBlob(root *os.Root, name, wantHex string) error {
 	return nil
 }
 
+// ctxReader stops a read the moment its context ends. Hashing a weight shard
+// takes seconds, and a download being cancelled, deleted or shut down must
+// not wait for every shard already on disk to be hashed first.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
 // verifySHA256 streams the file at name through SHA-256 and compares it to the
 // expected hex digest.
-func verifySHA256(root *os.Root, name, wantHex string) error {
+func verifySHA256(ctx context.Context, root *os.Root, name, wantHex string) error {
 	f, err := root.Open(name)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	if _, err := io.Copy(h, ctxReader{ctx, f}); err != nil {
 		return err
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); !strings.EqualFold(got, wantHex) {
