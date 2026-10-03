@@ -588,14 +588,20 @@ func TestTheNewRecordLandsBeforeLoadsResume(t *testing.T) {
 				return
 			default:
 			}
-			if !a.isSwapping("org/repo") {
-				m, _ := a.Registry.Get("org/repo")
-				b, _ := os.ReadFile(filepath.Join(a.Paths.ModelDir("org/repo"), "config.json"))
-				if strings.Contains(string(b), "40961") && m.Commit != commitV2 {
-					mu.Lock()
-					bad = append(bad, m.Commit)
-					mu.Unlock()
-				}
+			// In this order, and no other: the new files, then the mark, then
+			// the record. Files that are new mean the swap has begun; a mark
+			// lifted after that means it has finished, and the record is
+			// written in the same step that lifts the mark — so it must be
+			// new. Reading the mark first raced the observer against the swap
+			// itself and reported a swap that ran between its own reads.
+			b, _ := os.ReadFile(filepath.Join(a.Paths.ModelDir("org/repo"), "config.json"))
+			if !strings.Contains(string(b), "40961") || a.isSwapping("org/repo") {
+				continue
+			}
+			if m, _ := a.Registry.Get("org/repo"); m.Commit != commitV2 {
+				mu.Lock()
+				bad = append(bad, m.Commit)
+				mu.Unlock()
 			}
 		}
 	}()
