@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/app/app.go"
 remedy: "Disarm a model's debug logging when a save marks it as keeping no transcript, with a test."
+resolution: "SetConfig disarms every armed model the saved config marks as keeping no transcript."
+impact: fix
+resolved_by:
+  commit: "815c6af4e92b1e3e22cd48157ddb38f9594e9406"
 ---
 
 Ticking a model's transcript box does not take it off the debug-logging list, though docs/transcript.md, the panel's Transcript hint and the 2026-09-20 decision say it does: the settings save never disarms, the mark is consulted only when debug logging is armed, so a model armed first and marked afterwards still launches at debug and writes every prompt and answer to its log.
