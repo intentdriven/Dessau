@@ -18,7 +18,7 @@ func buildsGateway(t *testing.T) (*httptest.Server, *mlxtest.Server) {
 	t.Cleanup(fake.Close)
 	models := &stubModels{models: []registry.Model{
 		{RepoID: "mlx-community/Qwen3-8B-4bit", State: registry.StateReady, Bytes: 4 << 30, QuantizationBits: 4,
-			Tags: []string{"mlx", "base_model:quantized:Qwen/Qwen3-8B"}},
+			PipelineTag: "text-generation", Tags: []string{"mlx", "conversational", "base_model:quantized:Qwen/Qwen3-8B"}},
 		{RepoID: "mlx-community/Qwen3-8B-8bit", State: registry.StateReady, Bytes: 8 << 30, QuantizationBits: 8,
 			Tags: []string{"mlx", "base_model:quantized:qwen/qwen3-8b"}},
 		{RepoID: "org/alone", State: registry.StateReady, Bytes: 1 << 30, Tags: []string{"mlx"}},
@@ -89,7 +89,7 @@ func TestAnAbsurdSizeIsNotPublished(t *testing.T) {
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: "/m", Reply: "OK"})
 	defer fake.Close()
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/huge", State: registry.StateReady, Bytes: 9007199254740993, QuantizationBits: 99},
+		{ChatTemplate: true, RepoID: "org/huge", State: registry.StateReady, Bytes: 9007199254740993, QuantizationBits: 99},
 	}}
 	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})
 	srv := httptest.NewServer(g.Handler())

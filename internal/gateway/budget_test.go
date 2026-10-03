@@ -46,7 +46,7 @@ func newBudgetControl(t *testing.T, cfg config.Config, ram int64, models map[str
 		if err := os.WriteFile(filepath.Join(dir, "weights.safetensors"), []byte("w"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := a.Registry.Put(registry.Model{
+		if err := a.Registry.Put(registry.Model{ChatTemplate: true,
 			RepoID: id, Path: dir, State: registry.StateReady, Bytes: size,
 		}); err != nil {
 			t.Fatal(err)

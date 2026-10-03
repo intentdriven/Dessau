@@ -25,8 +25,8 @@ func transcriptGateway(t *testing.T, cfg config.Config, on bool) http.Handler {
 	t.Cleanup(fake.Close)
 	added := time.Unix(1757145600, 0)
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm", AddedAt: added},
-		{RepoID: "org/cold", State: registry.StateReady, Path: "/models/org/cold", AddedAt: added},
+		{ChatTemplate: true, RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm", AddedAt: added},
+		{ChatTemplate: true, RepoID: "org/cold", State: registry.StateReady, Path: "/models/org/cold", AddedAt: added},
 	}}
 	g := New(Options{Config: cfg, Pool: &stubPool{srv: fake}, Models: models,
 		TranscriptOn: func() bool { return on }})

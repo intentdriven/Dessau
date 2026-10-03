@@ -87,7 +87,7 @@ func statsGatewayWithStore(t *testing.T, on bool, opts mlxtest.Options) (*httpte
 	fake := mlxtest.Start(opts)
 	t.Cleanup(fake.Close)
 
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: testModelID,
 		Path:   modelPath,
 		State:  registry.StateReady,
@@ -436,7 +436,7 @@ func TestNothingFromTheRequestReachesTheRecordOrTheLog(t *testing.T) {
 	const modelPath = "/models/" + testModelID
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
-	models := &stubModels{models: []registry.Model{{RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true, RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
 	pool := &stubPool{srv: fake}
 
 	rec := stats.New(stats.Options{})
@@ -555,7 +555,7 @@ func TestTheSwitchAppliesToTheNextRequest(t *testing.T) {
 	const modelPath = "/models/" + testModelID
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
-	models := &stubModels{models: []registry.Model{{RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true, RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
 	pool := &stubPool{srv: fake}
 
 	store := &countingStore{}

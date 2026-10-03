@@ -102,6 +102,11 @@ same day.
 - **Given** a decision model, **when** the operator opens the control panel,
   **then** it shows the model as a decision model, as `/v1/models` does: the
   panel and Go say the same thing.
+- **Given** a decision model, **when** the operator looks at its card, **then**
+  there is no Load button, and a chat request or the panel's load route naming
+  it is refused before anything is loaded (added 2026-10-03 at the
+  maintainer's answer on iss-2610031010371709; held today by the chat rule's
+  refusal, since a decision model is not a chat model).
 
 ## Decisions at the planning interview (2026-10-03)
 

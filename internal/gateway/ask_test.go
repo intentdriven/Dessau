@@ -22,7 +22,7 @@ func askGateway(t *testing.T, reply string) (*Gateway, *stats.Recorder, *mlxtest
 	const modelPath = "/models/" + testModelID
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: reply})
 	t.Cleanup(fake.Close)
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: testModelID, Path: modelPath, State: registry.StateReady, ContextLength: 131072,
 	}}}
 	rec := stats.New(stats.Options{})
@@ -248,7 +248,7 @@ func payload2text(payload []byte) string {
 // unentitled network client (iss-2609190106273104).
 func TestAskHandsBackAClassAndKeepsThePoolsTextForTheOperator(t *testing.T) {
 	const modelPath = "/models/" + testModelID
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: testModelID, Path: modelPath, State: registry.StateReady, ContextLength: 131072,
 	}}}
 	rec := stats.New(stats.Options{})

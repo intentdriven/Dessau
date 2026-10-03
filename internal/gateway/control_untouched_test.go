@@ -617,7 +617,7 @@ func TestACrossFieldRefusalNamesAChangedFieldWhenAPinDoesNotFit(t *testing.T) {
 	}
 
 	srv, a := newTestControlApp(t, stored)
-	if err := a.Registry.Put(registry.Model{
+	if err := a.Registry.Put(registry.Model{ChatTemplate: true,
 		RepoID:  modelID,
 		Path:    t.TempDir(),
 		Bytes:   modelSize,
