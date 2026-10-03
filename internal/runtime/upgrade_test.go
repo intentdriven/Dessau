@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -130,6 +131,20 @@ func TestPrecheckTellsAMissingRuntimeFromAnUntrustedOne(t *testing.T) {
 	}
 	if err := l.PrecheckModel(spec); err != nil {
 		t.Errorf("the model half on a clean model: %v", err)
+	}
+	// A link left where the interpreter was, pointing nowhere, is a runtime
+	// that is not there: the same answer as no file, and no more.
+	if err := os.MkdirAll(filepath.Dir(paths.VenvPython()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "gone"), paths.VenvPython()); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Precheck(spec); !errors.Is(err, ErrRuntimeNotInstalled) || !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a dangling interpreter link: err = %v, want not installed, wrapping the stat error", err)
+	}
+	if err := os.Remove(paths.VenvPython()); err != nil {
+		t.Fatal(err)
 	}
 	writeInterpreter(t, paths, 0o775)
 	if err := l.Precheck(spec); err == nil || errors.Is(err, ErrRuntimeNotInstalled) {

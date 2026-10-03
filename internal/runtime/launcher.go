@@ -322,7 +322,7 @@ func (l *ExecLauncher) Precheck(spec Spec) error {
 	python := l.Paths.VenvPython()
 	if err := trustedExecutable(python, ownerOrSelf(l.Owner)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("python runtime is not installed (%s): %w", python, ErrRuntimeNotInstalled)
+			return fmt.Errorf("python runtime is not installed (%s): %w: %w", python, ErrRuntimeNotInstalled, err)
 		}
 		return fmt.Errorf("python runtime is not installed (%s): %w", python, err)
 	}
