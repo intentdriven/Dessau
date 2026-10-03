@@ -827,3 +827,20 @@ adopted at routing: intent only, no network, no ADR. The record review then
 showed the account check itself reverses a recorded statement, and the
 maintainer accepted an ADR for it at the interview. Grade: routing survived in
 part; an ADR the routing ruled out came back for a different part.
+
+## 2026-10-03 — itd-2610031024247803, a program unloads a model it has finished with
+
+Request: "Add a way to unload a model as an option (in settings, default: on)";
+the maintainer chose both an API route and documenting the panel's route, each
+with a switch.
+
+| part | type | home |
+|---|---|---|
+| A trusted program frees an idle, unpinned model | capability | itd-2610031024247803 (planned, spc-2610031153301961) |
+| The first state-changing verb on `/v1`, its route and access rule | architecture | adr-2610031153127219 (accepted) |
+| Documenting the panel's unload route | documentation | iss-2610031018046897, promoted to the intent |
+| A switch on the panel's route | setting | dropped by the maintainer (unenforceable) |
+
+Verdict proposed: FILE-AS-IS with both switches. Verdict adopted after the two
+reviews: one switch, an ADR the routing had not named, and pins and grace
+protected. Grade: routing survived in part.
