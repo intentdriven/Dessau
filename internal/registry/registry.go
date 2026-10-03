@@ -1333,7 +1333,7 @@ const MaxKVChargePerToken = 1 << 24
 //   - Only layers that keep a per-token cache are counted. A hybrid model
 //     declares which those are, in one of four spellings: layer_types (a list
 //     naming each layer), hybrid_override_pattern (a letter per layer, "*" for
-//     attention), layers_block_type (a list naming each layer, "attention"
+//     attention, as a string or a list), layers_block_type (a list naming each layer, "attention"
 //     for attention), or full_attention_interval (every nth layer). A
 //     configuration with none of them is charged as though every layer
 //     attended over the whole prompt, which is the conservative floor: no
@@ -1415,8 +1415,14 @@ func fullAttentionLayers(level map[string]any, layers int64) int64 {
 	if n, ok := countLayersNamed(level, "layer_types", "full_attention"); ok {
 		return n
 	}
+	// The pattern is a string in the configurations seen so far, and a list
+	// of one-character strings in the type mlx-lm gives it
+	// (models/nemotron_h.py); either spelling is read (iss-2610031018231170).
 	if pattern, ok := level["hybrid_override_pattern"].(string); ok && pattern != "" {
 		return int64(strings.Count(pattern, "*"))
+	}
+	if n, ok := countLayersNamed(level, "hybrid_override_pattern", "*"); ok {
+		return n
 	}
 	// Read after the pattern because mlx-lm reads it only when the pattern
 	// is absent (models/nemotron_h.py), and only its "attention" entries get
