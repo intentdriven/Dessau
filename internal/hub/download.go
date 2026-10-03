@@ -89,6 +89,10 @@ const partSuffix = ".dessau-part"
 type Snapshot struct {
 	Commit string
 	Files  map[string]string
+	// Paths is every file the download fetched or kept, verified or not:
+	// the whole of the version on disk, for a caller that removes what an
+	// earlier attempt left beside it.
+	Paths []string
 }
 
 // Download fetches every needed file in a repo into req.Dest, resuming any
@@ -237,6 +241,7 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) (Snapshot, e
 	// it would claim a version nobody checked; absent, it reads as unknown.
 	snap := Snapshot{Commit: req.Revision, Files: make(map[string]string, len(files))}
 	for _, f := range files {
+		snap.Paths = append(snap.Paths, f.Path)
 		if verified[f.Path] {
 			snap.Files[f.Path] = expectedHash(f)
 		}

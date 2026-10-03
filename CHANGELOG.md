@@ -13,6 +13,16 @@ GitHub release notes.
 
 ### Added
 
+- **The models list says which models are builds of one model.**
+  `impact: additive`. When Alice has a 4-bit and an 8-bit build of one
+  model, each `/v1/models` entry keeps its own `id` and carries `build_of`,
+  the model HuggingFace's own `base_model:quantized:` label names as their
+  origin, beside `quantization_bits` (read from the model's own
+  configuration) and `size_bytes`. Nothing is read from a repository's name,
+  and a `build_of` value is not itself a name a request may use unless it
+  names a model the server serves
+  ([reference](docs/models-list.md#builds-of-one-model);
+  itd-2610030932551549).
 - **Dessau can check the models you downloaded for newer versions.**
   `impact: additive`. Off until you turn it on under **Settings → Model
   updates** (`update_check_enabled`), daily or every 1 to 720 hours
@@ -31,6 +41,17 @@ GitHub release notes.
   server does not trust learns nothing about what is loaded. Nothing under
   `/v1` deletes a model ([reference](docs/unload-reference.md);
   itd-2610031024247803, adr-2610031153127219).
+- **The operator can turn off unloading from a program, and an unload says
+  who asked.** `impact: additive`. **Settings → Unloading from a program**
+  (`api_unload_off`; absent means on) refuses `POST /v1/dessau/unload` for
+  every caller and leaves the panel's **Unload** as it was. An unload through
+  the route is recorded in the statistics and the log as `released`, with the
+  kind of caller — a program on this Mac, a program elsewhere with the API
+  key, or a paired client — and never the key; the log alone names a paired
+  client, by its paired name and key fingerprint. The
+  unloading page also documents the control panel's own load and unload
+  routes for a script on this Mac ([reference](docs/unload-reference.md);
+  itd-2610031024247803).
 
 ### Changed
 
@@ -50,6 +71,15 @@ GitHub release notes.
 
 ### Fixed
 
+- **The panel's memory line says what is reserved, in the units it
+  measures.** `impact: fix`. The line at the head of **My Models** called the
+  sum of each loaded model's charge "resident", and the default window is
+  worked out to fill the budget, so Alice's one 16.6 GiB model read as the
+  whole 76.8 of 76.8 budget resident while far less memory was in use. It now
+  reads `memory budget: 76.8 GiB of 76.8 GiB reserved by 1 model in memory
+  (weights 16.6 GiB)`. The panel's sizes were worked out in units of 1,024
+  and labelled GB, MB and KB; they are now labelled GiB, MiB and KiB
+  (iss-2610031010360026).
 - **A hybrid model whose layer pattern is written as a list is charged
   for its attention layers alone.** `impact: fix`. Dessau read
   `hybrid_override_pattern` only as a string, so a configuration writing it
@@ -111,6 +141,16 @@ GitHub release notes.
   (iss-2610030919536329).
 ### Changed
 
+- **Downloading a model you already have no longer takes it out of service,
+  and can no longer leave it half one version and half the next.**
+  `impact: fix`. The newer version is fetched beside the one being served,
+  every file checked against HuggingFace's hash for it, and swapped in only
+  once it has checked out and the requests the model was answering have
+  finished; any failure leaves the old version serving, unchanged. Before,
+  the model was marked as downloading for the whole re-download, and a file
+  of the same size from the old version was kept unchecked while a file the
+  new version dropped was never removed (iss-2610030913179523;
+  [how it works](docs/model-updates.md)).
 - **A download fetches every file at one commit, and Dessau records which.**
   `impact: additive`. A download first asks HuggingFace for the
   repository's current commit, then lists and fetches every file at that

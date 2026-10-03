@@ -20,7 +20,7 @@ func TestTheRollUpCountsDownloadedAndLoaded(t *testing.T) {
 			{"repo_id":"org/b","state":"ready","bytes":2147483648},
 			{"repo_id":"org/c","state":"ready","bytes":3221225472},
 			{"repo_id":"org/d","state":"downloading","bytes":99}],
-		"resident": [{"repo_id":"org/a","state":"loaded"}],
+		"resident": [{"repo_id":"org/a","state":"loaded","bytes":1073741824}],
 		"machine": {"budget": 107374182400, "resident_bytes": 1288490188, "exiting_bytes": 0, "free_disk": 214748364800}}`)
 	if got["downloaded"] != float64(3) || got["loaded"] != float64(1) {
 		t.Errorf("downloaded=%v loaded=%v, want 3 and 1", got["downloaded"], got["loaded"])
@@ -29,7 +29,7 @@ func TestTheRollUpCountsDownloadedAndLoaded(t *testing.T) {
 		t.Errorf("disk = %v, want the sum of the three recorded sizes", got["disk"])
 	}
 	text, _ := got["text"].(string)
-	for _, want := range []string{"3 models downloaded, 1 loaded", "6.0 GB on disk, 200.0 GB free", "memory: 1.2 GB of 100.0 GB budget resident"} {
+	for _, want := range []string{"3 models downloaded, 1 loaded", "6.0 GiB on disk, 200.0 GiB free", "memory budget: 1.2 GiB of 100.0 GiB reserved by 1 model in memory (weights 1.0 GiB)"} {
 		if !regexp.MustCompile(regexp.QuoteMeta(want)).MatchString(text) {
 			t.Errorf("text %q does not say %q", text, want)
 		}
@@ -41,7 +41,7 @@ func TestTheRollUpNamesTheExitingPart(t *testing.T) {
 	got := summary(t, `{"models": [], "resident": [],
 		"machine": {"budget": 107374182400, "resident_bytes": 4294967296, "exiting_bytes": 4294967296, "stuck_servers": 1}}`)
 	text, _ := got["text"].(string)
-	for _, want := range []string{"4.0 GB of 100.0 GB budget resident", "of which 4.0 GB still exiting", "1 server stuck"} {
+	for _, want := range []string{"4.0 GiB of 100.0 GiB reserved", "of which 4.0 GiB still exiting", "1 server stuck"} {
 		if !regexp.MustCompile(regexp.QuoteMeta(want)).MatchString(text) {
 			t.Errorf("text %q does not say %q", text, want)
 		}
@@ -88,5 +88,24 @@ func TestTheRollUpIsDrawnAtTheHeadOfTheModelsTab(t *testing.T) {
 	src := readPanelSource(t)
 	if !regexp.MustCompile(`\$\('resources'\)\.textContent = resourcesSummary\(state\)\.text`).MatchString(src) {
 		t.Error("renderModels no longer draws the roll-up")
+	}
+}
+
+// The figure is what the loaded models reserve against the budget — each
+// one's weights and the cache its whole served window may build — not memory
+// in use, so the line says "reserved" and names the weights inside it; and
+// the figures are binary, so they are written GiB (iss-2610031010360026).
+func TestTheMemoryLineSaysReservedNotResident(t *testing.T) {
+	got := summary(t, `{"models": [], "resident": [
+		{"repo_id":"org/a","state":"loaded","bytes":17824114278},
+		{"repo_id":"org/b","state":"loading","bytes":1073741824}],
+		"machine": {"budget": 82463372083, "resident_bytes": 82463372083}}`)
+	text, _ := got["text"].(string)
+	want := "memory budget: 76.8 GiB of 76.8 GiB reserved by 2 models in memory (weights 17.6 GiB)"
+	if !regexp.MustCompile(regexp.QuoteMeta(want)).MatchString(text) {
+		t.Errorf("text %q does not say %q", text, want)
+	}
+	if regexp.MustCompile(`resident|\d GB`).MatchString(text) {
+		t.Errorf("text %q still calls the reservation resident, or a binary figure GB", text)
 	}
 }

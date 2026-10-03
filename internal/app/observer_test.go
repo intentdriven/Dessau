@@ -12,7 +12,7 @@ import (
 	"github.com/intentdriven/Dessau/internal/stats"
 )
 
-// The pool names the seven ways a model can leave it, and the recorder names
+// The pool names the eight ways a model can leave it, and the recorder names
 // them again. Two vocabularies in two packages, joined here — so this is where
 // they have to be shown to agree. A cast would have gone on agreeing forever
 // after one side changed its spelling, and the only figure that reads a reason
@@ -26,6 +26,7 @@ func TestEveryReasonThePoolGivesHasAStatisticsName(t *testing.T) {
 		runtime.StopLoadFailed: stats.ReasonLoadFailed,
 		runtime.StopCrashed:    stats.ReasonCrashed,
 		runtime.StopShutdown:   stats.ReasonShutdown,
+		runtime.StopReleased:   stats.ReasonReleased,
 	}
 	for reason, name := range want {
 		got, ok := stopReasons[reason]

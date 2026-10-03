@@ -222,11 +222,11 @@ func (p childPool) Acquire(context.Context, string) (*runtime.Upstream, func(), 
 		ModelArg:  childModelArg,
 	}, func() {}, nil
 }
-func (childPool) Resident() []runtime.Resident { return nil }
-func (childPool) Pinned() []string             { return nil }
-func (childPool) Unload(string) error          { return nil }
-func (childPool) Footprint(string) int64       { return 0 }
-func (childPool) Release(string) error         { return nil }
+func (childPool) Resident() []runtime.Resident         { return nil }
+func (childPool) Pinned() []string                     { return nil }
+func (childPool) Unload(string) error                  { return nil }
+func (childPool) Footprint(string) int64               { return 0 }
+func (childPool) Release(string, runtime.Caller) error { return nil }
 
 const testChildRepo = "mlx-community/Qwen3-8B-4bit"
 

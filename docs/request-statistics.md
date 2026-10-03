@@ -165,7 +165,8 @@ server status, so anyone who opens it can see that it is.
 This is a property of how the recording is built rather than a filter applied
 afterwards: the part of Dessau that keeps the figures is never handed a
 request, its headers or its connection. The only text it can be given is the
-id of a model already on this Mac.
+id of a model already on this Mac, and, when a program unloads a model, which
+of three kinds of caller asked.
 
 ## What Dessau asks the model server for
 

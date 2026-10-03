@@ -5,9 +5,11 @@ let state = null;
 // ── helpers ──────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
 
+// bytes writes a size in binary units, which is what dividing by 1024 makes
+// them: GiB, not GB (iss-2610031010360026).
 function bytes(n) {
   if (!n) return '—';
-  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const u = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
   let i = 0;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
@@ -141,8 +143,11 @@ function modelInfoLine(m, sequences) {
 // resourcesSummary adds up what the Models tab already knows, from the state
 // snapshot alone — no walk, no second reader: how many models are downloaded
 // and loaded, the disk they take against what the volume has left, and the
-// memory budget against what is resident, naming the part still exiting. A
-// pure function of the snapshot, so a test can hold every figure.
+// memory budget against what the models in memory reserve from it — each
+// one's weights and the cache its whole served window may build, which is a
+// reservation and not memory in use, so it is called that and the weights
+// inside it are named (iss-2610031010360026) — naming the part still
+// exiting. A pure function of the snapshot, so a test can hold every figure.
 function resourcesSummary(state) {
   const st = state || {};
   const models = st.models || [];
@@ -167,7 +172,13 @@ function resourcesSummary(state) {
     parts.push(`${bytes(out.disk)} on disk` + (out.freeDisk ? `, ${bytes(out.freeDisk)} free` : ''));
   }
   if (out.budget > 0) {
-    let mem = `memory: ${bytes(out.resident)} of ${bytes(out.budget)} budget resident`;
+    const inMemory = resident.length;
+    const weights = resident.reduce((sum, r) => sum + (r.bytes || 0), 0);
+    let mem = `memory budget: ${bytes(out.resident)} of ${bytes(out.budget)} reserved`;
+    if (inMemory > 0) {
+      mem += ` by ${inMemory} model${inMemory === 1 ? '' : 's'} in memory`;
+      if (weights > 0) mem += ` (weights ${bytes(weights)})`;
+    }
     if (out.exiting > 0) mem += `, of which ${bytes(out.exiting)} still exiting`;
     if (out.stuck > 0) mem += ` (${out.stuck} server${out.stuck === 1 ? '' : 's'} stuck)`;
     parts.push(mem);
@@ -1359,6 +1370,8 @@ function renderSettings() {
   $('setChatPipelines').value = (rule.pipeline_tags || []).join(', ');
   $('setChatTags').value = (rule.required_tags || []).join(', ');
   $('setContextProbe').checked = !!c.context_probe;
+  // The file says off; the switch says allowed, so an absent key reads as on.
+  $('setAPIUnload').checked = !c.api_unload_off;
   $('setIdleThreshold').value = c.idle_threshold_sec || '';
   $('setUpdateCheck').checked = !!c.update_check_enabled;
   $('setUpdateCheckInterval').value = c.update_check_interval_hours || '';
@@ -1954,6 +1967,7 @@ $('ovApply').addEventListener('click', () => {
 });
 
 $('setContextProbe').addEventListener('change', () => { settingsTouched = true; });
+$('setAPIUnload').addEventListener('change', () => { settingsTouched = true; });
 $('setUpdateCheck').addEventListener('change', () => { settingsTouched = true; });
 $('setUpdateCheckInterval').addEventListener('input', () => { settingsTouched = true; });
 $('setIdleThreshold').addEventListener('input', () => { settingsTouched = true; });
@@ -2003,7 +2017,7 @@ function renderStatsStore() {
   } else {
     parts.push('No records kept yet');
   }
-  parts.push(`${(store.bytes / (1024 * 1024)).toFixed(1)} MB in ${store.files} file${store.files === 1 ? '' : 's'}`);
+  parts.push(`${(store.bytes / (1024 * 1024)).toFixed(1)} MiB in ${store.files} file${store.files === 1 ? '' : 's'}`);
   if (store.retention_wedged) {
     parts.push('what is being dropped cannot be summarised first — the records are kept while there is ' +
       'room for them, and once there is not the oldest go without a summary (its own log says why)');
@@ -2085,6 +2099,7 @@ $('settingsForm').addEventListener('submit', async (e) => {
     eviction_max_wait_sec: parseInt($('setGraceWait').value, 10) || 0,
     chat_rule:          chatRule($('setChatPipelines').value, $('setChatTags').value),
     context_probe:      $('setContextProbe').checked,
+    api_unload_off:     !$('setAPIUnload').checked,
     // Blank posts zero, which the server reads as the default.
     idle_threshold_sec: parseInt($('setIdleThreshold').value, 10) || 0,
     update_check_enabled: $('setUpdateCheck').checked,
@@ -2633,7 +2648,7 @@ function historyBoundsLine(h) {
 function stopReason(h) {
   switch (h.stopped_by) {
     case 'rows':    return `stopped after ${h.max_rows} rows of the table`;
-    case 'bytes':   return `stopped after reading ${Math.round(h.max_bytes / (1024 * 1024))} MB of records`;
+    case 'bytes':   return `stopped after reading ${Math.round(h.max_bytes / (1024 * 1024))} MiB of records`;
     case 'lines':   return `stopped after ${h.max_records} lines of the records`;
     case 'records': return `stopped after ${h.max_records} records`;
     default:        return 'stopped before the whole range was read';

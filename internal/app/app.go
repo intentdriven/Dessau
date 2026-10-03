@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/intentdriven/Dessau/internal/bind"
@@ -150,6 +151,18 @@ type App struct {
 	updatePause     time.Duration
 	updateTimeout   time.Duration
 
+	// swapping marks the models whose directory is being swapped for a new
+	// version (staged.go), guarded by dlMu like deleting; launcher is the
+	// one the pool starts model servers with, whose Precheck a staged
+	// version must pass; drainWait bounds the swap's wait for requests in
+	// flight.
+	swapping  map[string]bool
+	launcher  runtime.Launcher
+	drainWait time.Duration
+	// freeSpace says how much room the models folder's volume has; a seam
+	// so a test can be the full disk it cannot make.
+	freeSpace func(dir string) (int64, bool)
+
 	// bridge is the Discord bridge, wired after the gateway exists and nil in
 	// every build and every test that carries none. See bridge.go.
 	bridge bridges
@@ -173,6 +186,12 @@ type download struct {
 	// Cancelling only *asks* it to stop; callers that are about to delete those
 	// files must wait for this.
 	done chan struct{}
+	// staged says the download is fetching a new version beside a ready one
+	// (staged.go), which stays ready and served meanwhile; progress is its
+	// completion in hundredths of a percent, since the registry's own figure
+	// belongs to the version being served.
+	staged   atomic.Bool
+	progress atomic.Int64
 }
 
 // Options builds an App.
@@ -248,6 +267,9 @@ func New(opts Options) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Before the rescan: a model an interrupted update left aside goes back
+	// where the rescan will find it, and staged versions are cleared.
+	recoverStaging(opts.Paths.Models, opts.Log)
 	// Adopt whatever is already in this account's models directory — what lets
 	// a reinstall pick up models without re-downloading them — and drop any
 	// entry whose model is not there, whatever path the index stored for it.
@@ -296,6 +318,9 @@ func New(opts Options) (*App, error) {
 		updateAttempted: map[string]time.Time{},
 		updatePause:     updateCheckPause,
 		updateTimeout:   updateCheckRequestTimeout,
+		swapping:        map[string]bool{},
+		drainWait:       drainWait,
+		freeSpace:       capability.FreeDisk,
 	}
 	a.jobsCtx, a.stopJobs = context.WithCancel(context.Background())
 
@@ -329,6 +354,7 @@ func New(opts Options) (*App, error) {
 	// the idle timeout it saves and Load repairs a file that does not; this is
 	// belt and braces on the one invariant the record wrote a refusal for.
 	grace = clampGraceToIdle(grace, time.Duration(opts.Config.IdleTimeoutSec)*time.Second)
+	a.launcher = launcher
 	a.Pool = runtime.NewPool(runtime.PoolOptions{
 		Launcher:    launcher,
 		Models:      modelSource{a},
@@ -1037,7 +1063,7 @@ func (o poolObserver) EntryStopped(repoID string, reason runtime.StopReason) {
 	}
 	o.rec.Removed(repoID, mapped)
 	// The other half of the pair above: a model that is no longer in memory,
-	// and which of the seven ways it went. The reason is on the sparse line
+	// and which of the eight ways it went. The reason is on the sparse line
 	// rather than below it because "unloaded" and "evicted" are different
 	// events to the person reading, not two levels of detail about one — an
 	// operator whose model keeps going away needs to know at a glance whether
@@ -1057,6 +1083,22 @@ var stopReasons = map[runtime.StopReason]string{
 	runtime.StopLoadFailed: stats.ReasonLoadFailed,
 	runtime.StopCrashed:    stats.ReasonCrashed,
 	runtime.StopShutdown:   stats.ReasonShutdown,
+	runtime.StopReleased:   stats.ReasonReleased,
+}
+
+// EntryReleased is EntryStopped for a model a program released through the
+// model API. The record says which kind of caller asked and nothing more, as
+// no record says who; the log line, which is the operator's, also names a
+// paired client, by the name it was paired under and the fingerprint that
+// identifies it, as the pairing lines do. Never the key.
+func (o poolObserver) EntryReleased(repoID string, by runtime.Caller) {
+	o.rec.Released(repoID, by.Kind)
+	if by.Kind == stats.CallerPairedClient {
+		o.log.Info("model unloaded", "model", repoID, "reason", stats.ReasonReleased, "by", by.Kind,
+			"client", by.Client, "fingerprint", by.Fingerprint)
+		return
+	}
+	o.log.Info("model unloaded", "model", repoID, "reason", stats.ReasonReleased, "by", by.Kind)
 }
 
 // PinnedFitWarning is what the control panel says when the pinned models can no
@@ -1413,6 +1455,11 @@ func (s modelSource) Resolve(repoID string) (runtime.ResolvedModel, error) {
 	if s.app.isDeleting(repoID) {
 		return runtime.ResolvedModel{}, fmt.Errorf("%s is being deleted", repoID)
 	}
+	// The same window for a swap: between the drain and the rename nothing
+	// holds p.mu, and a load then would start on the directory moving aside.
+	if s.app.isSwapping(repoID) {
+		return runtime.ResolvedModel{}, fmt.Errorf("%s is being updated; try again in a moment", repoID)
+	}
 	m, err := s.app.Registry.Get(repoID)
 	if err != nil {
 		return runtime.ResolvedModel{}, fmt.Errorf("%s is not downloaded", repoID)
@@ -1472,8 +1519,16 @@ var ErrShuttingDown = errors.New("shutting down")
 // Download fetches a model in the background and tracks it in the registry.
 //
 // It returns as soon as the download starts; progress is reported through the
-// registry's subscription channel.
+// registry's subscription channel. A model that is already ready is fetched
+// again beside the version being served, which keeps serving until the new
+// one has checked out and is swapped in (staged.go).
 func (a *App) Download(repoID string) error {
+	return a.startDownload(repoID, "")
+}
+
+// startDownload is Download at a named commit, or at the repository's
+// current one when commit is empty.
+func (a *App) startDownload(repoID, commit string) error {
 	if repoID == "" {
 		return errors.New("a model id is required")
 	}
@@ -1536,11 +1591,11 @@ func (a *App) Download(repoID string) error {
 
 	dest := a.Paths.ModelDir(repoID)
 	// Remember whether a ready model is already being served from dest: a
-	// failed re-download must not take away files that still validate
-	// (downloads stage into .part files and only replace a file once it
-	// completes, so an attempt that fails before any file finishes leaves
-	// the served set untouched). Read after the busy check, so a download
-	// that finished in between is seen as ready, not as still in flight.
+	// re-download of one is fetched beside it and swapped in only once it
+	// has checked out, so a failure, a cancel or a mix of two versions never
+	// reaches the files being served (iss-2610030913179523). Read after the
+	// busy check, so a download that finished in between is seen as ready,
+	// not as still in flight.
 	prior, priorErr := a.Registry.Get(repoID)
 	wasReady := priorErr == nil && prior.State == registry.StateReady
 	// A retry or re-download of a known repo must keep its original AddedAt;
@@ -1549,13 +1604,19 @@ func (a *App) Download(repoID string) error {
 	if priorErr == nil {
 		addedAt = prior.AddedAt
 	}
-	if err := a.Registry.Put(registry.Model{
-		RepoID:  repoID,
-		Path:    dest,
-		State:   registry.StateDownloading,
-		AddedAt: addedAt,
-	}); err != nil {
-		return err
+	// A ready model is fetched again beside itself and stays ready, and
+	// served, until the new version is swapped in; anything else downloads
+	// into its own directory, recorded as downloading.
+	dl.staged.Store(wasReady)
+	if !wasReady {
+		if err := a.Registry.Put(registry.Model{
+			RepoID:  repoID,
+			Path:    dest,
+			State:   registry.StateDownloading,
+			AddedAt: addedAt,
+		}); err != nil {
+			return err
+		}
 	}
 
 	handedOff = true
@@ -1568,29 +1629,42 @@ func (a *App) Download(repoID string) error {
 		// every later attempt at that model.
 		defer a.finishDownload(dl, nil)
 
-		snap, err := a.Hub.Download(ctx, hub.DownloadRequest{
-			RepoID:      repoID,
-			ModelsDir:   a.Paths.Models,
-			Dest:        dest,
-			Concurrency: 4,
-			OnProgress: func(p hub.Progress) {
-				// In-memory only: progress ticks are frequent and ephemeral, so
-				// they must not write the registry file to disk each time.
-				a.Registry.UpdateProgress(repoID, p.Percent())
-				// Record the total size once, so the UI can show "X% of <size>".
-				if p.Total > 0 {
-					a.Registry.SetSize(repoID, p.Total)
+		var snap hub.Snapshot
+		var err error
+		var st stagedVersion
+		if dl.staged.Load() {
+			// The registry's progress is the served version's; this one's
+			// is the download's own.
+			st, err = a.stagedDownload(ctx, repoID, commit, prior, func(p hub.Progress) {
+				dl.progress.Store(int64(p.Percent() * 100))
+			})
+			snap = st.snap
+		} else {
+			snap, err = a.Hub.Download(ctx, hub.DownloadRequest{
+				RepoID:      repoID,
+				Revision:    commit,
+				ModelsDir:   a.Paths.Models,
+				Dest:        dest,
+				Concurrency: 4,
+				OnProgress: func(p hub.Progress) {
+					// In-memory only: progress ticks are frequent and ephemeral, so
+					// they must not write the registry file to disk each time.
+					a.Registry.UpdateProgress(repoID, p.Percent())
+					// Record the total size once, so the UI can show "X% of <size>".
+					if p.Total > 0 {
+						a.Registry.SetSize(repoID, p.Total)
+					}
+				},
+			})
+			// A completed byte-for-byte download can still be junk (a config that
+			// won't parse, no usable weights). Validate before advertising it as
+			// ready, so /v1/models and the mDNS count only ever list models that are
+			// at least structurally loadable. A staged version was checked
+			// before it was swapped in.
+			if err == nil {
+				if verr := validateModelDir(dest); verr != nil {
+					err = fmt.Errorf("downloaded but not a usable MLX model: %w", verr)
 				}
-			},
-		})
-
-		// A completed byte-for-byte download can still be junk (a config that
-		// won't parse, no usable weights). Validate before advertising it as
-		// ready, so /v1/models and the mDNS count only ever list models that are
-		// at least structurally loadable.
-		if err == nil {
-			if verr := validateModelDir(dest); verr != nil {
-				err = fmt.Errorf("downloaded but not a usable MLX model: %w", verr)
 			}
 		}
 
@@ -1615,14 +1689,33 @@ func (a *App) Download(repoID string) error {
 			// carries its context length from the moment it is ready, not only
 			// after the next startup rescan. Both touch the disk, so both are
 			// done here, before the lock.
-			bytes := a.measureDir(dest)
-			facts := registry.ReadModelFacts(dest)
-			// And what the Hub says this model is. It is the one reading here
-			// that is not on the disk — nothing in a model directory says
-			// whether it transcribes speech or holds a conversation — so it is
-			// read from the Hub, once, at the only moment we are certain to be
-			// talking to it about this repo.
-			pipelineTag, tags, answered := a.repoCategory(ctx, repoID)
+			//
+			// A staged version was read before it was swapped in, so its
+			// record is written the moment it is in place: the swapping mark
+			// is lifted in the same step as the record, and a load never
+			// starts the new files under the old version's record.
+			var bytes int64
+			var facts registry.ModelFacts
+			var pipelineTag string
+			var tags []string
+			var answered bool
+			if dl.staged.Load() {
+				bytes, facts = st.bytes, st.facts
+				pipelineTag, tags, answered = st.pipelineTag, st.tags, st.answered
+			} else {
+				// A version fetched into the model's own folder over an
+				// earlier attempt's files keeps none of that attempt's
+				// files the listing does not name (iss-2610030913179523).
+				a.pruneUnlisted(repoID, snap.Paths)
+				bytes = a.measureDir(dest)
+				facts = registry.ReadModelFacts(dest)
+				// And what the Hub says this model is. It is the one reading
+				// here that is not on the disk — nothing in a model directory
+				// says whether it transcribes speech or holds a conversation —
+				// so it is read from the Hub, once, at the only moment we are
+				// certain to be talking to it about this repo.
+				pipelineTag, tags, answered = a.repoCategory(ctx, repoID)
+			}
 			// HubSilent is kept by the registry only when the answer had no
 			// words: a repo the Hub is silent about is not asked again at the
 			// next start, and one the Hub was not heard for is.
@@ -1635,6 +1728,7 @@ func (a *App) Download(repoID string) error {
 					ContextLength:    facts.ContextLength,
 					KVChargePerToken: facts.KVChargePerToken,
 					ChatTemplate:     facts.ChatTemplate,
+					QuantizationBits: facts.QuantizationBits,
 					PipelineTag:      pipelineTag,
 					Tags:             tags,
 					HubSilent:        answered,
@@ -1647,7 +1741,12 @@ func (a *App) Download(repoID string) error {
 					Progress: 100,
 					AddedAt:  addedAt,
 				})
+				// Inside finishDownload's hold of dlMu, where the mark lives.
+				delete(a.swapping, dlKey(repoID))
 			})
+			if dl.staged.Load() {
+				a.removeAside(repoID, st.aside)
+			}
 			if perr != nil {
 				// The files are on disk; only the index write failed. Surface it —
 				// a silently unrecorded model would look missing until a rescan.
@@ -1670,39 +1769,30 @@ func (a *App) Download(repoID string) error {
 			// App and would take dlMu again from under it.
 			a.Pool.RefreshCharges()
 
+		case dl.staged.Load():
+			// The version being served was never touched: stagedDownload
+			// removed what it fetched, and the record still describes the
+			// files on disk, so there is nothing to put back.
+			a.finishDownload(dl, nil)
+			if errors.Is(err, context.Canceled) {
+				a.Log.Info("update cancelled; the version being served is untouched", "model", repoID)
+			} else {
+				a.Log.Warn("update failed; the version being served is untouched", "model", repoID, "err", err)
+			}
+
 		case errors.Is(err, context.Canceled):
 			// A cancelled download leaves .part files behind on purpose: they let
 			// the next attempt resume instead of starting over.
-			// Asked before the lock: it validates the model directory, which
-			// is disk work, and dlMu is on the model-load path.
-			restorable := a.canRestoreReady(dest, wasReady)
-			var restored bool
 			a.finishDownload(dl, func() {
-				restored = restorable && a.restoreReady(repoID, dest, prior)
-				if !restored {
-					a.Registry.SetState(repoID, registry.StateFailed, 0, "cancelled")
-				}
+				a.Registry.SetState(repoID, registry.StateFailed, 0, "cancelled")
 			})
-			if restored {
-				a.Log.Info("download cancelled; the ready model is untouched", "model", repoID)
-			} else {
-				a.Log.Info("download cancelled", "model", repoID)
-			}
+			a.Log.Info("download cancelled", "model", repoID)
 
 		default:
-			restorable := a.canRestoreReady(dest, wasReady)
-			var restored bool
 			a.finishDownload(dl, func() {
-				restored = restorable && a.restoreReady(repoID, dest, prior)
-				if !restored {
-					a.Registry.SetState(repoID, registry.StateFailed, 0, err.Error())
-				}
+				a.Registry.SetState(repoID, registry.StateFailed, 0, err.Error())
 			})
-			if restored {
-				a.Log.Warn("download failed; the ready model is untouched", "model", repoID, "err", err)
-			} else {
-				a.Log.Error("download failed", "model", repoID, "err", err)
-			}
+			a.Log.Error("download failed", "model", repoID, "err", err)
 		}
 	}()
 
@@ -1744,55 +1834,6 @@ func (a *App) repoCategory(ctx context.Context, repoID string) (pipelineTag stri
 		return "", nil, false
 	}
 	return info.PipelineTag, info.Tags, true
-}
-
-// canRestoreReady answers the disk half of the question restoreReady acts on:
-// was this model ready before the attempt, and do its files still validate?
-//
-// It is a function of its own so that the caller can ask it before taking
-// dlMu, which the pool waits on for every load. Asking it a moment earlier
-// costs nothing: the download goroutine is the only writer of this directory
-// while it runs, and a Delete that would take the files away is parked on
-// dl.done, which does not close until that goroutine has finished.
-func (a *App) canRestoreReady(dest string, wasReady bool) bool {
-	return wasReady && validateModelDir(dest) == nil
-}
-
-// restoreReady puts a model back into the ready state after a failed or
-// cancelled download attempt. It reports whether the model was restored.
-//
-// Callers ask canRestoreReady first; this is the write alone, so that the only
-// thing done under dlMu is the publication.
-//
-// Everything it restores comes from prior — the record the model had before
-// the attempt — rather than from the directory: measuring the directory now
-// would count the failed attempt's .part leftovers, and a config.json the
-// attempt had already replaced before failing would hand back the new
-// revision's context length beside the old revision's size. A record that
-// predates the figure still gains it, because the startup rescan re-derives
-// it from the directory that is actually being served.
-func (a *App) restoreReady(repoID, dest string, prior registry.Model) bool {
-	if perr := a.Registry.Put(registry.Model{
-		RepoID:           repoID,
-		Path:             dest,
-		Bytes:            prior.Bytes,
-		ContextLength:    prior.ContextLength,
-		KVChargePerToken: prior.KVChargePerToken,
-		PipelineTag:      prior.PipelineTag,
-		Tags:             prior.Tags,
-		HubSilent:        prior.HubSilent,
-		ChatTemplate:     prior.ChatTemplate,
-		Commit:           prior.Commit,
-		FileHashes:       prior.FileHashes,
-		Update:           prior.Update,
-		State:            registry.StateReady,
-		Progress:         100,
-		AddedAt:          prior.AddedAt,
-	}); perr != nil {
-		a.Log.Error("could not restore the ready model record", "model", repoID, "err", perr)
-		return false
-	}
-	return true
 }
 
 // finishDownload publishes a download's final state and deregisters it as one
