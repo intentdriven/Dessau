@@ -141,14 +141,12 @@ commit.
 
 ## Open Questions
 
-- The exact per-answer response shape Dessau publishes: the reference returns
-  `noul` as P(true) only, `choice` with `choice`, `confidence` and
-  `probabilities`, and `score` with an expected level, `confidence`, a `legend`
-  and `probabilities`. Settled in the spec, against the reference.
-- How Dessau recognises a decision model at download time (the reviews favour
-  the presence of the joint head files over Hub tags). Settled in the spec.
-- Whether a decision request is counted in the statistics and recorded by the
-  planned transcript store (itd-2609091707499248). Settled in the spec.
+_None open._ Settled in spc-2610030846273729: the response shape is the
+reference's (its "Response shape" section); a decision model is recognised by
+its joint head files and the reviewed-build manifest, never by Hub tags alone;
+a decision request is counted in the statistics, and whether the planned
+transcript store records it is settled when that store lands
+(itd-2609091707499248).
 
 ## Audit Notes
 

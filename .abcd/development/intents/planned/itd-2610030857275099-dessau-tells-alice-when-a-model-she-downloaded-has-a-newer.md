@@ -117,8 +117,9 @@ update path replaces it.
 
 ## Open Questions
 
-- Whether the ordinary re-download path (not only Update) moves onto the staged
-  update, so iss-2610030913179523 is fixed for both. Settled in the spec.
+_None open._ Settled in spc-2610030929021692: the ordinary re-download moves
+onto the same staged path as Update (its step 3), which resolves
+iss-2610030913179523.
 
 ## Audit Notes
 

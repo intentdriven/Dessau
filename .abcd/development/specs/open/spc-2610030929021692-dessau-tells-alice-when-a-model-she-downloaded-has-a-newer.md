@@ -103,6 +103,26 @@ as text through the panel's escaping helper, with a test.
     field save test.
 11. Names shown safely: a UI test with markup in a repository and file name.
 
+## Steps
+
+1. Recording the version at download
+   - packages: internal/hub, internal/registry, internal/app
+   - tests: every file fetched at one resolved commit, never main; the commit and per-file hashes recorded; models without them read "version unknown"
+2. The check and its setting
+   - packages: internal/hub, internal/app, internal/config, internal/ui
+   - tests: off sends nothing (a recording Hub fake over a simulated week); no token unless refused; only changes to files Dessau reads mark; a new model_file marks "will not run"; pacing and rate-limit headers; offline leaves marks; the setting on all three surfaces with repair on load and the untouched-field save; the egress sentence beside the switch
+3. The staged update
+   - packages: internal/hub, internal/app, internal/runtime
+   - tests: staging at the target commit, disk-space check, every file hash-checked, Precheck on the staged directory, drain and atomic swap, failure leaves the old version serving; the ordinary re-download moved onto the same path (resolves iss-2610030913179523)
+4. The panel
+   - packages: internal/ui, internal/gateway
+   - tests: the mark, "version unknown", "will be offered once reviewed", "ships code Dessau will not run", the Update button where allowed; names from HuggingFace rendered as text
+
+## Footprint
+
+- packages: internal/hub, internal/registry, internal/app, internal/config, internal/runtime, internal/ui, internal/gateway
+- tests: the eleven acceptance criteria as listed above
+
 ## Out of scope
 
 Updating automatically; checking at the operator's actions only (rejected in

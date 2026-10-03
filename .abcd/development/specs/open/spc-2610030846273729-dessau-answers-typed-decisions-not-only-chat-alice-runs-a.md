@@ -152,6 +152,27 @@ tokens and latency. Whether the planned transcript store
     the new lock.
 11. Panel shows it too: a UI test held to the same field Go publishes.
 
+## Steps
+
+1. The runtime upgrade
+   - packages: internal/runtime
+   - tests: the regenerated hash-pinned lock (mlx-lm 0.32.0, mlx 0.32.3, mlx-vlm 0.7.4, the signed-off set); reprovisioning keyed on the lock's hash; the sampling-flag, served-window, model_file-refusal, refused-field and socket-launcher checks re-verified against the new versions and their evidence recorded; no OTEL exporter configuration reaches a child
+2. Recognising and pinning decision models
+   - packages: internal/registry, internal/hub, internal/capability
+   - tests: the recorded upstream commit (shared with spc-2610030929021692 step 1; land it here if that step has not); the embedded reviewed-build manifest; the decision kind beside CanChat; a manifest mismatch refused at load; the fits verdict and the pool's charge read one figure
+3. The decision server
+   - packages: internal/runtime (the embedded decision server), internal/mlxtest
+   - tests: the rewrite against each reviewed build's golden fixtures (same top answer, |Δp| ≤ 0.001), loudly skipped where the model is absent; caps; images and over-long state refused; nothing imported from a model directory
+   - hand: the golden fixtures are recorded on an Apple Silicon Mac with the model, by running the reference server outside Dessau (the decision of 2026-10-03), before this step starts
+4. The gateway and the pool
+   - packages: internal/gateway, internal/runtime, internal/app, internal/ui
+   - tests: POST /v1/systemone under withAuth and pairedOnly; refusals both ways naming the endpoint that fits, nothing loaded; the response shape; /v1/models kind and chat:false; the panel shows the kind; readiness by a decision request; idle work never sends a decision child a chat request
+
+## Footprint
+
+- packages: internal/runtime, internal/registry, internal/hub, internal/capability, internal/gateway, internal/app, internal/ui, internal/mlxtest
+- tests: the eleven acceptance criteria as listed above; the runtime re-verification evidence
+
 ## Out of scope
 
 Images in requests; decision models other than reviewed Clef builds; batching
