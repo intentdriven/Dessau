@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -118,11 +119,12 @@ func TestTheChatFlagFollowsTheServersRule(t *testing.T) {
 	}
 }
 
-// The category is advisory and nothing else. A model the rule says cannot chat
-// is still loaded and still answers a request that names it — that is the whole
-// of what "not an API-side filter" means, and it is asserted in the same test
-// as the flag so the two cannot drift apart.
-func TestAModelOutsideTheChatRuleIsStillServed(t *testing.T) {
+// A model the rule says cannot chat is refused on a chat request before
+// anything is loaded, and still answers a plain completion that names it
+// (iss-2610031010371709, narrowing cond-2609091236502214 of
+// itd-2609091129451578). Asserted in the same test as the flag so the two
+// cannot drift apart.
+func TestAModelOutsideTheChatRuleIsRefusedOnChatAndServedOnCompletions(t *testing.T) {
 	const modelPath = "/models/org/ears"
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	defer fake.Close()
@@ -146,10 +148,20 @@ func TestAModelOutsideTheChatRuleIsStillServed(t *testing.T) {
 		"model":    "org/ears",
 		"messages": []any{map[string]string{"role": "user", "content": "hi"}},
 	}, nil)
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(b), "not a chat model") {
+		t.Fatalf("a chat request to a model outside the chat rule: status %d, %s; want 400 naming it", resp.StatusCode, b)
+	}
+	if fake.LastBody() != nil {
+		t.Error("a refused chat request reached the model server")
+	}
+
+	resp = post(t, srv, "/v1/completions", map[string]any{"model": "org/ears", "prompt": "hi"}, nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := json.Marshal(entry)
-		t.Fatalf("a model outside the chat rule was refused: status %d (entry %s)", resp.StatusCode, body)
+		t.Fatalf("a plain completion to a model outside the chat rule was refused: status %d (entry %s)", resp.StatusCode, body)
 	}
 	if got := fake.LastModelField(); got != modelPath {
 		t.Errorf("upstream saw model=%q, want the backend path %q", got, modelPath)

@@ -44,7 +44,7 @@ func newMergeGateway(t *testing.T, cfg func() config.Config) (*httptest.Server, 
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
 
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: mergeModel,
 		Path:   modelPath,
 		State:  registry.StateReady,
@@ -642,7 +642,7 @@ func newRecordingGateway(t *testing.T, cfg func() config.Config, streaming bool)
 	t.Helper()
 	const modelPath = "/models/mlx-community/Qwen3-8B-4bit"
 	upstream := newRecordingUpstream(t, modelPath, streaming)
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: mergeModel, Path: modelPath, State: registry.StateReady,
 	}}}
 	g := New(Options{

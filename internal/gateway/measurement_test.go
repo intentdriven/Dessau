@@ -22,7 +22,7 @@ func measuredGateway(t *testing.T, inFlight int, footprint int64) (*httptest.Ser
 	const modelPath = "/models/" + testModelID
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: testModelID, Path: modelPath, State: registry.StateReady, ContextLength: 131072,
 	}}}
 	pool := &stubPool{srv: fake, footprint: footprint, waits: runtime.AcquireStats{InFlight: inFlight}}

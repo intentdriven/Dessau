@@ -116,10 +116,15 @@ It is on every entry, including entries with no tags at all — the whole value 
 the field is telling one kind of model from another, so an absent key would read
 as a server that cannot say either way.
 
-**It filters nothing.** A model with `"chat": false` is loaded and served like
-any other: name it in a request's `model` field and it answers. The flag exists
-so a chat application can leave a speech or OCR model out of its picker while
-every model stays callable over the API.
+**It decides what a chat request may start.** A chat request — to
+`/v1/chat/completions`, or through the Discord bridge — naming a model with
+`"chat": false` is refused with `400` and a message saying it is not a chat
+model, before anything is loaded: started as a chat server, a speech, OCR or
+decision model answers nonsense, and its window can evict a model someone is
+using. The control panel offers **Load** only for a model with `"chat": true`.
+`/v1/completions` still serves every model, so a base text model the rule
+leaves out of chat still completes text. A chat application leaves the
+`"chat": false` models out of its picker.
 
 **The rule behind it.** When the Hub has said what the model is — when
 `pipeline_tag` or `tags` is present — a model counts as able to chat when its

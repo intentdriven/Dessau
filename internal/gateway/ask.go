@@ -96,6 +96,13 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 	obs.resolved(model)
 	obs.streaming(true)
 
+	// The bridge holds a conversation, so it takes the chat rule's answer as
+	// /v1/chat/completions does (iss-2610031010371709).
+	if !g.canChat(model) {
+		obs.failed(stats.ClassClientError)
+		return &AskError{detail: notChatText(model), public: genericRefusal}
+	}
+
 	msg, verdict := g.judgeServedContext(model, len(req.Body), payload)
 	if obs.recording() {
 		obs.judged(verdict.declared, verdict.served, verdict.estimate, verdict.judged)

@@ -89,7 +89,7 @@ func newWiredControl(t *testing.T, cfg config.Config, models ...string) (*app.Ap
 		if err := os.WriteFile(filepath.Join(dir, "weights.safetensors"), []byte("w"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := a.Registry.Put(registry.Model{
+		if err := a.Registry.Put(registry.Model{ChatTemplate: true,
 			RepoID: id, Path: dir, State: registry.StateReady, Bytes: 1 << 20,
 		}); err != nil {
 			t.Fatal(err)
