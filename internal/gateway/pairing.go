@@ -393,7 +393,7 @@ func pairedOnly(reg *pairing.Registry, next http.Handler, log *slog.Logger, refu
 		// itself, so it is told what a keyed client is told, and it gets its
 		// own place in the pool's queue rather than sharing the anonymous one.
 		r = withAdmittedKeyed(r, true)
-		r = withCaller(r, runtime.Caller{Kind: stats.CallerPairedClient, Client: client.Name})
+		r = withCaller(r, runtime.Caller{Kind: stats.CallerPairedClient, Client: client.Name, Fingerprint: shortFingerprint(spki)})
 		next.ServeHTTP(w, r.WithContext(runtime.WithSource(r.Context(), "client:"+spki)))
 	})
 }

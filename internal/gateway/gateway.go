@@ -1616,7 +1616,10 @@ func (g *Gateway) handleUnload(w http.ResponseWriter, r *http.Request) {
 	}
 	// The operator's switch, read after the caller is known to be entitled so
 	// that a caller who is not learns nothing about it either. Off leaves the
-	// control panel's own Unload as it was.
+	// control panel's own Unload as it was. It is read live rather than from
+	// withAuth's one reading: that reading decides who is admitted, and this
+	// is not an admission — a save that turns the route off between the two
+	// refuses a request that was admitted, which is the safe way round.
 	if g.cfg().APIUnloadOff {
 		writeError(w, http.StatusForbidden, "unloading a model through the API is turned off on this server")
 		return

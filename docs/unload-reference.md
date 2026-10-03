@@ -66,19 +66,22 @@ request to the model API removes a model's files.
 ### Turning it off
 
 **Settings → Unloading from a program** turns the route off, or
-`"api_unload_off": true` in `config.json`. While it is off, every request to it
-is refused with `403` and nothing is unloaded; a caller the route would refuse
-anyway is told nothing about the setting. The key absent means on. The control
+`"api_unload_off": true` in `config.json`. While it is off, every caller
+entitled to the route is refused with `403` and nothing is unloaded; a caller
+the route would refuse anyway gets the refusal it always gets, and is told
+nothing about the setting. The key absent means on. The control
 panel's **Unload** button, and its route below, are not affected.
 
 ### What is recorded
 
 An unload through this route is recorded in the request statistics, when they
 are on, as a removal with the reason `released` and the kind of caller that
-asked: a program on this Mac, a program that sent the API key, or a paired
-client by the name it was paired under. The key is never recorded. The server
-log says the same in its `model unloaded` line
-([statistics reference](statistics-store-reference.md)).
+asked: a program on this Mac (whether or not it sent the API key), a program
+elsewhere that sent the API key, or a paired client. The statistics record the
+kind only, never the key and never which client
+([statistics reference](statistics-store-reference.md)). The server log's
+`model unloaded` line says the same, and names a paired client by the name it
+was paired under and the short fingerprint of its key.
 
 ## `POST /api/models/unload`
 

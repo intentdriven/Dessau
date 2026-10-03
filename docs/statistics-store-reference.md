@@ -103,8 +103,7 @@ beyond the fact that something asked for it.
 | `at` | When it left, in whole UTC seconds. |
 | `model` | The model's repo id. |
 | `reason` | One of `evicted`, `idle`, `unloaded`, `abandoned`, `load_failed`, `crashed`, `shutdown`, `released`. |
-| `by` | On `released` only: the kind of caller that asked the model API to unload the model — `this_mac`, a program on the Mac that runs the server; `api_key`, a program that sent the API key; or `paired_client`. Never the key itself. |
-| `client` | On `released` by a paired client only: the name it was paired under. |
+| `by` | On `released` only: the kind of caller that asked the model API to unload the model — `this_mac`, a program admitted as one on the Mac that runs the server, whether or not it sent the API key; `api_key`, a program elsewhere admitted on the API key; or `paired_client`, a paired client. A kind only: never the key, and never which client — the server log names a paired client. |
 
 `unloaded` is the operator's **Unload** in the control panel; `released` is a
 program's request through `POST /v1/dessau/unload`

@@ -17,10 +17,10 @@ func TestAReleaseIsLoggedWithTheKindOfCaller(t *testing.T) {
 	obs := poolObserver{rec: stats.New(stats.Options{}), log: log}
 
 	obs.EntryReleased("org/repo", runtime.Caller{Kind: stats.CallerAPIKey})
-	obs.EntryReleased("org/repo", runtime.Caller{Kind: stats.CallerPairedClient, Client: "Bob's iPad"})
+	obs.EntryReleased("org/repo", runtime.Caller{Kind: stats.CallerPairedClient, Client: "Bob's iPad", Fingerprint: "ab12cd34"})
 
 	got := buf.String()
-	for _, want := range []string{"model unloaded", "reason=released", "by=api_key", "by=paired_client", `client="Bob's iPad"`} {
+	for _, want := range []string{"model unloaded", "reason=released", "by=api_key", "by=paired_client", `client="Bob's iPad"`, "fingerprint=ab12cd34"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the sparse log is missing %q:\n%s", want, got)
 		}

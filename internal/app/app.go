@@ -1040,12 +1040,15 @@ var stopReasons = map[runtime.StopReason]string{
 }
 
 // EntryReleased is EntryStopped for a model a program released through the
-// model API: the record and the log line say which kind of caller asked, and
-// a paired client by the name the operator paired it under — never the key.
+// model API. The record says which kind of caller asked and nothing more, as
+// no record says who; the log line, which is the operator's, also names a
+// paired client, by the name it was paired under and the fingerprint that
+// identifies it, as the pairing lines do. Never the key.
 func (o poolObserver) EntryReleased(repoID string, by runtime.Caller) {
-	o.rec.Released(repoID, by.Kind, by.Client)
+	o.rec.Released(repoID, by.Kind)
 	if by.Kind == stats.CallerPairedClient {
-		o.log.Info("model unloaded", "model", repoID, "reason", stats.ReasonReleased, "by", by.Kind, "client", by.Client)
+		o.log.Info("model unloaded", "model", repoID, "reason", stats.ReasonReleased, "by", by.Kind,
+			"client", by.Client, "fingerprint", by.Fingerprint)
 		return
 	}
 	o.log.Info("model unloaded", "model", repoID, "reason", stats.ReasonReleased, "by", by.Kind)

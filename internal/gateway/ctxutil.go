@@ -56,11 +56,16 @@ func withCaller(r *http.Request, c runtime.Caller) *http.Request {
 }
 
 // callerOf is the kind of caller that sent r, as its admission established
-// it. It is read only behind entitled, where a caller neither withAuth nor
-// pairedOnly tagged is a program on this Mac. It never carries the key.
+// it. A caller neither withAuth nor pairedOnly tagged is a program on this Mac
+// only when fromThisMachine says so; anything else is of no known kind, so a
+// route that reads this without entitled in front of it cannot label a
+// network caller as this Mac. It never carries the key.
 func callerOf(r *http.Request) runtime.Caller {
 	if c, ok := r.Context().Value(callerKey{}).(runtime.Caller); ok {
 		return c
 	}
-	return runtime.Caller{Kind: stats.CallerThisMac}
+	if fromThisMachine(r) {
+		return runtime.Caller{Kind: stats.CallerThisMac}
+	}
+	return runtime.Caller{}
 }

@@ -76,12 +76,14 @@ const (
 )
 
 // Caller is who asked for a model to be released, as the gateway admitted
-// them: the kind of caller and, for a paired client, the name the operator
-// paired it under. It never carries the API key or the source tag the pool's
-// queue is shared out by; the pool passes it on and reads nothing in it.
+// them: the kind of caller and, for a paired client, the name it was paired
+// under and the short fingerprint of its key, for the log. It never carries
+// the API key or the source tag the pool's queue is shared out by; the pool
+// passes it on and reads nothing in it.
 type Caller struct {
-	Kind   string
-	Client string
+	Kind        string
+	Client      string
+	Fingerprint string
 }
 
 // ReleaseObserver is told who released a model, beside why it left. It is a

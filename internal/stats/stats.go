@@ -268,10 +268,9 @@ type Event struct {
 	// a load.
 	Reason string `json:"reason,omitempty"`
 	// By is the kind of caller that released the model, one of the Caller
-	// kinds above, and Client the name a paired client was paired under;
-	// both only on a release.
-	By     string `json:"by,omitempty"`
-	Client string `json:"client,omitempty"`
+	// kinds above; only on a release. It is a kind and never a name: which
+	// paired client asked is the log's to say, not the store's.
+	By string `json:"by,omitempty"`
 	// DurationMS is how long a load took; zero on a removal.
 	DurationMS int64 `json:"duration_ms,omitempty"`
 	// Failed reports a load that never became ready.
@@ -662,18 +661,15 @@ func (r *Recorder) Removed(model, reason string) {
 }
 
 // Released notes that a program unloaded a model through the model API, with
-// the kind of caller and, for a paired client, its name.
+// the kind of caller that asked.
 //
 // The kind is checked rather than trusted, as a source is: one this package
 // does not know is recorded as none.
-func (r *Recorder) Released(model, by, client string) {
+func (r *Recorder) Released(model, by string) {
 	if !slices.Contains(CallerKinds(), by) {
 		by = ""
 	}
-	if by != CallerPairedClient {
-		client = ""
-	}
-	r.removed(Event{At: r.now().UTC().Unix(), Model: model, Kind: EventRemoved, Reason: ReasonReleased, By: by, Client: client})
+	r.removed(Event{At: r.now().UTC().Unix(), Model: model, Kind: EventRemoved, Reason: ReasonReleased, By: by})
 }
 
 func (r *Recorder) removed(ev Event) {

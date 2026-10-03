@@ -115,7 +115,20 @@ func TestTheReleaseSaysWhichKindOfCallerAsked(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("a paired client: %d %s", resp.StatusCode, b)
 	}
-	if got := poolP.releasedBy(); len(got) != 1 || got[0] != (runtime.Caller{Kind: stats.CallerPairedClient, Client: "Bob's iPad"}) {
-		t.Errorf("a paired client: %+v", got)
+	got = poolP.releasedBy()
+	if len(got) != 1 || got[0].Kind != stats.CallerPairedClient || got[0].Client != "Bob's iPad" || len(got[0].Fingerprint) != 8 {
+		t.Errorf("a paired client: %+v, want its kind, name and short fingerprint", got)
+	}
+}
+
+// An untagged request is this Mac's only when it comes from this Mac: a
+// network caller that reached a route without entitled in front of it is of
+// no known kind, never labelled as this Mac (adversarial review of step 2).
+func TestAnUntaggedNetworkCallerIsNotThisMac(t *testing.T) {
+	if got := callerOf(unloadRequest(aLANHost, `{}`, nil)); got != (runtime.Caller{}) {
+		t.Errorf("a network caller: %+v, want no kind", got)
+	}
+	if got := callerOf(unloadRequest(thisMac, `{}`, nil)); got.Kind != stats.CallerThisMac {
+		t.Errorf("a program on this Mac: %+v", got)
 	}
 }
