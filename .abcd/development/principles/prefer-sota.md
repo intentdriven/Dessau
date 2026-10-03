@@ -4,7 +4,9 @@
 
 > Prefer SOTA, adversary-filtered: where a choice has a credible
 > state-of-the-art answer that is the presumptive pick, but challenge it for
-> fit against this repo's preferences before adopting — see
+> fit against this repo's preferences before adopting; a remedy proposed for
+> an issue, or chosen in an autonomous run, cites its grounds, a primary-source
+> state-of-the-art check where the fix depends on outside practice — see
 > .abcd/development/principles/prefer-sota.md.
 
 ## Why
