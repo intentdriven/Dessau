@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,7 +141,7 @@ func (s *fakeServer) Acquire(ctx context.Context, id string) (Upstream, func(), 
 			s.mu.Unlock()
 		})
 	}
-	return Upstream{BaseURL: fake.URL(), ModelArg: fake.ModelArg}, release, nil
+	return Upstream{BaseURL: fake.URL(), Transport: http.DefaultTransport, ModelArg: fake.ModelArg}, release, nil
 }
 
 func (s *fakeServer) Activity() Activity {

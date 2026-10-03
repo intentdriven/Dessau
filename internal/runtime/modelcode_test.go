@@ -43,7 +43,7 @@ func ran(marker string) bool {
 func TestTheLauncherRefusesAModelThatShipsItsOwnCode(t *testing.T) {
 	l, marker := markerLauncher(t)
 	dir := modelDirWithConfig(t, `{"model_type":"llama","model_file":"model.py"}`)
-	spec := Spec{RepoID: "org/code", ModelPath: dir, Port: 1}
+	spec := Spec{RepoID: "org/code", ModelPath: dir, Socket: privateSocket(t)}
 
 	for name, call := range map[string]func() error{
 		"Precheck": func() error { return l.Precheck(spec) },
@@ -87,7 +87,7 @@ func TestTheLauncherRefusesAModelThatShipsItsOwnCode(t *testing.T) {
 func TestTheLauncherRefusesAConfigItCannotRead(t *testing.T) {
 	l, marker := markerLauncher(t)
 	dir := modelDirWithConfig(t, `{"model_type":"llama","rope_theta":NaN,"model_file":"model.py"}`)
-	p, err := l.Launch(context.Background(), Spec{RepoID: "org/nan", ModelPath: dir, Port: 1})
+	p, err := l.Launch(context.Background(), Spec{RepoID: "org/nan", ModelPath: dir, Socket: privateSocket(t)})
 	if p != nil {
 		<-p.Done()
 	}
@@ -110,7 +110,7 @@ func TestTheLauncherStartsAModelThatShipsNoCode(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			l, marker := markerLauncher(t)
 			dir := modelDirWithConfig(t, body)
-			launchAndWait(t, l, Spec{RepoID: "org/plain", ModelPath: dir, Port: 1})
+			launchAndWait(t, l, Spec{RepoID: "org/plain", ModelPath: dir, Socket: privateSocket(t)})
 			if !ran(marker) {
 				t.Error("the model server was not started")
 			}
@@ -129,7 +129,7 @@ func TestTheLauncherRefusesAModelAnotherAccountOwns(t *testing.T) {
 	l, marker := markerLauncher(t)
 	l.modelOwner = os.Geteuid() + 1
 	dir := modelDirWithConfig(t, `{"model_type":"llama"}`)
-	spec := Spec{RepoID: "org/theirs", ModelPath: dir, Port: 1}
+	spec := Spec{RepoID: "org/theirs", ModelPath: dir, Socket: privateSocket(t)}
 
 	for name, call := range map[string]func() error{
 		"Precheck": func() error { return l.Precheck(spec) },
@@ -170,7 +170,7 @@ func TestTheLauncherRefusesAModelAnotherAccountOwns(t *testing.T) {
 func TestTheLauncherRefusesAModelWithNoConfig(t *testing.T) {
 	l, marker := markerLauncher(t)
 	dir := t.TempDir()
-	p, err := l.Launch(context.Background(), Spec{RepoID: "org/bare", ModelPath: dir, Port: 1})
+	p, err := l.Launch(context.Background(), Spec{RepoID: "org/bare", ModelPath: dir, Socket: privateSocket(t)})
 	if p != nil {
 		<-p.Done()
 	}

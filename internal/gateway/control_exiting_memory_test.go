@@ -41,7 +41,7 @@ func (p *wedgedProcess) Pid() int              { return 4242 }
 func (l *wedgedLauncher) Precheck(runtime.Spec) error { return nil }
 
 func (l *wedgedLauncher) Launch(_ context.Context, spec runtime.Spec) (runtime.Process, error) {
-	srv := mlxtest.Start(mlxtest.Options{ModelArg: spec.ModelPath, Port: spec.Port})
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: spec.ModelPath, Socket: spec.Socket})
 	return &wedgedProcess{srv: srv, done: make(chan struct{})}, nil
 }
 

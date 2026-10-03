@@ -177,7 +177,7 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 	hdrCtx, cancelHdr := context.WithCancel(ctx)
 	defer cancelHdr()
 	timer := time.AfterFunc(budget, cancelHdr)
-	resp, err := g.tr.RoundTrip(httpReq.WithContext(hdrCtx))
+	resp, err := up.Transport.RoundTrip(httpReq.WithContext(hdrCtx))
 	timer.Stop()
 	if err != nil {
 		if ctx.Err() != nil {

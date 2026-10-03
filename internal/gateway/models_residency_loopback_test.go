@@ -74,7 +74,6 @@ func warmGateway(t *testing.T, key string) http.Handler {
 	return residencyGateway(t, key, runtime.Resident{
 		RepoID:   "org/warm",
 		State:    runtime.ResidencyLoaded,
-		Port:     51234,
 		LastUsed: time.Unix(1757145600, 0),
 		InFlight: 3,
 	})

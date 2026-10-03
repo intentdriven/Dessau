@@ -46,7 +46,7 @@ func launchAndReadArgv(t *testing.T, s config.Sampling) []string {
 	p, err := l.Launch(context.Background(), Spec{
 		RepoID:    "org/name",
 		ModelPath: plainModelDir(t),
-		Port:      1234,
+		Socket:    privateSocket(t),
 		Sampling:  s,
 	})
 	if err != nil {

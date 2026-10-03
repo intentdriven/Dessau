@@ -71,11 +71,11 @@ type Options struct {
 	// while /health returns ok throughout — as the real server does.
 	LoadDelay time.Duration
 	Reply     string
-	// Port binds the fake to a specific loopback port instead of an arbitrary
-	// one. A pool hands each model server the port it allocated and then
-	// addresses it there, so a fake standing in for a launched process has to
-	// answer on that port rather than one of its own.
-	Port int
+	// Socket binds the fake to a Unix socket instead of an arbitrary loopback
+	// port. A pool hands each model server the socket it named and then
+	// reaches it there and nowhere else, so a fake standing in for a launched
+	// process has to answer on that socket rather than on a port of its own.
+	Socket string
 	// FirstTokenDelay holds the first streamed chunk back, standing in for the
 	// prefill a real model does before it can emit anything. Without it the
 	// whole answer arrives inside a millisecond and a time-to-first-token
@@ -149,16 +149,16 @@ func Start(opts Options) *Server {
 	mux.HandleFunc("/v1/chat/completions", s.handleChat)
 	mux.HandleFunc("/v1/completions", s.handleChat)
 
-	if opts.Port == 0 {
+	if opts.Socket == "" {
 		s.httpSrv = httptest.NewServer(mux)
 		return s
 	}
-	// Bind the port the caller was given. The real launcher has the same race
-	// between a port being found free and the child binding it, and the same
-	// consequence: a failed readiness probe.
-	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", opts.Port))
+	// Bind the socket the caller was given, as the real launcher does. Closing
+	// the server removes it, as a real server's exit leaves it for the
+	// launcher to remove.
+	l, err := net.Listen("unix", opts.Socket)
 	if err != nil {
-		panic(fmt.Sprintf("mlxtest: cannot bind port %d: %v", opts.Port, err))
+		panic(fmt.Sprintf("mlxtest: cannot bind socket: %v", err))
 	}
 	s.httpSrv = httptest.NewUnstartedServer(mux)
 	s.httpSrv.Listener.Close()
@@ -167,7 +167,9 @@ func Start(opts Options) *Server {
 	return s
 }
 
-// URL is the base URL of the fake server, e.g. "http://127.0.0.1:54321".
+// URL is the base URL of the fake server, e.g. "http://127.0.0.1:54321". For
+// a fake on a Unix socket the host means nothing, and the fake is reached
+// only through a transport that dials the socket.
 func (s *Server) URL() string { return s.httpSrv.URL }
 
 // Close shuts the server down.

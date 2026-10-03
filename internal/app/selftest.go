@@ -50,7 +50,7 @@ func (s selfTestServer) Acquire(ctx context.Context, repoID string) (selftest.Up
 	if err != nil {
 		return selftest.Upstream{}, nil, err
 	}
-	return selftest.Upstream{BaseURL: up.BaseURL, ModelArg: up.ModelArg}, release, nil
+	return selftest.Upstream{BaseURL: up.BaseURL, Transport: up.Transport, ModelArg: up.ModelArg}, release, nil
 }
 
 func (s selfTestServer) Activity() selftest.Activity {

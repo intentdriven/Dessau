@@ -47,7 +47,7 @@ func (p *fakeProcess) Pid() int              { return 4242 }
 func (l *recordingLauncher) Precheck(runtime.Spec) error { return nil }
 
 func (l *recordingLauncher) Launch(_ context.Context, spec runtime.Spec) (runtime.Process, error) {
-	srv := mlxtest.Start(mlxtest.Options{ModelArg: spec.ModelPath, Port: spec.Port})
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: spec.ModelPath, Socket: spec.Socket})
 	l.mu.Lock()
 	l.specs[spec.RepoID] = spec
 	l.count++
