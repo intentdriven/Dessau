@@ -19,8 +19,9 @@ start once the last check is older than the interval, and then at each
 interval. The schedule compares the clock with the time of the last check, so a
 Mac that slept through a check runs it soon after it wakes.
 
-To turn checks off, untick the box and save. Saving any other setting never
-turns them on.
+To turn checks off, untick the box and save. A check already running stops
+before it asks about another model. Saving any other setting never turns
+checks on.
 
 The same two settings are in `config.json`:
 
@@ -50,8 +51,6 @@ you are serving.
 - **A newer version that ships its own code is named as such.** If the newer
   version's `config.json` names a `model_file`, Dessau records that it will not
   run that version.
-- **A decision model waits for a reviewed version.** A newer version of one is
-  recorded as one that will be offered once a Dessau release has reviewed it.
 
 ## When HuggingFace cannot be reached
 

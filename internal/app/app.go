@@ -138,11 +138,14 @@ type App struct {
 	stopJobs context.CancelFunc
 	jobsWG   sync.WaitGroup
 
-	// The update check (updatecheck.go). updateLastRound is when this
-	// process last attempted a round, touched only by the schedule's one
-	// goroutine; reviewed is Options.Reviewed; updatePause and updateTimeout
-	// are the pacing, fixed at New and shortened only by a test.
-	updateLastRound time.Time
+	// The update check (updatecheck.go). updateAttempted is when this
+	// process last asked about each model, guarded by updateMu;
+	// updateStarted keeps the schedule to one goroutine; reviewed is
+	// Options.Reviewed; updatePause and updateTimeout are the pacing, fixed
+	// at New and shortened only by a test.
+	updateMu        sync.Mutex
+	updateAttempted map[string]time.Time
+	updateStarted   sync.Once
 	reviewed        ReviewedBuilds
 	updatePause     time.Duration
 	updateTimeout   time.Duration
@@ -289,9 +292,10 @@ func New(opts Options) (*App, error) {
 		measureDir:  dirSize,
 		idleQuiet:   opts.Idle.Quiet,
 
-		reviewed:      opts.Reviewed,
-		updatePause:   updateCheckPause,
-		updateTimeout: updateCheckRequestTimeout,
+		reviewed:        opts.Reviewed,
+		updateAttempted: map[string]time.Time{},
+		updatePause:     updateCheckPause,
+		updateTimeout:   updateCheckRequestTimeout,
 	}
 	a.jobsCtx, a.stopJobs = context.WithCancel(context.Background())
 

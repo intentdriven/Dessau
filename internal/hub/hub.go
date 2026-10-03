@@ -296,6 +296,14 @@ func (c *Client) RateRemaining() (int, bool) {
 	return c.rateRemaining, c.rateKnown
 }
 
+// ForgetRateLimit drops the remaining budget the Hub last stated, so that
+// what a caller reads next comes from answers it has itself been given.
+func (c *Client) ForgetRateLimit() {
+	c.rateMu.Lock()
+	defer c.rateMu.Unlock()
+	c.rateRemaining, c.rateKnown = 0, false
+}
+
 // parseRateRemaining reads the remaining request budget off an answer: the
 // IETF RateLimit header in either of its drafts' shapes ("…;r=42;t=10" and
 // "limit=…, remaining=42, reset=…"), or the older X-RateLimit-Remaining. A

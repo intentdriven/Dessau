@@ -34,6 +34,9 @@ const (
 	maxCheckedConfig = 1 << 20
 )
 
+// errChecksOff ends a check the operator turned checks off in the middle of.
+var errChecksOff = errors.New("update checks were turned off")
+
 // ReviewedBuilds says whether a model is a decision model, and which upstream
 // commits of it a Dessau release has reviewed. A decision model is offered an
 // update only to a reviewed commit (itd-2610030656210408). Nil means no model
@@ -51,12 +54,18 @@ type UpdateRound struct {
 }
 
 // updateCheckDue lists the models a check would ask about now: ready, with a
-// recorded version, and not checked within the interval. A model whose
-// version Dessau never recorded is never checked — there is nothing to
-// compare — and a download records a check, since resolving the commit it
-// fetched answered the same question.
+// recorded version, and neither checked nor attempted by this process within
+// the interval. Each model is due on its own clock, so one downloaded between
+// two rounds is checked an interval after its download, not at the round
+// after that. A model whose version Dessau never recorded is never checked —
+// there is nothing to compare — and a download records a check, since
+// resolving the commit it fetched answered the same question. The attempt
+// time is what keeps a Mac that is offline from asking every minute: a check
+// the Hub did not answer records nothing on the model, which stays due.
 func (a *App) updateCheckDue(now time.Time) []registry.Model {
 	interval := a.Config().EffectiveUpdateCheckInterval()
+	a.updateMu.Lock()
+	defer a.updateMu.Unlock()
 	var due []registry.Model
 	for _, m := range a.Registry.Ready() {
 		if !m.VersionKnown() {
@@ -65,29 +74,29 @@ func (a *App) updateCheckDue(now time.Time) []registry.Model {
 		if m.Update != nil && now.Sub(m.Update.CheckedAt) < interval {
 			continue
 		}
+		if at, ok := a.updateAttempted[dlKey(m.RepoID)]; ok && now.Sub(at) < interval {
+			continue
+		}
 		due = append(due, m)
 	}
 	return due
 }
 
 // updateCheckTickAt is one tick of the schedule at the given wall-clock time:
-// a round when checks are on, some model is due, and the last round this
-// process attempted is at least an interval old. The last condition is what
-// keeps a Mac that is offline from asking again every minute: a round the
-// Hub did not answer records nothing on the models, so they stay due.
+// a round, when checks are on, for the models that are due.
 func (a *App) updateCheckTickAt(ctx context.Context, now time.Time) {
-	cfg := a.Config()
-	if !cfg.UpdateCheck {
-		return
-	}
-	if !a.updateLastRound.IsZero() && now.Sub(a.updateLastRound) < cfg.EffectiveUpdateCheckInterval() {
+	if !a.Config().UpdateCheck {
 		return
 	}
 	due := a.updateCheckDue(now)
 	if len(due) == 0 {
 		return
 	}
-	a.updateLastRound = now
+	a.updateMu.Lock()
+	for _, m := range due {
+		a.updateAttempted[dlKey(m.RepoID)] = now
+	}
+	a.updateMu.Unlock()
 	a.CheckForUpdates(ctx, due)
 }
 
@@ -99,6 +108,10 @@ func (a *App) updateCheckTickAt(ctx context.Context, now time.Time) {
 // delay with jitter, so a start is not also a burst of requests; Close cancels
 // the job and waits for it.
 func (a *App) StartCheckingForUpdates() {
+	a.updateStarted.Do(a.startCheckingForUpdates)
+}
+
+func (a *App) startCheckingForUpdates() {
 	delay := 30*time.Second + rand.N(30*time.Second)
 	a.jobsWG.Add(1)
 	go func() {
@@ -125,8 +138,14 @@ func (a *App) StartCheckingForUpdates() {
 // CheckForUpdates asks the Hub about each model in turn and records what it
 // finds, then logs one line for the round. A model the Hub does not answer
 // for keeps the mark it had. The requests are the Hub's: no statistic moves.
+//
+// The setting is read again before every model, so turning checks off stops
+// a round in flight: nothing more leaves the Mac once the switch is off. The
+// Hub's remaining budget is forgotten at the start, so a low figure some
+// other request heard does not end the round; only this round's answers do.
 func (a *App) CheckForUpdates(ctx context.Context, models []registry.Model) UpdateRound {
 	var round UpdateRound
+	a.Hub.ForgetRateLimit()
 	for i, m := range models {
 		if i > 0 {
 			select {
@@ -134,6 +153,9 @@ func (a *App) CheckForUpdates(ctx context.Context, models []registry.Model) Upda
 				return round
 			case <-time.After(a.updatePause):
 			}
+		}
+		if !a.Config().UpdateCheck {
+			break
 		}
 		found, err := a.checkOne(ctx, m)
 		if ctx.Err() != nil {
@@ -185,6 +207,9 @@ func (a *App) checkOne(ctx context.Context, m registry.Model) (registry.UpdateCh
 	if up.Commit == m.Commit {
 		return registry.UpdateCheck{Status: registry.UpdateCurrent}, nil
 	}
+	if !a.Config().UpdateCheck {
+		return registry.UpdateCheck{}, errChecksOff
+	}
 	files, err := a.Hub.FilesAt(ctx, up)
 	if err != nil {
 		return registry.UpdateCheck{}, err
@@ -194,16 +219,26 @@ func (a *App) checkOne(ctx context.Context, m registry.Model) (registry.UpdateCh
 		return registry.UpdateCheck{Status: registry.UpdateCurrent}, nil
 	}
 	if configChanged {
+		if !a.Config().UpdateCheck {
+			return registry.UpdateCheck{}, errChecksOff
+		}
 		b, err := a.Hub.SmallFileAt(ctx, up, "config.json", maxCheckedConfig)
-		if err != nil {
+		switch {
+		case errors.Is(err, hub.ErrCrossOrigin):
+			// A config.json the repository keeps in LFS is served from the
+			// Hub's content CDN, which a check does not read from. The
+			// newer version is offered; the update's own Precheck refuses
+			// it if it names a model_file.
+		case err != nil:
 			return registry.UpdateCheck{}, err
-		}
-		names, err := registry.ConfigNamesModelCode(b)
-		if err != nil {
-			return registry.UpdateCheck{}, err
-		}
-		if names {
-			return registry.UpdateCheck{Status: registry.UpdateRunsOwnCode, Commit: up.Commit}, nil
+		default:
+			names, err := registry.ConfigNamesModelCode(b)
+			if err != nil {
+				return registry.UpdateCheck{}, err
+			}
+			if names {
+				return registry.UpdateCheck{Status: registry.UpdateRunsOwnCode, Commit: up.Commit}, nil
+			}
 		}
 	}
 	if a.reviewed != nil {
@@ -233,6 +268,14 @@ func (a *App) compareVersions(m registry.Model, files []hub.File) (changed, conf
 	if m.FileHashes == nil {
 		return true, true
 	}
+	// A config.json the record has no hash for is read whenever anything
+	// changed: whether the newer one names a model_file cannot otherwise be
+	// told.
+	defer func() {
+		if _, ok := m.FileHashes["config.json"]; !ok && changed {
+			configChanged = true
+		}
+	}()
 	dir := a.Paths.ModelDir(m.RepoID)
 	listed := make(map[string]string, len(files))
 	for _, f := range files {

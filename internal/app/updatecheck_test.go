@@ -48,6 +48,9 @@ type checkFakeHub struct {
 	reqs    []string
 	ratelim string
 	stall   chan struct{}
+	// cdn, when set, is where config.json is handed off to, as the Hub does
+	// for a file a repository keeps in LFS.
+	cdn string
 }
 
 func newCheckFakeHub(t *testing.T, repos map[string]upstreamRepo) *checkFakeHub {
@@ -93,6 +96,10 @@ func newCheckFakeHub(t *testing.T, repos map[string]upstreamRepo) *checkFakeHub 
 				json.NewEncoder(w).Encode(out)
 				return
 			case r.URL.Path == "/"+id+"/resolve/"+repo.commit+"/config.json":
+				if h.cdn != "" {
+					http.Redirect(w, r, h.cdn+"/config.json", http.StatusFound)
+					return
+				}
 				fmt.Fprint(w, repo.config)
 				return
 			}
@@ -414,5 +421,114 @@ func TestADownloadRecordsACheck(t *testing.T) {
 	}
 	if due := a.updateCheckDue(time.Now()); len(due) != 0 {
 		t.Errorf("a model just downloaded is due a check: %v", due)
+	}
+}
+
+// Turning checks off stops a round already running: no further model is
+// asked about once the setting is off (review of step 2).
+func TestTurningChecksOffStopsARoundInFlight(t *testing.T) {
+	repos := map[string]upstreamRepo{}
+	recorded := map[string]map[string]string{}
+	for _, id := range []string{"org/a", "org/b", "org/c"} {
+		repos[id] = upstreamRepo{commit: onDisk, files: recordedFiles()}
+		recorded[id] = recordedFiles()
+	}
+	h := newCheckFakeHub(t, repos)
+	a, _ := newCheckApp(t, h, true, recorded)
+	a.updatePause = 200 * time.Millisecond
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		a.updateCheckTickAt(context.Background(), time.Now())
+	}()
+	waitFor(t, "the first model to be asked about", func() bool { return len(h.requests()) > 0 })
+	cfg := a.Config()
+	cfg.UpdateCheck = false
+	if err := a.SetConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	if got := h.requests(); len(got) != 1 {
+		t.Errorf("%d requests after checks were turned off mid-round, want only the one before: %v", len(got), got)
+	}
+}
+
+// Each model is due on its own clock: one checked between two rounds is
+// checked an interval after its own check, not two (review of step 2).
+func TestEachModelIsDueOnItsOwnClock(t *testing.T) {
+	h := newCheckFakeHub(t, map[string]upstreamRepo{
+		"org/a": {commit: onDisk, files: recordedFiles()},
+		"org/b": {commit: onDisk, files: recordedFiles()},
+	})
+	a, _ := newCheckApp(t, h, true, map[string]map[string]string{"org/a": recordedFiles(), "org/b": recordedFiles()})
+	t0 := time.Now()
+	a.Registry.SetUpdate("org/a", onDisk, registry.UpdateCheck{Status: registry.UpdateCurrent, CheckedAt: t0})
+	a.Registry.SetUpdate("org/b", onDisk, registry.UpdateCheck{Status: registry.UpdateCurrent, CheckedAt: t0.Add(-12 * time.Hour)})
+	// A round ran just now, which checked org/a. org/b is due twelve hours
+	// from now; a round then must ask about it, not wait for the next whole
+	// interval after this one.
+	a.updateAttempted[dlKey("org/a")] = t0
+	a.updateCheckTickAt(context.Background(), t0.Add(12*time.Hour+time.Minute))
+	got := h.requests()
+	if len(got) != 1 || got[0] != "/api/models/org/b" {
+		t.Errorf("requests = %v, want org/b alone, due on its own clock", got)
+	}
+}
+
+// The Hub's remaining budget as some other request last saw it does not end
+// a round: each round starts from what its own answers say.
+func TestAStaleBudgetFromAnotherRequestDoesNotEndARound(t *testing.T) {
+	repos := map[string]upstreamRepo{}
+	recorded := map[string]map[string]string{}
+	for _, id := range []string{"org/a", "org/b"} {
+		repos[id] = upstreamRepo{commit: onDisk, files: recordedFiles()}
+		recorded[id] = recordedFiles()
+	}
+	h := newCheckFakeHub(t, repos)
+	a, _ := newCheckApp(t, h, true, recorded)
+	h.ratelim = `"api";r=1;t=60`
+	a.Hub.RepoInfo(context.Background(), "org/a") // some other caller hears a low budget
+	h.mu.Lock()
+	h.ratelim, h.reqs = "", nil
+	h.mu.Unlock()
+	round := a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
+	if round.StoppedEarly || round.Checked != 2 {
+		t.Errorf("round = %+v, want both models checked", round)
+	}
+}
+
+// A config.json the record holds no hash for is read when the version moved,
+// so a new model_file is never missed for want of a recorded hash.
+func TestAnUnrecordedConfigIsReadWhenTheVersionMoves(t *testing.T) {
+	rec := recordedFiles()
+	delete(rec, "config.json")
+	files := recordedFiles()
+	files["model.safetensors"] = hWeight2
+	h := newCheckFakeHub(t, map[string]upstreamRepo{"org/m": {commit: newer, files: files, config: `{"model_file":"x.py"}`}})
+	a, _ := newCheckApp(t, h, true, map[string]map[string]string{"org/m": rec})
+	os.WriteFile(filepath.Join(a.Paths.ModelDir("org/m"), "config.json"), []byte("{}"), 0o644)
+	a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
+	if u := update(t, a, "org/m"); u == nil || u.Status != registry.UpdateRunsOwnCode {
+		t.Errorf("Update = %+v, want runs_own_code", u)
+	}
+}
+
+// A config.json the repository keeps in LFS is handed to the Hub's content
+// CDN, which a check does not read from; the newer version is offered rather
+// than the model counted unreachable at every check, and the update's own
+// Precheck is what refuses one that names a model_file.
+func TestAConfigOnTheContentCDNDoesNotStopTheCheck(t *testing.T) {
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"model_type":"qwen3"}`)
+	}))
+	defer cdn.Close()
+	files := recordedFiles()
+	files["config.json"] = hConfig2
+	h := newCheckFakeHub(t, map[string]upstreamRepo{"org/m": {commit: newer, files: files}})
+	h.cdn = cdn.URL
+	a, _ := newCheckApp(t, h, true, map[string]map[string]string{"org/m": recordedFiles()})
+	round := a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
+	if u := update(t, a, "org/m"); u == nil || u.Status != registry.UpdateAvailable {
+		t.Errorf("Update = %+v (round %+v), want available", u, round)
 	}
 }
