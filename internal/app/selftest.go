@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/intentdriven/Dessau/internal/config"
 	"github.com/intentdriven/Dessau/internal/runtime"
@@ -50,6 +52,9 @@ func (s selfTestServer) Ready() []string {
 func (s selfTestServer) Acquire(ctx context.Context, repoID string) (selftest.Upstream, func(), error) {
 	poolCtx := runtime.WithSoftHold(runtime.WithSource(ctx, selfTestSource), selftest.YieldFrom(ctx))
 	up, release, err := s.a.Pool.Acquire(poolCtx, repoID)
+	if errors.Is(err, runtime.ErrUpdating) {
+		return selftest.Upstream{}, nil, fmt.Errorf("%w: %w", selftest.ErrNotNow, err)
+	}
 	if err != nil {
 		return selftest.Upstream{}, nil, err
 	}
