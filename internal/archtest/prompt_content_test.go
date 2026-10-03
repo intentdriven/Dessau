@@ -26,6 +26,7 @@ import (
 // makes the list of exceptions a thing that exists and has to be edited.
 var promptContentReaders = map[string]string{
 	"internal/gateway/systemmerge.go": "the merge itself — the one reader adr-2609061610102325 grants",
+	"internal/gateway/assemble.go":    "names a message's role and content on the ANSWER side only: it joins the streamed deltas of an answer into the one message an unstreamed request is answered with (iss-2610030919536329); reads nothing of a request's messages",
 	"internal/runtime/pool.go":        "builds the readiness probe's own one-line conversation; reads nothing from a client",
 	"internal/mlxtest/fake.go":        "the fake mlx server tests relay to, which answers requests rather than making them",
 	"internal/selftest/request.go":    "builds the self-test's own requests from two constants in that file; reads nothing from a client (itd-2609100457007827)",
@@ -60,6 +61,7 @@ var chatMessageFields = []string{
 // until now nothing would have failed if something started.
 var generatedContentReaders = map[string]string{
 	"internal/gateway/gateway.go":  "the relay: it reads whether an event carries a choice, to tell a chunk of the answer from the counts-only event and to time the first token — never what is inside one",
+	"internal/gateway/assemble.go": "the assembler of an unstreamed answer from the stream the model server was asked for instead (iss-2610030919536329): it joins each choice's deltas into one message, which is re-framing the answer the relay already carries, not reading it — every piece is joined as the escaped bytes the model server wrote, without being decoded, and nothing of the answer is logged, recorded or kept beyond the request",
 	"internal/mlxtest/fake.go":     "the fake mlx server tests relay to, which produces the answers rather than reading them",
 	"internal/selftest/request.go": "times the first chunk of the self-test's own answer and counts the chunks; keeps nothing of what they say (itd-2609100457007827)",
 	"internal/toolprobe/probe.go":  "reads whether the choice carries a tool call, and keeps nothing of what the answer says (itd-2609201445423499)",

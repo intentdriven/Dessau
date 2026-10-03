@@ -874,6 +874,17 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 		mergeIncludeUsage(payload)
 	}
 
+	// A request that did not ask for a stream is asked of the model server as
+	// one, and its answer assembled here, so that the header wait below
+	// bounds only how long the model server takes to start answering and a
+	// client that hangs up stops the generation (see assemble.go). The
+	// client's own view — what it asked for and what it is recorded as — is
+	// unchanged.
+	assembled := assembles(payload)
+	if assembled {
+		askForStream(payload)
+	}
+
 	body, err := json.Marshal(payload)
 	if err != nil {
 		obs.failed(stats.ClassGatewayError)
@@ -895,10 +906,13 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	// The client's bearer token is ours to check, not the model server's to see.
 
-	// Bound the wait for headers — that is, for prefill — rather than the whole
-	// exchange: generation legitimately runs for minutes after the first token.
-	// The timer is stopped the moment headers arrive, so it never touches the
-	// body stream; the context is released when the handler returns.
+	// Bound the wait for headers rather than the whole exchange: generation
+	// legitimately runs for minutes. A streamed request — every request but
+	// one asking for logprobs, now that an unstreamed one is assembled — has
+	// its headers as soon as the model server takes it up, so this bounds how
+	// long the server takes to start answering. The timer is stopped the
+	// moment headers arrive, so it never touches the body stream; the context
+	// is released when the handler returns.
 	budget := prefillBudget(len(body), cfg.UpstreamHeaderTimeoutSec)
 	hdrCtx, cancelHdr := context.WithCancel(r.Context())
 	defer cancelHdr()
@@ -911,16 +925,14 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case timedOut.Load():
-			// Distinguished from an unreachable server on purpose: the old
-			// message blamed the model server for a bound the gateway chose,
-			// and a client that retries on it makes things worse — the
-			// abandoned request keeps prefilling upstream and its cache stays
-			// resident, so the next request runs at less than half speed.
+			// Distinguished from an unreachable server on purpose: the bound
+			// is the gateway's, and saying which bound it was is what lets
+			// the operator move it. It is a key in config.json and nothing
+			// else; it has no Settings control (DECISIONS 2026-09-11).
 			obs.failed(stats.ClassUnreachable)
-			g.log.Error("upstream did not return headers within the prefill budget",
-				"model", model, "budget", budget, "request_bytes", len(body))
-			writeError(w, http.StatusGatewayTimeout,
-				fmt.Sprintf("the model server did not finish reading the prompt within %s; it may still be working on it, and retrying will slow it further. Raise upstream_header_timeout_sec in Settings if this prompt legitimately needs longer.", budget.Round(time.Second)))
+			g.log.Error("the model server did not start answering within the header wait",
+				"model", model, "wait", budget, "request_bytes", len(body))
+			writeError(w, http.StatusGatewayTimeout, headerWaitText(budget, streamRequested(payload)))
 			return
 		case r.Context().Err() != nil:
 			obs.failed(stats.ClassCancelled)
@@ -932,6 +944,11 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+
+	if assembled && resp.StatusCode < 300 && strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		g.answerAssembled(w, r, resp, up.ModelArg, requested, model, obs, relay)
+		return
+	}
 
 	if resp.StatusCode >= 300 {
 		// The model server's own refusal, relayed as it stands. It is a
@@ -954,6 +971,72 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	if obs.recording() {
 		obs.footprint(g.pool.Footprint(model))
 	}
+}
+
+// answerAssembled answers a request the client did not ask to stream from the
+// stream the model server was asked for instead, as one object.
+//
+// Nothing is written to the client until the whole answer is in hand, so every
+// way the stream can fail is still a status the client is told about rather
+// than half an object under a 200. The upstream request runs under the
+// client's own context, so a client that hangs up closes it, and the model
+// server — which writes every chunk as it goes — stops at its next one.
+func (g *Gateway) answerAssembled(w http.ResponseWriter, r *http.Request, resp *http.Response, modelArg, requested, model string, obs *observation, relay relayOptions) {
+	body, err := assembleAnswer(resp.Body, maxResponseBody)
+	if err != nil {
+		switch {
+		case r.Context().Err() != nil:
+			obs.failed(stats.ClassCancelled)
+			return // the client hung up, which is what ended the read
+		case errors.Is(err, errAnswerTooLarge), errors.Is(err, errLineTooLong):
+			// Dessau's own limit, not the model server failing.
+			obs.failed(stats.ClassGatewayError)
+			g.log.Error("refused an unstreamed answer: it is larger than the gateway assembles",
+				"model", model, "limit", maxResponseBody)
+			writeError(w, http.StatusBadGateway, fmt.Sprintf(
+				"the answer is larger than %d MiB, which is the most this server returns in one piece; ask for it streamed (\"stream\": true)",
+				maxResponseBody>>20))
+		default:
+			// Its own text stays here: what the model server says of a
+			// failure can name this Mac's paths.
+			obs.failed(stats.ClassUnreachable)
+			g.log.Error("the model server's answer stopped part-way", "model", model)
+			g.log.Debug("the model server's answer stopped part-way", "model", model, "err", err)
+			writeError(w, http.StatusBadGateway, "the model server stopped part-way through the answer")
+		}
+		return
+	}
+	// The model server's headers, as an unstreamed answer of its carries
+	// them: its own type, and none of the stream's.
+	copyResponseHeaders(w.Header(), resp.Header)
+	w.Header().Del("Cache-Control")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	ev, parsed := decodeEvent(body)
+	var out relayOutcome
+	if _, werr := w.Write(renderEvent(body, ev, parsed, modelArg, requested)); werr != nil {
+		out.clientGone = true
+	} else if relay.observing && parsed {
+		out.usage = readUsage(ev)
+	}
+	obs.relayed(out)
+	if obs.recording() {
+		obs.footprint(g.pool.Footprint(model))
+	}
+}
+
+// headerWaitText is the 504's message: what the wait measured, and where it
+// is set. A streamed request has its headers as soon as the model server
+// takes it up, so for one the wait ran out before the server started
+// answering; an unstreamed one has none until its whole answer is generated.
+func headerWaitText(wait time.Duration, streamed bool) string {
+	wait = wait.Round(time.Second)
+	if streamed {
+		return fmt.Sprintf("the model server did not start answering within %s; it may be busy with other requests. "+
+			"If it legitimately needs longer, raise upstream_header_timeout_sec in config.json.", wait)
+	}
+	return fmt.Sprintf("the model server did not finish answering within %s: a request asking for logprobs is answered in one piece, so this wait covers the whole answer. "+
+		"Ask for a shorter answer, or raise upstream_header_timeout_sec in config.json.", wait)
 }
 
 // dessauHeaders are the response headers Dessau writes itself, which an

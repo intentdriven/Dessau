@@ -249,15 +249,20 @@ func TestMergingSetsTheKeyAndLeavesEveryOtherFieldAlone(t *testing.T) {
 	}
 }
 
-// A non-streaming answer already carries its counts, so nothing is merged into
-// the request — and there is no first token to time.
+// A non-streaming request is asked of the model server as a stream with its
+// counts, whose answer the gateway assembles (iss-2610030919536329) — but it is
+// recorded as what the client asked for: unstreamed, with no first token to
+// time, since the client hears nothing until the whole answer is in.
 func TestANonStreamingRequestIsRecordedWithoutATimeToFirstToken(t *testing.T) {
 	srv, rec, fake, _ := statsGateway(t, true, mlxtest.Options{})
 
-	completion(t, srv, `{"model":"`+testModelID+`","messages":[{"role":"user","content":"hi"}]}`)
+	_, answer := completion(t, srv, `{"model":"`+testModelID+`","messages":[{"role":"user","content":"hi"}]}`)
 
-	if _, merged := fake.LastBody()["stream_options"]; merged {
-		t.Error("the gateway merged stream_options into a request that was not streaming")
+	if opts, _ := fake.LastBody()["stream_options"].(map[string]any); opts["include_usage"] != true {
+		t.Errorf("the model server was sent stream_options %#v, want the counts asked for", fake.LastBody()["stream_options"])
+	}
+	if strings.Contains(answer, `"choices":[]`) {
+		t.Errorf("the counts-only event reached a client that asked for no stream: %s", answer)
 	}
 	got := onlyRecord(t, rec)
 	if got.Streamed {

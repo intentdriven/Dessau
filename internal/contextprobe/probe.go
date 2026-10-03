@@ -13,8 +13,9 @@
 // projected too close to what the Mac has.
 //
 // Because the probe is a client of the gateway rather than an exception
-// inside it, the largest step it can take is bounded by the gateway's own
-// limits — the prefill deadline and the served-window check. A reading those
+// inside it, the largest step it can take is bounded by Dessau's own limits —
+// the prefill deadline (the probe's step timeout, sized from the gateway's
+// header wait) and the served-window check. A reading those
 // stopped is published as a floor naming the bound, never as the model's
 // limit.
 package contextprobe
@@ -93,10 +94,12 @@ type Options struct {
 	// 128 GB Mac.
 	MemoryMargin int64
 	// StepTimeout bounds one request, given the request body's size. Nil
-	// means the gateway's own prefill budget for that body plus a margin, so
-	// the gateway's deadline is what stops a step; should the probe's own
-	// timer fire first anyway, the step is filed as the deadline's, never as
-	// the model's.
+	// means the gateway's own header wait for that body plus a margin. The
+	// probe's requests are unstreamed, and the gateway asks the model server
+	// for them as a stream whose headers come before prefill
+	// (iss-2610030919536329), so it is this timer, not the gateway's wait,
+	// that stops a step whose prefill outlasts it; the step is filed as the
+	// deadline's, never as the model's.
 	StepTimeout func(bodyBytes int) time.Duration
 	// UnloadWait bounds how long the probe waits for the gateway to release
 	// its own abandoned request before treating a refused unload as a
@@ -179,10 +182,12 @@ func New(opts Options) *Probe {
 	return &Probe{opts: opts, bounds: map[string]*bounds{}}
 }
 
-// defaultStepTimeout is the gateway's prefill budget for a body of this
-// size — its estimate of a token per four bytes, at 150 tokens a second,
-// plus a minute, and at least ten minutes — with a minute's margin, so that
-// the gateway's own deadline is what ends a step that outlasts it.
+// defaultStepTimeout is the gateway's header wait for a body of this size —
+// its estimate of a token per four bytes, at 150 tokens a second, plus a
+// minute, and at least ten minutes — with a minute's margin. It was sized so
+// the gateway's deadline would end a step first; that wait now bounds only
+// the model server's admission of a request, so this is the prefill deadline
+// a step meets.
 func defaultStepTimeout(bodyBytes int) time.Duration {
 	tokens := int64(bodyBytes / 4)
 	derived := time.Duration(tokens/150)*time.Second + time.Minute
@@ -585,8 +590,9 @@ type answerKind int
 
 const (
 	answerOK answerKind = iota
-	// answerBounded is one of the gateway's own size bounds: its prefill
-	// deadline (504) or its served-window check (400).
+	// answerBounded is one of the gateway's own bounds: its header wait
+	// (504), which a model server held alone by the probe meets only if it
+	// cannot start answering at all, or its served-window check (400).
 	answerBounded
 	// answerNoRoom is the pool refusing for want of room or because it is
 	// closing (503): no reading, try later.
@@ -606,7 +612,7 @@ func (p *Probe) cancelled(s *selftest.Session) stepOutcome {
 
 // request sends one non-streaming request through the gateway and reads the
 // server's count of the prompt, classifying the gateway's own answers: 504 is
-// its prefill deadline and 400 its served-window check (both size bounds),
+// its header wait and 400 its served-window check (both Dessau's bounds),
 // 503 is the pool without room (try later), 502 is an upstream failure (the
 // model's), and anything else is an answer no figure can be drawn from.
 func (p *Probe) request(s *selftest.Session, model, prompt string) (tokens int64, verdict answer, err error) {
