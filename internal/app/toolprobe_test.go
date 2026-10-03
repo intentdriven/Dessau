@@ -47,7 +47,7 @@ func (l *toolLauncher) Precheck(runtime.Spec) error { return nil }
 
 func (l *toolLauncher) Launch(_ context.Context, spec runtime.Spec) (runtime.Process, error) {
 	srv := mlxtest.Start(mlxtest.Options{
-		ModelArg: spec.ModelPath, Port: spec.Port, ToolCall: true,
+		ModelArg: spec.ModelPath, Socket: spec.Socket, ToolCall: true,
 		PromptTokensFromBody: l.hangAbove > 0, HangAbove: l.hangAbove,
 	})
 	l.mu.Lock()

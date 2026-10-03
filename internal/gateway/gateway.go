@@ -73,8 +73,6 @@ type Options struct {
 	Pool       Pool
 	Models     Models
 	Log        *slog.Logger
-	// Transport is the HTTP transport used to reach model servers.
-	Transport http.RoundTripper
 	// Stats, when set, receives one content-free record per request — but only
 	// while the operator has the switch on, which the gateway reads live
 	// through ConfigFunc like the API key. Nil means nothing is recorded and
@@ -110,7 +108,6 @@ type Gateway struct {
 	pool   Pool
 	models Models
 	log    *slog.Logger
-	tr     http.RoundTripper
 	stats  *stats.Recorder
 	// refusalLog holds the line written when a client is refused without being
 	// told why, to one per model per minute. A refusal is client-induced, so
@@ -135,18 +132,6 @@ func New(opts Options) *Gateway {
 		frozen := opts.Config
 		cfgFn = func() config.Config { return frozen }
 	}
-	if opts.Transport == nil {
-		// Model servers are on loopback and a long generation can legitimately
-		// run for minutes, so there is no response timeout here. The client's
-		// context governs the request's lifetime instead.
-		// No ResponseHeaderTimeout here: it is a property of the transport, so
-		// it would apply one number to every request regardless of prompt size,
-		// which is the defect being fixed. The wait for headers is bounded per
-		// request instead, in prefillBudget.
-		opts.Transport = &http.Transport{
-			MaxIdleConnsPerHost: 32,
-		}
-	}
 	served := opts.ServedWindow
 	if served == nil {
 		served = func(m registry.Model) (int64, bool) { return m.ContextLength, true }
@@ -164,7 +149,6 @@ func New(opts Options) *Gateway {
 		pool:         opts.Pool,
 		models:       opts.Models,
 		log:          opts.Log,
-		tr:           opts.Transport,
 		stats:        opts.Stats,
 		refusalLog:   newLogEvery(refusalLogEvery),
 		servedWindow: served,
@@ -906,7 +890,9 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	timer := time.AfterFunc(budget, func() { timedOut.Store(true); cancelHdr() })
 	req = req.WithContext(hdrCtx)
 
-	resp, err := g.tr.RoundTrip(req)
+	// Through the transport the pool handed over with the Upstream: it dials
+	// this model server's private socket, the only place the server listens.
+	resp, err := up.Transport.RoundTrip(req)
 	timer.Stop()
 	if err != nil {
 		switch {

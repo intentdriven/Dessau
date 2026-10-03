@@ -58,7 +58,7 @@ func (s toolProbeSources) Acquire(ctx context.Context, repoID string) (toolprobe
 	if err != nil {
 		return toolprobe.Upstream{}, nil, err
 	}
-	return toolprobe.Upstream{BaseURL: up.BaseURL, ModelArg: up.ModelArg}, release, nil
+	return toolprobe.Upstream{BaseURL: up.BaseURL, Transport: up.Transport, ModelArg: up.ModelArg}, release, nil
 }
 
 func (s toolProbeSources) Runtime() string { return runtime.MLXLMVersion() }

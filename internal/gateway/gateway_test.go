@@ -102,10 +102,13 @@ func (p *stubPool) Acquire(ctx context.Context, repoID string) (*runtime.Upstrea
 		base = p.baseURL
 	}
 	return &runtime.Upstream{
-		RepoID:   repoID,
-		BaseURL:  base,
-		ModelArg: p.srv.ModelArg,
-		Waits:    p.waits,
+		RepoID:  repoID,
+		BaseURL: base,
+		// The stand-in server is on a loopback port; the pool hands over a
+		// transport that dials its server's private socket instead.
+		Transport: http.DefaultTransport,
+		ModelArg:  p.srv.ModelArg,
+		Waits:     p.waits,
 	}, release, nil
 }
 
@@ -1339,7 +1342,6 @@ func TestListModelsReportsResidencyOnAKeyedInstall(t *testing.T) {
 	h := residencyGateway(t, "bh_secret", runtime.Resident{
 		RepoID:   "org/warm",
 		State:    runtime.ResidencyLoaded,
-		Port:     51234,
 		LastUsed: lastUsed,
 		InFlight: 3,
 	})
@@ -1414,7 +1416,6 @@ func TestListModelsCarriesNoResidencyWithoutAnAPIKey(t *testing.T) {
 	h := residencyGateway(t, "", runtime.Resident{
 		RepoID:   "org/warm",
 		State:    runtime.ResidencyLoaded,
-		Port:     51234,
 		LastUsed: time.Unix(1757145600, 0),
 		InFlight: 3,
 	})
@@ -1464,7 +1465,6 @@ func TestListModelsPublishesNoPortOrPath(t *testing.T) {
 	h := residencyGateway(t, "bh_secret", runtime.Resident{
 		RepoID:   "org/warm",
 		State:    runtime.ResidencyLoaded,
-		Port:     51234,
 		Bytes:    8 << 30,
 		LoadedAt: time.Unix(1757145600, 0),
 		LastUsed: time.Unix(1757145600, 0),
@@ -1657,37 +1657,32 @@ func TestForeignHostLoopbackRequestGetsNoResidency(t *testing.T) {
 	}
 }
 
-// composedLauncher starts nothing: the pool's readiness probe is redirected to
-// a fake mlx server by composedTransport, so a Process that merely exists is
-// enough to carry the entry through startLocked.
+// composedLauncher stands a fake mlx server up on the socket the pool names,
+// answering to the model path the pool launched with, as a launched model
+// server does.
 type composedLauncher struct{ launched int }
 
 func (l *composedLauncher) Precheck(runtime.Spec) error { return nil }
 
-func (l *composedLauncher) Launch(context.Context, runtime.Spec) (runtime.Process, error) {
+func (l *composedLauncher) Launch(_ context.Context, spec runtime.Spec) (runtime.Process, error) {
 	l.launched++
-	return composedProc{done: make(chan struct{})}, nil
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: spec.ModelPath, Socket: spec.Socket})
+	return &composedProc{srv: srv, done: make(chan struct{})}, nil
 }
 
-type composedProc struct{ done chan struct{} }
-
-func (p composedProc) Stop(context.Context) error { close(p.done); return nil }
-func (p composedProc) Done() <-chan struct{}      { return p.done }
-func (p composedProc) Err() error                 { return nil }
-func (p composedProc) Pid() int                   { return 0 }
-
-// composedTransport sends the pool's readiness probe to the fake server, since
-// the pool addresses model servers by a port it allocated itself.
-type composedTransport struct{ target string }
-
-func (t composedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	out, err := http.NewRequestWithContext(req.Context(), req.Method, t.target+req.URL.Path, req.Body)
-	if err != nil {
-		return nil, err
-	}
-	out.Header = req.Header
-	return http.DefaultTransport.RoundTrip(out)
+type composedProc struct {
+	srv  *mlxtest.Server
+	done chan struct{}
+	once sync.Once
 }
+
+func (p *composedProc) Stop(context.Context) error {
+	p.once.Do(func() { p.srv.Close(); close(p.done) })
+	return nil
+}
+func (p *composedProc) Done() <-chan struct{} { return p.done }
+func (p *composedProc) Err() error            { return nil }
+func (p *composedProc) Pid() int              { return 0 }
 
 // registrySource adapts the registry to runtime.ModelSource, as the app does.
 type registrySource struct{ reg *registry.Registry }
@@ -1735,14 +1730,9 @@ func TestResidencyReachesTheWireFromARealPool(t *testing.T) {
 		t.Fatalf("Rescan: %v", err)
 	}
 
-	// The pool's readiness probe names the backend's --model value, which is
-	// the registry's own path for the model, so the fake must answer to it.
-	scanned, err := reg.Get("mlx-community/Qwen3-8B-4bit")
-	if err != nil {
+	if _, err := reg.Get("mlx-community/Qwen3-8B-4bit"); err != nil {
 		t.Fatalf("the scanned model is not in the registry: %v", err)
 	}
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: scanned.Path})
-	defer fake.Close()
 
 	launcher := &composedLauncher{}
 	pool := runtime.NewPool(runtime.PoolOptions{
@@ -1750,7 +1740,6 @@ func TestResidencyReachesTheWireFromARealPool(t *testing.T) {
 		Models:           registrySource{reg},
 		MaxResidentBytes: 1 << 30,
 		ReadyTimeout:     10 * time.Second,
-		HTTP:             &http.Client{Timeout: 5 * time.Second, Transport: composedTransport{fake.URL()}},
 	})
 	defer pool.Close()
 
@@ -1842,12 +1831,9 @@ func TestRegistryPoolAndListingShareOneKeySpace(t *testing.T) {
 	if err := reg.Rescan(filepath.Join(root, "models")); err != nil {
 		t.Fatalf("Rescan: %v", err)
 	}
-	scanned, err := reg.Get(canonical)
-	if err != nil {
+	if _, err := reg.Get(canonical); err != nil {
 		t.Fatalf("the scanned model is not in the registry: %v", err)
 	}
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: scanned.Path})
-	defer fake.Close()
 
 	launcher := &composedLauncher{}
 	pool := runtime.NewPool(runtime.PoolOptions{
@@ -1855,7 +1841,6 @@ func TestRegistryPoolAndListingShareOneKeySpace(t *testing.T) {
 		Models:           registrySource{reg},
 		MaxResidentBytes: 1 << 30,
 		ReadyTimeout:     10 * time.Second,
-		HTTP:             &http.Client{Timeout: 5 * time.Second, Transport: composedTransport{fake.URL()}},
 	})
 	defer pool.Close()
 
@@ -2013,7 +1998,6 @@ func TestRefusalToANetworkClientNamesNoPinnedModel(t *testing.T) {
 		MaxResidentBytes: 250,
 		Pinned:           []string{"org/protected"},
 		ReadyTimeout:     10 * time.Second,
-		HTTP:             &http.Client{Timeout: 5 * time.Second},
 	})
 	defer pool.Close()
 

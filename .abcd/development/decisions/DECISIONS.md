@@ -51,10 +51,12 @@ items 7-9 read from the pinned mlx-lm 0.31.3 source on 2026-09-06 (see
 
 - **Python is ours.** Homebrew's Python is 3.14 and has no MLX wheels. `uv` installs
   a private CPython 3.12 + `mlx-lm` under `<root>`. Uninstall is `rm -rf <root>`.
-- **One `mlx_lm.server` child per model**, each pinned with `--model` on its own
-  loopback port. Go owns routing, the RAM budget, and LRU eviction. mlx-lm's
-  per-request model switching is a *hot-swap that evicts the resident model* — using
-  it behind a multi-client gateway would thrash weights in and out of RAM.
+- **One `mlx_lm.server` child per model**, each pinned with `--model` and
+  listening on its own private Unix socket, not a TCP port (the 2026-10-03
+  private-socket line in `.abcd/work/DECISIONS.md`). Go owns routing, the RAM
+  budget, and LRU eviction. mlx-lm's per-request model switching is a *hot-swap
+  that evicts the resident model* — using it behind a multi-client gateway would
+  thrash weights in and out of RAM.
 - **Menu bar via `fyne.io/systray`; control panel is an embedded web UI.** Wails v3 is
   still alpha; this keeps the shell boring and the UI reachable from a browser.
 - **mDNS via `github.com/brutella/dnssd`** — the maintained Go responder.

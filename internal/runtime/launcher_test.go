@@ -69,7 +69,7 @@ func TestTheLauncherWritesOnlyIntoItsOwnLogDirectory(t *testing.T) {
 	}
 
 	l := &ExecLauncher{Paths: second, LogDir: second.Logs}
-	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: model, Port: 1})
+	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: model, Socket: privateSocket(t)})
 	if p != nil {
 		<-p.Done()
 	}
@@ -109,7 +109,7 @@ func TestLaunchRefusesSymlinkedLogFile(t *testing.T) {
 	}
 
 	l := &ExecLauncher{Paths: paths, LogDir: paths.Logs}
-	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: plainModelDir(t), Port: 1})
+	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: plainModelDir(t), Socket: privateSocket(t)})
 	if p != nil {
 		<-p.Done()
 	}
@@ -145,7 +145,7 @@ func TestLaunchDoesNotBlockOnFIFOLogFile(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		p, err := (&ExecLauncher{Paths: paths, LogDir: paths.Logs}).Launch(context.Background(),
-			Spec{RepoID: "org/name", ModelPath: plainModelDir(t), Port: 1})
+			Spec{RepoID: "org/name", ModelPath: plainModelDir(t), Socket: privateSocket(t)})
 		if p != nil {
 			<-p.Done()
 		}
@@ -176,9 +176,9 @@ func TestLaunchDoesNotBlockOnFIFOLogFile(t *testing.T) {
 func TestAnUnarmedModelServerIsLaunchedAtInfoAndAnArmedOneAtDebug(t *testing.T) {
 	temp := 0.7
 	specs := map[string]Spec{
-		"a plain spec":            {RepoID: "org/a", ModelPath: "/models/org/a", Port: 1},
-		"with sampling defaults":  {RepoID: "org/b", ModelPath: "/models/org/b", Port: 2, Sampling: config.Sampling{Temperature: &temp}},
-		"with decode concurrency": {RepoID: "org/c", ModelPath: "/models/org/c", Port: 3, DecodeConcurrency: 4},
+		"a plain spec":            {RepoID: "org/a", ModelPath: "/models/org/a"},
+		"with sampling defaults":  {RepoID: "org/b", ModelPath: "/models/org/b", Sampling: config.Sampling{Temperature: &temp}},
+		"with decode concurrency": {RepoID: "org/c", ModelPath: "/models/org/c", DecodeConcurrency: 4},
 	}
 	for name, spec := range specs {
 		t.Run(name, func(t *testing.T) {
@@ -277,7 +277,7 @@ func TestALaunchKeepsThePreviousRunsLog(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t)})
 
 	if b, err := os.ReadFile(previous); err != nil || string(b) != "the run Alice armed\n" {
 		t.Errorf("the previous run's log was not kept under %s: %q, %v", filepath.Base(previous), b, err)
@@ -302,9 +302,9 @@ func TestTwoConsecutiveLaunchesKeepOnlyOnePreviousLog(t *testing.T) {
 	}
 
 	t.Setenv("DESSAU_TEST_RUN", "1")
-	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t)})
 	t.Setenv("DESSAU_TEST_RUN", "2")
-	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t)})
 
 	if b, _ := os.ReadFile(previous); string(b) != "run 1\n" {
 		t.Errorf("the previous log holds %q, want the run before this one", b)
@@ -328,7 +328,7 @@ func TestTwoConsecutiveLaunchesKeepOnlyOnePreviousLog(t *testing.T) {
 // A first launch has no previous file, and that is not an error.
 func TestAFirstLaunchHasNoPreviousLogToKeep(t *testing.T) {
 	l := stubbedLauncher(t, "exit 0")
-	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t)})
 	if _, err := os.Lstat(filepath.Join(l.LogDir, previousLogFileName("org/name"))); err == nil {
 		t.Error("a first launch left a previous file behind")
 	}
@@ -347,7 +347,7 @@ func TestAnArmedLaunchStopsItsLogAtTheBound(t *testing.T) {
 	t.Run("armed", func(t *testing.T) {
 		l := stubbedLauncher(t, script)
 		l.debugLogMaxBytes = 1000
-		launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1, DebugLog: true})
+		launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t), DebugLog: true})
 		b, err := os.ReadFile(filepath.Join(l.LogDir, logFileName("org/name")))
 		if err != nil {
 			t.Fatal(err)
@@ -367,7 +367,7 @@ func TestAnArmedLaunchStopsItsLogAtTheBound(t *testing.T) {
 	t.Run("unarmed", func(t *testing.T) {
 		l := stubbedLauncher(t, script)
 		l.debugLogMaxBytes = 1000
-		launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+		launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t)})
 		b, err := os.ReadFile(filepath.Join(l.LogDir, logFileName("org/name")))
 		if err != nil {
 			t.Fatal(err)

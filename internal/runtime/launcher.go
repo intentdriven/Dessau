@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,7 +25,12 @@ type Spec struct {
 	// the exact string clients must put in the request's "model" field, which is
 	// why the pool hands it back to the gateway to rewrite with.
 	ModelPath string
-	Port      int
+	// Socket is the Unix socket the model server listens on, in a directory
+	// only this account can open (newSocketDir); the pool names it, and
+	// reaches the server there through childTransport. There is no TCP port:
+	// any account on the Mac can reach a loopback port, and the server behind
+	// it loads whatever directory a request names (iss-2610030846581757).
+	Socket string
 	// DecodeConcurrency maps to --decode-concurrency: how many requests are
 	// batched together during generation.
 	DecodeConcurrency int
@@ -262,6 +266,10 @@ type ExecLauncher struct {
 	// another account owns, which a test running as one account cannot
 	// create: see modelFilesOwner.
 	modelOwner int
+	// socketRefresh is how often a running server's socket is touched; zero
+	// means socketRefreshEvery. A field so a test can see a refresh without
+	// waiting an hour, not a setting.
+	socketRefresh time.Duration
 
 	ledgerOnce sync.Once
 	ledger     *pidLedger
@@ -276,10 +284,33 @@ func (l *ExecLauncher) pidLedger() *pidLedger {
 	return l.ledger
 }
 
-// ReapOrphans kills any model servers left running by a previous, crashed run.
-// Call once at startup before launching anything.
+// ReapOrphans kills any model servers left running by a previous, crashed run,
+// and removes the socket directories such a run left behind. Call once at
+// startup before launching anything.
 func (l *ExecLauncher) ReapOrphans() int {
-	return l.pidLedger().reapOrphans()
+	killed := l.pidLedger().reapOrphans()
+	for _, root := range socketRoots() {
+		sweepSocketDirs(root)
+	}
+	return killed
+}
+
+// prepareSocket refuses a socket a model server must not be started on — none
+// at all, one longer than a Unix socket's path may be, one in a directory that
+// is not this account's alone — and clears a stale socket left under its name.
+// It runs before any process exists; the launcher checks the directory again
+// itself before it binds.
+func prepareSocket(path string) error {
+	if path == "" {
+		return errors.New("no socket for the model server")
+	}
+	if len(path) > maxSocketPath {
+		return fmt.Errorf("socket path is %d bytes, longer than the %d a Unix socket may have", len(path), maxSocketPath)
+	}
+	if err := checkSocketDir(filepath.Dir(path), os.Geteuid()); err != nil {
+		return err
+	}
+	return removeSocket(path)
 }
 
 // Precheck confirms the venv interpreter is present and trustworthy (see
@@ -380,15 +411,18 @@ func launchArgs(spec Spec) []string {
 	if spec.DebugLog {
 		level = debugLogLevel
 	}
-	// `python -m mlx_lm.server` is deprecated in 0.31; `python -m mlx_lm server`
-	// is the supported spelling.
+	// The interpreter runs isolated (-I: no PYTHON* variables, no user site,
+	// neither the working directory nor a script's directory on sys.path), so
+	// nothing but the runtime's own site-packages can supply mlx_lm or stand
+	// in for the launcher; -u is PYTHONUNBUFFERED, which -I would ignore. The
+	// launcher is serveScript, handed over with -c: the pinned server's own
+	// main(), handler and argument parser, served on Spec.Socket instead of a
+	// TCP port. Only the Go gateway faces the network, so it alone enforces
+	// auth and rewrites requests; the launcher's own refusals sit behind it.
 	args := []string{
-		"-m", "mlx_lm", "server",
+		"-I", "-u", "-c", serveScript,
+		"--dessau-socket", spec.Socket,
 		"--model", spec.ModelPath,
-		// Model servers are strictly loopback. Only the Go gateway faces the LAN,
-		// so it alone enforces auth and rewrites requests.
-		"--host", "127.0.0.1",
-		"--port", strconv.Itoa(spec.Port),
 		"--log-level", level,
 	}
 	args = append(args, samplingArgs(spec.Sampling)...)
@@ -403,8 +437,14 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 	if err := l.Precheck(spec); err != nil {
 		return nil, err
 	}
+	if err := prepareSocket(spec.Socket); err != nil {
+		return nil, err
+	}
 	python := l.Paths.VenvPython()
 	cmd := exec.Command(python, launchArgs(spec)...)
+	// The socket's own directory, which only this account can open: nothing
+	// the server writes relative to where it runs lands anywhere else.
+	cmd.Dir = filepath.Dir(spec.Socket)
 	cmd.Env = append(os.Environ(),
 		// Without an existing HF_HUB_CACHE directory, mlx_lm.server raises
 		// CacheNotFound while serving /v1/models and returns an empty 200.
@@ -413,7 +453,6 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 		// Inference must never reach the network: everything it needs is already
 		// in ModelPath, and a stray download would stall a request for minutes.
 		"HF_HUB_OFFLINE=1",
-		"PYTHONUNBUFFERED=1",
 	)
 	// Put the child in its own process group so we can signal the whole group;
 	// mlx_lm can spawn helpers that would otherwise outlive it.
@@ -497,12 +536,20 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 		ledger:  l.pidLedger(),
 		pgid:    pgid,
 	}
+	refresh := l.socketRefresh
+	if refresh <= 0 {
+		refresh = socketRefreshEvery
+	}
+	go keepSocketFresh(spec.Socket, refresh, p.done)
 	go func() {
 		err := cmd.Wait()
 		p.mu.Lock()
 		p.err = err
 		p.mu.Unlock()
 		logFile.Close()
+		// A server that was killed leaves its socket behind; nothing answers
+		// on it now.
+		_ = removeSocket(spec.Socket)
 		// The process is gone; drop it from the crash-recovery ledger.
 		p.ledger.remove(p.pgid)
 		close(p.done)
@@ -735,18 +782,3 @@ func (p *execProcess) Stop(ctx context.Context) error {
 
 // LogPath is where this process's output is being written.
 func (p *execProcess) LogPath() string { return p.logPath }
-
-// freePort asks the kernel for an unused loopback TCP port.
-//
-// There is an unavoidable race between closing the listener and the child
-// binding the port. It is tolerable here because the ports are loopback-only and
-// handed out one at a time, and because a collision surfaces immediately as a
-// failed readiness probe rather than as silent corruption.
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
-}

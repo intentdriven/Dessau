@@ -229,7 +229,6 @@ func TestARequestThatReallyWaitedSaysSoOnTheWire(t *testing.T) {
 		EvictionGrace:    grace,
 		MaxEvictionWait:  20 * time.Second,
 		ReadyTimeout:     10 * time.Second,
-		HTTP:             &http.Client{Timeout: 5 * time.Second},
 	})
 	defer pool.Close()
 

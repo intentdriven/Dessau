@@ -76,11 +76,14 @@ const (
 	DefaultMaxQuietWait = 5 * time.Minute
 )
 
-// Upstream is a ready model server: where it answers, and the exact string
-// its "model" field must carry (runtime.Upstream.ModelArg).
+// Upstream is a ready model server: where it answers, the transport that
+// reaches it (runtime.Upstream.Transport, which dials its private socket),
+// and the exact string its "model" field must carry
+// (runtime.Upstream.ModelArg).
 type Upstream struct {
-	BaseURL  string
-	ModelArg string
+	BaseURL   string
+	Transport http.RoundTripper
+	ModelArg  string
 }
 
 // Sources is what the probe needs from the app.
@@ -372,7 +375,11 @@ func (p *Probe) request(ctx context.Context, up Upstream) (bool, error) {
 		return false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := p.opts.Client.Do(req)
+	client, err := selftest.UpstreamClient(p.opts.Client, up.Transport)
+	if err != nil {
+		return false, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return false, err
 	}
