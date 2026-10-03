@@ -64,7 +64,8 @@ Each model's card under **My Models** says what the last check found:
 | Nothing | The last check found nothing newer, or checks are off. | Not offered |
 
 Click **Update** to fetch the newer version. The card shows how far it has
-come; the model keeps answering requests meanwhile.
+come, and **Cancel update** stops it; the model keeps answering requests
+meanwhile.
 
 ## How a newer version replaces the one you serve
 

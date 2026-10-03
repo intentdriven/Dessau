@@ -518,6 +518,12 @@ function renderModels() {
         actions.append(btn('Update', '', () =>
           postModel('/api/models/update', m.repo_id).catch(alertErr)));
       }
+      // An update under way can be stopped; the version being served is
+      // untouched either way.
+      if (m.updating != null) {
+        actions.append(btn('Cancel update', 'ghost', () =>
+          postModel('/api/models/cancel', m.repo_id).catch(alertErr)));
+      }
       // A ready model is real data, so require a deliberate second click.
       actions.append(confirmBtn('Delete', 'Confirm?', 'danger', () =>
         postModel('/api/models/delete', m.repo_id).catch(alertErr)));

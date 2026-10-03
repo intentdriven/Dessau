@@ -56,6 +56,7 @@ func TestTheVersionLinesAreEscaped(t *testing.T) {
 		regexp.MustCompile(`escapeHtml\(update\)`),
 		regexp.MustCompile(`escapeHtml\(mark\)`),
 		regexp.MustCompile(`postModel\('/api/models/update', m\.repo_id\)`),
+		regexp.MustCompile(`m\.updating != null\) \{\s*actions\.append\(btn\('Cancel update', 'ghost', \(\) =>\s*postModel\('/api/models/cancel', m\.repo_id\)`),
 	} {
 		if !want.MatchString(body) {
 			t.Errorf("renderModels no longer matches %s", want)
