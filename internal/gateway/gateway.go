@@ -743,6 +743,11 @@ func (g *Gateway) completions(w http.ResponseWriter, r *http.Request, chat bool)
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	if msg := generationRefusal(payload); msg != "" {
+		obs.failed(stats.ClassClientError)
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 
 	var requested string
 	if rawModel, ok := payload["model"]; ok {
@@ -2007,7 +2012,9 @@ func asTokenCount(raw json.RawMessage) int64 {
 		return i
 	}
 	f, err := n.Float64()
-	if err != nil || f <= 0 {
+	// One too large for a float64 parses as infinite with a range error: the
+	// largest there is, not none, or the window check would let it through.
+	if (err != nil && !math.IsInf(f, 1)) || f <= 0 {
 		return 0
 	}
 	if f >= math.MaxInt64 {

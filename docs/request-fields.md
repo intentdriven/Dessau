@@ -69,6 +69,37 @@ nested array, an object — is refused with **400** and the message
 The model server takes such a value and then fails on it, in the same way as an
 empty answer budget.
 
+## Sampling values the model server would fail on
+
+These values pass the model server's own checks and then fail on the thread
+that answers every request to that model, so that model stops answering anyone
+until it is restarted. Each is refused with **400** and a message naming the
+field and its bounds. A number written as a string is passed on, and the model
+server refuses it itself.
+
+`logit_bias` is not accepted at all, and is refused with **400**: the model
+server writes each bias at its token id without checking the id against the
+model's vocabulary, and Dessau does not yet know the vocabulary to check it
+against.
+
+| Field | Accepted |
+| --- | --- |
+| `temperature` | 0 to 100 |
+| `top_p`, `min_p`, `xtc_probability` | 0 to 1 |
+| `xtc_threshold` | 0 to 0.5 |
+| `top_k` | 0 to 1024 |
+| `repetition_penalty` | 0 to 100 |
+| `presence_penalty`, `frequency_penalty` | −100 to 100 |
+| `repetition_context_size`, `presence_context_size`, `frequency_context_size` | 0 to 1,048,576 |
+| `stop` | text: a surrogate escape (`\ud800`) that is not half of a pair is refused |
+| `chat_template_kwargs` | an object of booleans, numbers or strings that sets none of the template call's own arguments (`chat_template`, `tokenize`, `return_dict`, `return_tensors`, `return_assistant_tokens_mask`, `add_generation_prompt`, `continue_final_message`, `tools`, `documents`, `conversation`, `tokenizer_kwargs`, `truncation`, `max_length`, `padding`) |
+
+A number too large to hold, in any of these fields or in `max_tokens`, counts
+as larger than every bound. A model server that fails this way all the same —
+on a value no check here can see — is restarted: Dessau stops it once its
+health check reports it can no longer answer, and the next request starts it
+again.
+
 ## What Dessau changes in a request it passes on
 
 | Field | When | What the model server receives |
