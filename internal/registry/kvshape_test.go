@@ -40,9 +40,10 @@ func TestKVBytesPerTokenReadsTheConfigurationsShape(t *testing.T) {
 			want: 2048,
 		},
 		{
-			// Nemotron-3.5-Lightning: 6 attention layers of 52, declared as a
+			// A Nemotron-H layout with 6 attention layers, declared as a
 			// pattern string where * is attention, M a Mamba block and - an
-			// MLP.
+			// MLP. Nemotron-3.5-Lightning itself spells it layers_block_type
+			// (TestALayersBlockTypeListNamesTheAttentionLayers).
 			name: "a hybrid pattern names them by letter",
 			config: `{"model_type":"nemotron_h","num_hidden_layers":52,
 			          "hybrid_override_pattern":"M-M-M-*-M-M-M-*-M-M-M-*-M-M-M-*-M-M-M-*-M-M-M-*-M-M-M-M",
@@ -202,5 +203,41 @@ func TestAnAttentionIntervalWiderThanTheModelChargesEveryLayer(t *testing.T) {
 	}
 	if got, want := ReadModelFacts(dir).KVChargePerToken, int64(64*4*256*2*2*5); got != want {
 		t.Errorf("KVChargePerToken = %d, want %d — every layer, as for a configuration that declares no layout", got, want)
+	}
+}
+
+// Nemotron-3.5-Lightning spells its hybrid layout as layers_block_type — one
+// name per layer, 23 "mamba", 23 "moe" and 6 "attention" — which is what the
+// pinned mlx-lm reads (models/nemotron_h.py) when no hybrid_override_pattern
+// is given. Only the "attention" entries get a KVCache there; a "mamba" layer
+// gets a fixed-size state and a "moe" or "mlp" layer no cache at all. Reading
+// none of it charged all 52 layers, 266,240 bytes a token instead of 30,720
+// (iss-2610031010368266). The fixture is the published configuration, trimmed
+// to the fields this reads; its mtp_layers_block_type names the
+// multi-token-prediction layers, whose weights mlx-lm drops at load.
+func TestALayersBlockTypeListNamesTheAttentionLayers(t *testing.T) {
+	got := ReadModelFacts(filepath.Join("testdata", "nemotron-h"))
+	if want := int64(6 * 2 * 128 * 2 * 2 * 5); got.KVChargePerToken != want {
+		t.Errorf("KVChargePerToken = %d, want %d — the 6 attention layers of 52, not every layer",
+			got.KVChargePerToken, want)
+	}
+	if got.ContextLength != 262144 {
+		t.Errorf("ContextLength = %d, want 262144", got.ContextLength)
+	}
+}
+
+// mlx-lm reads layers_block_type only when hybrid_override_pattern is absent,
+// so a configuration carrying both is charged by the pattern.
+func TestAHybridPatternTakesPrecedenceOverALayersBlockTypeList(t *testing.T) {
+	dir := t.TempDir()
+	config := `{"model_type":"nemotron_h","num_hidden_layers":4,
+	            "hybrid_override_pattern":"M*M*",
+	            "layers_block_type":["mamba","attention","mamba","moe"],
+	            "num_key_value_heads":2,"head_dim":128}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ReadModelFacts(dir).KVChargePerToken, int64(2*2*128*2*2*5); got != want {
+		t.Errorf("KVChargePerToken = %d, want %d — the pattern's two attention layers", got, want)
 	}
 }

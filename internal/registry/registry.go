@@ -1125,9 +1125,10 @@ const MaxKVChargePerToken = 1 << 24
 // instead. Within a level:
 //
 //   - Only layers that keep a per-token cache are counted. A hybrid model
-//     declares which those are, in one of three spellings: layer_types (a list
+//     declares which those are, in one of four spellings: layer_types (a list
 //     naming each layer), hybrid_override_pattern (a letter per layer, "*" for
-//     attention), or full_attention_interval (every nth layer). A
+//     attention), layers_block_type (a list naming each layer, "attention"
+//     for attention), or full_attention_interval (every nth layer). A
 //     configuration with none of them is charged as though every layer
 //     attended over the whole prompt, which is the conservative floor: no
 //     model of a given depth costs more than that.
@@ -1195,7 +1196,7 @@ func kvShapeFrom(cfg map[string]any) capability.KVShape {
 
 // fullAttentionLayers is how many of a model's layers keep a per-token cache.
 // A configuration that declares no hybrid layout gets the whole depth, which
-// over-charges a hybrid model whose spelling is not one of these three and
+// over-charges a hybrid model whose spelling is not one of these four and
 // under-charges nothing.
 //
 // An interval wider than the model is deep is not a layout, it is a claim that
@@ -1205,17 +1206,18 @@ func kvShapeFrom(cfg map[string]any) capability.KVShape {
 // implausible interval takes the same floor a configuration that says
 // nothing takes.
 func fullAttentionLayers(level map[string]any, layers int64) int64 {
-	if types, ok := level["layer_types"].([]any); ok && len(types) > 0 {
-		var n int64
-		for _, t := range types {
-			if s, ok := t.(string); ok && s == "full_attention" {
-				n++
-			}
-		}
+	if n, ok := countLayersNamed(level, "layer_types", "full_attention"); ok {
 		return n
 	}
 	if pattern, ok := level["hybrid_override_pattern"].(string); ok && pattern != "" {
 		return int64(strings.Count(pattern, "*"))
+	}
+	// Read after the pattern because mlx-lm reads it only when the pattern
+	// is absent (models/nemotron_h.py), and only its "attention" entries get
+	// a KVCache there: a "mamba" layer keeps a fixed-size state per sequence,
+	// a "moe" or "mlp" layer nothing.
+	if n, ok := countLayersNamed(level, "layers_block_type", "attention"); ok {
+		return n
 	}
 	if interval, ok := configNumber(level, "full_attention_interval"); ok && interval <= layers {
 		// Rounded up: a depth that does not divide by the interval has a
@@ -1223,6 +1225,23 @@ func fullAttentionLayers(level map[string]any, layers int64) int64 {
 		return (layers + interval - 1) / interval
 	}
 	return layers
+}
+
+// countLayersNamed counts the entries of a per-layer list that name a
+// cache-bearing layer, and reports whether the list is present and non-empty;
+// an absent or empty list leaves the decision to the next spelling.
+func countLayersNamed(level map[string]any, key, name string) (int64, bool) {
+	types, ok := level[key].([]any)
+	if !ok || len(types) == 0 {
+		return 0, false
+	}
+	var n int64
+	for _, t := range types {
+		if s, ok := t.(string); ok && s == name {
+			n++
+		}
+	}
+	return n, true
 }
 
 // configNumber reads one positive whole number out of a configuration level.
