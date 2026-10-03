@@ -3,6 +3,7 @@ package bind
 import (
 	"net"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -188,6 +189,11 @@ func TestLoopbackIsAContentionPointAndADifferingBindIsNot(t *testing.T) {
 	if second, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p))); err == nil {
 		second.Close()
 		t.Error("a second listener took the address the first one holds — the singleton's whole signal is that this is refused, so an instance would no longer detect a peer")
+	}
+	if runtime.GOOS != "darwin" {
+		// The measurement is Darwin's: BSD SO_REUSEADDR admits the pair, and
+		// Linux refuses it whichever comes first. Dessau runs on a Mac.
+		t.Skip("the wildcard beside a loopback listener is a macOS measurement; Linux refuses the pair by design")
 	}
 	if second, err := net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(p))); err != nil {
 		t.Errorf("the wildcard was refused beside a loopback listener (%v) — the wildcard bind acquires both, so this would stop the default install from starting", err)
