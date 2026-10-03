@@ -101,3 +101,17 @@ func TestResetAndEvictionReturnTheirBytes(t *testing.T) {
 		t.Errorf("a turn appended to a conversation the store let go was counted: %d", got)
 	}
 }
+
+// A conversation held to its turn count gives back the bytes of the turns
+// the count drops: otherwise the store's total runs ahead of what it holds
+// and the budget empties every channel on each append.
+func TestTheTurnCountGivesItsBytesBack(t *testing.T) {
+	c := newConversations()
+	conv := c.get("channel-0")
+	for i := range maxTurns * 3 {
+		conv.append(turn{Role: roleUser, Content: strconv.Itoa(i)})
+	}
+	if got, want := c.bytes(), c.counted(); got != want {
+		t.Errorf("after the turn count dropped turns the store counts %d bytes and holds %d", got, want)
+	}
+}

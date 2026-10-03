@@ -68,7 +68,8 @@ type conversation struct {
 
 	// store is the set this conversation's bytes are counted in; nil for a
 	// conversation built on its own, and cleared when the store lets it go.
-	// Read and written under the store's lock.
+	// Written only under both the store's lock and mu, so it may be read
+	// under either; once nil it never becomes non-nil again.
 	store *conversations
 
 	mu    sync.Mutex

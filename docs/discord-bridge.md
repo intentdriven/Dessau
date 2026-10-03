@@ -101,12 +101,12 @@ field.
   pretend otherwise.
 - A conversation is kept to the most recent turns that fit the model's served
   window; older turns drop off rather than the request being refused.
-- The bridge holds a limited number of conversations and answers a small number
-  of requests at once. It keeps up to 64 conversations of 32 turns, a turn up
-  to 16 KiB — every message Discord delivers fits whole — and 8 MiB of
+- The bridge holds a limited number of conversations and answers a small
+  number of requests at once. It keeps up to 64 conversations of 32 turns, a
+  turn up to 16 KiB — every message Discord delivers fits whole — and 8 MiB of
   conversation text in all; past that the oldest turns go first, whichever
-  channel holds them, and the channel keeps its `/model` choice. A very busy channel has messages dropped rather than
-  queued, and the log says so.
+  channel holds them, and the channel keeps its `/model` choice. A very busy
+  channel has messages dropped rather than queued, and the log says so.
 - If Dessau cannot serve a request, the bot says so in one short sentence:
   that it cannot serve the model right now, or that the conversation is too
   long for it. The detailed reason — which model, how much memory, what to
