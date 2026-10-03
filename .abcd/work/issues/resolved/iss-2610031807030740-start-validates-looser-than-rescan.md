@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/app/fsutil.go"
 remedy: "Decide staleness with the rescan's own check (inspectModelDir), or make validateModelDir refuse what inspectModelDir refuses."
+resolution: "Staleness is decided with registry.ModelDirComplete, the rescan's inspectModelDir verdict (maintainer's decision 2026-10-03: one check, not two)."
+impact: fix
+resolved_by:
+  commit: "20642163dc6f9a304a665ab92e5ae61c45cc6c08"
 ---
 
 The start decides an aside is stale when its model's folder passes validateModelDir, which is looser than the registry's inspectModelDir (that also refuses a .dessau-part file and weights through links): a model folder the rescan would refuse could make the start remove its aside copy. Practically unreachable — a staged copy is complete before the swap — but the two checks differ.
