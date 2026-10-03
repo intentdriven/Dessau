@@ -99,6 +99,60 @@ func realStagingDirs(root *os.Root, repoID string) error {
 	return nil
 }
 
+// stagingOrg is repoID's org folder in the staging folder, opened as a root
+// once it is checked to be a real directory. Every removal under it goes
+// through this root, which holds the directory itself rather than its name:
+// a link planted at the name afterwards — even one that stays inside the
+// models folder, which the models root would follow — is never what a
+// removal reaches (iss-2610031324593822).
+type stagingOrg struct {
+	*os.Root
+	rel string
+	fi  fs.FileInfo
+}
+
+// openStagingOrg opens repoID's org folder in the staging folder, refusing
+// unless what it opened is the real directory the name held when it was
+// checked. It makes nothing: realStagingDirs does that first, where it is
+// wanted.
+func openStagingOrg(root *os.Root, repoID string) (*stagingOrg, error) {
+	org, _, _ := strings.Cut(repoID, "/")
+	rel := filepath.Join(stagingDirName, org)
+	fi, err := root.Lstat(rel)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory in the staging folder", rel)
+	}
+	r, err := root.OpenRoot(rel)
+	if err != nil {
+		return nil, err
+	}
+	if got, err := r.Stat("."); err != nil || !os.SameFile(fi, got) {
+		r.Close()
+		return nil, fmt.Errorf("%s changed while it was opened", rel)
+	}
+	return &stagingOrg{Root: r, rel: rel, fi: fi}, nil
+}
+
+// still refuses unless the name the staging org folder was opened at is
+// still that folder. A rename names both of its ends from the models root,
+// so it is asked just before each one. That narrows the window rather than
+// closing it, and a rename needs no more: one that a link planted in the gap
+// misdirects removes nothing — it moves a folder within the models folder —
+// and the failed swap's put-back undoes what it can.
+func (s *stagingOrg) still(root *os.Root) error {
+	fi, err := root.Lstat(s.rel)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() || !os.SameFile(fi, s.fi) {
+		return fmt.Errorf("%s was replaced during the update", s.rel)
+	}
+	return nil
+}
+
 // realModelOrg refuses unless repoID's org folder in the models folder is a
 // real directory: a swap renames the model's folder within it.
 func realModelOrg(root *os.Root, repoID string) error {
@@ -172,11 +226,17 @@ func (a *App) stagedDownload(ctx context.Context, repoID, commit string, prior r
 	if err := realStagingDirs(root, repoID); err != nil {
 		return stagedVersion{}, err
 	}
-	if err := root.RemoveAll(stagingRel(repoID)); err != nil {
+	sorg, err := openStagingOrg(root, repoID)
+	if err != nil {
+		return stagedVersion{}, err
+	}
+	defer sorg.Close()
+	_, name, _ := strings.Cut(repoID, "/")
+	if err := sorg.RemoveAll(name); err != nil {
 		return stagedVersion{}, fmt.Errorf("clear the staging folder: %w", err)
 	}
 	fail := func(err error) (stagedVersion, error) {
-		if rerr := root.RemoveAll(stagingRel(repoID)); rerr != nil {
+		if rerr := sorg.RemoveAll(name); rerr != nil {
 			a.Log.Warn("could not remove a staged version", "model", repoID, "err", rerr)
 		}
 		return stagedVersion{}, err
@@ -236,7 +296,7 @@ func (a *App) stagedDownload(ctx context.Context, repoID, commit string, prior r
 	// moment their record can be written.
 	out := stagedVersion{snap: snap, bytes: a.measureDir(staging), facts: registry.ReadModelFacts(staging)}
 	out.pipelineTag, out.tags, out.answered = a.repoCategory(ctx, repoID)
-	aside, err := a.swapIn(ctx, root, repoID)
+	aside, err := a.swapIn(ctx, root, sorg, repoID)
 	if err != nil {
 		return fail(err)
 	}
@@ -291,7 +351,7 @@ func (a *App) linkUnchanged(root *os.Root, repoID string, prior registry.Model, 
 // staged one moved in and checked once more. A failure at any point puts the
 // old directory back and lifts the mark; on success the mark stays for the
 // caller to lift with the new record.
-func (a *App) swapIn(ctx context.Context, root *os.Root, repoID string) (aside string, err error) {
+func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoID string) (aside string, err error) {
 	a.dlMu.Lock()
 	a.swapping[dlKey(repoID)] = true
 	a.dlMu.Unlock()
@@ -330,13 +390,19 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, repoID string) (aside s
 		// The model's folder is not there to move aside. If an earlier swap
 		// left the only copy aside, it goes back rather than being cleared
 		// to make way: an update never removes the last copy of a model.
-		if left, ok := asideLeft(root, repoID); ok {
+		if left, ok := asideLeft(sorg, repoID); ok {
+			if err := sorg.still(root); err != nil {
+				return "", err
+			}
 			if rerr := root.Rename(left, dest); rerr != nil {
 				return "", fmt.Errorf("the model's folder is missing and the copy left aside could not be put back: %w", rerr)
 			}
 			return "", errors.New("the model's folder was missing; the copy an earlier update left aside is back in place, and this update is abandoned")
 		}
 		return "", fmt.Errorf("the model's folder is missing: %w", err)
+	}
+	if err := sorg.still(root); err != nil {
+		return "", err
 	}
 	if err := root.Rename(dest, aside); err != nil {
 		return "", fmt.Errorf("move the old version aside: %w", err)
@@ -346,6 +412,10 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, repoID string) (aside s
 			a.Log.Error("could not put the old version back after a failed swap; it is put back at the next start",
 				"model", repoID, "err", rerr)
 		}
+	}
+	if err := sorg.still(root); err != nil {
+		putBack()
+		return "", err
 	}
 	if err := root.Rename(staging, dest); err != nil {
 		putBack()
@@ -371,10 +441,11 @@ func (a *App) endSwap(repoID string) {
 	delete(a.swapping, dlKey(repoID))
 }
 
-// asideLeft finds a copy of repoID an earlier swap left aside, if one is.
-func asideLeft(root *os.Root, repoID string) (string, bool) {
+// asideLeft finds a copy of repoID an earlier swap left aside, if one is,
+// and names it from the models root.
+func asideLeft(sorg *stagingOrg, repoID string) (string, bool) {
 	org, name, _ := strings.Cut(repoID, "/")
-	entries, err := readDirIn(root, filepath.Join(stagingDirName, org))
+	entries, err := readDirIn(sorg.Root, ".")
 	if err != nil {
 		return "", false
 	}
@@ -394,11 +465,19 @@ func (a *App) removeAside(repoID, aside string) {
 	if aside == "" {
 		return
 	}
-	root, err := a.modelsRoot()
-	if err == nil {
-		err = root.RemoveAll(aside)
-		root.Close()
-	}
+	err := func() error {
+		root, err := a.modelsRoot()
+		if err != nil {
+			return err
+		}
+		defer root.Close()
+		sorg, err := openStagingOrg(root, repoID)
+		if err != nil {
+			return err
+		}
+		defer sorg.Close()
+		return sorg.RemoveAll(filepath.Base(aside))
+	}()
 	if err != nil {
 		a.Log.Warn("could not remove the old version after an update", "model", repoID, "err", err)
 	}

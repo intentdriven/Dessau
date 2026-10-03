@@ -72,6 +72,14 @@ GitHub release notes.
 
 ### Fixed
 
+- **A link re-planted in the staging folder during an update no longer
+  reaches the served model.** `impact: fix`. A program running under the
+  same account that replaced the staging folder's org folder with a link to
+  the model's own org folder, while a new version downloaded, made the failed
+  update's clean-up remove the served model's whole folder. Every removal
+  under the staging folder now goes through the folder Dessau checked and
+  opened, not through its name, and each swap rename first checks that the
+  name still holds that folder (iss-2610031324593822).
 - **The panel's memory line says what is reserved, in the units it
   measures.** `impact: fix`. The line at the head of **My Models** called the
   sum of each loaded model's charge "resident", and the default window is
