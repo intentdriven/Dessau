@@ -11,6 +11,26 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A reply to a request that names no maximum is no longer cut off at 512
+  tokens.** `impact: fix`. The model server answers a request with no
+  `max_tokens` (or `max_completion_tokens`) at the length it was started
+  with, and Dessau started it with none, so it used its own 512: Alice asked
+  for a long answer and got the first 512 tokens of it. With **Maximum
+  completion tokens** blank, each model now starts with the window it is
+  served at as that length — `served_context` in the models list, at most
+  1048576 — and the panel's placeholder and the sampling reference say so. A
+  figure of the operator's still wins, and a request's own `max_tokens` still
+  wins over both; nothing is added to a request on its way to the model. Two
+  things stay true and are documented: the model server does not take the
+  prompt off that length, so a long prompt with no maximum can use more
+  memory than its window is charged for; and the length is fixed when the
+  model starts, so a default window that moves with the budget or the
+  batched requests reaches it at the model's next load. A model whose
+  configuration declares no window keeps the model server's 512
+  (iss-2610030652514762).
+
 ## [0.9.3] - 2026-09-21
 
 ### Added

@@ -31,7 +31,9 @@ type Spec struct {
 	// Sampling is the set of sampling defaults this server starts with. The
 	// server applies them to any request that omits the parameter, and a
 	// request's own value replaces them for that request alone — which is why
-	// they belong on the command line rather than in the relayed body.
+	// they belong on the command line rather than in the relayed body. The
+	// pool builds it with launchSampling, so a completion budget it holds may
+	// be the model's served window rather than a figure of the operator's.
 	Sampling config.Sampling
 	// DebugLog says this one launch runs at the model server's debug level, at
 	// which it writes every request body and every response to its log —
@@ -106,6 +108,40 @@ func samplingArgs(s config.Sampling) []string {
 		args = append(args, flag, formatSamplingValue(v))
 	}
 	return args
+}
+
+// launchSampling is the sampling a model's server is launched with: the
+// operator's set, and — where that set holds no completion-token budget the
+// server would accept — the model's served window as the budget, held to
+// config.MaxCompletionTokens.
+//
+// The pinned server answers a request that omits max_tokens (and
+// max_completion_tokens) with its launch value, and with no flag that is 512:
+// every reply to such a request was cut off at 512 tokens whatever the window
+// (iss-2610030652514762). The window is the pool's resolved figure
+// (ResolvedModel.ServedContext, which App.ServedWindow answers), never a
+// second derivation; zero or less means the window is not known, and then
+// nothing is filled in and the server keeps its own 512, as before.
+//
+// Two costs are accepted rather than solved (.abcd/work/DECISIONS.md,
+// 2026-10-03). The server does not take the prompt off this budget, so one
+// request can grow its cache past the window the memory budget charges for.
+// And the flag is fixed at launch: a derived window that moves with the
+// budget or the batched requests reaches the server only when the model next
+// loads. The request is never touched — the gateway relays what the client
+// sent, and a client's own budget still replaces this one for that request.
+//
+// An out-of-range default of the operator's counts as none: samplingArgs
+// drops it, so the server would otherwise fall back to the 512 this exists to
+// replace. The operator's set is copied, never written into.
+func launchSampling(s config.Sampling, servedWindow int64) config.Sampling {
+	out := s.Clone()
+	if sane, _ := s.Sanitized(); sane.MaxTokens != nil || servedWindow <= 0 {
+		return out
+	}
+	n := int(min(servedWindow, int64(config.MaxCompletionTokens)))
+	out.MaxTokens = &n
+	return out
 }
 
 // formatSamplingValue renders one value for the command line.

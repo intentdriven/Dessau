@@ -75,10 +75,11 @@ func TestGoRangesAreExactlyThese(t *testing.T) {
 		// The request check takes any non-negative budget. A default above any
 		// real context window means "generate until the model stops" on every
 		// request that omits the parameter, and it is also the value that put
-		// an integer conversion out of range.
+		// an integer conversion out of range. A blank budget is not the
+		// server's 512: the model is launched with its served window instead.
 		{
 			Field: "max_tokens", Min: 0, Max: MaxCompletionTokens, HasMax: true, Integer: true,
-			ServerDefault: 512,
+			ServerDefault: 512, BlankMeans: BlankMaxTokens,
 		},
 	}
 	if got := SamplingBounds(); !reflect.DeepEqual(got, want) {
