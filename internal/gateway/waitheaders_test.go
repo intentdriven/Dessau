@@ -212,7 +212,7 @@ func TestARequestThatReallyWaitedSaysSoOnTheWire(t *testing.T) {
 	}
 	// 200 bytes is charged 240, so a 250-byte budget holds exactly one.
 	for _, id := range []string{"org/warm", "org/wanted"} {
-		if err := reg.Put(registry.Model{
+		if err := reg.Put(registry.Model{ChatTemplate: true,
 			RepoID: id, Path: paths.ModelDir(id), Bytes: 200,
 			State: registry.StateReady, Progress: 100,
 		}); err != nil {

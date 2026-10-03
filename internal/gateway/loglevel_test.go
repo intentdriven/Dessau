@@ -51,7 +51,7 @@ func launchFailureLogAt(t *testing.T, level slog.Level) string {
 	lv := new(slog.LevelVar)
 	lv.Set(level)
 
-	models := &stubModels{models: []registry.Model{{RepoID: "org/m", State: registry.StateReady}}}
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true, RepoID: "org/m", State: registry.StateReady}}}
 	leaky := fmt.Errorf("python runtime is not installed (/Users/carol/Library/Application Support/Dessau/venv/bin/python): file does not exist")
 	pool := &stubPool{srv: fake, acquireErr: fmt.Errorf("start model server for org/m: %w", &runtime.LaunchError{Err: leaky})}
 	g := New(Options{
@@ -125,7 +125,7 @@ func refusalLogFile(t *testing.T, level slog.Level, err error) (string, *http.Re
 	cfg := config.Default()
 	cfg.HFToken = hfTokenMarker
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm"},
+		{ChatTemplate: true, RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm"},
 	}}
 	h := New(Options{
 		Config: cfg,

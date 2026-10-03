@@ -52,10 +52,12 @@ model and is exempt from the rule: it is offered whenever the Mac can run it.
 
 ## What the rule does and does not do
 
-- **It filters nothing.** Every model stays callable over the API by the name it
-  is listed under, whatever the rule says of it. The rule decides one field on
-  the models list, `chat`, which a client is free to act on or ignore. See
-  [the models list reference](models-list.md).
+- **It decides what a chat request may start.** The rule decides one field on
+  the models list, `chat`. A chat request (`/v1/chat/completions`, or a
+  conversation through the Discord bridge) naming a model with `"chat": false`
+  is refused with `400` before anything is loaded, and the control panel shows
+  no **Load** for it. `/v1/completions` still serves every model by the name it
+  is listed under. See [the models list reference](models-list.md).
 - **The words are HuggingFace's.** Dessau invents no categories: it republishes
   the repository's pipeline tag and tags as they are written on the Hub, and the
   search tab shows each result's pipeline tag — or "no tag" — before you
