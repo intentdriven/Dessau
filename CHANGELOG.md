@@ -11,6 +11,17 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **A program can ask Dessau to unload a model it has finished with.**
+  `impact: additive`. `POST /v1/dessau/unload` with `{"model": "<id>"}`
+  unloads a loaded model that is not pinned, not in use or loading, and not
+  inside its eviction grace, for a program on this Mac, a key holder or a
+  paired client; everything else is refused at once, and a caller the
+  server does not trust learns nothing about what is loaded. Nothing under
+  `/v1` deletes a model ([reference](docs/unload-reference.md);
+  itd-2610031024247803, adr-2610031153127219).
+
 ### Fixed
 
 - **A hybrid model that lists its layer kinds by name now leaves room for
