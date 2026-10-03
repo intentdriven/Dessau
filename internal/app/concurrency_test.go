@@ -47,7 +47,7 @@ func manyFileHub(t *testing.T, files int) *httptest.Server {
 			_, _ = w.Write(make([]byte, 64))
 		}
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	t.Cleanup(srv.Close)
 	return srv
 }

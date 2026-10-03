@@ -46,14 +46,14 @@ func TestCancelledDownloadReturnsError(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(80 * time.Millisecond); cancel() }()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(ctx, DownloadRequest{RepoID: "org/repo", Dest: t.TempDir()})
+	_, err := c.Download(ctx, DownloadRequest{RepoID: "org/repo", Dest: t.TempDir()})
 	if err == nil {
 		t.Fatal("a cancelled (incomplete) download returned nil — it would be marked ready")
 	}

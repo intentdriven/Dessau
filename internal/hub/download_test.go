@@ -35,7 +35,7 @@ func TestDownloadVerifiesLFSContentHash(t *testing.T) {
 	fh.lfs = map[string]string{"model.safetensors": sha256Hex(repo["model.safetensors"])}
 	dest := t.TempDir()
 	c := &Client{BaseURL: fh.server(t).URL, HTTP: &http.Client{}}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatalf("Download with a correct LFS hash failed: %v", err)
 	}
 
@@ -44,7 +44,7 @@ func TestDownloadVerifiesLFSContentHash(t *testing.T) {
 	fh2.lfs = map[string]string{"model.safetensors": strings.Repeat("0", 64)}
 	dest2 := t.TempDir()
 	c2 := &Client{BaseURL: fh2.server(t).URL, HTTP: &http.Client{}}
-	err := c2.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest2})
+	_, err := c2.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest2})
 	if err == nil {
 		t.Fatal("Download accepted a file whose content did not match the advertised sha256")
 	}
@@ -68,7 +68,7 @@ func TestDownloadRestartsOnWrongContentRange(t *testing.T) {
 	}
 
 	c := &Client{BaseURL: fh.server(t).URL, HTTP: &http.Client{}}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(dest, "model.safetensors"))
@@ -91,7 +91,7 @@ func TestDownloadRejectsEmptyUnknownSizeFile(t *testing.T) {
 	})
 	dest := t.TempDir()
 	c := &Client{BaseURL: fh.server(t).URL, HTTP: &http.Client{}}
-	err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
+	_, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
 	if err == nil {
 		t.Fatal("an empty size-unknown file was accepted as a complete download")
 	}
@@ -141,7 +141,7 @@ func TestDownloadWritesAllFiles(t *testing.T) {
 	dest := t.TempDir()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{
+	_, err := c.Download(context.Background(), DownloadRequest{
 		RepoID: "org/repo", Dest: dest,
 	})
 	if err != nil {
@@ -167,7 +167,7 @@ func TestDownloadLeavesNoPartFilesOnSuccess(t *testing.T) {
 	dest := t.TempDir()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -196,7 +196,7 @@ func TestDownloadResumesFromPartialFile(t *testing.T) {
 	}
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 
@@ -229,7 +229,7 @@ func TestDownloadHandlesServerIgnoringRange(t *testing.T) {
 	}
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 
@@ -249,13 +249,13 @@ func TestDownloadSkipsAlreadyCompleteFiles(t *testing.T) {
 	dest := t.TempDir()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatal(err)
 	}
 	before := fh.hitsFor("model.safetensors")
 
 	// Second run over a complete directory must not refetch anything.
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatal(err)
 	}
 	if after := fh.hitsFor("model.safetensors"); after != before {
@@ -274,7 +274,7 @@ func TestDownloadFailsCleanlyOn416WithoutResumeOffset(t *testing.T) {
 	dest := t.TempDir()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
+	_, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
 	if err == nil {
 		t.Fatal("Download succeeded against a server that 416s every request")
 	}
@@ -297,7 +297,7 @@ func TestDownloadRefetchesTruncatedFile(t *testing.T) {
 	}
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 
@@ -319,7 +319,7 @@ func TestDownloadReportsProgressReachingOneHundredPercent(t *testing.T) {
 	var last Progress
 	var sawRepo string
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{
+	_, err := c.Download(context.Background(), DownloadRequest{
 		RepoID: "org/repo", Dest: dest,
 		OnProgress: func(p Progress) {
 			mu.Lock()
@@ -366,7 +366,7 @@ func TestProgressAccountsForPreexistingBytes(t *testing.T) {
 	var mu sync.Mutex
 	var maxCompleted int64
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{
+	_, err := c.Download(context.Background(), DownloadRequest{
 		RepoID: "org/repo", Dest: dest,
 		OnProgress: func(p Progress) {
 			mu.Lock()
@@ -417,7 +417,7 @@ func TestProgressReaches100WithWrongFinalBesidePart(t *testing.T) {
 	var mu sync.Mutex
 	var maxCompleted int64
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{
+	_, err := c.Download(context.Background(), DownloadRequest{
 		RepoID: "org/repo", Dest: dest,
 		OnProgress: func(p Progress) {
 			mu.Lock()
@@ -457,7 +457,7 @@ func TestProgressCallbackIsNeverCalledConcurrently(t *testing.T) {
 	var inCallback int32
 	var updates int // deliberately unguarded: -race proves serialization
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{
+	_, err := c.Download(context.Background(), DownloadRequest{
 		RepoID: "org/repo", Dest: t.TempDir(), Concurrency: 8,
 		OnProgress: func(p Progress) {
 			if !atomic.CompareAndSwapInt32(&inCallback, 0, 1) {
@@ -484,7 +484,7 @@ func TestDownloadRejectsRepoWithoutSafetensors(t *testing.T) {
 	srv := fh.server(t)
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: t.TempDir()})
+	_, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: t.TempDir()})
 	if err == nil {
 		t.Fatal("expected an error for a repo with no MLX weights")
 	}
@@ -501,7 +501,7 @@ func TestDownloadCancellation(t *testing.T) {
 	cancel() // cancelled before we start
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(ctx, DownloadRequest{RepoID: "org/repo", Dest: t.TempDir()})
+	_, err := c.Download(ctx, DownloadRequest{RepoID: "org/repo", Dest: t.TempDir()})
 	if err == nil {
 		t.Fatal("expected an error when the context is already cancelled")
 	}
@@ -509,10 +509,10 @@ func TestDownloadCancellation(t *testing.T) {
 
 func TestDownloadValidatesRequest(t *testing.T) {
 	c := New()
-	if err := c.Download(context.Background(), DownloadRequest{Dest: "/tmp"}); err == nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{Dest: "/tmp"}); err == nil {
 		t.Error("expected error when RepoID is empty")
 	}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo"}); err == nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo"}); err == nil {
 		t.Error("expected error when Dest is empty")
 	}
 }
@@ -527,7 +527,7 @@ func TestDownloadCreatesNestedDirectories(t *testing.T) {
 	dest := t.TempDir()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "subdir", "extra_file.json")); err != nil {
@@ -554,7 +554,7 @@ func TestDownloadWidensNothingUnderASetgidModelsDir(t *testing.T) {
 	dest := filepath.Join(models, "org", "repo")
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", ModelsDir: models, Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", ModelsDir: models, Dest: dest}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 	for _, d := range []string{
@@ -583,7 +583,7 @@ func TestDownloadKeepsPerUserDirsPrivate(t *testing.T) {
 	dest := filepath.Join(models, "org", "repo")
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", ModelsDir: models, Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", ModelsDir: models, Dest: dest}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 	for _, d := range []string{filepath.Join(models, "org"), dest} {
@@ -653,12 +653,12 @@ func TestDownloadFollowsTheHubsRedirectToItsContentCDN(t *testing.T) {
 		}
 		w.Write(body)
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	defer srv.Close()
 
 	dest := t.TempDir()
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatalf("Download refused the Hub's own redirect to its content CDN: %v", err)
 	}
 	if atomic.LoadInt32(&cdnHits) != 1 {
@@ -699,12 +699,12 @@ func TestDownloadRefusesABodyLongerThanTheHubDeclared(t *testing.T) {
 			}
 		}
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	defer srv.Close()
 
 	dest := t.TempDir()
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
+	_, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
 	if err == nil {
 		t.Fatal("a body far longer than the declared size was accepted")
 	}
@@ -744,12 +744,12 @@ func TestDownloadRefusesABodyShorterThanTheHubDeclared(t *testing.T) {
 		w.Write(weights(declared / 2))
 		w.(http.Flusher).Flush()
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	defer srv.Close()
 
 	dest := t.TempDir()
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
+	_, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
 	if err == nil {
 		t.Fatal("a body shorter than the declared size was accepted")
 	}
@@ -777,7 +777,7 @@ func TestAResumedDownloadIsBoundedByWhatIsOutstanding(t *testing.T) {
 	}
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(dest, "model.safetensors"))
