@@ -14,6 +14,7 @@
 package stats
 
 import (
+	"slices"
 	"sync"
 	"time"
 )
@@ -109,7 +110,7 @@ func (s Source) valid() bool {
 }
 
 // Reasons an entry left the pool. Only ReasonEvicted is an eviction; the pool
-// removes a model by seven paths and counting them as one would make the load
+// removes a model by eight paths and counting them as one would make the load
 // and eviction figures disagree with what actually happened.
 const (
 	ReasonEvicted    = "evicted"
@@ -119,7 +120,21 @@ const (
 	ReasonLoadFailed = "load_failed"
 	ReasonCrashed    = "crashed"
 	ReasonShutdown   = "shutdown"
+	// ReasonReleased is a model a program unloaded through the model API
+	// because it had finished with it; the removal says which kind of caller.
+	ReasonReleased = "released"
 )
+
+// The kinds of caller a release records: never the key, never the source tag.
+const (
+	CallerThisMac      = "this_mac"
+	CallerAPIKey       = "api_key"
+	CallerPairedClient = "paired_client"
+)
+
+// CallerKinds lists every kind of caller a release may record, so the
+// documentation's list of them is held to this one.
+func CallerKinds() []string { return []string{CallerThisMac, CallerAPIKey, CallerPairedClient} }
 
 // OutcomeClasses lists every way a request can be recorded as having ended, so
 // that the documentation's list of them is held to this one: a class added
@@ -137,7 +152,7 @@ func OutcomeClasses() []Class {
 func RemovalReasons() []string {
 	return []string{
 		ReasonEvicted, ReasonIdle, ReasonUnloaded, ReasonAbandoned,
-		ReasonLoadFailed, ReasonCrashed, ReasonShutdown,
+		ReasonLoadFailed, ReasonCrashed, ReasonShutdown, ReasonReleased,
 	}
 }
 
@@ -252,6 +267,10 @@ type Event struct {
 	// Reason is why the entry was removed, one of the reasons above; empty on
 	// a load.
 	Reason string `json:"reason,omitempty"`
+	// By is the kind of caller that released the model, one of the Caller
+	// kinds above; only on a release. It is a kind and never a name: which
+	// paired client asked is the log's to say, not the store's.
+	By string `json:"by,omitempty"`
 	// DurationMS is how long a load took; zero on a removal.
 	DurationMS int64 `json:"duration_ms,omitempty"`
 	// Failed reports a load that never became ready.
@@ -638,8 +657,23 @@ func (r *Recorder) loadFinishedLocked(model string, ev *Event) bool {
 // Removed notes that a model server left the pool, and why. Only
 // ReasonEvicted counts as an eviction.
 func (r *Recorder) Removed(model, reason string) {
-	ev := Event{At: r.now().UTC().Unix(), Model: model, Kind: EventRemoved, Reason: reason}
+	r.removed(Event{At: r.now().UTC().Unix(), Model: model, Kind: EventRemoved, Reason: reason})
+}
 
+// Released notes that a program unloaded a model through the model API, with
+// the kind of caller that asked.
+//
+// The kind is checked rather than trusted, as a source is: one this package
+// does not know is recorded as none.
+func (r *Recorder) Released(model, by string) {
+	if !slices.Contains(CallerKinds(), by) {
+		by = ""
+	}
+	r.removed(Event{At: r.now().UTC().Unix(), Model: model, Kind: EventRemoved, Reason: ReasonReleased, By: by})
+}
+
+func (r *Recorder) removed(ev Event) {
+	model, reason := ev.Model, ev.Reason
 	if !r.removedLocked(model, reason) {
 		return
 	}

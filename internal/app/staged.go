@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,8 +52,12 @@ var ErrNoSpace = errors.New("not enough free disk space for the new version besi
 func stagingRel(repoID string) string {
 	return filepath.Join(stagingDirName, filepath.FromSlash(repoID))
 }
-func asideRel(repoID string) string { return stagingRel(repoID) + asideSuffix }
-func destRel(repoID string) string  { return filepath.FromSlash(repoID) }
+
+// asideRel names where this attempt moves repoID's old version: one name per
+// attempt, so a later update's swap and an earlier one's clean-up never act on
+// the same folder.
+func asideRel(repoID, attempt string) string { return stagingRel(repoID) + asideSuffix + attempt }
+func destRel(repoID string) string           { return filepath.FromSlash(repoID) }
 
 func (a *App) stagingRoot() string { return filepath.Join(a.Paths.Models, stagingDirName) }
 
@@ -146,6 +151,9 @@ type stagedVersion struct {
 	pipelineTag string
 	tags        []string
 	answered    bool
+	// aside is where the swap moved the old version, for the caller to
+	// remove once the new record is published.
+	aside string
 }
 
 // stagedDownload fetches repoID at commit (the current one when empty) into
@@ -228,9 +236,11 @@ func (a *App) stagedDownload(ctx context.Context, repoID, commit string, prior r
 	// moment their record can be written.
 	out := stagedVersion{snap: snap, bytes: a.measureDir(staging), facts: registry.ReadModelFacts(staging)}
 	out.pipelineTag, out.tags, out.answered = a.repoCategory(ctx, repoID)
-	if err := a.swapIn(ctx, root, repoID); err != nil {
+	aside, err := a.swapIn(ctx, root, repoID)
+	if err != nil {
 		return fail(err)
 	}
+	out.aside = aside
 	return out, nil
 }
 
@@ -281,7 +291,7 @@ func (a *App) linkUnchanged(root *os.Root, repoID string, prior registry.Model, 
 // staged one moved in and checked once more. A failure at any point puts the
 // old directory back and lifts the mark; on success the mark stays for the
 // caller to lift with the new record.
-func (a *App) swapIn(ctx context.Context, root *os.Root, repoID string) (err error) {
+func (a *App) swapIn(ctx context.Context, root *os.Root, repoID string) (aside string, err error) {
 	a.dlMu.Lock()
 	a.swapping[dlKey(repoID)] = true
 	a.dlMu.Unlock()
@@ -298,39 +308,38 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, repoID string) (err err
 			break
 		}
 		if !errors.Is(err, runtime.ErrBusy) {
-			return fmt.Errorf("stop the old version: %w", err)
+			return "", fmt.Errorf("stop the old version: %w", err)
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("the old version was still answering requests after %v, so it keeps serving: %w", a.drainWait, err)
+			return "", fmt.Errorf("the old version was still answering requests after %v, so it keeps serving: %w", a.drainWait, err)
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return "", ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
 
 	if err := realModelOrg(root, repoID); err != nil {
-		return err
+		return "", err
 	}
-	dest, aside, staging := destRel(repoID), asideRel(repoID), stagingRel(repoID)
+	attempt := strconv.FormatInt(time.Now().UnixNano(), 36)
+	dest, staging := destRel(repoID), stagingRel(repoID)
+	aside = asideRel(repoID, attempt)
 	if _, err := root.Lstat(dest); err != nil {
 		// The model's folder is not there to move aside. If an earlier swap
 		// left the only copy aside, it goes back rather than being cleared
 		// to make way: an update never removes the last copy of a model.
-		if fi, aerr := root.Lstat(aside); aerr == nil && fi.IsDir() {
-			if rerr := root.Rename(aside, dest); rerr != nil {
-				return fmt.Errorf("the model's folder is missing and the copy left aside could not be put back: %w", rerr)
+		if left, ok := asideLeft(root, repoID); ok {
+			if rerr := root.Rename(left, dest); rerr != nil {
+				return "", fmt.Errorf("the model's folder is missing and the copy left aside could not be put back: %w", rerr)
 			}
-			return errors.New("the model's folder was missing; the copy an earlier update left aside is back in place, and this update is abandoned")
+			return "", errors.New("the model's folder was missing; the copy an earlier update left aside is back in place, and this update is abandoned")
 		}
-		return fmt.Errorf("the model's folder is missing: %w", err)
-	}
-	if err := root.RemoveAll(aside); err != nil {
-		return fmt.Errorf("clear the folder the old version moves to: %w", err)
+		return "", fmt.Errorf("the model's folder is missing: %w", err)
 	}
 	if err := root.Rename(dest, aside); err != nil {
-		return fmt.Errorf("move the old version aside: %w", err)
+		return "", fmt.Errorf("move the old version aside: %w", err)
 	}
 	putBack := func() {
 		if rerr := root.Rename(aside, dest); rerr != nil {
@@ -340,7 +349,7 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, repoID string) (err err
 	}
 	if err := root.Rename(staging, dest); err != nil {
 		putBack()
-		return fmt.Errorf("move the new version in: %w", err)
+		return "", fmt.Errorf("move the new version in: %w", err)
 	}
 	if err := validateModelDir(a.Paths.ModelDir(repoID)); err != nil {
 		// Not expected — the staged copy was checked — but a check that
@@ -350,9 +359,9 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, repoID string) (err err
 		} else {
 			putBack()
 		}
-		return fmt.Errorf("the new version did not check out in place: %w", err)
+		return "", fmt.Errorf("the new version did not check out in place: %w", err)
 	}
-	return nil
+	return aside, nil
 }
 
 // endSwap lifts the swapping mark.
@@ -362,13 +371,32 @@ func (a *App) endSwap(repoID string) {
 	delete(a.swapping, dlKey(repoID))
 }
 
-// removeAside removes the old version a finished swap left aside. Called
+// asideLeft finds a copy of repoID an earlier swap left aside, if one is.
+func asideLeft(root *os.Root, repoID string) (string, bool) {
+	org, name, _ := strings.Cut(repoID, "/")
+	entries, err := readDirIn(root, filepath.Join(stagingDirName, org))
+	if err != nil {
+		return "", false
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), name+asideSuffix) && e.IsDir() && e.Type()&fs.ModeSymlink == 0 {
+			return filepath.Join(stagingDirName, org, e.Name()), true
+		}
+	}
+	return "", false
+}
+
+// removeAside removes the old version this attempt's swap left aside. Called
 // after the mark is lifted, so loads are not refused for as long as the
-// removal takes.
-func (a *App) removeAside(repoID string) {
+// removal takes; the folder is this attempt's own, so a later update's swap
+// is never what it removes.
+func (a *App) removeAside(repoID, aside string) {
+	if aside == "" {
+		return
+	}
 	root, err := a.modelsRoot()
 	if err == nil {
-		err = root.RemoveAll(asideRel(repoID))
+		err = root.RemoveAll(aside)
 		root.Close()
 	}
 	if err != nil {
@@ -391,9 +419,12 @@ func (a *App) pruneUnlisted(repoID string, keep []string) {
 		return
 	}
 	defer root.Close()
+	// Compared case-folded: on the case-insensitive volume a Mac uses by
+	// default, a file the listing names in another case is that file, and
+	// removing it would remove what was just fetched.
 	wanted := make(map[string]bool, len(keep))
 	for _, p := range keep {
-		wanted[filepath.ToSlash(filepath.Clean(filepath.FromSlash(p)))] = true
+		wanted[strings.ToLower(filepath.ToSlash(filepath.Clean(filepath.FromSlash(p))))] = true
 	}
 	dir := filepath.ToSlash(destRel(repoID))
 	var stale []string
@@ -402,7 +433,7 @@ func (a *App) pruneUnlisted(repoID string, keep []string) {
 			return nil
 		}
 		rel := strings.TrimPrefix(p, dir+"/")
-		if !wanted[rel] {
+		if !wanted[strings.ToLower(rel)] {
 			stale = append(stale, p)
 		}
 		return nil
@@ -478,7 +509,7 @@ func putBackAside(root *os.Root, log interface{ Warn(string, ...any) }) {
 			continue
 		}
 		for _, e := range entries {
-			name, ok := strings.CutSuffix(e.Name(), asideSuffix)
+			name, _, ok := strings.Cut(e.Name(), asideSuffix)
 			repoID := org.Name() + "/" + name
 			if !ok || !config.ValidRepoID(repoID) {
 				continue

@@ -612,14 +612,20 @@ func TestTheNewRecordLandsBeforeLoadsResume(t *testing.T) {
 				return
 			default:
 			}
-			if !a.isSwapping("org/repo") {
-				m, _ := a.Registry.Get("org/repo")
-				b, _ := os.ReadFile(filepath.Join(a.Paths.ModelDir("org/repo"), "config.json"))
-				if strings.Contains(string(b), "40961") && m.Commit != commitV2 {
-					mu.Lock()
-					bad = append(bad, m.Commit)
-					mu.Unlock()
-				}
+			// In this order, and no other: the new files, then the mark, then
+			// the record. Files that are new mean the swap has begun; a mark
+			// lifted after that means it has finished, and the record is
+			// written in the same step that lifts the mark — so it must be
+			// new. Reading the mark first raced the observer against the swap
+			// itself and reported a swap that ran between its own reads.
+			b, _ := os.ReadFile(filepath.Join(a.Paths.ModelDir("org/repo"), "config.json"))
+			if !strings.Contains(string(b), "40961") || a.isSwapping("org/repo") {
+				continue
+			}
+			if m, _ := a.Registry.Get("org/repo"); m.Commit != commitV2 {
+				mu.Lock()
+				bad = append(bad, m.Commit)
+				mu.Unlock()
 			}
 		}
 	}()
@@ -632,5 +638,24 @@ func TestTheNewRecordLandsBeforeLoadsResume(t *testing.T) {
 	defer mu.Unlock()
 	if len(bad) > 0 {
 		t.Errorf("loads were admitted while the new files carried the old record (%d observations)", len(bad))
+	}
+}
+
+// The prune compares names case-folded: on the case-insensitive volume a Mac
+// uses by default, a file the listing names in another case is the file just
+// fetched, and removing it would leave the model without its weights
+// (re-review of step 3).
+func TestThePruneKeepsAFileTheListingNamesInAnotherCase(t *testing.T) {
+	a := newTestApp(t)
+	dir := a.Paths.ModelDir("org/repo")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte("w"), 0o644)
+	os.WriteFile(filepath.Join(dir, "stale.safetensors"), []byte("old"), 0o644)
+	a.pruneUnlisted("org/repo", []string{"Model.safetensors", "config.json"})
+	if _, err := os.Stat(filepath.Join(dir, "model.safetensors")); err != nil {
+		t.Error("a file the listing names in another case was removed")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "stale.safetensors")); err == nil {
+		t.Error("a file the listing does not name was kept")
 	}
 }

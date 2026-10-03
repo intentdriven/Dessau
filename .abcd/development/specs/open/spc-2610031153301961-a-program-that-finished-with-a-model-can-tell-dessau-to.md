@@ -41,9 +41,11 @@ unload route.
 1. The pool's checked unload and the route
    - packages: internal/runtime, internal/gateway
    - tests: an idle unpinned model is unloaded for a caller on this Mac; another device on a keyless network is refused and learns nothing; a key holder and a paired client may unload; a cross-site browser request is refused; pinned, busy, loading and in-grace models are refused at once; DELETE on /v1 changes nothing
+   - landed: #151
 2. The setting, statistics and docs
    - packages: internal/config, internal/gateway, internal/ui, internal/stats, docs
    - tests: the switch off refuses the route and leaves the panel's Unload working; the three surfaces agree and an absent key means on; the new stop reason and caller kind are recorded without the key; the docs page names both routes
+   - landed: #158
 
 ## Footprint
 

@@ -2159,8 +2159,21 @@ func (p *Pool) wakeDelayLocked(w *loadWaiter) time.Duration {
 // back until the process does. Until then the charge sits in the drain tally,
 // where every admission decision still counts it.
 func (p *Pool) stopEntryLocked(e *entry, reason StopReason) {
+	p.stopEntryByLocked(e, reason, nil)
+}
+
+// stopEntryByLocked is stopEntryLocked for a removal somebody asked for by
+// name: by, when set, goes to an observer that wants it. Callers must hold
+// p.mu.
+func (p *Pool) stopEntryByLocked(e *entry, reason StopReason, by *Caller) {
 	delete(p.entries, config.FoldRepoID(e.repoID))
-	p.notify(func(o PoolObserver) { o.EntryStopped(e.repoID, reason) })
+	p.notify(func(o PoolObserver) {
+		if ro, ok := o.(ReleaseObserver); ok && by != nil {
+			ro.EntryReleased(e.repoID, *by)
+			return
+		}
+		o.EntryStopped(e.repoID, reason)
+	})
 	proc := e.proc
 	if proc == nil {
 		// Nothing is holding the memory, so nothing has to be waited for.
@@ -2382,6 +2395,47 @@ func (p *Pool) Remove(repoID string) error {
 	delete(p.debugArmed, key)
 	return p.unloadLocked(repoID)
 }
+
+// Release unloads a model for a program that has finished with it
+// (adr-2610031153127219), and only a model nobody is relying on. It is
+// Unload with every protection the pool gives kept: a model that is not
+// loaded, is pinned, is answering a request or loading one — a preemptible
+// hold included, so idle work is never interrupted — or is inside its
+// eviction grace is refused at once, with nothing changed and nothing waited
+// for. The operator's Unload keeps its own rule.
+//
+// by is who asked, which the observer is told with the removal.
+func (p *Pool) Release(repoID string, by Caller) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	e, ok := p.entries[config.FoldRepoID(repoID)]
+	if !ok {
+		return fmt.Errorf("%s: %w", repoID, ErrNotLoaded)
+	}
+	if p.isPinnedLocked(e.repoID) {
+		return fmt.Errorf("%s is pinned: %w", repoID, ErrPinned)
+	}
+	select {
+	case <-e.ready:
+	default:
+		return fmt.Errorf("%s is still loading: %w", repoID, ErrLoading)
+	}
+	if e.inFlight > 0 {
+		return fmt.Errorf("%s is answering a request: %w", repoID, ErrBusy)
+	}
+	if !p.graceElapsedLocked(e, 0) {
+		return fmt.Errorf("%s is inside its eviction grace: %w", repoID, ErrInGrace)
+	}
+	p.stopEntryByLocked(e, StopReleased, &by)
+	return nil
+}
+
+// The refusals Release adds to Unload's.
+var (
+	ErrPinned  = errors.New("the model is pinned")
+	ErrLoading = errors.New("the model is still loading")
+	ErrInGrace = errors.New("the model is inside its eviction grace")
+)
 
 // unloadLocked is Unload's body. Callers must hold p.mu.
 func (p *Pool) unloadLocked(repoID string) error {

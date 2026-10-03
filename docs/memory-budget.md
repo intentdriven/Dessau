@@ -73,9 +73,16 @@ taken away at the moment you press Save.
 
 The line at the head of the **My Models** tab is the roll-up: how many models
 are downloaded and how many are loaded, how much disk the downloaded ones
-take and how much the models volume has left, and the memory budget against
-what is resident — naming the part still exiting, which is memory a stopped
-server has not handed back yet and which a load is still measured against.
+take and how much the models volume has left, and how much of the memory
+budget is reserved and by how many models in memory, for example
+`memory budget: 76.8 GiB of 76.8 GiB reserved by 2 models in memory (weights
+17.6 GiB)`. A reservation is what a load is charged — the weights with an
+allowance, plus the cache for the whole window the model is served at and
+every request it batches — not what the model is using at the moment. The
+default window is worked out to fill the budget, so one model can reserve all
+of it while its weights are a fraction. The line names the part still exiting,
+which is memory a stopped server has not handed back yet and which a load is
+still measured against. Sizes are in binary units: a GiB is 1,024 MiB.
 Every figure is one Dessau already has; nothing is walked or measured to
 draw it. Each model's card says the window it declares and, when the window it
 is served at is below it, that one too — with a note when it is the default
