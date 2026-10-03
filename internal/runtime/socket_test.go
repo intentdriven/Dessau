@@ -160,6 +160,30 @@ func TestLaunchRefusesASocketOutsideAPrivateDirectory(t *testing.T) {
 	}
 }
 
+// Something under the socket's name that is not a socket is not the
+// launcher's to clear: Launch refuses before any process exists and leaves
+// the file as it was, rather than removing whatever it finds there.
+func TestLaunchRefusesAFileInTheSocketsPlace(t *testing.T) {
+	sock := privateSocket(t)
+	if err := os.WriteFile(sock, []byte("not a socket"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l := stubbedLauncher(t, `echo started > "$0.ran"; exit 0`)
+	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: plainModelDir(t), Socket: sock})
+	if p != nil {
+		<-p.Done()
+	}
+	if err == nil {
+		t.Error("Launch started a model server with a file in its socket's place")
+	}
+	if b, err := os.ReadFile(sock); err != nil || string(b) != "not a socket" {
+		t.Errorf("the file in the socket's place was not left as it was: %q, %v", b, err)
+	}
+	if _, err := os.Stat(l.Paths.VenvPython() + ".ran"); err == nil {
+		t.Error("the interpreter ran for a refused launch")
+	}
+}
+
 // A socket left under the name by a run that ended without removing it is
 // cleared before the launch, and the launch's own socket is removed once the
 // process has gone, so neither the next launch nor anything reading the
