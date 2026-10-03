@@ -3,7 +3,8 @@ name: ci
 # Lightweight gates on every push and pull request: format + build + vet + test
 # on macOS, which is where Dessau runs and the only place its behaviour is
 # verified; vet + test on Linux, which only keeps the server code building there
-# (with stand-ins for the macOS-only parts) so an implementation session in a
+# (with Linux counterparts for the macOS-only parts: real readings, or an
+# explicit "not supported" error, never a faked answer) so a session in a
 # Linux container can check its own work; plus full-history secret scanning and
 # a workflow self-audit.
 on:
@@ -133,8 +134,18 @@ jobs:
       - name: Vet (release configuration)
         run: go vet -tags prod ./...
 
+      # The statistics store refuses a directory with an ancestor other
+      # accounts can write, and /tmp, where t.TempDir() lands on Linux, is
+      # 1777; a Mac's per-account temporary directory is not. So the tests get
+      # a temporary directory of their own under the runner's, and a umask
+      # that leaves the directories t.TempDir() makes unwritable by others.
       - name: Test
-        run: go test ./...
+        run: |
+          set -euo pipefail
+          umask 022
+          export TMPDIR="$RUNNER_TEMP/gotmp"
+          mkdir -m 0700 "$TMPDIR"
+          go test ./...
 
   # Secrets never land in history: the whole history OF THE REF UNDER TEST is
   # scanned on every push/PR. Run as a pinned, checksum-verified CLI (not the

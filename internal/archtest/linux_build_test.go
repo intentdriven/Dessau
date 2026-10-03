@@ -14,12 +14,12 @@ import (
 // module rather than a hand-picked part of it.
 func TestCIVetsAndTestsTheModuleOnLinux(t *testing.T) {
 	root := repoRootDir(t)
-	if label := workflowRunners(t, root)["ci.yml:linux"]; !strings.HasPrefix(label, "ubuntu-") {
-		t.Fatalf("ci.yml's linux job runs on %q, want an ubuntu runner: it is the only thing that compiles the module for Linux", label)
+	if label := workflowRunners(t, root)["ci.yml:linux"]; !nonMacOSRunners[label] || !strings.HasPrefix(label, "ubuntu-") {
+		t.Fatalf("ci.yml's linux job runs on %q, want an ubuntu runner TestEveryMacOSRunnerIsAtOrAboveTheFloor knows: it is the only thing that compiles the module for Linux", label)
 	}
 	job := withoutComments(workflowJob(t, readRepoFile(t, root, filepath.Join(".github", "workflows", "ci.yml")), "linux"))
 	for _, step := range []string{"go vet ./...", "go vet -tags prod ./...", "go test ./..."} {
-		if !strings.Contains(job, "run: "+step+"\n") {
+		if !strings.Contains(job, step+"\n") {
 			t.Errorf("ci.yml's linux job does not run `%s`", step)
 		}
 	}
