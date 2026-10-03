@@ -279,6 +279,18 @@ func (a *App) swapIn(ctx context.Context, repoID, staging, dest string) error {
 	return nil
 }
 
+// UpdateProgress is how far the newer version of a ready model has come, in
+// percent, while one is being fetched beside it, and whether one is.
+func (a *App) UpdateProgress(repoID string) (float64, bool) {
+	a.dlMu.Lock()
+	dl, ok := a.downloads[dlKey(repoID)]
+	a.dlMu.Unlock()
+	if !ok || !dl.staged.Load() {
+		return 0, false
+	}
+	return float64(dl.progress.Load()) / 100, true
+}
+
 // isSwapping reports whether this model's directory is being swapped for a new
 // version right now. Like isDeleting it takes dlMu and calls nothing while
 // holding it, so the pool may ask it under p.mu.

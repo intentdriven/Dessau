@@ -454,6 +454,9 @@ function renderModels() {
     const measured = measurementText(m, state.idle_jobs, state.probe_queue);
     const tools = m.state === 'ready' ? toolCallText(m) : '';
     const failed = m.state === 'ready' ? loadFailureText(m) : '';
+    const update = updateText(m);
+    const mark = updateMark(m);
+    if (mark) pill += `<span class="pill update">${escapeHtml(mark)}</span>`;
 
     card.innerHTML = `
       <div class="meta">
@@ -462,6 +465,9 @@ function renderModels() {
         ${failed ? `<div class="info loadfailure">${escapeHtml(failed)}</div>` : ''}
         ${measured ? `<div class="info measured">${escapeHtml(measured)}</div>` : ''}
         ${tools ? `<div class="info toolcalls">${escapeHtml(tools)}</div>` : ''}
+        ${update ? `<div class="info update">${escapeHtml(update)}</div>` : ''}
+        ${m.updating != null
+          ? `<div class="bar"><i style="width:${Number(m.updating) || 0}%"></i></div>` : ''}
         ${m.state === 'downloading'
           ? `<div class="bar"><i style="width:${m.progress}%"></i></div>` : ''}
       </div>
@@ -505,12 +511,56 @@ function renderModels() {
         postDebugLog(m.repo_id, !armed).catch(alertErr));
       debug.title = $('debugLogBlurb').textContent.replace(/\s+/g, ' ').trim();
       actions.append(debug);
+      // Update where there is a version Dessau would run to update it to:
+      // the newer one a check found, or the current one for a model whose
+      // version was never recorded.
+      if (updateOffered(m)) {
+        actions.append(btn('Update', '', () =>
+          postModel('/api/models/update', m.repo_id).catch(alertErr)));
+      }
       // A ready model is real data, so require a deliberate second click.
       actions.append(confirmBtn('Delete', 'Confirm?', 'danger', () =>
         postModel('/api/models/delete', m.repo_id).catch(alertErr)));
     }
     list.appendChild(card);
   });
+}
+
+// updateText is the card's line about the model's version: the update under
+// way, a version Dessau never recorded, or what the last check found. Plain
+// text, which the card escapes like every other line; the commit is the
+// Hub's, shortened. A pure function a test holds (itd-2610030857275099).
+function updateText(m) {
+  if (m.state !== 'ready') return '';
+  if (m.updating != null) return `Updating to the newer version: ${Math.floor(Number(m.updating) || 0)}%`;
+  if (!m.commit) return 'Version unknown: Dessau did not record which version it downloaded. Update fetches the current one.';
+  const u = m.update || {};
+  const short = String(u.commit || '').slice(0, 12);
+  switch (u.status) {
+    case 'available': return `A newer version is available (${short}).`;
+    case 'runs_own_code': return `A newer version (${short}) ships its own code, which Dessau will not run, so it is not offered.`;
+    case 'awaiting_review': return `A newer version (${short}) exists and will be offered once a Dessau release has reviewed it.`;
+    default: return '';
+  }
+}
+
+// updateMark is the pill beside the name for a model a check marked.
+function updateMark(m) {
+  if (m.state !== 'ready' || m.updating != null || !m.commit) return '';
+  switch ((m.update || {}).status) {
+    case 'available': return 'newer version';
+    case 'runs_own_code': return 'newer version not run';
+    case 'awaiting_review': return 'newer version awaiting review';
+    default: return '';
+  }
+}
+
+// updateOffered says whether the card carries Update: a ready model not
+// already updating, whose version was never recorded or that a check found a
+// newer version of that Dessau would run.
+function updateOffered(m) {
+  if (m.state !== 'ready' || m.updating != null) return false;
+  return !m.commit || (m.update || {}).status === 'available';
 }
 
 // boundText says what stopped the probe's step above the measured window,

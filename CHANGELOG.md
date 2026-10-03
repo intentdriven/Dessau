@@ -20,7 +20,8 @@ GitHub release notes.
   name and no access token unless the repository refuses a request without
   one, compares only the files a model server reads — a README edit is not a
   newer version — and records whether a newer version exists or ships its
-  own code. Turning checks off stops a check already running. When HuggingFace cannot
+  own code; the model's card says which, with **Update** where there is a
+  version Dessau would run. Turning checks off stops a check already running. When HuggingFace cannot
   be reached, what was recorded stays as it was and one line is logged
   ([how to](docs/model-updates.md); itd-2610030857275099).
 

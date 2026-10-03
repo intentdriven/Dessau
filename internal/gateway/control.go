@@ -134,6 +134,7 @@ func (c *Control) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/state", c.handleState)
 	mux.HandleFunc("GET /api/search", c.handleSearch)
 	mux.HandleFunc("POST /api/models/download", c.handleDownload)
+	mux.HandleFunc("POST /api/models/update", c.handleUpdate)
 	mux.HandleFunc("POST /api/models/cancel", c.handleCancelDownload)
 	mux.HandleFunc("POST /api/models/delete", c.handleDelete)
 	mux.HandleFunc("POST /api/models/load", c.handleLoad)
@@ -315,6 +316,9 @@ type ModelView struct {
 	// than a figure the operator set, so the card and the Settings field can
 	// say so.
 	ServedContextDefault bool `json:"served_context_default,omitempty"`
+	// Updating is how far a newer version being fetched beside this ready
+	// model has come, in percent; absent while none is.
+	Updating *float64 `json:"updating,omitempty"`
 }
 
 // State is the whole picture the UI renders.
@@ -517,7 +521,11 @@ func (c *Control) modelViews() []ModelView {
 		// is enough to say which version is on disk.
 		m.FileHashes = nil
 		window, isDefault := c.App.ServedWindow(m)
-		out = append(out, ModelView{Model: m, ServedContext: window, ServedContextDefault: isDefault && window > 0})
+		view := ModelView{Model: m, ServedContext: window, ServedContextDefault: isDefault && window > 0}
+		if pct, ok := c.App.UpdateProgress(m.RepoID); ok {
+			view.Updating = &pct
+		}
+		out = append(out, view)
 	}
 	return out
 }
@@ -1369,6 +1377,22 @@ func (c *Control) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"status": "downloading", "model": model})
+}
+
+// handleUpdate fetches the newer version a check found for a model beside the
+// one being served, and swaps it in once it has checked out
+// (itd-2610030857275099). A model whose newer version Dessau will not run, or
+// that waits for review, is refused: there is nothing to update it to.
+func (c *Control) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	model, ok := decodeModelRequest(w, r)
+	if !ok {
+		return
+	}
+	if err := c.App.Update(model); err != nil {
+		writeError(w, modelErrorStatus(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "updating", "model": model})
 }
 
 func (c *Control) handleCancelDownload(w http.ResponseWriter, r *http.Request) {
