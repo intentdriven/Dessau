@@ -1612,6 +1612,11 @@ func (c *Control) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "disarmed", "model": req.Model})
 		return
 	}
+	// Under the settings lock, so a save that marks the model and this arm are
+	// ordered: the arm lands first and the save disarms it, or it reads the
+	// mark and is refused (iss-2610032221548858).
+	c.settingsMu.Lock()
+	defer c.settingsMu.Unlock()
 	if c.App.Config().NoTranscript(req.Model) {
 		writeError(w, http.StatusConflict,
 			"this model keeps no transcript, so debug logging is refused: at the model server's debug level its log would hold every prompt sent to it")
