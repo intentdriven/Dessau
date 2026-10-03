@@ -153,7 +153,7 @@ struct ModelPickerView: View {
         } else if model.chatModels.isEmpty {
             Text(model.models.isEmpty
                  ? "This server has no models downloaded yet."
-                 : "None of this server's models can hold a conversation; they stay callable over the API by name.")
+                 : "None of this server's models can hold a conversation; plain completions still reach them over the API by name.")
                 .font(.caption).foregroundStyle(.secondary)
         } else {
             ForEach(model.chatModels, id: \.self) { id in

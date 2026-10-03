@@ -62,8 +62,9 @@ GitHub release notes.
   the chat rule leaves out — was started as a chat server when a chat request
   or the panel's **Load** named it: it answered nonsense, and its window could
   evict a model someone was using. `/v1/chat/completions`, the Discord bridge
-  and the panel's load route now refuse it before anything is loaded, and the
-  card shows no **Load**; `/v1/completions` still serves every model
+  and the panel's load route now refuse it before anything is loaded, the
+  card shows no **Load** or **Measure now**, and the idle self-test leaves it
+  alone; `/v1/completions` still serves every model
   ([models list](docs/models-list.md#the-chat-flag); iss-2610031010371709).
 
 - **The model runtime moves to mlx-lm 0.32.0.** `impact: breaking`. The

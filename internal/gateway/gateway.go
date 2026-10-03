@@ -196,7 +196,7 @@ func (g *Gateway) TLSHandler(reg *pairing.Registry) http.Handler {
 func (g *Gateway) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/models", g.handleListModels)
-	mux.HandleFunc("POST /v1/chat/completions", g.handleCompletions)
+	mux.HandleFunc("POST /v1/chat/completions", g.handleChatCompletions)
 	mux.HandleFunc("POST /v1/completions", g.handleCompletions)
 	mux.HandleFunc("GET /health", g.handleHealth)
 	// The one state-changing verb on /v1 (adr-2610031153127219). There is
@@ -672,7 +672,18 @@ const maxStreamLine = maxResponseBody
 const bodyReadTimeout = 30 * time.Second
 
 // handleCompletions proxies a chat/text completion to the right model server.
+// handleChatCompletions is handleCompletions for the chat route, which holds
+// a conversation: the route itself says so, rather than a comparison of the
+// path a later alias route could slip past (iss-2610031010371709).
+func (g *Gateway) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	g.completions(w, r, true)
+}
+
 func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
+	g.completions(w, r, false)
+}
+
+func (g *Gateway) completions(w http.ResponseWriter, r *http.Request, chat bool) {
 	// The clock starts before the body is read, so a slow upload counts
 	// against the client — which is what every comparable measurement does,
 	// and the only definition under which time to first token means what a
@@ -760,7 +771,7 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	// model as a chat server, answer nonsense, and could evict an idle model
 	// to make room (iss-2610031010371709). /v1/completions is not refused: a
 	// base text model the rule leaves out of chat still completes text.
-	if r.URL.Path == "/v1/chat/completions" && !g.canChat(model) {
+	if chat && !g.canChat(model) {
 		obs.failed(stats.ClassClientError)
 		writeError(w, http.StatusBadRequest, notChatText(model))
 		return
@@ -1785,7 +1796,7 @@ func loadField(payload map[string]json.RawMessage) string {
 func (g *Gateway) canChat(repoID string) bool {
 	m, err := g.models.Get(repoID)
 	if err != nil {
-		return true // resolved a moment ago; the relay finds out the rest
+		return false // resolved a moment ago and gone since: refuse, fail closed
 	}
 	return m.CanChat(g.cfg().EffectiveChatRule())
 }

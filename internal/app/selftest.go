@@ -28,9 +28,12 @@ type selfTestServer struct{ a *App }
 // retries by hand, and idle work is neither (iss-2609211334570516).
 func (s selfTestServer) Ready() []string {
 	models := s.a.Registry.Ready()
+	rule := s.a.Config().EffectiveChatRule()
 	ids := make([]string, 0, len(models))
 	for _, m := range models {
-		if m.LoadFailed() {
+		// The self-test sends a chat request, so a model that cannot chat is
+		// not one it loads (iss-2610031010371709).
+		if m.LoadFailed() || !m.CanChat(rule) {
 			continue
 		}
 		ids = append(ids, m.RepoID)

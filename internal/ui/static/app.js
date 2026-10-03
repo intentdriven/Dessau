@@ -510,7 +510,7 @@ function renderModels() {
       // The context probe: one run whatever the switch says, and adoption of
       // a current figure as the served window. A model that declares no
       // window has nothing to measure between.
-      if (m.context_length > 0) {
+      if (m.chat && m.context_length > 0) {
         actions.append(btn('Measure now', 'ghost', () =>
           postModel('/api/models/measure', m.repo_id).catch(alertErr)));
       }
