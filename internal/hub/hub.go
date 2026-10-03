@@ -250,10 +250,11 @@ func (c *Client) refuseOffOrigin(req *http.Request, via []*http.Request) error {
 // A file download deliberately does not come through here: the Hub answers a
 // /resolve/ GET for an LFS object with a redirect to its content CDN, which is
 // another host by design, and those bytes are anchored by the sha256 this same
-// API stated for them. Small files the repo stores in git carry no such hash
-// and are checked on length alone, so for those the exception is wider than
-// that justification — iss-2609190151179403 holds the question of narrowing it
-// to files the tree gave a hash for.
+// API stated for them. Small files the repo stores in git are held to the git
+// blob id the listing gives, a hash of their content too; one the listing gives
+// no usable hash for is checked on length alone, so for those the exception is
+// wider than that justification — iss-2609190151179403 holds the question of
+// narrowing it to files the tree gave a hash for.
 func (c *Client) do(req *http.Request) (*http.Response, error) {
 	hc := *c.httpClient()
 	hc.CheckRedirect = c.refuseOffOrigin

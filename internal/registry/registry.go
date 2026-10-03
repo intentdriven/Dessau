@@ -138,13 +138,20 @@ type Model struct {
 // files are. A model that says no is "version unknown".
 func (m Model) VersionKnown() bool { return m.Commit != "" }
 
-// MaxVersionFiles and MaxVersionPathBytes bound a recorded version. The index
-// is read whole under a size limit, so one repository listing tens of
-// thousands of files must not be able to fill it: past MaxVersionFiles the
-// version is kept as its commit alone. Real models carry tens of files.
+// MaxVersionFiles, MaxVersionPathBytes and MaxVersionBytes bound a recorded
+// version. The index is read whole under maxRegistryBytes, and a repository's
+// file names are a third party's, so one model's version must cost a small
+// fraction of it whatever the repository lists: past any bound the version is
+// kept as its commit alone, which is still a version. MaxVersionBytes is the
+// sum over the recorded entries of each path and hash; with the path alphabet
+// below nothing in either is escaped when the index is written, so it is what
+// the entries cost on disk give or take a few bytes of punctuation each. Real
+// models carry tens of files and a few kilobytes; the bound admits several
+// hundred shards, and leaves the index room for hundreds of hostile versions.
 const (
 	MaxVersionFiles     = 1024
-	MaxVersionPathBytes = 512
+	MaxVersionPathBytes = 256
+	MaxVersionBytes     = 32 << 10
 )
 
 // sanitizeVersion holds a recorded version to the shapes a download writes.
@@ -155,7 +162,9 @@ const (
 // A commit that is not a full commit id clears the version whole, hashes
 // included: hashes without the commit they were listed at describe nothing.
 // A hash entry that is not a plain relative path to a lowercase hex digest of
-// a git blob id's or a sha256's length is dropped on its own.
+// a git blob id's or a sha256's length is dropped on its own; a file with no
+// entry is one whose hash is not known, which a check must read as unknown
+// rather than as changed.
 func sanitizeVersion(m Model) Model {
 	if !validCommit(m.Commit) {
 		m.Commit, m.FileHashes = "", nil
@@ -166,13 +175,15 @@ func sanitizeVersion(m Model) Model {
 		return m
 	}
 	out := make(map[string]string, len(m.FileHashes))
+	cost := 0
 	for p, h := range m.FileHashes {
 		if !plainRelPath(p) || !(len(h) == 40 || len(h) == 64) || !lowerHex(h) {
 			continue
 		}
+		cost += len(p) + len(h)
 		out[p] = h
 	}
-	if len(out) == 0 {
+	if len(out) == 0 || cost > MaxVersionBytes {
 		out = nil
 	}
 	m.FileHashes = out
@@ -192,15 +203,22 @@ func lowerHex(s string) bool {
 	return s != ""
 }
 
-// plainRelPath reports whether p is a repo-relative file path as the Hub's
-// tree names one: non-empty, bounded, '/'-separated, with no empty, "." or
-// ".." element and nothing outside printable ASCII.
+// plainRelPath reports whether p is a repo-relative file path of the kind a
+// model repository names: non-empty, bounded, '/'-separated, with no empty,
+// "." or ".." element, made of ASCII letters, digits and "._+-". An
+// allow-list, for the reason usableTag gives: these names are a third
+// party's, and a character outside the set a model's files use is one the
+// index would have to escape and every surface downstream to be careful with.
 func plainRelPath(p string) bool {
 	if p == "" || len(p) > MaxVersionPathBytes {
 		return false
 	}
 	for i := 0; i < len(p); i++ {
-		if p[i] < 0x20 || p[i] >= 0x7f || p[i] == '\\' {
+		b := p[i]
+		switch {
+		case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9':
+		case strings.IndexByte("._+-/", b) >= 0:
+		default:
 			return false
 		}
 	}

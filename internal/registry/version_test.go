@@ -163,3 +163,73 @@ func TestAVersionWithTooManyFilesKeepsItsCommitAlone(t *testing.T) {
 		t.Errorf("%d file hashes were recorded past the bound of %d", len(m.FileHashes), MaxVersionFiles)
 	}
 }
+
+// However many hostile versions are recorded, the index still opens: each is
+// bounded far below the read limit, and a name the index would have to
+// escape is not recorded at all (adversarial review of step 1).
+func TestHostileVersionsCannotFillTheIndex(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	r, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	long := strings.Repeat("a", MaxVersionPathBytes-12)
+	for n := 0; n < 40; n++ {
+		files := map[string]string{}
+		for i := 0; i < MaxVersionFiles/2; i++ {
+			files[fmt.Sprintf("%04d<&>%s.json", i, long)] = aLFSHash
+			files[fmt.Sprintf("%04d-%s", i, long)] = aLFSHash
+		}
+		if err := r.Put(Model{RepoID: fmt.Sprintf("org/m%02d", n), State: StateReady, Commit: aCommit, FileHashes: files}); err != nil {
+			t.Fatal(err)
+		}
+		// And a version just inside the per-model bound, which is recorded.
+		files = map[string]string{}
+		for i := 0; (i+1)*(len(long)+16+64) <= MaxVersionBytes; i++ {
+			files[fmt.Sprintf("%04d-%s.json", i, long)] = aLFSHash
+		}
+		if err := r.Put(Model{RepoID: fmt.Sprintf("org/k%02d", n), State: StateReady, Commit: aCommit, FileHashes: files}); err != nil {
+			t.Fatal(err)
+		}
+		if m, _ := r.Get(fmt.Sprintf("org/k%02d", n)); len(m.FileHashes) == 0 {
+			t.Fatal("a version inside the bound was not recorded")
+		}
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() > maxRegistryBytes/4 {
+		t.Errorf("eighty versions cost %d bytes of an index read whole under %d", fi.Size(), maxRegistryBytes)
+	}
+	if _, err := Open(path); err != nil {
+		t.Fatalf("the index no longer opens: %v", err)
+	}
+	m, _ := r.Get("org/m00")
+	if m.Commit != aCommit || m.FileHashes != nil {
+		t.Errorf("a version past the bound should keep its commit alone, got %q and %d hashes", m.Commit, len(m.FileHashes))
+	}
+}
+
+// A name the index would have to escape is not recorded.
+func TestAVersionRecordsOnlyPlainNames(t *testing.T) {
+	r, err := Open(filepath.Join(t.TempDir(), "registry.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"model-00001-of-00002.safetensors": aLFSHash,
+		"sub/dir/tokenizer_config.json":    aBlobID,
+		"weird<name>.json":                 aBlobID,
+		"amp&.json":                        aBlobID,
+		"spaced name.json":                 aBlobID,
+		"naïve.json":                       aBlobID,
+	}
+	if err := r.Put(Model{RepoID: "org/m", State: StateReady, Commit: aCommit, FileHashes: files}); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := r.Get("org/m")
+	if len(m.FileHashes) != 2 || m.FileHashes["sub/dir/tokenizer_config.json"] != aBlobID {
+		t.Errorf("FileHashes = %v, want the two plain names only", m.FileHashes)
+	}
+}

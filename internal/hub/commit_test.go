@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
@@ -9,6 +10,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -201,5 +204,124 @@ func TestValidCommit(t *testing.T) {
 		if ValidCommit(bad) {
 			t.Errorf("ValidCommit(%q) = true", bad)
 		}
+	}
+}
+
+// The right size is not the right version. A file left on disk by an attempt
+// at another commit, exactly as long as this commit's, is held to the hash the
+// listing gives and fetched again — never recorded as this commit's.
+func TestASameSizedFileFromAnotherVersionIsFetchedAgain(t *testing.T) {
+	repo := standardRepo()
+	fh := newFakeHub(repo)
+	srv := fh.server(t)
+	dest := t.TempDir()
+	stale := bytes.Repeat([]byte("x"), len(repo["config.json"]))
+	if err := os.WriteFile(filepath.Join(dest, "config.json"), stale, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	snap, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dest, "config.json"))
+	if !bytes.Equal(got, repo["config.json"]) {
+		t.Error("a same-sized file from another version was kept")
+	}
+	if fh.hitsFor("config.json") != 1 {
+		t.Errorf("config.json was fetched %d times, want once", fh.hitsFor("config.json"))
+	}
+	if snap.Files["config.json"] != gitBlobID(repo["config.json"]) {
+		t.Errorf("config.json recorded as %q", snap.Files["config.json"])
+	}
+}
+
+// A file already on disk that matches its hash is not fetched again, and is
+// recorded.
+func TestAMatchingFileOnDiskIsKeptAndRecorded(t *testing.T) {
+	repo := standardRepo()
+	fh := newFakeHub(repo)
+	srv := fh.server(t)
+	dest := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dest, "config.json"), repo["config.json"], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	snap, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if fh.hitsFor("config.json") != 0 {
+		t.Error("a file that already matched its hash was fetched again")
+	}
+	if snap.Files["config.json"] == "" {
+		t.Error("a verified file on disk was not recorded")
+	}
+}
+
+// A file the repository stores in git is held to its git blob id: a body
+// that is the right length but not those bytes is refused.
+func TestAGitStoredFileThatIsNotItsBlobIsRefused(t *testing.T) {
+	repo := standardRepo()
+	srv := httptest.NewServer(atCommit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/tree/main") {
+			var entries []File
+			for p, b := range repo {
+				entries = append(entries, File{Path: p, Type: "file", Size: int64(len(b)), OID: gitBlobID(b)})
+			}
+			json.NewEncoder(w).Encode(entries)
+			return
+		}
+		name := r.URL.Path[strings.LastIndex(r.URL.Path, "/main/")+len("/main/"):]
+		body := repo[name]
+		if name == "config.json" {
+			body = bytes.Repeat([]byte("y"), len(body))
+		}
+		w.Write(body)
+	})))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	dest := t.TempDir()
+	_, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest})
+	if err == nil || !strings.Contains(err.Error(), "hash mismatch") {
+		t.Fatalf("err = %v, want a hash mismatch", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dest, "config.json")); statErr == nil {
+		t.Error("a file that is not its blob was renamed into place")
+	}
+}
+
+// A file the listing gave no usable hash for is downloaded and size-checked
+// as before, but not recorded: the listing's word for it was never checked.
+func TestAFileWithNoHashIsDownloadedButNotRecorded(t *testing.T) {
+	repo := standardRepo()
+	srv := httptest.NewServer(atCommit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/tree/main") {
+			var entries []File
+			for p, b := range repo {
+				oid := gitBlobID(b)
+				if p == "tokenizer.json" {
+					oid = ""
+				}
+				entries = append(entries, File{Path: p, Type: "file", Size: int64(len(b)), OID: oid})
+			}
+			json.NewEncoder(w).Encode(entries)
+			return
+		}
+		name := r.URL.Path[strings.LastIndex(r.URL.Path, "/main/")+len("/main/"):]
+		w.Write(repo[name])
+	})))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	snap, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: t.TempDir()})
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if _, ok := snap.Files["tokenizer.json"]; ok {
+		t.Error("a file with no hash was recorded as verified")
+	}
+	if snap.Files["config.json"] == "" {
+		t.Error("a verified file was not recorded")
 	}
 }
