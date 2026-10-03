@@ -393,8 +393,8 @@ func TestProgressAccountsForPreexistingBytes(t *testing.T) {
 }
 
 // A wrong-sized final file can sit beside a resumable .part for the same target
-// (a half-copied directory, or another local account writing into the shared
-// cache). downloadFile removes the corrupt final and resumes from the .part, so
+// (a half-copied directory, or an interrupted copy). downloadFile removes the
+// corrupt final and resumes from the .part, so
 // the pre-download tally must have counted the .part's bytes too — otherwise the
 // resumed prefix goes uncredited and a successful download stops short of 100%.
 func TestProgressReaches100WithWrongFinalBesidePart(t *testing.T) {
@@ -535,12 +535,12 @@ func TestDownloadCreatesNestedDirectories(t *testing.T) {
 	}
 }
 
-// In the shared cache the models directory is setgid group-writable so a model
-// one account downloads is writable by the next. The directories a download
-// creates inside it must carry that on: plain MkdirAll(0o755) would leave the
-// org/name directories closed to every other account, and a later account's
-// downloads would fail EACCES.
-func TestDownloadCreatesGroupWritableDirsUnderSetgidModelsDir(t *testing.T) {
+// A download widens nothing, whatever the models directory carries: Dessau
+// serves from one account, and no other account is meant to write what it
+// downloads. A models directory with the setgid and sticky bits set — one an
+// operator's DESSAU_ROOT happens to point into — still gets 0755 directories
+// from a download, with neither bit carried on.
+func TestDownloadWidensNothingUnderASetgidModelsDir(t *testing.T) {
 	fh := newFakeHub(map[string][]byte{
 		"config.json":            []byte("{}"),
 		"model.safetensors":      weights(128),
@@ -566,19 +566,13 @@ func TestDownloadCreatesGroupWritableDirsUnderSetgidModelsDir(t *testing.T) {
 		if err != nil {
 			t.Fatalf("stat %s: %v", d, err)
 		}
-		if fi.Mode()&0o020 == 0 || fi.Mode()&os.ModeSetgid == 0 {
-			t.Errorf("%s mode = %v, want group-writable setgid so a later account can write it", d, fi.Mode())
-		}
-		// The installer's sticky bit must survive the widening, or any account
-		// in the group could delete or replace another account's model files.
-		if fi.Mode()&os.ModeSticky == 0 {
-			t.Errorf("%s mode = %v, want the sticky bit preserved so only its owner can delete/rename it", d, fi.Mode())
+		if fi.Mode()&0o022 != 0 || fi.Mode()&os.ModeSticky != 0 {
+			t.Errorf("%s mode = %v, want it neither group- nor other-writable nor sticky", d, fi.Mode())
 		}
 	}
 }
 
-// Outside the shared cache nothing is widened: a per-user models directory has
-// no setgid bit, and the created directories stay 0755.
+// A plain models directory gets plain directories: 0755, nothing widened.
 func TestDownloadKeepsPerUserDirsPrivate(t *testing.T) {
 	fh := newFakeHub(map[string][]byte{
 		"config.json":       []byte("{}"),
@@ -598,7 +592,7 @@ func TestDownloadKeepsPerUserDirsPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		if fi.Mode()&0o020 != 0 {
-			t.Errorf("%s mode = %v, want no group-write in a per-user install", d, fi.Mode())
+			t.Errorf("%s mode = %v, want no group-write", d, fi.Mode())
 		}
 	}
 }

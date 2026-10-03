@@ -116,9 +116,9 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
 
 	// Every filesystem operation below happens inside this root. os.Root
 	// resolves each path component without ever following a symlink out of the
-	// tree, so a symlinked parent directory planted in a shared, group-writable
-	// cache cannot redirect writes elsewhere — a guarantee that O_NOFOLLOW on
-	// the final component alone cannot give.
+	// tree, so a symlinked parent directory planted in the cache cannot
+	// redirect writes elsewhere — a guarantee that O_NOFOLLOW on the final
+	// component alone cannot give.
 	root, err := openDest(req)
 	if err != nil {
 		return err
@@ -200,26 +200,12 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
 //
 // os.Root confines only what lies below the directory it was opened at; the
 // path used to reach that directory is resolved with ordinary symlink
-// semantics. In the shared cache the org and name directories under the
-// models root are created by whichever account downloads first, and any
-// account can create an absent name there — so a symlink planted at
-// models/<org> would send every write under the attacker's target. The
-// components between the models root and Dest are therefore created and
-// inspected relative to a root opened at ModelsDir, and anything that is
-// not a real directory is refused.
-//
-// The shared cache also depends on the modes of what is created here: the
-// installer marks the shared models root setgid group-writable and sticky
-// (3775) so a model one account downloads is writable by the next, but only
-// its owner can delete or rename it, and Mkdir can never produce a
-// group-writable or sticky directory (0o755 carries neither bit, and umask
-// would strip one anyway). So when the models root is setgid, each directory
-// created here is widened to match, sticky bit included — dropping it would
-// let any account in the group delete or replace another account's model
-// directory. A per-user root has no setgid bit and keeps plain 0755. Chmod
-// failures are ignored: only directories this call created are touched, and
-// a download into a tree we can write must not fail over modes we cannot
-// change.
+// semantics, so a symlink at models/<org> would send every write under its
+// target. The components between the models root and Dest are therefore
+// created and inspected relative to a root opened at ModelsDir, and anything
+// that is not a real directory is refused. Each is created 0755 and nothing
+// is widened, whatever bits the models root carries: what a download creates
+// belongs to the one account Dessau serves from.
 func openDest(req DownloadRequest) (*os.Root, error) {
 	if req.ModelsDir == "" {
 		req.ModelsDir = filepath.Dir(req.Dest)
@@ -233,17 +219,10 @@ func openDest(req DownloadRequest) (*os.Root, error) {
 		return nil, fmt.Errorf("open %s: %w", req.ModelsDir, err)
 	}
 	defer models.Close()
-	widen := false
-	if fi, err := models.Stat("."); err == nil && fi.Mode()&os.ModeSetgid != 0 {
-		widen = true
-	}
 	var partial string
 	for _, comp := range strings.Split(rel, string(os.PathSeparator)) {
 		partial = filepath.Join(partial, comp)
-		created := false
-		if err := models.Mkdir(partial, 0o755); err == nil {
-			created = true
-		} else if !errors.Is(err, fs.ErrExist) {
+		if err := models.Mkdir(partial, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
 			return nil, fmt.Errorf("create %s: %w", filepath.Join(req.ModelsDir, partial), err)
 		}
 		fi, err := models.Lstat(partial)
@@ -252,9 +231,6 @@ func openDest(req DownloadRequest) (*os.Root, error) {
 		}
 		if !fi.IsDir() {
 			return nil, fmt.Errorf("%s is not a directory (something else was planted under that name) — refusing to download into it", filepath.Join(req.ModelsDir, partial))
-		}
-		if created && widen {
-			_ = models.Chmod(partial, 0o775|os.ModeSetgid|os.ModeSticky)
 		}
 	}
 	root, err := models.OpenRoot(rel)
@@ -352,16 +328,6 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		if err := root.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-		// Carry the shared cache's group-writability and sticky bit into
-		// nested directories too (see mkdirAllInherit); os.Root confines the
-		// chmod to the model directory. Re-chmodding a directory another
-		// goroutine created is idempotent, and failures on another account's
-		// directories are ignored for the same reason as above.
-		if fi, err := root.Stat("."); err == nil && fi.Mode()&os.ModeSetgid != 0 {
-			for p := dir; p != "."; p = filepath.Dir(p) {
-				_ = root.Chmod(p, 0o775|os.ModeSetgid|os.ModeSticky)
-			}
-		}
 	}
 
 	var resumeAt int64
@@ -442,10 +408,9 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		return apiError(resp, u)
 	}
 
-	// O_NOFOLLOW: refuse to write through a symlink planted at the .part path. In
-	// a shared, group-writable model cache another local account could point that
-	// predictable name at a file the downloading user can write, turning a model
-	// fetch into a write-what-where. root already refuses links that leave the
+	// O_NOFOLLOW: refuse to write through a symlink planted at the .part path,
+	// which would point that predictable name at a file the downloading user
+	// can write and turn a model fetch into a write-what-where. root already refuses links that leave the
 	// model dir; O_NOFOLLOW additionally refuses in-tree links on the final
 	// component, so such an open fails (ELOOP) instead of following.
 	flags := os.O_CREATE | os.O_WRONLY | syscall.O_NOFOLLOW

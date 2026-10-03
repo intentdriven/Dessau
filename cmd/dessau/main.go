@@ -128,26 +128,6 @@ func main() {
 	// the path before they need anything else.
 	log.Info("dessau starting", "version", version, "log", appLog.Path)
 
-	// Settings are this account's own. Under a shared cache installed before
-	// they were, this account's settings are still in the shared folder, so
-	// carry them over before anything reads them — otherwise the first start
-	// after an upgrade would quietly run from the shipping defaults with the
-	// operator's API key and token left behind. Nothing is adopted from another
-	// account, and a failure here is not fatal: it means this account starts
-	// from the defaults, which is what it would have done anyway.
-	adopted, err := paths.AdoptSharedConfig()
-	if adopted {
-		log.Info("this account's settings now live in its own folder, not the shared one", "path", paths.Config)
-	}
-	if err != nil {
-		// Two failures, one line: the settings could not be read (this account
-		// starts from the shipping defaults, as it would have anyway), or they
-		// were copied and the original could not be removed — which leaves a
-		// superseded API key and HuggingFace token in the shared folder.
-		log.Warn("could not carry this account's settings out of the shared folder",
-			"path", paths.Config, "err", err)
-	}
-
 	start := loadStartupConfig(paths.Config)
 	cfg := start.Config
 	// The level the operator chose, in force from the next line on. Set here
@@ -372,8 +352,8 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 		log.Info("MLX runtime ready")
 	}()
 	// And ask the Hub what the models the rescan adopted are, in the
-	// background for the same reason: a second account's install has every
-	// model of the shared cache and the Hub's word for none of them, and a
+	// background for the same reason: a model directory copied in by hand has
+	// the Hub's word for none of them, and a
 	// start that waited on one request per model would be a start that
 	// waited on the network. Once per process; a.Close cancels it and waits
 	// for it (iss-2609202237468921).

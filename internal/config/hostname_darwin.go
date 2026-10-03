@@ -81,9 +81,9 @@ func resolveLocalHostName() string {
 	// This runs with no user gesture at all — memoized behind the sync.Once
 	// above, reached from the endpoint list the menu bar builds and the control
 	// panel's snapshot re-renders — so it runs once early in every account on
-	// this Mac that launches Dessau. Dessau is built for a Mac shared by
-	// several accounts, where a group-writable directory ahead of /usr/sbin on
-	// this account's PATH is another account's way into this process; and even
+	// this Mac that launches Dessau. A Mac can have several accounts, and a
+	// group-writable directory ahead of /usr/sbin on this account's PATH is
+	// another account's way into this process; and even
 	// with nobody hostile, a bare name is no proof of which tool answered.
 	if out, err := scutilGet("LocalHostName"); err == nil {
 		if name := strings.TrimSpace(string(out)); name != "" {

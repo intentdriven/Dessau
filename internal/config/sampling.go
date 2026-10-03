@@ -385,8 +385,7 @@ func (c Config) validateSampling() error {
 // sanitized with the rest of the per-model settings, in sanitizeModels.
 //
 // This is the file path, not the settings path. A configuration file can be
-// hand-edited (and, in shared-cache mode, is writable by another local
-// account), and refusing the whole file over one out-of-range preference
+// hand-edited, and refusing the whole file over one out-of-range preference
 // would send the server into its fail-closed loopback-only mode — a
 // machine-wide outage caused by a number that only ever wanted to be ignored.
 // The strict, refusing check lives at /api/settings instead.

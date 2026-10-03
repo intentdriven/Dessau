@@ -48,11 +48,12 @@ func TestEnsureDirsCreatesLayout(t *testing.T) {
 	}
 }
 
-// The shared cache only works if the layout directories the first account
-// creates are writable by the next: the installer marks the shared root setgid
-// group-writable (mode 3775), and EnsureDirs must carry that on to the data
-// directories it creates, or every later account's downloads fail EACCES.
-func TestEnsureDirsWidensDataDirsUnderSetgidSharedRoot(t *testing.T) {
+// Dessau serves from one account, so nothing it creates is meant for another
+// one: a data root that happens to carry the setgid bit — a DESSAU_ROOT an
+// operator pointed at such a directory — is not a reason to make anything in
+// it group-writable or sticky. Every layout directory is created 0755 and
+// left that way.
+func TestEnsureDirsWidensNothingUnderASetgidRoot(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Chmod(root, 0o775|os.ModeSetgid|os.ModeSticky); err != nil {
 		t.Fatal(err)
@@ -61,37 +62,41 @@ func TestEnsureDirsWidensDataDirsUnderSetgidSharedRoot(t *testing.T) {
 	if err := p.EnsureDirs(); err != nil {
 		t.Fatalf("EnsureDirs: %v", err)
 	}
-	for _, d := range []string{p.Models, filepath.Dir(p.HFCache), p.HFCache} {
+	for _, d := range []string{p.Bin, p.Venv, p.Python, p.Logs, p.Models, filepath.Dir(p.HFCache), p.HFCache} {
 		fi, err := os.Stat(d)
 		if err != nil {
 			t.Fatalf("stat %s: %v", d, err)
 		}
-		if fi.Mode()&0o020 == 0 || fi.Mode()&os.ModeSetgid == 0 {
-			t.Errorf("%s mode = %v, want group-writable setgid so a later account can write it", d, fi.Mode())
-		}
-		// The installer's sticky bit must survive the widening, or any account
-		// in the group could delete or replace another account's files here.
-		if fi.Mode()&os.ModeSticky == 0 {
-			t.Errorf("%s mode = %v, want the sticky bit preserved so only its owner can delete/rename it", d, fi.Mode())
-		}
-	}
-	// bin must NOT be widened: a group-writable bin would let one account
-	// replace the uv binary another account executes. Nor must logs: it holds
-	// one account's record of what its own model servers printed, under names
-	// another account would then be unable to write.
-	for name, d := range map[string]string{"bin": p.Bin, "logs": p.Logs} {
-		fi, err := os.Stat(d)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if fi.Mode()&0o020 != 0 {
-			t.Errorf("%s mode = %v, must not be group-writable", name, fi.Mode())
+		if fi.Mode()&0o022 != 0 || fi.Mode()&os.ModeSticky != 0 {
+			t.Errorf("%s mode = %v, want it neither group- nor other-writable nor sticky", d, fi.Mode())
 		}
 	}
 }
 
-// A per-user root has no setgid bit; its layout stays private to the account.
-func TestEnsureDirsKeepsPerUserLayoutPrivate(t *testing.T) {
+// Every path in the layout sits under the root it is derived from, whatever
+// that root is: there is no root for which part of the layout moves somewhere
+// else. The case that matters is the directory a machine-wide install once
+// used, built here from pieces; it is just another root now.
+func TestNewPathsKeepsEverythingUnderTheRootItIsGiven(t *testing.T) {
+	for _, root := range []string{
+		"/root",
+		filepath.Join("/Users", "Shared", "Dessau"),
+	} {
+		p := NewPaths(root)
+		for name, got := range map[string]string{
+			"Bin": p.Bin, "Venv": p.Venv, "Python": p.Python, "Models": p.Models,
+			"HFCache": p.HFCache, "Logs": p.Logs, "Config": p.Config, "State": p.State,
+			"Stats": p.Stats, "SelfTest": p.SelfTest,
+		} {
+			if !strings.HasPrefix(got, root+string(os.PathSeparator)) {
+				t.Errorf("NewPaths(%q).%s = %q, want it under the root", root, name, got)
+			}
+		}
+	}
+}
+
+// A plain root gets a plain layout: nothing group-writable.
+func TestEnsureDirsKeepsTheLayoutPrivate(t *testing.T) {
 	p := NewPaths(t.TempDir())
 	if err := p.EnsureDirs(); err != nil {
 		t.Fatalf("EnsureDirs: %v", err)
@@ -102,7 +107,7 @@ func TestEnsureDirsKeepsPerUserLayoutPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		if fi.Mode()&0o020 != 0 {
-			t.Errorf("%s mode = %v, want no group-write in a per-user install", d, fi.Mode())
+			t.Errorf("%s mode = %v, want no group-write", d, fi.Mode())
 		}
 	}
 }
@@ -265,193 +270,25 @@ func TestDefaultRootHonorsEnvOverride(t *testing.T) {
 	}
 }
 
-// A shared directory the account cannot write to must be ignored, not used:
-// otherwise every download would fail at the moment it tries to write.
-func TestWritableDirRejectsUnwritableAndMissingDirs(t *testing.T) {
-	if writableDir("/does/not/exist") {
-		t.Error("a missing directory is not writable")
-	}
-	if writableDir("/System") {
-		t.Error("a read-only system directory must not be treated as writable")
-	}
-
-	dir := t.TempDir()
-	if !writableDir(dir) {
-		t.Error("a fresh temp dir should be writable")
-	}
-}
-
-func TestDefaultRootFallsBackToHomeWhenNoSharedDir(t *testing.T) {
+// With no DESSAU_ROOT the root is this account's own Application Support
+// directory, whatever else exists on the Mac.
+func TestDefaultRootIsThisAccountsOwnDirectory(t *testing.T) {
 	t.Setenv("DESSAU_ROOT", "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 
 	got, err := DefaultRoot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// On a machine without /Users/Shared/Dessau, this must be the per-user path.
-	if !writableDir(SharedRoot) && !strings.Contains(got, "Application Support") {
-		t.Errorf("DefaultRoot() = %q, want the per-user Application Support path", got)
+	if want := filepath.Join(home, "Library", "Application Support", "Dessau"); got != want {
+		t.Errorf("DefaultRoot() = %q, want %q", got, want)
 	}
 }
 
-// Under a setgid shared root the layout directories are widened to 3775 at
-// startup. A symlink planted under one of their names (any local account can
-// create an absent name there, and the first launcher owns the real ones and
-// can swap them later) would make that chmod land on an arbitrary directory
-// the victim owns — group-writable by every account. EnsureDirs must refuse
-// anything that is not a real directory, and must not have touched the target.
-func TestEnsureDirsRefusesSymlinkedLayoutDirUnderSetgidRoot(t *testing.T) {
-	for _, name := range []string{"models", "hf", "logs", "bin"} {
-		t.Run(name, func(t *testing.T) {
-			root := t.TempDir()
-			if err := os.Chmod(root, 0o775|os.ModeSetgid|os.ModeSticky); err != nil {
-				t.Fatal(err)
-			}
-			victim := filepath.Join(t.TempDir(), "victim")
-			if err := os.Mkdir(victim, 0o700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Symlink(victim, filepath.Join(root, name)); err != nil {
-				t.Fatal(err)
-			}
-			if err := NewPaths(root).EnsureDirs(); err == nil {
-				t.Fatal("EnsureDirs accepted a symlinked layout directory")
-			}
-			fi, err := os.Stat(victim)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if fi.Mode().Perm() != 0o700 || fi.Mode()&os.ModeSetgid != 0 {
-				t.Errorf("victim mode = %v, want 0700 untouched", fi.Mode())
-			}
-			if _, err := os.Stat(filepath.Join(victim, "hub")); !os.IsNotExist(err) {
-				t.Error("EnsureDirs created hf/hub inside the victim directory")
-			}
-		})
-	}
-}
-
-// sharedLayout stands a temporary directory in for the shared root and returns
-// the layout NewPaths derives for it: a setgid data root holding what every
-// account shares, and this account's own directory holding what it does not.
-//
-// The derivation is the real one — the seam is the shared root's path, not the
-// rule — so a NewPaths that stopped splitting the layout, or split it
-// differently, is caught here rather than agreeing with a hand-written copy of
-// itself.
-func sharedLayout(t *testing.T) (Paths, string, string) {
-	t.Helper()
-	root := t.TempDir()
-	if err := os.Chmod(root, 0o775|os.ModeSetgid|os.ModeSticky); err != nil {
-		t.Fatal(err)
-	}
-	withSharedRoot(t, root)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	acct := filepath.Join(home, "Library", "Application Support", "Dessau")
-	p := NewPaths(root)
-	if p.Bin == filepath.Join(root, "bin") {
-		t.Fatal("NewPaths did not split the layout for the shared root")
-	}
-	return p, root, acct
-}
-
-// withSharedRoot points the shared-root rule at dir for the duration of a test.
-func withSharedRoot(t *testing.T, dir string) {
-	t.Helper()
-	prev := sharedRoot
-	sharedRoot = dir
-	t.Cleanup(func() { sharedRoot = prev })
-}
-
-// The layout under a shared cache straddles two directories: what every account
-// shares sits in the setgid root, and this account's executables, settings and
-// registry sit in its own directory, which is outside it. EnsureDirs has to
-// create both. It used to refuse the whole layout on the first entry that was
-// not under the root — so with the executables moved out, a Mac with a shared
-// cache installed could not start Dessau at all.
-func TestEnsureDirsUnderASharedRootCreatesThisAccountsOwnDirectories(t *testing.T) {
-	p, root, acct := sharedLayout(t)
-	if err := p.EnsureDirs(); err != nil {
-		t.Fatalf("EnsureDirs refused the layout a shared cache actually produces: %v", err)
-	}
-	for _, d := range []string{p.Bin, p.Venv, p.Python, p.Logs} {
-		if fi, err := os.Stat(d); err != nil || !fi.IsDir() {
-			t.Errorf("expected %s to exist (err=%v)", d, err)
-		}
-		if !strings.HasPrefix(d, acct) {
-			t.Errorf("%s should be in this account's own directory", d)
-		}
-	}
-	// The shared half is unchanged: still widened to match the installer's mode,
-	// so the next account can write what this one created.
-	for _, d := range []string{p.Models, filepath.Dir(p.HFCache), p.HFCache} {
-		fi, err := os.Stat(d)
-		if err != nil {
-			t.Fatalf("stat %s: %v", d, err)
-		}
-		if fi.Mode()&0o020 == 0 || fi.Mode()&os.ModeSetgid == 0 || fi.Mode()&os.ModeSticky == 0 {
-			t.Errorf("%s mode = %v, want group-writable setgid sticky", d, fi.Mode())
-		}
-		if !strings.HasPrefix(d, root) {
-			t.Errorf("%s should stay in the shared root", d)
-		}
-	}
-	// Executables are never widened, wherever they live.
-	if fi, err := os.Stat(p.Bin); err != nil || fi.Mode()&0o020 != 0 {
-		t.Errorf("bin mode = %v (err=%v), must not be group-writable", fi.Mode(), err)
-	}
-}
-
-// A shared data directory that is not under the shared root is a layout nobody
-// can have meant: models, the HuggingFace cache and the logs are what the root
-// exists to hold, and one resolved outside it would be widened to
-// group-writable somewhere no co-tenant was ever meant to reach. The refusal
-// that used to cover every entry is kept for exactly these.
-func TestEnsureDirsRefusesASharedDataDirOutsideTheRoot(t *testing.T) {
-	p, _, acct := sharedLayout(t)
-	p.Models = filepath.Join(acct, "models")
-	if err := p.EnsureDirs(); err == nil {
-		t.Fatal("EnsureDirs accepted a shared data directory outside the shared root")
-	}
-	if _, err := os.Stat(p.Models); !os.IsNotExist(err) {
-		t.Errorf("the refused directory was created anyway (err=%v)", err)
-	}
-}
-
-// /Users/Shared is world-writable on stock macOS, so any unprivileged account
-// can pre-create the shared root and own every other account's data. Only a
-// directory the installer's `sudo mkdir` produced — root-owned and not
-// other-writable — may be adopted; anything else falls back to the per-user
-// root. A self-owned directory (what an attacker, or t.TempDir, produces) must
-// fail the shape check; the root filesystem is a handy root-owned directory
-// that passes it.
-func TestSharedRootShapeRequiresRootOwnershipAndNoOtherWrite(t *testing.T) {
-	mine := t.TempDir()
-	if err := os.Chmod(mine, 0o777); err != nil {
-		t.Fatal(err)
-	}
-	if err := sharedRootShape(mine); err == nil {
-		t.Error("a self-owned, other-writable directory passed the shared-root shape check")
-	}
-	if err := sharedRootShape("/"); err != nil {
-		t.Errorf("a root-owned, non-other-writable directory failed the shape check: %v", err)
-	}
-	if err := sharedRootShape(filepath.Join(mine, "missing")); err == nil {
-		t.Error("a missing directory passed the shape check")
-	}
-	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink("/", link); err != nil {
-		t.Fatal(err)
-	}
-	if err := sharedRootShape(link); err == nil {
-		t.Error("a symlink to a root-owned directory passed the shape check")
-	}
-}
-
-// A per-user root has no hostile co-tenant, so a layout directory the user
-// pointed elsewhere (models on an external disk) keeps working.
-func TestEnsureDirsFollowsSymlinkedLayoutDirOnPerUserRoot(t *testing.T) {
+// A layout directory the operator pointed elsewhere (models on an external
+// disk) keeps working.
+func TestEnsureDirsFollowsSymlinkedLayoutDir(t *testing.T) {
 	root := t.TempDir()
 	external := t.TempDir()
 	if err := os.Symlink(external, filepath.Join(root, "models")); err != nil {
@@ -948,42 +785,6 @@ func TestLoadDropsAnUnusableMemoryBudget(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("the loaded config does not validate: %v", err)
-	}
-}
-
-// TestExecRootIsPerAccountUnderTheSharedRoot pins the security property the
-// shared-runtime decision rests on: models may be shared, executables never
-// are. Under the shared root the interpreter, venv and uv must resolve to this
-// account's own directory, so no account ever executes a binary another
-// account owns and can rewrite.
-func TestExecRootIsPerAccountUnderTheSharedRoot(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Skip("no home directory")
-	}
-	p := NewPaths(SharedRoot)
-	if p.Models != filepath.Join(SharedRoot, "models") {
-		t.Errorf("models should stay shared, got %q", p.Models)
-	}
-	for name, got := range map[string]string{"Bin": p.Bin, "Venv": p.Venv, "Python": p.Python} {
-		if strings.HasPrefix(got, SharedRoot) {
-			t.Errorf("%s must not live under the shared root: %q", name, got)
-		}
-		if !strings.HasPrefix(got, home) {
-			t.Errorf("%s should be under this account's home, got %q", name, got)
-		}
-	}
-}
-
-// TestExecRootIsTheRootEverywhereElse keeps the per-user and explicit-root
-// layouts as one folder to delete.
-func TestExecRootIsTheRootEverywhereElse(t *testing.T) {
-	root := t.TempDir()
-	p := NewPaths(root)
-	for name, got := range map[string]string{"Bin": p.Bin, "Venv": p.Venv, "Python": p.Python} {
-		if !strings.HasPrefix(got, root) {
-			t.Errorf("%s should be under %q, got %q", name, root, got)
-		}
 	}
 }
 

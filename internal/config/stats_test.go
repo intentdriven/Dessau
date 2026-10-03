@@ -3,27 +3,14 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-// The store holds one account's own records at 0600, so it can never live in
-// the shared root: that directory is group-writable by design (see the
-// Makefile's install-shared), and a per-account record file has no business
-// in a directory every other account can write.
-func TestTheStoreLivesUnderTheAccountsOwnRootNotTheSharedOne(t *testing.T) {
+// The store holds this account's own records at 0600, in a "stats" directory
+// under the root.
+func TestTheStoreLivesUnderTheRoot(t *testing.T) {
 	if got, want := NewPaths("/root").Stats, "/root/stats"; got != want {
 		t.Errorf("Stats = %q, want %q", got, want)
-	}
-
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	got := NewPaths(SharedRoot).Stats
-	if strings.HasPrefix(got, SharedRoot) {
-		t.Errorf("the store is at %q, inside the group-writable shared root", got)
-	}
-	if want := filepath.Join(home, "Library", "Application Support", "Dessau", "stats"); got != want {
-		t.Errorf("Stats = %q, want the account's own %q", got, want)
 	}
 }
 
@@ -120,27 +107,5 @@ func TestLoadRepairsRetentionRatherThanRefusingTheWholeFile(t *testing.T) {
 	}
 	if c.Host != "127.0.0.1" {
 		t.Errorf("the rest of the file was discarded: host = %q", c.Host)
-	}
-}
-
-// The shared root is recognized however it is spelled. A root that names the
-// same directory by another spelling — a trailing slash, a dot segment, a
-// doubled separator — must not slip past the exception and put a per-account
-// record file inside the group-writable shared root.
-func TestTheSharedRootIsRecognizedHoweverItIsSpelled(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	want := filepath.Join(home, "Library", "Application Support", "Dessau", "stats")
-	for _, spelling := range []string{
-		SharedRoot,
-		SharedRoot + "/",
-		SharedRoot + "/.",
-		filepath.Dir(SharedRoot) + "/./" + filepath.Base(SharedRoot),
-		"/" + SharedRoot,
-		SharedRoot + "/../" + filepath.Base(SharedRoot),
-	} {
-		if got := StatsDir(spelling); got != want {
-			t.Errorf("StatsDir(%q) = %q, want the account's own %q", spelling, got, want)
-		}
 	}
 }
