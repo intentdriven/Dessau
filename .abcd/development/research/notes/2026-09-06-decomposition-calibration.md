@@ -764,3 +764,21 @@ breaking. Three security captures landed during the interview from the
 reviews of the fixes it prompted, not late. Grade: routing survived; the ADR
 and the dependency sign-off are carried as prerequisites in the spec rather
 than written at the interview.
+
+## 2026-10-03 — itd-2610030857275099, Dessau checks downloaded models for newer versions
+
+Filed from the maintainer's one-line request; no reviews yet (a draft).
+
+| part | type | home |
+|---|---|---|
+| Check downloaded models for a newer version at startup and at an interval set in Settings; mark them in the panel | capability | itd-2610030857275099 (draft) |
+| Dessau may contact Hugging Face unasked, revealing which models it holds | trust-boundary rule, reversal-flagged | adr-2610030857208746 (proposed), to supersede adr-2609201008476813 if accepted |
+| Knowing which revision each download came from | plumbing | the intent's spec |
+| A newer version invalidates the measured context and the tool-call verdict | refines itd-2609091301112705, itd-2609201445423499 | acceptance criteria at the interview |
+| Decision models stay on their reviewed revision | refines itd-2610030656210408 | an acceptance criterion |
+| The interval in both the panel and config.json | three-surfaces rule | an acceptance criterion |
+
+Verdict proposed: SPLIT. Verdict adopted: SPLIT, confirmed by the maintainer
+before filing; the reversal of the outbound-connections clause was flagged and
+left for the maintainer to decide in the ADR, not assumed. Grade: routing
+survived.
