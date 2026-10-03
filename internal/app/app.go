@@ -557,6 +557,16 @@ func (a *App) SetConfig(c config.Config) error {
 	a.cfg = c
 	a.cfgMu.Unlock()
 
+	// A model marked as keeping no transcript comes off the debug-logging
+	// list: an arming made before the box was ticked would otherwise launch
+	// it at debug, writing every prompt and answer to its log
+	// (iss-2610032212269524; the 2026-09-20 decision).
+	for _, id := range a.Pool.DebugArmed() {
+		if c.NoTranscript(id) {
+			_ = a.Pool.DisarmDebugLog(id)
+		}
+	}
+
 	// The switch applies to the next request, not to the next start. Turning
 	// it off also empties what was recorded in memory, which is what makes
 	// "off" the same state as a fresh start rather than a hidden one; the

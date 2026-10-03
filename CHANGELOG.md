@@ -83,6 +83,12 @@ GitHub release notes.
 
 ### Fixed
 
+- **Ticking a model's transcript box takes it off the debug-logging list.**
+  `impact: fix`. The panel and the transcript page said so, but a save left an
+  arming made before the box was ticked in place, so the model still launched
+  at debug and wrote every prompt and answer to its log. A save that marks a
+  model as keeping no transcript now disarms it ([transcript](docs/transcript.md);
+  iss-2610032212269524).
 - **A model server that can no longer generate is restarted.** `impact: fix`.
   The pinned mlx-lm answers every request from one generation thread, and a
   request value that raises there kills it for every client while the process
