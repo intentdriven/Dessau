@@ -1728,7 +1728,7 @@ func (a *App) startDownload(repoID, commit string) error {
 				delete(a.swapping, dlKey(repoID))
 			})
 			if dl.staged.Load() {
-				a.removeAside(repoID)
+				a.removeAside(repoID, st.aside)
 			}
 			if perr != nil {
 				// The files are on disk; only the index write failed. Surface it —

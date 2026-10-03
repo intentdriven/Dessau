@@ -610,3 +610,22 @@ func TestTheNewRecordLandsBeforeLoadsResume(t *testing.T) {
 		t.Errorf("loads were admitted while the new files carried the old record (%d observations)", len(bad))
 	}
 }
+
+// The prune compares names case-folded: on the case-insensitive volume a Mac
+// uses by default, a file the listing names in another case is the file just
+// fetched, and removing it would leave the model without its weights
+// (re-review of step 3).
+func TestThePruneKeepsAFileTheListingNamesInAnotherCase(t *testing.T) {
+	a := newTestApp(t)
+	dir := a.Paths.ModelDir("org/repo")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte("w"), 0o644)
+	os.WriteFile(filepath.Join(dir, "stale.safetensors"), []byte("old"), 0o644)
+	a.pruneUnlisted("org/repo", []string{"Model.safetensors", "config.json"})
+	if _, err := os.Stat(filepath.Join(dir, "model.safetensors")); err != nil {
+		t.Error("a file the listing names in another case was removed")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "stale.safetensors")); err == nil {
+		t.Error("a file the listing does not name was kept")
+	}
+}
