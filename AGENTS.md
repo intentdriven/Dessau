@@ -83,6 +83,12 @@ CI (`.github/workflows/ci.yml`) gates on: `gofmt -l .` (must be empty),
 `go build ./...`, `go vet ./...`, `go test ./...`,
 `go test -race ./internal/...`, gitleaks (full history), and zizmor.
 `make run` starts the server headless in the foreground for development.
+On Linux (ci.yml's `linux` job) `go vet ./...` and `go test ./...` run, with
+`*_linux.go` counterparts for the macOS-only parts and macOS-only tests
+skipping with a reason — set `TMPDIR` to a 0700 directory with no
+world-writable ancestor first, as the job does, or the stats store refuses
+`/tmp`; behaviour is verified only on macOS, and `make app`, signing and the
+Swift client build only there.
 
 ## Boundaries
 
