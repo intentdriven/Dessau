@@ -86,7 +86,8 @@ A bridged request is recorded exactly as a request over the API is, with one
 extra field: its `source` is `bridge` rather than `http`. The log line carries
 the bridge's name, Discord's channel and user identifiers as plain numbers, the
 model, the sizes and the timing — never a message, never an answer, never the
-token. The
+token. The channel and user identifiers appear on that log line only; the
+statistics record carries none of them. The
 [what is recorded page](statistics-store-reference.md) says all of it field by
 field.
 
