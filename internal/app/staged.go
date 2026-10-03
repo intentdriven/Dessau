@@ -301,6 +301,12 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, repoID string) (aside s
 		}
 	}()
 
+	// New requests are refused from here until the old version is stopped,
+	// or the swap gives up: a model under steady traffic never falls idle
+	// otherwise (iss-2610031317470004). Once it is stopped, the swapping
+	// mark keeps a load away until the new version is in.
+	undrain := a.Pool.Drain(repoID)
+	defer undrain()
 	deadline := time.Now().Add(a.drainWait)
 	for {
 		err := a.Pool.Remove(repoID)
