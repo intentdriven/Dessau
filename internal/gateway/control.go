@@ -1526,9 +1526,17 @@ func (c *Control) handleUnload(w http.ResponseWriter, r *http.Request) {
 	// the model itself — and the unload here waits, bounded, for that to
 	// land rather than answering 409 to the one person who can take the
 	// memory back (iss-2609211334576018).
+	// An Unload of a model the context probe is measuring cancels that
+	// measurement, before the run is interrupted, so the idle loop cannot
+	// pick the model up again in between; the operator starts it again with
+	// Measure now (maintainer's decision, 2026-10-03; iss-2610031818057157).
+	probing := c.App.ProbeHolds(model)
+	if probing {
+		c.App.CancelMeasurement(model)
+	}
 	err := c.App.Pool.Unload(model)
 	interrupted := false
-	if errors.Is(err, runtime.ErrBusy) && c.App.SelfTest.Interrupt(model) {
+	if (probing || errors.Is(err, runtime.ErrBusy)) && c.App.SelfTest.Interrupt(model) {
 		interrupted = true
 		deadline := time.Now().Add(idleJobReleaseWait)
 		for errors.Is(err, runtime.ErrBusy) && time.Now().Before(deadline) {

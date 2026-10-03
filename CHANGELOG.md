@@ -56,6 +56,12 @@ GitHub release notes.
 
 ### Changed
 
+- **Unload cancels a context-probe measurement it interrupts.** `impact: fix`.
+  An operator's **Unload** of a model the context probe was measuring paused
+  the run, and the probe loaded the model straight back at the next idle
+  minute. It now cancels that measurement: the model stays unloaded, the card
+  says the probe was incomplete, and **Measure now** runs it again
+  ([context probe](docs/context-probe.md); iss-2610031818057157).
 - **A chat request to a model that cannot chat is refused, and the panel
   no longer offers to load one.** `impact: breaking`. A model `/v1/models`
   marks `"chat": false` — a speech, OCR or decision model, or a base model
@@ -89,6 +95,11 @@ GitHub release notes.
   at debug and wrote every prompt and answer to its log. A save that marks a
   model as keeping no transcript now disarms it ([transcript](docs/transcript.md);
   iss-2610032212269524).
+- **A start keeps an old version left aside whenever the rescan would refuse
+  the model's folder.** `impact: fix`. The start judged the folder with a
+  looser check than the rescan's, so a folder holding a part file from an
+  unfinished download could pass it and the copy left aside be removed. It
+  now uses the rescan's own check (iss-2610031807030740).
 - **A model server that can no longer generate is restarted.** `impact: fix`.
   The pinned mlx-lm answers every request from one generation thread, and a
   request value that raises there kills it for every client while the process
