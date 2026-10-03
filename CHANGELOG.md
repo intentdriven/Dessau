@@ -83,6 +83,12 @@ GitHub release notes.
 
 ### Fixed
 
+- **Saving the settings restarts a Discord bridge that Discord stopped.**
+  `impact: fix`. After Discord closed the connection for good, saving the
+  same switch and token did nothing, because the bridge still counted as
+  running under them, and the only way to try again was to switch the bridge
+  off and on. The save is now the restart
+  ([Discord bridge](docs/discord-bridge.md); iss-2609190312326963).
 - **A start keeps an old version left aside whenever the rescan would refuse
   the model's folder.** `impact: fix`. The start judged the folder with a
   looser check than the rescan's, so a folder holding a part file from an
