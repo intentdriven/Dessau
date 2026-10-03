@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/gateway/gateway.go"
 remedy: "Audit each unguarded call in _generate against the request fields that reach it and refuse at the gateway what would raise; treat a 503 from the child's /health as a crash so the pool restarts it."
+resolution: "The pool stops a model server whose /health answers 503 as crashed (health watch), and the gateway refuses the values the audit found raising on the generation thread; two the gateway cannot see stay open as their own issues."
+impact: fix
+resolved_by:
+  commit: "9086fb03a99800b50bec772e36835c3eb8407e25"
 ---
 
 The pinned mlx-lm server's batched generation loop (mlx_lm/server.py _generate) has no try around the per-request setup, so any request value that raises there kills the generation thread for every client until the model restarts. The runtime upgrade refuses the two found (max_tokens below 1, a stop that is not text); the other unguarded calls (_make_sampler, _make_logits_processors, insert_segments) are not yet audited, and a child whose /health answers 503 after the thread dies is not yet treated as crashed.

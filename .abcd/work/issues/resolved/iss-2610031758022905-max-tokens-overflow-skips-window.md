@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/gateway/gateway.go"
 remedy: "Saturate to MaxInt64 when the number overflows."
+resolution: "asTokenCount saturates a budget too large for a float64 to MaxInt64."
+impact: fix
+resolved_by:
+  commit: "9086fb03a99800b50bec772e36835c3eb8407e25"
 ---
 
 asTokenCount returns 0 for a max_tokens too large for a float64 (a 401-digit integer fails both Int64 and Float64), so such a request skips the served-window check and the server takes it as an effectively unlimited budget.
