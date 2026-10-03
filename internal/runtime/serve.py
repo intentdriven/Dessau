@@ -109,7 +109,10 @@ def _handler_class(base, model):
             except (TypeError, ValueError):
                 return super().do_POST()  # the server answers it as it does
             if length < 0:
-                return super().do_POST()
+                # The server would take it as "read to the end of the stream"
+                # and parse a body this check never saw.
+                self._refuse("Invalid Content-Length header")
+                return
             raw = self.rfile.read(length)
             try:
                 body = json.loads(raw.decode())

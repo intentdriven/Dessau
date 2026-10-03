@@ -312,6 +312,39 @@ func TestARunningServersSocketIsKeptFresh(t *testing.T) {
 	}
 }
 
+// A connection is used only when the process listening on the other end runs
+// as this account. Where the socket's name has been taken over — its
+// directory gone and made again by somebody else, a temporary directory
+// another account can write — the listener is theirs, and a prompt sent to
+// it would be handed to them.
+func TestTheChildTransportRefusesAListenerOfAnotherAccount(t *testing.T) {
+	sock := privateSocket(t)
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}()
+
+	if c, err := dialChild(context.Background(), sock, os.Geteuid()); err != nil {
+		t.Fatalf("a listener of this account's was refused: %v", err)
+	} else {
+		c.Close()
+	}
+	if c, err := dialChild(context.Background(), sock, os.Geteuid()+1); err == nil {
+		c.Close()
+		t.Fatal("a listener running as another account was used")
+	}
+}
+
 // shortTempDir is a temporary directory with a short path: t.TempDir is named
 // after the test and can push a socket path past the kernel's limit.
 func shortTempDir(t *testing.T) string {

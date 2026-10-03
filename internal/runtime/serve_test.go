@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -252,6 +254,22 @@ func TestTheLauncherServesOnlyOnItsPrivateSocket(t *testing.T) {
 		}
 	}
 
+	// A negative Content-Length is refused rather than handed on: the server
+	// would read the body to the end of the stream, past every check.
+	raw, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"model":` + strconv.Quote(other) + `,"messages":[],"draft_model":` + strconv.Quote(other) + `}`
+	fmt.Fprintf(raw, "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: -1\r\n\r\n%s", body)
+	raw.(*net.UnixConn).CloseWrite()
+	raw.SetReadDeadline(time.Now().Add(5 * time.Second))
+	answer, _ := io.ReadAll(raw)
+	raw.Close()
+	if !bytes.HasPrefix(answer, []byte("HTTP/1.0 400")) {
+		t.Errorf("a negative Content-Length was answered %q, want a 400", firstLine(answer))
+	}
+
 	// Nothing but the socket: the server's own TCP run() was never reached,
 	// and the process holds no internet socket.
 	if b, err := os.ReadFile(tcpMarker); err == nil {
@@ -274,6 +292,12 @@ func TestTheLauncherServesOnlyOnItsPrivateSocket(t *testing.T) {
 	if _, err := os.Lstat(sock); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the socket outlived its model server: %v", err)
 	}
+}
+
+// firstLine is the status line of a raw HTTP answer.
+func firstLine(b []byte) string {
+	line, _, _ := bytes.Cut(b, []byte("\r\n"))
+	return string(line)
 }
 
 // The launcher refuses a socket outside a directory only this account can
