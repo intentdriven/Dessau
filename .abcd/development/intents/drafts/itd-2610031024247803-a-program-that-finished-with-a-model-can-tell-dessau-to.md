@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-2609081259493890, itd-2609061441241254, itd-2609061441285238, itd-2609211335097114]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
@@ -36,7 +36,32 @@ related_issues: [iss-2610031018046897]
 
 ## Open Questions
 
-_None recorded yet._
+- FLAGGED: a switch on the control panel's existing unload route cannot be
+  enforced; the panel's own Unload button calls the same route and a script on
+  this Mac is indistinguishable from it. Dropping that switch leaves the docs
+  half as documentation (iss-2610031018046897).
+- FLAGGED (reversal): the API route would let a client unload a pinned model,
+  reversing itd-2609061441241254 ("nothing Bob or Carol requests can push them
+  out of memory") and the 2026-09-21 "the pin wins" decision, unless it refuses
+  pinned models.
+- Who may use the API route: on a keyless install every network client and any
+  web page could reach it; the reviews propose admitting exactly the callers the
+  gateway already entitles (this Mac on a keyless install; key holders and this
+  Mac on a keyed one; paired clients), and requiring a JSON content type.
+- Eviction grace: a client unloading between Carol's turns forces a cold reload
+  each turn; refuse inside the grace window?
+- The planned panel limit (itd-2610031004535845) promises the model API is
+  unchanged; does "this account only" also close the API unload to other
+  accounts?
+- The route: `POST /v1/dessau/unload` with the model in the body (model ids
+  contain a slash; `DELETE /v1/models/{id}` is OpenAI's delete and is never
+  registered); the API unload does not interrupt idle work and answers 409 at
+  once; logs and statistics name the kind of caller, never the key, with a new
+  stop reason.
+- A state-changing verb on `/v1` is architecture: the reviews propose an ADR
+  settling the route, the access rule and the pin rule.
+- Seeded 2026-10-03 from the maintainer's request; revised after two
+  adversarial reviews the same day.
 
 ## Audit Notes
 
