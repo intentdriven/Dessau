@@ -27,8 +27,8 @@ func holdingGateway(t *testing.T, key string, status selftest.Status, resident [
 		Config: cfg,
 		Pool:   &stubPool{srv: fake, acquireErr: &runtime.NoRoomError{Limit: 41 << 30}, resident: resident},
 		Models: &stubModels{models: []registry.Model{
-			{RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm"},
-			{RepoID: "org/ocr", State: registry.StateReady, Path: "/models/org/ocr"},
+			{ChatTemplate: true, RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm"},
+			{ChatTemplate: true, RepoID: "org/ocr", State: registry.StateReady, Path: "/models/org/ocr"},
 		}},
 		Log:      slog.New(slog.DiscardHandler),
 		IdleJobs: func() selftest.Status { return status },

@@ -319,6 +319,10 @@ type ModelView struct {
 	// Updating is how far a newer version being fetched beside this ready
 	// model has come, in percent; absent while none is.
 	Updating *float64 `json:"updating,omitempty"`
+	// Chat is Model.CanChat under the rule in force, the answer the models
+	// list publishes: the card offers Load only for a model that can hold a
+	// conversation (iss-2610031010371709).
+	Chat bool `json:"chat"`
 }
 
 // State is the whole picture the UI renders.
@@ -514,6 +518,7 @@ type Defaults struct {
 // entry.
 func (c *Control) modelViews() []ModelView {
 	models := c.App.Registry.List()
+	rule := c.App.Config().EffectiveChatRule()
 	out := make([]ModelView, 0, len(models))
 	for _, m := range models {
 		// The per-file hashes are what a check compares, not what the panel
@@ -521,7 +526,7 @@ func (c *Control) modelViews() []ModelView {
 		// is enough to say which version is on disk.
 		m.FileHashes = nil
 		window, isDefault := c.App.ServedWindow(m)
-		view := ModelView{Model: m, ServedContext: window, ServedContextDefault: isDefault && window > 0}
+		view := ModelView{Model: m, ServedContext: window, ServedContextDefault: isDefault && window > 0, Chat: m.CanChat(rule)}
 		if pct, ok := c.App.UpdateProgress(m.RepoID); ok {
 			view.Updating = &pct
 		}
@@ -1444,6 +1449,14 @@ func modelErrorStatus(err error) int {
 func (c *Control) handleLoad(w http.ResponseWriter, r *http.Request) {
 	model, ok := decodeModelRequest(w, r)
 	if !ok {
+		return
+	}
+	// Load starts a chat model server. A model the chat rule says cannot
+	// hold a conversation would be started as one anyway — a decision model's
+	// backbone without its head answers nonsense — and its window could evict
+	// an idle model to make room (iss-2610031010371709).
+	if m, err := c.App.Registry.Get(model); err == nil && !m.CanChat(c.App.Config().EffectiveChatRule()) {
+		writeError(w, http.StatusConflict, notChatText(m.RepoID))
 		return
 	}
 	// Loading a large model can take minutes; do not hold the HTTP request open

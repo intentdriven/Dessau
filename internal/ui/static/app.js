@@ -498,11 +498,15 @@ function renderModels() {
       actions.append(btn('Remove', 'danger', () =>
         postModel('/api/models/delete', m.repo_id).catch(alertErr)));
     } else {
-      actions.append(loaded
-        ? btn('Unload', 'ghost', () =>
-            postModel('/api/models/unload', m.repo_id).catch(alertErr))
-        : btn('Load', 'ghost', () =>
-            postModel('/api/models/load', m.repo_id).catch(alertErr)));
+      // Load starts a chat model server, so it is offered only for a model
+      // that can hold a conversation; a loaded one can always be unloaded.
+      if (loaded) {
+        actions.append(btn('Unload', 'ghost', () =>
+          postModel('/api/models/unload', m.repo_id).catch(alertErr)));
+      } else if (m.chat) {
+        actions.append(btn('Load', 'ghost', () =>
+          postModel('/api/models/load', m.repo_id).catch(alertErr)));
+      }
       // The context probe: one run whatever the switch says, and adoption of
       // a current figure as the served window. A model that declares no
       // window has nothing to measure between.

@@ -236,7 +236,7 @@ func childGateway(t *testing.T, child *mlxChild, cfg config.Config, recording bo
 	t.Helper()
 	up := httptest.NewServer(child)
 	t.Cleanup(up.Close)
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: testChildRepo, Path: childModelArg, State: registry.StateReady,
 	}}}
 	opts := Options{Config: cfg, Pool: childPool{url: up.URL}, Models: models}
