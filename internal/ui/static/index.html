@@ -670,7 +670,8 @@
         no transcript is held apart from the two places a conversation could leave a record. It
         is not offered over the Discord bridge, because Discord would keep what Dessau does not,
         and debug logging cannot be armed on it: the arming is refused with the reason, and
-        ticking this box takes a model off the debug-logging list. Every client is told, in the
+        ticking this box takes a model off the debug-logging list; a model already running at
+        debug keeps logging until it is unloaded. Every client is told, in the
         models list, that no model is recorded, and Dessau Chat shows it beside the model before
         you pick it. The
         <a href="https://github.com/intentdriven/Dessau/blob/main/docs/transcript.md">transcript

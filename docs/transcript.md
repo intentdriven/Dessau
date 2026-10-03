@@ -59,7 +59,9 @@ Per-model [debug logging](logging.md) writes every prompt and every answer a
 model server sees into that model's own log, which is a transcript by another
 name. Arming it on a marked model is refused with the reason, and the
 paragraph at the control says so; ticking the transcript box for a model takes
-it off the debug-logging list.
+it off the debug-logging list. The debug level is set when a model server
+starts, so a model already running at debug keeps writing to its log until it
+stops: unload it from its card to end that run.
 
 ## What the mark does not cover
 
