@@ -459,3 +459,25 @@ func deadPID(t *testing.T) int {
 	}
 	return p.Pid
 }
+
+// A socket directory is removed only while it is still a directory this
+// account owns: a name another account has taken since is theirs, and what
+// is in it is not this account's to delete.
+func TestASocketDirectoryOfAnotherAccountIsNotRemoved(t *testing.T) {
+	dir := filepath.Join(shortTempDir(t), "dir")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	keep := filepath.Join(dir, "theirs")
+	if err := os.WriteFile(keep, []byte("theirs"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	removeSocketDir(dir, os.Geteuid()+1)
+	if _, err := os.Lstat(keep); err != nil {
+		t.Errorf("a directory owned by another account was emptied: %v", err)
+	}
+	removeSocketDir(dir, os.Geteuid())
+	if _, err := os.Lstat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("this account's own socket directory was kept: %v", err)
+	}
+}

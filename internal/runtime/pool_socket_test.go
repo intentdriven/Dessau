@@ -118,3 +118,45 @@ func TestAPoolWhoseSocketDirectoryWentMakesANewOne(t *testing.T) {
 	}
 	os.RemoveAll(second)
 }
+
+// A socket directory the pool replaced — one that stopped being this
+// account's alone while a server may still have been listening in it — goes
+// when the pool closes, as the directory in use does, rather than being left
+// in the temporary directory for good.
+func TestAPoolRemovesTheSocketDirectoriesItReplacedWhenItCloses(t *testing.T) {
+	l := newFakeLauncher()
+	src := &fakeSource{models: map[string]int64{"org/m": 1 << 20}}
+	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30})
+
+	load := func() string {
+		t.Helper()
+		_, release, err := p.Acquire(context.Background(), "org/m")
+		if err != nil {
+			t.Fatalf("Acquire: %v", err)
+		}
+		release()
+		dir := filepath.Dir(l.specFor("org/m").Socket)
+		if err := p.Unload("org/m"); err != nil {
+			t.Fatalf("Unload: %v", err)
+		}
+		return dir
+	}
+	replaced := load()
+	t.Cleanup(func() { os.RemoveAll(replaced) })
+	if err := os.Chmod(replaced, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	current := load()
+	if current == replaced {
+		t.Fatal("a socket directory others could open was used again")
+	}
+
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for what, dir := range map[string]string{"the replaced": replaced, "the current": current} {
+		if _, err := os.Lstat(dir); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s socket directory outlived the pool: %v", what, err)
+		}
+	}
+}

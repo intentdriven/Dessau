@@ -101,6 +101,21 @@ func checkSocketDir(dir string, owner int) error {
 	return nil
 }
 
+// removeSocketDir removes a socket directory and what is in it, while it is
+// still a directory owner owns. A name that has become a link, or a directory
+// another account made under it since, is left alone: what is in it is not
+// this account's to delete.
+func removeSocketDir(dir string, owner int) {
+	fi, err := os.Lstat(dir)
+	if err != nil || !fi.IsDir() {
+		return
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != owner {
+		return
+	}
+	_ = os.RemoveAll(dir)
+}
+
 // socketPath is the n-th socket in dir, refused when it would be longer than
 // a Unix socket's path may be.
 func socketPath(dir string, n uint64) (string, error) {

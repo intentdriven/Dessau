@@ -321,6 +321,10 @@ type Pool struct {
 	// ever share a name. Guarded by mu, which the launch path holds.
 	sockDir string
 	sockSeq uint64
+	// retiredSockDirs are the socket directories nextSocketLocked replaced. A
+	// server launched in one may still be listening there, so each is kept
+	// until Close removes it with sockDir. Guarded by mu.
+	retiredSockDirs []string
 }
 
 // entry is one model server, loaded or loading.
@@ -1383,6 +1387,7 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 // rather than refusing every load from then on. Callers must hold p.mu.
 func (p *Pool) nextSocketLocked() (string, error) {
 	if p.sockDir != "" && checkSocketDir(p.sockDir, os.Geteuid()) != nil {
+		p.retiredSockDirs = append(p.retiredSockDirs, p.sockDir)
 		p.sockDir = ""
 	}
 	if p.sockDir == "" {
@@ -2587,15 +2592,19 @@ func (p *Pool) Close() error {
 	// after the listing is guarded by an entries lookup, and entries is empty
 	// by now.
 	<-p.sampleDone
-	// The socket directory goes with the servers that listened in it. A
-	// server that outlived SIGKILL loses its name with it, which leaves it
-	// unreachable rather than reachable by anybody else: the directory is
-	// this process's own, made fresh, and nothing reuses its name.
+	// The socket directories go with the servers that listened in them, the
+	// ones nextSocketLocked replaced included. A server that outlived SIGKILL
+	// loses its name with it, which leaves it unreachable rather than
+	// reachable by anybody else: each directory is this process's own, made
+	// fresh, and nothing reuses its name. One that is no longer this
+	// account's is left (removeSocketDir).
 	p.mu.Lock()
-	dir := p.sockDir
+	dirs := append([]string{p.sockDir}, p.retiredSockDirs...)
 	p.mu.Unlock()
-	if dir != "" {
-		_ = os.RemoveAll(dir)
+	for _, dir := range dirs {
+		if dir != "" {
+			removeSocketDir(dir, os.Geteuid())
+		}
 	}
 	return nil
 }
