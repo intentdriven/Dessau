@@ -1,6 +1,8 @@
 package app
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -106,9 +108,35 @@ func TestALinkPlantedJustBeforeASwapRenameMovesNoOtherModel(t *testing.T) {
 // it were the folder: no other model is served as this one, and the old
 // version is not removed.
 func TestALinkAtTheMovedNameIsNeverMovedAsTheFolder(t *testing.T) {
-	for _, tc := range []struct{ step, at string }{
-		{"in", stagingDirName + "/org/repo"},
-		{"aside", "org/repo"},
+	for _, tc := range []struct {
+		step string
+		// plant replaces the folder about to be moved with a link.
+		plant func(t *testing.T, a *App, other string)
+	}{
+		// The staged version's own name now links to another org's model.
+		{"in", func(t *testing.T, a *App, other string) {
+			at := filepath.Join(a.Paths.Models, stagingDirName, "org", "repo")
+			if err := os.Rename(at, at+".moved"); err != nil {
+				t.Error(err)
+			}
+			if err := os.Symlink(other, at); err != nil {
+				t.Error(err)
+			}
+		}},
+		// The served model's name now links to the real folder, moved where
+		// it stays reachable: moving the link aside would leave the update
+		// to land with the old version still in place, unrecorded.
+		{"aside", func(t *testing.T, a *App, other string) {
+			at := a.Paths.ModelDir("org/repo")
+			real := filepath.Join(a.Paths.Models, "org3", "repo")
+			os.MkdirAll(filepath.Dir(real), 0o755)
+			if err := os.Rename(at, real); err != nil {
+				t.Error(err)
+			}
+			if err := os.Symlink(real, at); err != nil {
+				t.Error(err)
+			}
+		}},
 	} {
 		t.Run(tc.step, func(t *testing.T) {
 			a, h := newStagedApp(t)
@@ -118,16 +146,9 @@ func TestALinkAtTheMovedNameIsNeverMovedAsTheFolder(t *testing.T) {
 			}
 			os.WriteFile(filepath.Join(other, "config.json"), []byte(`{"model_type":"other"}`), 0o644)
 			os.WriteFile(filepath.Join(other, "model.safetensors"), []byte("other-weights"), 0o644)
-			at := filepath.Join(a.Paths.Models, filepath.FromSlash(tc.at))
 			a.beforeSwapRename = func(s string) {
-				if s != tc.step {
-					return
-				}
-				if err := os.Rename(at, at+".moved"); err != nil {
-					t.Error(err)
-				}
-				if err := os.Symlink(other, at); err != nil {
-					t.Error(err)
+				if s == tc.step {
+					tc.plant(t, a, other)
 				}
 			}
 			h.set(func(h *versionedHub) { h.current = commitV2 })
@@ -139,13 +160,10 @@ func TestALinkAtTheMovedNameIsNeverMovedAsTheFolder(t *testing.T) {
 			if got := filesIn(t, other); got["config.json"] != `{"model_type":"other"}` {
 				t.Errorf("the other org's model changed: %v", got)
 			}
-			if fi, err := os.Lstat(a.Paths.ModelDir("org/repo")); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-				if m, _ := a.Registry.Get("org/repo"); m.Commit == commitV2 {
-					t.Error("a link was moved in as the new version and the update recorded as landed")
-				}
+			if m, _ := a.Registry.Get("org/repo"); m.Commit == commitV2 {
+				t.Error("a link was moved as the model's folder and the update recorded as landed")
 			}
-			// The real old version is never removed: it is served, moved
-			// aside by the test, or left aside.
+			// The real old version is never removed.
 			found := false
 			filepath.WalkDir(a.Paths.Models, func(p string, d os.DirEntry, err error) error {
 				if err == nil && !d.IsDir() && filepath.Base(p) == "model-00002-of-00002.safetensors" {
@@ -157,5 +175,32 @@ func TestALinkAtTheMovedNameIsNeverMovedAsTheFolder(t *testing.T) {
 				t.Error("the old version was removed")
 			}
 		})
+	}
+}
+
+// An old version a swap left aside, whose model's folder is now taken by
+// something else, is kept at the next start rather than removed with the
+// rest of the staging folder: it may be the only copy left.
+func TestAnAsideCopyThatCannotGoBackIsKeptAtStart(t *testing.T) {
+	models := t.TempDir()
+	aside := filepath.Join(models, stagingDirName, "org", "repo"+asideSuffix+"abc")
+	if err := os.MkdirAll(aside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(aside, "model.safetensors"), []byte("the only copy"), 0o644)
+	staged := filepath.Join(models, stagingDirName, "org", "other")
+	os.MkdirAll(staged, 0o755)
+	os.WriteFile(filepath.Join(staged, "x"), []byte("staged"), 0o644)
+	occupant := filepath.Join(models, "org", "repo")
+	os.MkdirAll(occupant, 0o755)
+	os.WriteFile(filepath.Join(occupant, "planted"), []byte("not the model"), 0o644)
+
+	recoverStaging(models, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	if b, err := os.ReadFile(filepath.Join(aside, "model.safetensors")); err != nil || string(b) != "the only copy" {
+		t.Errorf("the copy left aside was removed at start: %v", err)
+	}
+	if _, err := os.Stat(staged); !os.IsNotExist(err) {
+		t.Errorf("a staged version was kept at start: %v", err)
 	}
 }

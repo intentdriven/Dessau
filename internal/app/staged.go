@@ -456,8 +456,19 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoI
 		// left the only copy aside, it goes back rather than being cleared
 		// to make way: an update never removes the last copy of a model.
 		if left, ok := asideLeft(sorg, repoID); ok {
-			if rerr := renameAt(stagingDir, filepath.Base(left), org.dir, name); rerr != nil {
+			leftName := filepath.Base(left)
+			was, lerr := sorg.Lstat(leftName)
+			if lerr != nil || !was.IsDir() {
+				return "", errors.New("the model's folder is missing and the copy left aside is not a directory; this update is abandoned")
+			}
+			if rerr := renameAt(stagingDir, leftName, org.dir, name); rerr != nil {
 				return "", fmt.Errorf("the model's folder is missing and the copy left aside could not be put back: %w", rerr)
+			}
+			if !sameDir(org.Root, name, was) {
+				if rerr := renameAt(org.dir, name, stagingDir, leftName); rerr != nil {
+					a.Log.Error("could not undo a swap's rename", "model", repoID, "err", rerr)
+				}
+				return "", errors.New("the copy left aside changed as it was put back; this update is abandoned")
 			}
 			return "", errors.New("the model's folder was missing; the copy an earlier update left aside is back in place, and this update is abandoned")
 		}
@@ -483,7 +494,7 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoI
 	}
 	putBack := func() {
 		if rerr := renameAt(stagingDir, asideName, org.dir, name); rerr != nil {
-			a.Log.Error("could not put the old version back after a failed swap; it is put back at the next start",
+			a.Log.Error("could not put the old version back after a failed swap; the next start puts it back, or keeps it aside if something else stands in its place",
 				"model", repoID, "err", rerr)
 		}
 	}
@@ -633,7 +644,8 @@ func (a *App) isSwapping(repoID string) bool {
 // recoverStaging runs once at start, before the rescan: an old version left
 // aside by a swap the previous process died in the middle of goes back where
 // it was when nothing took its place, and every staged version is removed —
-// a download is never resumed into the staging folder. All of it inside a
+// a download is never resumed into the staging folder. One that cannot go
+// back is kept (clearStagingKeepingAside). All of it inside a
 // root at the models folder; a link at the staging folder's name, or at an
 // org's inside it, is removed as a link and nothing it names is touched.
 func recoverStaging(models string, log interface {
@@ -648,12 +660,54 @@ func recoverStaging(models string, log interface {
 	if errors.Is(err, fs.ErrNotExist) {
 		return
 	}
-	if err == nil && fi.IsDir() {
-		putBackAside(root, log)
+	if err != nil || !fi.IsDir() {
+		if err := root.RemoveAll(stagingDirName); err != nil {
+			log.Warn("could not clear the staging folder", "err", err)
+		}
+		return
 	}
-	if err := root.RemoveAll(stagingDirName); err != nil {
-		log.Warn("could not clear the staging folder", "err", err)
+	putBackAside(root, log)
+	clearStagingKeepingAside(root, log)
+}
+
+// clearStagingKeepingAside removes every staged version and everything else
+// in the staging folder but an old version left aside that could not be put
+// back — its model's folder taken by something else. That may be the only
+// copy of the model, and an update never removes the last copy: it is kept
+// and named in the log for the person to look at.
+func clearStagingKeepingAside(root *os.Root, log interface{ Warn(string, ...any) }) {
+	orgs, err := readDirIn(root, stagingDirName)
+	if err != nil {
+		log.Warn("could not read the staging folder", "err", err)
+		return
 	}
+	for _, org := range orgs {
+		orgRel := filepath.Join(stagingDirName, org.Name())
+		if fi, err := root.Lstat(orgRel); err != nil || !fi.IsDir() {
+			if err := root.RemoveAll(orgRel); err != nil {
+				log.Warn("could not clear the staging folder", "err", err)
+			}
+			continue
+		}
+		entries, err := readDirIn(root, orgRel)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			rel := filepath.Join(orgRel, e.Name())
+			if _, _, isAside := strings.Cut(e.Name(), asideSuffix); isAside {
+				if fi, err := root.Lstat(rel); err == nil && fi.IsDir() {
+					log.Warn("an old version an interrupted update left aside could not be put back, because something else stands in its model's folder; it is kept", "path", filepath.ToSlash(rel))
+					continue
+				}
+			}
+			if err := root.RemoveAll(rel); err != nil {
+				log.Warn("could not clear the staging folder", "err", err)
+			}
+		}
+		_ = root.Remove(orgRel) // only when nothing was kept in it
+	}
+	_ = root.Remove(stagingDirName)
 }
 
 // putBackAside moves each old version an interrupted swap left aside back to

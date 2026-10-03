@@ -80,8 +80,9 @@ GitHub release notes.
   under the staging folder, and both of the swap's renames, now go through
   the folders Dessau checked and opened rather than through their names, and
   each rename is checked to have moved the directory it meant to; one that
-  did not is undone and the update abandoned before anything is removed
-  (iss-2610031324593822).
+  did not is undone and the update abandoned. A start keeps an old version
+  left aside that it cannot put back, rather than removing it with the rest
+  of the staging folder (iss-2610031324593822).
 - **The panel's memory line says what is reserved, in the units it
   measures.** `impact: fix`. The line at the head of **My Models** called the
   sum of each loaded model's charge "resident", and the default window is
