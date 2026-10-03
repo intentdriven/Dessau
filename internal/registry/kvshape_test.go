@@ -241,3 +241,27 @@ func TestAHybridPatternTakesPrecedenceOverALayersBlockTypeList(t *testing.T) {
 		t.Errorf("KVChargePerToken = %d, want %d — the pattern's two attention layers", got, want)
 	}
 }
+
+// mlx-lm types hybrid_override_pattern as a list of one-character strings
+// (models/nemotron_h.py), so a configuration that writes it as a list is
+// charged by the same count of "*" entries as one that writes a string, and
+// still before layers_block_type (iss-2610031018231170).
+func TestAHybridPatternWrittenAsAListIsReadToo(t *testing.T) {
+	for name, config := range map[string]string{
+		"a list alone": `{"model_type":"nemotron_h","num_hidden_layers":4,
+		            "hybrid_override_pattern":["M","*","M","*"],
+		            "num_key_value_heads":2,"head_dim":128}`,
+		"a list before layers_block_type": `{"model_type":"nemotron_h","num_hidden_layers":4,
+		            "hybrid_override_pattern":["M","*","M","*"],
+		            "layers_block_type":["attention","attention","attention","attention"],
+		            "num_key_value_heads":2,"head_dim":128}`,
+	} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(config), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := ReadModelFacts(dir).KVChargePerToken, int64(2*2*128*2*2*5); got != want {
+			t.Errorf("%s: KVChargePerToken = %d, want %d — the pattern's two attention layers", name, got, want)
+		}
+	}
+}
