@@ -8,8 +8,8 @@ import (
 
 // The file that owns the chat verdict. ChatRule.Matches is the operator's
 // rule over the Hub's words, and it is half of the answer: a model the Hub
-// has said nothing about — one adopted from the shared cache by an account
-// that never downloaded it — is judged by its chat template instead. Every
+// has said nothing about — a model directory the rescan adopted rather than
+// one this server downloaded — is judged by its chat template instead. Every
 // surface that says whether a model can chat must read the whole answer from
 // registry.Model.CanChat, so that the two halves cannot come apart the way
 // they did when the models list applied the rule itself and every adopted

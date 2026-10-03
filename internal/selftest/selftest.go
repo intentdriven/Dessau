@@ -68,11 +68,29 @@ type Server interface {
 	Fits(repoID string) bool
 }
 
-// Upstream is a ready model server: where it answers, and the exact string
-// its "model" field must carry (runtime.Upstream.ModelArg).
+// Upstream is a ready model server: where it answers, the transport that
+// reaches it (runtime.Upstream.Transport, which dials its private socket),
+// and the exact string its "model" field must carry
+// (runtime.Upstream.ModelArg).
 type Upstream struct {
-	BaseURL  string
-	ModelArg string
+	BaseURL   string
+	Transport http.RoundTripper
+	ModelArg  string
+}
+
+// UpstreamClient is c with its transport replaced by rt, the one the pool
+// handed over with an Upstream: the only way to the model server, which
+// listens on a socket in a directory only the serving account can open. The
+// rest of c — its redirect policy, its timeout — is kept. A missing transport
+// is refused rather than left to c's own, which would look the URL's host up
+// and go wherever that led.
+func UpstreamClient(c *http.Client, rt http.RoundTripper) (*http.Client, error) {
+	if rt == nil {
+		return nil, errors.New("no transport to the model server")
+	}
+	out := *c
+	out.Transport = rt
+	return &out, nil
 }
 
 // Activity is the pool's view of the moment: what is resident and how busy

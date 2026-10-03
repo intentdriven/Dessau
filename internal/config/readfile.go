@@ -15,11 +15,10 @@ const MaxConfigBytes = 1 << 20
 // OpenRegular opens path for reading and refuses anything but a regular file.
 //
 // Every state file Dessau keeps in its data root — config.json, registry.json,
-// the PID ledger, the instance token — is created lazily, and in shared-cache
-// mode that root is group-writable (/Users/Shared/Dessau, mode 3775): another
-// local account can plant a FIFO or a symlink under any of those names before
-// the first write, and the sticky bit then stops this account from ever
-// removing it. A plain os.Open would block forever on the FIFO (wedging startup
+// the PID ledger, the instance token — is created lazily, so a FIFO or a
+// symlink can sit under any of those names before the first write: a stray
+// copy, a restored backup, or anything else that can write the root. A plain
+// os.Open would block forever on the FIFO (wedging startup
 // with no error and no way to recover from the app) or follow the symlink and
 // read an arbitrary file with this account's privileges. O_NONBLOCK makes the
 // open itself unblockable, O_NOFOLLOW refuses symlinks outright, and the fstat
@@ -73,11 +72,10 @@ func ReadRegularInfo(path string, max int64) ([]byte, os.FileInfo, error) {
 	return b, info, nil
 }
 
-// PrivateToThisAccount is privateToThisAccount, for the one other file Dessau
-// keeps that a co-tenant account must not be able to substitute: the server's
-// TLS private key (internal/pairing). The rule is the settings file's, stated
-// once and applied twice, rather than a second copy of the same three checks
-// drifting from this one.
+// PrivateToThisAccount is privateToThisAccount, for the server's TLS private
+// key (internal/pairing): a key another account could have written or read is
+// not this server's key. One rule, rather than a second copy of the same three
+// checks drifting from this one.
 func PrivateToThisAccount(info os.FileInfo) error { return privateToThisAccount(info) }
 
 // WriteSecretFile writes b to path the way config.json is written: a
@@ -85,6 +83,6 @@ func PrivateToThisAccount(info os.FileInfo) error { return privateToThisAccount(
 // flushed before the rename so a power loss cannot leave a truncated secret.
 //
 // It exists so the server's TLS private key is written by the same code the
-// settings file is, and not by a second os.WriteFile that a co-tenant account
-// could have pre-created a symlink for.
+// settings file is, and not by a second os.WriteFile that would follow a
+// symlink created ahead of it.
 func WriteSecretFile(path string, b []byte) error { return writeSettingsFile(path, b) }

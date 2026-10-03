@@ -184,8 +184,8 @@ func TestChatRuleRoundTripsThroughTheFile(t *testing.T) {
 	}
 }
 
-// The rule is read from a file another local account can write in shared-cache
-// mode, and its words are republished to the LAN. A hand-edited or planted rule
+// The rule is read from a hand-editable file, and its words are republished
+// to the LAN. A hand-edited or planted rule
 // is repaired rather than refused: a refused config.json takes the whole
 // install down to loopback, which is far too much to pay for a tag list.
 func TestLoadRepairsAnUnusableChatRule(t *testing.T) {

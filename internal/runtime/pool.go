@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
 	"sort"
 	"sync"
@@ -38,9 +39,11 @@ type ResolvedModel struct {
 	// Bytes is the model's size on disk.
 	Bytes int64
 	// ServedContext is the window Dessau serves this model at: the operator's
-	// per-model setting, or the window the model declares when they have set
-	// none (config.Config.ServedContext). The gateway refuses a request
-	// estimated to be larger, so it is the window the pool charges.
+	// per-model setting, or the default derived to fit the memory budget when
+	// they have set none (App.ServedWindow). The gateway refuses a request
+	// estimated to be larger, so it is the window the pool charges — and,
+	// with no completion budget of the operator's, the budget the server is
+	// launched with (launchSampling). Zero means it is not known.
 	ServedContext int64
 	// KVChargePerToken is what one token of that window is charged against the
 	// budget (registry.Model.KVChargePerToken).
@@ -50,8 +53,14 @@ type ResolvedModel struct {
 // Upstream is a ready model server the gateway can proxy to.
 type Upstream struct {
 	RepoID string
-	// BaseURL is the loopback address of the model server.
+	// BaseURL is what a request to the model server is written against. Its
+	// host is a label, not an address: the server listens on a Unix socket
+	// and nothing else, and only Transport reaches it.
 	BaseURL string
+	// Transport is the one way to the model server: it dials the server's
+	// socket, in a directory only this account can open, whatever the URL
+	// says (childTransport). Every request to the server goes through it.
+	Transport http.RoundTripper
 	// ModelArg is the exact string that must appear in the proxied request's
 	// "model" field. mlx-lm treats that field as an instruction to *load* a
 	// model, so sending the client's friendly name would make the backend try to
@@ -107,7 +116,6 @@ const (
 type Resident struct {
 	RepoID string         `json:"repo_id"`
 	State  ResidencyState `json:"state"`
-	Port   int            `json:"port"`
 	Bytes  int64          `json:"bytes"`
 	// Charge is what this model costs the memory budget, which is more than
 	// its size: the weights, their headroom, and the attention cache the
@@ -229,8 +237,6 @@ type PoolOptions struct {
 	// take plus a margin.
 	DrainWait time.Duration
 
-	// HTTP is the client used for readiness probes.
-	HTTP *http.Client
 	// now is injectable for tests.
 	now func() time.Time
 }
@@ -308,12 +314,25 @@ type Pool struct {
 	// refusals counts the curable no-room refusals; see Residency.Refusals.
 	refusals uint64
 	idleDone chan struct{}
+
+	// sockDir is the private directory every model server's socket is made
+	// in (newSocketDir), made at the first launch and removed by Close; and
+	// sockSeq names the next socket in it, so no two launches of this pool
+	// ever share a name. Guarded by mu, which the launch path holds.
+	sockDir string
+	sockSeq uint64
+	// retiredSockDirs are the socket directories nextSocketLocked replaced. A
+	// server launched in one may still be listening there, so each is kept
+	// until Close removes it with sockDir. Guarded by mu.
+	retiredSockDirs []string
 }
 
 // entry is one model server, loaded or loading.
 type entry struct {
 	repoID string
-	port   int
+	// transport reaches this server over its socket (childTransport). It is
+	// built once per server, so the connections it keeps are this server's.
+	transport *http.Transport
 	// resolved is what the model source last said about this model: its size,
 	// the window it declares and what a token of that window costs its cache.
 	// Kept rather than discarded after the launch because it is what the
@@ -471,14 +490,6 @@ const defaultMaxLoadWaiters = 8
 
 // NewPool creates a pool. Call Close to shut down every model server.
 func NewPool(opts PoolOptions) *Pool {
-	if opts.HTTP == nil {
-		// No client-level timeout: this client is used only by the readiness probe,
-		// whose single completion request rides mlx-lm's lazy weight load — which
-		// takes minutes for a large model. Each probe request is instead bounded by
-		// the ReadyTimeout-scoped context in probeReady. A fixed 30s here would abort
-		// mid-load and force wasteful re-probing.
-		opts.HTTP = &http.Client{}
-	}
 	if opts.DrainWait <= 0 {
 		opts.DrainWait = maxDrainWait
 	}
@@ -1122,9 +1133,10 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 	}
 
 	return &Upstream{
-		RepoID:   repoID,
-		BaseURL:  fmt.Sprintf("http://127.0.0.1:%d", e.port),
-		ModelArg: e.modelArg,
+		RepoID:    repoID,
+		BaseURL:   childBaseURL,
+		Transport: e.transport,
+		ModelArg:  e.modelArg,
 		Waits: AcquireStats{
 			InFlight: already,
 			LoadWait: loaded.Sub(entered),
@@ -1275,7 +1287,7 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 	// own directory vanishing in a race with a concurrent delete — a healthy,
 	// unrelated resident model would be torn down for zero benefit.
 	if err := p.opts.Launcher.Precheck(Spec{RepoID: repoID, ModelPath: path}); err != nil {
-		return nil, fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
+		return nil, p.launchFailedLocked(repoID, err)
 	}
 	for _, v := range plan.victims {
 		p.stopEntryLocked(v, StopEvicted)
@@ -1311,20 +1323,20 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 		return nil, fmt.Errorf("%w: %w", errDraining, p.noRoomLocked(need))
 	}
 
-	port, err := freePort()
+	socket, err := p.nextSocketLocked()
 	if err != nil {
-		return nil, fmt.Errorf("allocate port: %w", err)
+		return nil, fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
 	}
 
 	e := &entry{
-		repoID:   repoID,
-		port:     port,
-		resolved: m,
-		charge:   need,
-		modelArg: path,
-		loadedAt: p.opts.now(),
-		lastUsed: p.opts.now(),
-		ready:    make(chan struct{}),
+		repoID:    repoID,
+		transport: childTransport(socket),
+		resolved:  m,
+		charge:    need,
+		modelArg:  path,
+		loadedAt:  p.opts.now(),
+		lastUsed:  p.opts.now(),
+		ready:     make(chan struct{}),
 		// Allow twice the decode batch size in flight: enough to keep mlx-lm's
 		// batching full without letting an unbounded burst exhaust GPU memory.
 		sem: make(chan struct{}, 2*p.opts.DecodeConcurrency),
@@ -1334,6 +1346,9 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 	if p.opts.SamplingFor != nil {
 		sampling = p.opts.SamplingFor(repoID)
 	}
+	// With no completion budget of the operator's, the served window is the
+	// budget the server answers an omitted max_tokens with, not its own 512.
+	sampling = launchSampling(sampling, m.ServedContext)
 	// The debug mark is read here and cleared below, under the one acquisition
 	// of p.mu this whole function runs under — so two launches of the same
 	// model cannot both consume it — but the clear waits for Launch to return
@@ -1345,13 +1360,13 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 	proc, err := p.opts.Launcher.Launch(context.Background(), Spec{
 		RepoID:            repoID,
 		ModelPath:         path,
-		Port:              port,
+		Socket:            socket,
 		DecodeConcurrency: p.opts.DecodeConcurrency,
 		Sampling:          sampling,
 		DebugLog:          debugLog,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
+		return nil, p.launchFailedLocked(repoID, err)
 	}
 	delete(p.debugArmed, key)
 	e.proc = proc
@@ -1362,6 +1377,49 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 
 	go p.waitReady(e)
 	return e, nil
+}
+
+// nextSocketLocked names the socket the next model server listens on: a fresh
+// name in the pool's private socket directory, which the first launch makes.
+// A directory that has gone since — macOS clears a temporary directory's
+// untouched entries after three days, and with nothing loaded nothing touches
+// it — or that is no longer this account's alone is replaced by a new one
+// rather than refusing every load from then on. Callers must hold p.mu.
+func (p *Pool) nextSocketLocked() (string, error) {
+	if p.sockDir != "" && checkSocketDir(p.sockDir, os.Geteuid()) != nil {
+		p.retiredSockDirs = append(p.retiredSockDirs, p.sockDir)
+		p.sockDir = ""
+	}
+	if p.sockDir == "" {
+		dir, err := newSocketDir()
+		if err != nil {
+			return "", err
+		}
+		p.sockDir = dir
+	}
+	p.sockSeq++
+	return socketPath(p.sockDir, p.sockSeq)
+}
+
+// launchFailedLocked classes what Precheck or Launch returned. Callers must
+// hold p.mu.
+//
+// A NotReadyError is the launcher refusing the model itself — one that ships
+// its own code, whose files belong to another account, or whose config.json
+// is missing or unreadable (refuseModelCode) — before any process exists. It is the
+// model's own load failure, so it goes the way one that started and never
+// answered goes: returned as it is, for the gateway to class as not ready and
+// relay to a client entitled to the reason, and reported to the observer,
+// which records it on the model so idle work leaves it alone and the card
+// says why. Anything else is a LaunchError: a broken installation or a
+// vanished directory, whose text can carry this account's paths.
+func (p *Pool) launchFailedLocked(repoID string, err error) error {
+	var notReady *NotReadyError
+	if errors.As(err, &notReady) {
+		p.notify(func(o PoolObserver) { o.LoadFinished(repoID, 0, notReady, config.Sampling{}) })
+		return notReady
+	}
+	return fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
 }
 
 // waitReady probes until the model actually answers a completion, then unblocks
@@ -1460,7 +1518,11 @@ func (p *Pool) watchExit(e *entry) {
 // traceback there that means the load cannot succeed ends the wait at once,
 // with the child's own reason (iss-2609211334570516).
 func (p *Pool) probeReady(ctx context.Context, e *entry) error {
-	base := fmt.Sprintf("http://127.0.0.1:%d", e.port)
+	// No client-level timeout: the one completion request rides mlx-lm's lazy
+	// weight load, which takes minutes for a large model. Each request is
+	// bounded by the ReadyTimeout-scoped context instead; a fixed 30s here
+	// would abort mid-load and force wasteful re-probing.
+	client := &http.Client{Transport: e.transport}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	if lg, ok := e.proc.(LoadLogger); ok {
@@ -1496,13 +1558,13 @@ func (p *Pool) probeReady(ctx context.Context, e *entry) error {
 		}
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			base+"/v1/chat/completions", bytes.NewReader(body))
+			childBaseURL+"/v1/chat/completions", bytes.NewReader(body))
 		if err != nil {
 			return err
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, err := p.opts.HTTP.Do(req)
+		resp, err := client.Do(req)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -2360,7 +2422,6 @@ func (p *Pool) residentLocked() []Resident {
 		out = append(out, Resident{
 			RepoID:   e.repoID,
 			State:    state,
-			Port:     e.port,
 			Bytes:    e.resolved.Bytes,
 			Charge:   e.charge,
 			LoadedAt: e.loadedAt,
@@ -2531,6 +2592,20 @@ func (p *Pool) Close() error {
 	// after the listing is guarded by an entries lookup, and entries is empty
 	// by now.
 	<-p.sampleDone
+	// The socket directories go with the servers that listened in them, the
+	// ones nextSocketLocked replaced included. A server that outlived SIGKILL
+	// loses its name with it, which leaves it unreachable rather than
+	// reachable by anybody else: each directory is this process's own, made
+	// fresh, and nothing reuses its name. One that is no longer this
+	// account's is left (removeSocketDir).
+	p.mu.Lock()
+	dirs := append([]string{p.sockDir}, p.retiredSockDirs...)
+	p.mu.Unlock()
+	for _, dir := range dirs {
+		if dir != "" {
+			removeSocketDir(dir, os.Geteuid())
+		}
+	}
 	return nil
 }
 

@@ -67,9 +67,9 @@ func (f *LoadFailure) StaleAgainst(p Provenance) string {
 }
 
 // plausibleLoadFailure bounds a failure read from the file, for the reason
-// plausibleMeasurement bounds a measurement: registry.json is, in
-// shared-cache mode, a file another local account can write, and the reason
-// goes to the card and to entitled clients. A reason with a path separator
+// plausibleMeasurement bounds a measurement: registry.json can be edited by
+// hand or left corrupt, and the reason goes to the card and to entitled
+// clients. A reason with a path separator
 // in it is not one the pool wrote, which blanks those.
 func plausibleLoadFailure(f *LoadFailure) bool {
 	if f == nil {

@@ -104,9 +104,9 @@ func (m *Measurement) StaleAgainst(p Provenance) string {
 }
 
 // plausibleMeasurement bounds a measurement read from the file, for the
-// reason plausibleContextLength bounds the window: registry.json is, in
-// shared-cache mode, a file another local account can write, and a figure is
-// cleared rather than repaired into something that looks right.
+// reason plausibleContextLength bounds the window: registry.json can be edited
+// by hand or left corrupt, and a figure is cleared rather than repaired into
+// something that looks right.
 func plausibleMeasurement(m *Measurement) bool {
 	if m == nil {
 		return false

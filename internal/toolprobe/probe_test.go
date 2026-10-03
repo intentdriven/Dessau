@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -64,7 +65,7 @@ func (s *fakeSources) Acquire(ctx context.Context, repoID string) (Upstream, fun
 	if s.modelArg != "" {
 		arg = s.modelArg
 	}
-	return Upstream{BaseURL: s.srv.URL(), ModelArg: arg}, func() {
+	return Upstream{BaseURL: s.srv.URL(), Transport: http.DefaultTransport, ModelArg: arg}, func() {
 		s.mu.Lock()
 		s.held--
 		s.mu.Unlock()

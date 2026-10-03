@@ -427,7 +427,8 @@
       <legend>Sampling defaults</legend>
       <p class="hint">Served to every request that leaves the parameter out. A request
         that sets its own value always wins. A blank field means the model server's own
-        default, shown in grey. A change reaches a model the next time it loads.</p>
+        default, shown in grey, except the maximum completion tokens: blank there means
+        each model's served window. A change reaches a model the next time it loads.</p>
       <label>
         <span>Temperature</span>
         <input id="setTemp" type="number" step="any" min="0" placeholder="0 — greedy, and repeatable">
@@ -446,7 +447,7 @@
       </label>
       <label>
         <span>Maximum completion tokens</span>
-        <input id="setMaxTokens" type="number" step="1" min="0" max="1048576" placeholder="512">
+        <input id="setMaxTokens" type="number" step="1" min="0" max="1048576" placeholder="the served window">
       </label>
     </fieldset>
 

@@ -41,9 +41,8 @@ func TestTheServerKeyPersistsAcrossRestartsAndTheLeafIsReissued(t *testing.T) {
 	}
 }
 
-// A private key another account could have read is not a private key. The
-// shared install leaves the root group-writable at mode 3775, so the key is
-// held to the same rule config.json is held to.
+// A private key another account could have read is not a private key, so the
+// key is held to the same rule config.json is held to.
 func TestAKeyFileAnotherAccountCouldReadIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "server-key.pem")

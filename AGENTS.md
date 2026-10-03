@@ -83,6 +83,12 @@ CI (`.github/workflows/ci.yml`) gates on: `gofmt -l .` (must be empty),
 `go build ./...`, `go vet ./...`, `go test ./...`,
 `go test -race ./internal/...`, gitleaks (full history), and zizmor.
 `make run` starts the server headless in the foreground for development.
+On Linux (ci.yml's `linux` job) `go vet ./...` and `go test ./...` run, with
+`*_linux.go` counterparts for the macOS-only parts and macOS-only tests
+skipping with a reason — set `TMPDIR` to a 0700 directory with no
+world-writable ancestor first, as the job does, or the stats store refuses
+`/tmp`; behaviour is verified only on macOS, and `make app`, signing and the
+Swift client build only there.
 
 ## Boundaries
 
@@ -96,9 +102,9 @@ CI (`.github/workflows/ci.yml`) gates on: `gofmt -l .` (must be empty),
   routing or the runtime: it records empirically verified constraints (the
   request's `model` field is a load instruction the gateway must rewrite;
   `HF_HUB_CACHE` must exist; `HF_HUB_OFFLINE=1` on child processes).
-- The shared-cache mode (`make install-shared`) has deliberate permission
-  semantics — directory mode `3775`, file modes left to the app — explained in
-  the Makefile; do not "simplify" them.
+- Dessau serves from one macOS account and keeps everything in that account's
+  own data root; other accounts, on this Mac or elsewhere, reach it over the
+  network and never need the model files — do not add a machine-wide root.
 
 ## Definition of done
 
@@ -141,8 +147,7 @@ CI (`.github/workflows/ci.yml`) gates on: `gofmt -l .` (must be empty),
   user-facing content. Use the current name, or a generic term.
 - **Privacy:** no absolute local paths, real hostnames, usernames, emails,
   tokens, IPs, or private repository names in anything committed —
-  repo-relative paths only. (`/Users/Shared/…` is a macOS system path, not a
-  username, and is part of this product's design.)
+  repo-relative paths only.
 - **Examples and user stories** use the personas Alice, Bob, and Carol — never
   other names. Refer to the maintainer as they/them in every artefact.
 - **Git:** never commit or push without being asked. Substantive work goes on

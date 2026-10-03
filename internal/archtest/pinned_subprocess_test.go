@@ -16,11 +16,10 @@ import (
 //
 // Two arguments say so, and neither carries the rule alone.
 //
-// The first is account-to-account. This product's premise is one Mac serving
-// several user accounts — the shared-cache install mode with its 3775
-// directory semantics, per-account MLX runtime executables, and the gateway's
-// loopback exemption, which exists precisely because requests arrive from
-// other macOS accounts on the same machine. So the question is not whether an
+// The first is account-to-account. One account serves, and other macOS
+// accounts on the same Mac are its clients — the gateway's loopback
+// exemption exists precisely because requests arrive from them. So the
+// question is not whether an
 // attacker can already run code as this user, but whether a different account
 // on this Mac can plant something the server account's process will execute. A
 // group-writable directory on that PATH answers yes: on a stock developer Mac

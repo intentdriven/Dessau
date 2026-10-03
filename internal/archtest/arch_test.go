@@ -40,13 +40,13 @@ func TestNoGUIToolkitInInternalPackages(t *testing.T) {
 	}
 }
 
-// The no-absolute-paths-in-docs pre-commit hook exempts the shared-cache path
-// /Users/Shared/... (a macOS system directory, not a username) by piping its
+// The no-absolute-paths-in-docs pre-commit hook exempts /Users/Shared/... (a
+// macOS system directory, not a username, which the changelog's history still
+// names) by piping its
 // grep through `grep -v "/Users/Shared/"`. That second grep filters whole
 // lines, not individual matches, so a line that mentions the exempted path
 // *and* a genuine private path together (a natural thing to write when
-// contrasting shared-cache vs. per-user locations, as docs/getting-started.md
-// already does) was silently dropped in its entirety — the private path never
+// contrasting a system directory with a home directory) was silently dropped in its entirety — the private path never
 // got flagged. This extracts the hook's actual shell command straight out of
 // .pre-commit-config.yaml and runs it, so the test tracks the real config
 // rather than a copy that could drift from it.
@@ -76,7 +76,7 @@ func TestNoAbsolutePathsHookCatchesPathsOnAnExemptedLine(t *testing.T) {
 		content   string
 		wantFlags bool
 	}{
-		{"shared_only.md", "The shared cache lives at /Users/Shared/Dessau.\n", false},
+		{"system_only.md", "The system directory is /Users/Shared/Dessau.\n", false},
 		{"private_only.md", "Alice's install is at /Users/alice/Library/Application Support/Dessau.\n", true},
 		{"mixed.md", "Compare /Users/Shared/Dessau with a per-user install at /Users/bob/Library/Application Support/Dessau.\n", true},
 	}

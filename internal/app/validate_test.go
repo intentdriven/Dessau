@@ -57,10 +57,8 @@ func TestValidateModelDir(t *testing.T) {
 	}
 }
 
-// In shared-cache mode, an adopted model's config.json is still owned by the
-// account that downloaded it, which can replace it with a FIFO at any time —
-// the shared root's sticky bit only blocks a non-owner from doing that.
-// Opening it for a retry's re-validation would then block until a writer
+// A model directory's config.json can be a FIFO rather than a file. Opening
+// it for a retry's re-validation would then block until a writer
 // appears — never, for a hostile plant — wedging the download goroutine and
 // App.Close's dlWG.Wait. validateModelDir must refuse it instead of blocking.
 func TestValidateModelDirDoesNotBlockOnFIFOConfig(t *testing.T) {

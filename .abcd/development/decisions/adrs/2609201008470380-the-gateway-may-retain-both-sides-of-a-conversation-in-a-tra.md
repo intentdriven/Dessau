@@ -1,10 +1,10 @@
 ---
 id: adr-2609201008470380
 slug: the-gateway-may-retain-both-sides-of-a-conversation-in-a-tra
-status: accepted
+status: superseded in part by adr-2610030906462776, on decision 7 (refused under the shared-cache install); every other decision stands
 date: 2026-09-20
 supersedes: adr-2609061610102325
-superseded_by: null
+superseded_by: adr-2610030906462776
 related_intents: [itd-2609091707499248, itd-2609091715089488, itd-2609061441310453]
 related_rfcs: []
 related_adrs: [adr-2609061610102325, adr-2609061503319212, adr-2609201008476813, adr-2609181004167097, adr-2609182357322050, adr-2609061610107154]

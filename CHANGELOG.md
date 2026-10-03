@@ -11,6 +11,135 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A hybrid model that lists its layer kinds by name now leaves room for
+  others beside it.** `impact: fix`. Dessau charges a model's memory per
+  token of its window from the layers its configuration says keep a cache,
+  and it did not read the `layers_block_type` list Nemotron-3.5-Lightning
+  uses to name them, so it charged all 52 of that model's layers rather than
+  its 6 attention layers — almost nine times what it costs. On a 128 GB Mac
+  at the default budget and four batched requests, Alice's Nemotron was
+  served at 57,384 tokens and its charge filled the whole budget, so nothing
+  else would load beside it. It is now served at its whole 262,144-token
+  window with about 27 GB of the budget left over, and at the default single
+  batched request with about 49 GB left (iss-2610031010368266).
+- **A reply to a request that names no maximum is no longer cut off at 512
+  tokens.** `impact: fix`. The model server answers a request with no
+  `max_tokens` (or `max_completion_tokens`) at the length it was started
+  with, and Dessau started it with none, so it used its own 512: Alice asked
+  for a long answer and got the first 512 tokens of it. With **Maximum
+  completion tokens** blank, each model now starts with the window it is
+  served at as that length — `served_context` in the models list, at most
+  1048576 — and the panel's placeholder and the sampling reference say so. A
+  figure of the operator's still wins, and a request's own `max_tokens` still
+  wins over both; nothing is added to a request on its way to the model. Two
+  things stay true and are documented: the model server does not take the
+  prompt off that length, so a long prompt with no maximum can use more
+  memory than its window is charged for; and the length is fixed when the
+  model starts, so a default window that moves with the budget or the
+  batched requests reaches it at the model's next load. A model whose
+  configuration declares no window keeps the model server's 512
+  (iss-2610030652514762).
+- **A long answer asked for without streaming is no longer cut off with a
+  504.** `impact: fix`. The model server sends nothing of an unstreamed
+  answer until the whole of it is written, so Dessau's wait for the model
+  server to start answering — at least ten minutes — was timing the answer
+  too: Bob asked a reasoning model for a long answer without streaming and
+  got a `504` that blamed the prompt and pointed at a Settings control that
+  does not exist, while the model server went on writing the answer for
+  nobody and slowed his retry. Dessau now asks the model server for a stream
+  and returns the answer as the one JSON object the request asked for, field
+  for field. The wait ends once the model server starts answering, a client
+  that hangs up stops the answer being generated, an answer the model server
+  stops part-way through is a `502` rather than part of an object, and one
+  larger than 64 MiB is a `502` that says to ask for it streamed. A request
+  asking for `logprobs` or `top_logprobs` is still answered unstreamed,
+  because the model server returns those only there. The `504` now says the
+  model server did not start answering in time and names
+  `upstream_header_timeout_sec` in `config.json`, where the wait is set
+  (iss-2610030919536329).
+### Changed
+
+- **A request carrying `draft_model` or `adapters` is refused.**
+  `impact: breaking`. Security. The model server reads both as an
+  instruction to load files from a path the request gives — a second model
+  for speculative decoding, or adapter weights, with the served model
+  reloaded to apply them — and a model it loads that way can name a Python
+  file of its own that loading runs. Dessau checks the model it loads before
+  the model server starts, and could not check one a request named. A
+  request on `/v1/chat/completions` or `/v1/completions` whose top level
+  carries either field, with any value, `null` included, is now answered
+  with a 400 naming the field — for example `"draft_model" is not accepted:
+  Dessau does not load a second model for a request` — before any model is
+  loaded or evicted, and the model server never receives it. No sampling
+  parameter is affected. See
+  [Fields a completion request may not carry](docs/request-fields.md).
+- **A server loads only a model whose folder and `config.json` belong to the
+  account running it.** `impact: breaking`. Security. Any other model is
+  refused before any process starts, and its card says why: "this model's
+  files belong to another account, which Dessau does not load". A model
+  downloaded through the control panel, by whoever asked, belongs to the
+  serving account. A model folder copied in from another account does not;
+  download it again from the serving account.
+
+### Removed
+
+- **Shared-cache mode is gone: Dessau serves from one macOS account.**
+  `impact: breaking`. `make install-shared` is removed, and Dessau neither reads
+  nor serves anything from the machine-wide folder under `/Users/Shared`: a
+  model is served only from the serving account's own models folder, and at
+  start-up any model the index still records elsewhere is dropped from the
+  list when the serving account's models folder is there and holds no copy of
+  it, and is otherwise re-pointed at its place in that folder — never served
+  from where the index recorded it. Dessau keeps everything —
+  models, settings, logs, statistics and its private runtime — in the serving
+  account's own `~/Library/Application Support/Dessau` (or wherever
+  `DESSAU_ROOT` points, as before). Other accounts on the same Mac use the
+  server the way any client does, at `http://localhost:11535/v1`, with no key
+  and no copy of the models; they do not launch Dessau Server themselves.
+  Nothing is migrated. If you used the shared cache: choose the account that
+  serves, start Dessau there, download your models again from its control
+  panel (settings saved in another account's folder are not read), and remove
+  the old folder under `/Users/Shared` once nobody needs it. `dessau
+  uninstall` acts on this account's own folder only.
+
+### Fixed
+
+- **Dessau no longer loads a model whose `config.json` names code of its
+  own.** `impact: fix`. Security. A repository can ship a Python file of its
+  own and name it in the `model_file` field of its `config.json`; the model
+  server imports and runs that file, under the account serving Dessau, the
+  moment the model loads, so downloading a hostile repository was enough to
+  run its code. A model whose `config.json` names a `model_file` is now
+  refused before any process starts — for a client's request, a preload, the
+  context probe and the self-test alike — and its card says why: "this model
+  ships its own code, which Dessau does not run". A client on this Mac, or
+  one holding the API key, is told the same reason; the probe and the
+  self-test leave the model alone. The files are still downloaded and
+  nothing in them is run. A `config.json` that is present but cannot be
+  read as JSON is refused too, since the model server's parser accepts some
+  of what Dessau's does not, and so is a model with no `config.json`, which
+  the model server cannot load anyway.
+  the model server cannot load anyway. One case is not closed: with the
+  shared cache, an account that owns a folder above a model's own folder can
+  swap the model's folder in the seconds between Dessau's check and the
+  model server's start.
+- **Only the account running Dessau can reach its model servers.**
+  `impact: fix`. Security. Each model server listened on a port on this
+  Mac that every account on it could reach, around Dessau and its checks,
+  and a model server does what the request in front of it asks. Each one
+  now listens on a private socket, in a folder only the account running
+  Dessau can open, and has no network port at all; Dessau reaches it there
+  and nothing else can. It is started through a small launcher of Dessau's
+  own, which also answers every request with the model Dessau loaded and
+  refuses `draft_model` and `adapters`, as the gateway does. Clients are
+  unaffected: they talk to Dessau's own port, as before. The control panel's
+  list of loaded models no longer carries a port for each one. A program
+  already running as the account that runs Dessau can still reach the
+  socket, as it could reach anything else that account owns
+  (iss-2610030846581757).
+
 ## [0.9.3] - 2026-09-21
 
 ### Added

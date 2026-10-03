@@ -412,7 +412,6 @@ func TestSetConfigRejectsInvalid(t *testing.T) {
 }
 
 // A restart must pick up models already on disk rather than re-downloading them.
-// This is also what lets a second macOS account use a shared cache.
 func TestNewAdoptsModelsAlreadyOnDisk(t *testing.T) {
 	root := t.TempDir()
 	paths := config.NewPaths(root)
@@ -467,8 +466,70 @@ func TestResolveOnlyReturnsReadyModels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if got.Path != "/models/org/ok" || got.Bytes != 100 {
-		t.Errorf("Resolve = (%q, %d)", got.Path, got.Bytes)
+	if want := a.Paths.ModelDir("org/ok"); got.Path != want || got.Bytes != 100 {
+		t.Errorf("Resolve = (%q, %d), want (%q, 100)", got.Path, got.Bytes, want)
+	}
+}
+
+// The directory a model is launched from is derived from its repo id under
+// this account's models directory, never read from the `path` the index
+// stores: an index written by an earlier layout, or edited by hand, can carry
+// a path to a folder outside the models directory that still exists.
+func TestResolveNeverLaunchesFromTheStoredPath(t *testing.T) {
+	a := newTestApp(t)
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere", "org", "ok")
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Registry.Put(registry.Model{RepoID: "org/ok", Path: elsewhere, State: registry.StateReady}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := modelSource{a}.Resolve("org/ok")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if want := a.Paths.ModelDir("org/ok"); got.Path != want {
+		t.Errorf("Resolve launched from %q, want the derived %q", got.Path, want)
+	}
+}
+
+// An upgraded install opens an index that still names a model folder outside
+// this account's models directory. Starting the app must neither list that
+// model as served nor resolve it for a launch.
+func TestStartupDoesNotServeAModelStoredOutsideTheModelsDir(t *testing.T) {
+	base := t.TempDir()
+	elsewhere := filepath.Join(base, "elsewhere", "models", "org", "name")
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"config.json": `{"model_type":"test"}`, "model.safetensors": "weights"} {
+		if err := os.WriteFile(filepath.Join(elsewhere, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	paths := config.NewPaths(filepath.Join(base, "account"))
+	if err := os.MkdirAll(paths.Root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal([]registry.Model{{RepoID: "org/name", Path: elsewhere, State: registry.StateReady}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.State, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := New(Options{Paths: paths, Config: config.Default()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { a.Close() })
+
+	if ready := a.Registry.Ready(); len(ready) != 0 {
+		t.Errorf("served after startup: %+v", ready)
+	}
+	if got, err := (modelSource{a}).Resolve("org/name"); err == nil {
+		t.Errorf("Resolve = %+v, want a refusal", got)
 	}
 }
 
@@ -511,9 +572,9 @@ func TestHumanReadableErrorForMissingModel(t *testing.T) {
 	}
 }
 
-// In shared-cache mode registry.json is created lazily in a group-writable
-// root, so another local account can plant one whose `path` names a directory
-// this account owns. Delete must never hand a stored path to os.RemoveAll; the
+// registry.json is created lazily, so one can sit under that name before the
+// first write — hand-edited, restored from elsewhere, or planted — whose `path`
+// names a directory this account owns. Delete must never hand a stored path to os.RemoveAll; the
 // directory to remove is recomputed from the validated repo id.
 func TestDeleteNeverRemovesPathTakenFromPlantedRegistry(t *testing.T) {
 	paths := config.NewPaths(t.TempDir())
@@ -535,6 +596,13 @@ func TestDeleteNeverRemovesPathTakenFromPlantedRegistry(t *testing.T) {
 	}
 	t.Cleanup(func() { a.Close() })
 
+	// The startup scan already drops an entry whose model is not in the models
+	// directory, whatever path it stored. Put it back — Put records whatever
+	// path it is given — so that Delete's own refusal to trust the stored path
+	// is what is tested here, not the scan's.
+	if err := a.Registry.Put(registry.Model{RepoID: "org/victim", Path: victim, State: registry.StateReady, Bytes: 1}); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.Delete("org/victim"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}

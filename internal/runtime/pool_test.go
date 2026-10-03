@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/intentdriven/Dessau/internal/capability"
 	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 // fakeSource resolves models without touching the filesystem.
@@ -97,6 +97,10 @@ type fakeLauncher struct {
 	// failPrecheckFor makes Precheck fail for a repo, simulating a missing venv
 	// or a model directory that vanished before Launch runs.
 	failPrecheckFor string
+	// refuseFor makes Precheck refuse a repo the way the real launcher
+	// refuses a model that ships its own code: as the model's own load
+	// failure, with the plain reason.
+	refuseFor string
 	// dieAfter makes the process exit on its own shortly after launch, as a
 	// real model server does when the weights are corrupt.
 	dieAfter map[string]bool
@@ -146,6 +150,10 @@ func (l *fakeLauncher) Precheck(spec Spec) error {
 	if l.failPrecheckFor == spec.RepoID {
 		return errors.New("simulated precheck failure")
 	}
+	if l.refuseFor == spec.RepoID {
+		return &NotReadyError{Err: fmt.Errorf("%s cannot be loaded: %w", spec.RepoID, registry.ErrModelCode),
+			Reason: registry.ErrModelCode.Error()}
+	}
 	return nil
 }
 
@@ -167,13 +175,13 @@ func (l *fakeLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 		// will be killed below before it could ever become ready.
 		loadDelay = time.Hour
 	}
+	// The pool reaches the server on the socket it named, so the fake answers
+	// there, as a launched server does.
 	srv := mlxtest.Start(mlxtest.Options{
 		ModelArg:  spec.ModelPath,
 		LoadDelay: loadDelay,
+		Socket:    spec.Socket,
 	})
-	// The pool addresses the server by port, so the fake must answer there. We
-	// cheat by rewriting the pool's expected port to the httptest port via a
-	// custom HTTP client in the tests below.
 	p := &fakeProc{
 		footprint: l.footprint,
 		logPath:   l.logPathFor[spec.RepoID],
@@ -247,62 +255,10 @@ func (l *fakeLauncher) procFor(repoID string) *fakeProc {
 	return l.procs[repoID]
 }
 
-// portRewriter routes the pool's http://127.0.0.1:<allocated-port> probes to
-// whichever httptest server the fake launcher actually stood up.
-type portRewriter struct {
-	l *fakeLauncher
-}
-
-func (rt *portRewriter) RoundTrip(req *http.Request) (*http.Response, error) {
-	rt.l.mu.Lock()
-	var target string
-	// The readiness probe names the model in its body; match on the model path
-	// embedded in the URL is not possible, so route by the single running server
-	// whose ModelArg matches. Simplest correct approach: try each server.
-	servers := make([]*mlxtest.Server, 0, len(rt.l.servers))
-	for _, s := range rt.l.servers {
-		servers = append(servers, s)
-	}
-	rt.l.mu.Unlock()
-
-	// Route to the server whose ModelArg matches the request's model field.
-	body, err := readAndRestore(req)
-	if err != nil {
-		return nil, err
-	}
-	for _, s := range servers {
-		if strings.Contains(body, `"model":"`+s.ModelArg+`"`) ||
-			strings.Contains(body, `"model": "`+s.ModelArg+`"`) {
-			target = s.URL()
-			break
-		}
-	}
-	if target == "" && len(servers) > 0 {
-		target = servers[0].URL()
-	}
-	if target == "" {
-		return nil, errors.New("no fake server running")
-	}
-
-	u := target + req.URL.Path
-	newReq, err := http.NewRequestWithContext(req.Context(), req.Method, u, req.Body)
-	if err != nil {
-		return nil, err
-	}
-	newReq.Header = req.Header
-	return http.DefaultTransport.RoundTrip(newReq)
-}
-
 func newTestPool(t *testing.T, l *fakeLauncher, src *fakeSource, opts PoolOptions) *Pool {
 	t.Helper()
 	opts.Launcher = l
 	opts.Models = src
-	if opts.HTTP == nil {
-		opts.HTTP = &http.Client{
-			Timeout:   5 * time.Second,
-			Transport: &portRewriter{l: l},
-		}
-	}
 	if opts.ReadyTimeout == 0 {
 		opts.ReadyTimeout = 5 * time.Second
 	}

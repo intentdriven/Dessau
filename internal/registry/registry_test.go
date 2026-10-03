@@ -1,10 +1,10 @@
 package registry
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -213,7 +213,7 @@ func TestRemoveDeletesFilesFromDisk(t *testing.T) {
 }
 
 // Remove already deleted the in-memory entry by the time saveLocked can fail
-// (a disk-full, EPERM, or — in shared-cache mode — sticky-bit-blocked write),
+// (a disk-full or EPERM write),
 // so subscribers must still hear about the change; every other mutator in this
 // file broadcasts unconditionally for the same reason.
 func TestRemoveBroadcastsEvenWhenSaveFails(t *testing.T) {
@@ -272,8 +272,8 @@ func writeModelDir(t *testing.T, root, org, name string, weightBytes int) string
 	return dir
 }
 
-// Rescan is what lets a second macOS user account pick up models the first
-// account downloaded into the shared cache.
+// Rescan is what picks up a model directory the registry does not list — one
+// copied in by hand, or left by an earlier install.
 func TestRescanAdoptsExistingModelDirectories(t *testing.T) {
 	r, dir := newTestRegistry(t)
 	models := filepath.Join(dir, "models")
@@ -422,6 +422,68 @@ func TestRescanDropsModelsDeletedOutsideTheApp(t *testing.T) {
 	}
 }
 
+// A model's directory is <models>/<org>/<name>, derived from its repo id, and
+// the `path` stored beside it in registry.json is never what decides where it
+// is. An index written by an earlier layout — or edited by hand — can name a
+// folder outside this account's models directory that still exists, and an
+// entry the scan kept on the strength of that folder would be served from it.
+func TestRescanDropsAnEntryStoredOutsideTheModelsDir(t *testing.T) {
+	base := t.TempDir()
+	elsewhere := writeModelDir(t, filepath.Join(base, "elsewhere", "models"), "org", "name", 64)
+	root := filepath.Join(base, "account")
+	models := filepath.Join(root, "models")
+	if err := os.MkdirAll(models, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(root, "registry.json")
+	b, err := json.Marshal([]Model{{RepoID: "org/name", Path: elsewhere, State: StateReady}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(state, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := Open(state)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := r.Rescan(models); err != nil {
+		t.Fatalf("Rescan: %v", err)
+	}
+	if m, err := r.Get("org/name"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("an entry whose model is not in the models directory was kept: %+v", m)
+	}
+	if ready := r.Ready(); len(ready) != 0 {
+		t.Errorf("Ready() = %+v, want nothing served", ready)
+	}
+}
+
+// An entry the scan keeps without adopting — its directory is in the models
+// directory but not yet complete — carries the derived path afterwards, not
+// the stored one.
+func TestRescanRepairsAStoredPathToTheModelsDir(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	models := filepath.Join(dir, "models")
+	want := filepath.Join(models, "org", "name")
+	if err := os.MkdirAll(want, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := writeModelDir(t, filepath.Join(dir, "elsewhere"), "org", "name", 64)
+	r.Put(Model{RepoID: "org/name", Path: elsewhere, State: StateFailed})
+
+	if err := r.Rescan(models); err != nil {
+		t.Fatal(err)
+	}
+	m, err := r.Get("org/name")
+	if err != nil {
+		t.Fatalf("an entry whose directory is in the models directory was dropped: %v", err)
+	}
+	if m.Path != want {
+		t.Errorf("Path = %q, want the derived %q", m.Path, want)
+	}
+}
+
 // A stat failure that is not "the directory does not exist" — a permission
 // hiccup, a transient I/O error — is not proof a model was deleted, and must
 // not be treated as one: only a confirmed fs.ErrNotExist means "gone".
@@ -431,15 +493,16 @@ func TestRescanKeepsModelWhenStatFailsForReasonOtherThanNotExist(t *testing.T) {
 	if err := os.MkdirAll(models, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// A regular file standing in for a directory component makes any os.Stat of
-	// a path beneath it fail with ENOTDIR, not ENOENT — a stat failure that is
-	// unambiguously not "the directory was deleted".
-	blocker := filepath.Join(dir, "blocker")
+	// A regular file standing in for the org directory makes the os.Stat of
+	// the model's directory beneath it fail with ENOTDIR, not ENOENT — a stat
+	// failure that is unambiguously not "the directory was deleted". It sits
+	// inside the models directory because the directory stat'ed is the one
+	// derived from the repo id there.
+	blocker := filepath.Join(models, "org")
 	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	unstatable := filepath.Join(blocker, "org", "model")
-	r.Put(Model{RepoID: "org/model", Path: unstatable, State: StateReady})
+	r.Put(Model{RepoID: "org/model", Path: filepath.Join(blocker, "model"), State: StateReady})
 
 	if err := r.Rescan(models); err != nil {
 		t.Fatal(err)
@@ -450,18 +513,99 @@ func TestRescanKeepsModelWhenStatFailsForReasonOtherThanNotExist(t *testing.T) {
 }
 
 // If the models root itself is unreachable — an unmounted external volume, a
-// shared directory that is not available to this account — Rescan must leave the
-// index alone. Treating "root missing" as "everything was deleted" would wipe
-// the registry for a transient condition.
+// shared directory that is not available to this account — Rescan must keep
+// every entry in the index. Treating "root missing" as "everything was
+// deleted" would wipe the registry for a transient condition.
 func TestRescanLeavesIndexAloneWhenModelsRootIsMissing(t *testing.T) {
 	r, dir := newTestRegistry(t)
 	r.Put(Model{RepoID: "org/m", Path: "/some/where", State: StateReady})
 
 	if err := r.Rescan(filepath.Join(dir, "does-not-exist")); err != nil {
-		t.Errorf("Rescan of a missing root should be a no-op, got: %v", err)
+		t.Errorf("Rescan of a missing root should not fail, got: %v", err)
 	}
 	if _, err := r.Get("org/m"); err != nil {
 		t.Error("an unreachable models root must not wipe the registry")
+	}
+}
+
+// Keeping the entries while the models root is missing does not mean keeping
+// what the index stored for them: each entry comes out of the scan pointing at
+// its directory derived from the repo id, so no `path` naming somewhere else
+// is listed, or written back, for the time the volume is away.
+func TestRescanRepointsEveryPathWhenModelsRootIsMissing(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	elsewhere := writeModelDir(t, filepath.Join(dir, "elsewhere"), "org", "m", 64)
+	r.Put(Model{RepoID: "org/m", Path: elsewhere, State: StateReady})
+	r.Put(Model{RepoID: "org/d", Path: elsewhere, State: StateDownloading})
+	models := filepath.Join(dir, "does-not-exist")
+
+	if err := r.Rescan(models); err != nil {
+		t.Fatalf("Rescan of a missing root should not fail, got: %v", err)
+	}
+	reopened, err := Open(filepath.Join(dir, "registry.json"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	for _, reg := range []*Registry{r, reopened} {
+		for _, id := range []string{"org/m", "org/d"} {
+			m, err := reg.Get(id)
+			if err != nil {
+				t.Fatalf("an unreachable models root must not drop %s: %v", id, err)
+			}
+			if want := config.ModelDirIn(models, id); m.Path != want {
+				t.Errorf("%s: Path = %q, want the derived %q", id, m.Path, want)
+			}
+		}
+	}
+}
+
+// A models root that exists but cannot be listed is reported, and its entries
+// are kept as for a missing one — but re-pointed at their derived directories
+// all the same.
+func TestRescanRepointsEveryPathWhenModelsRootIsUnreadable(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	elsewhere := writeModelDir(t, filepath.Join(dir, "elsewhere"), "org", "m", 64)
+	r.Put(Model{RepoID: "org/m", Path: elsewhere, State: StateReady})
+	// A regular file where the models directory should be: listing it fails
+	// with ENOTDIR whatever account the test runs as.
+	models := filepath.Join(dir, "models")
+	if err := os.WriteFile(models, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Rescan(models); err == nil {
+		t.Error("Rescan of an unreadable root should report it")
+	}
+	m, err := r.Get("org/m")
+	if err != nil {
+		t.Fatalf("an unreadable models root must not drop the entry: %v", err)
+	}
+	if want := config.ModelDirIn(models, "org/m"); m.Path != want {
+		t.Errorf("Path = %q, want the derived %q", m.Path, want)
+	}
+}
+
+// An in-flight download keeps its state through a scan that finds its
+// directory complete, but not the stored path: it too carries the derived one.
+func TestRescanRepointsAnInFlightDownloadFoundInTheModelsDir(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	models := filepath.Join(dir, "models")
+	want := writeModelDir(t, models, "org", "m", 64)
+	elsewhere := writeModelDir(t, filepath.Join(dir, "elsewhere"), "org", "m", 64)
+	r.Put(Model{RepoID: "org/m", Path: elsewhere, State: StateDownloading, Progress: 42})
+
+	if err := r.Rescan(models); err != nil {
+		t.Fatal(err)
+	}
+	m, err := r.Get("org/m")
+	if err != nil {
+		t.Fatalf("in-flight download was dropped by Rescan: %v", err)
+	}
+	if m.State != StateDownloading || m.Progress != 42 {
+		t.Errorf("Rescan clobbered an in-flight download: %+v", m)
+	}
+	if m.Path != want {
+		t.Errorf("Path = %q, want the derived %q", m.Path, want)
 	}
 }
 
@@ -629,8 +773,8 @@ func TestRescanDoesNotPromoteJunkConfigModel(t *testing.T) {
 	}
 }
 
-// The flip side, pinning the shared-cache promise: once the directory really is
-// complete (another account finished the download), a failed record must be
+// The flip side: once the directory really is complete (the files were
+// finished by hand, or a later copy completed them), a failed record must be
 // promoted to ready.
 func TestRescanPromotesFailedModelOnceDirComplete(t *testing.T) {
 	r, dir := newTestRegistry(t)
@@ -654,10 +798,10 @@ func TestRescanPromotesFailedModelOnceDirComplete(t *testing.T) {
 	}
 }
 
-// In the shared cache another account can plant a FIFO (or a symlink to one)
-// under a manifest name. Opening it for the completeness check would block
-// until a writer appears — never, for a hostile plant — wedging the startup
-// rescan for every account. Rescan must skip it and finish.
+// A FIFO (or a symlink to one) can sit under a manifest name in a model
+// directory. Opening it for the completeness check would block until a writer
+// appears — never, for a hostile plant — wedging the startup rescan. Rescan
+// must skip it and finish.
 func TestRescanDoesNotBlockOnFIFOManifest(t *testing.T) {
 	r, dir := newTestRegistry(t)
 	models := filepath.Join(dir, "models")
@@ -783,10 +927,10 @@ func timeoutAfterSeconds(n int) <-chan time.Time {
 	return time.After(time.Duration(n) * time.Second)
 }
 
-// registry.json sits in the data root, which in shared mode is group-writable
-// and where the file is created lazily; another local account can plant a
-// FIFO under its name and a blocking open would wedge startup after the port
-// is claimed. Open must not block, and must not silently adopt the plant.
+// registry.json is created lazily in the data root, so a FIFO can sit under
+// its name before the first write, and a blocking open would wedge startup
+// after the port is claimed. Open must not block, and must not silently adopt
+// the plant.
 func TestOpenDoesNotBlockOnFIFOState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "registry.json")
 	if err := syscall.Mkfifo(path, 0o644); err != nil {
@@ -831,8 +975,8 @@ func TestOpenDoesNotFollowSymlinkedState(t *testing.T) {
 }
 
 // Open must apply the same ValidRepoID gate Rescan does: every write path
-// gates on it, so an invalid id in registry.json was planted (a shared root)
-// or hand-edited, and loading it would advertise an entry Delete refuses.
+// gates on it, so an invalid id in registry.json was planted or hand-edited,
+// and loading it would advertise an entry Delete refuses.
 func TestOpenSkipsEntriesWithInvalidRepoIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "registry.json")
 	body := `[{"repo_id":"","state":"ready"},{"repo_id":"../../../../etc","path":"/","state":"ready"},{"repo_id":"noslash","state":"ready"},{"repo_id":"org/m","state":"ready"}]`
@@ -909,8 +1053,8 @@ func TestRemoveByCaseVariantRemovesThatOneEntry(t *testing.T) {
 }
 
 // Remove recomputes the directory from the id, but os.RemoveAll by path still
-// follows a symlinked ancestor: an org symlink planted in the shared models
-// tree plus a planted "ready" entry would make the victim's Remove click
+// follows a symlinked ancestor: an org symlink planted in the models tree
+// plus a planted "ready" entry would make the victim's Remove click
 // delete an arbitrary subdirectory of the link's target. The removal must go
 // through the models root and refuse a non-directory org.
 func TestRemoveRefusesSymlinkedOrgDir(t *testing.T) {
@@ -1040,8 +1184,8 @@ func TestRescanOmitsContextLengthWhenConfigDeclaresNone(t *testing.T) {
 	}
 }
 
-// config.json sits in a model directory another local account can write in
-// shared-cache mode, and the figure is served to the LAN. Anything that is
+// config.json is whatever a third party's repository shipped, and the figure
+// is served to the LAN. Anything that is
 // not a plausible positive integer is dropped, and dropping it must never
 // affect whether the model is served.
 func TestRescanRejectsImplausibleContextLengths(t *testing.T) {
@@ -1157,28 +1301,15 @@ func TestReadModelFactsReadsAModelDirectory(t *testing.T) {
 	}
 }
 
-// The first run of a second macOS account under a shared cache starts with an
-// empty registry — every account keeps its own — and the startup rescan of the
-// shared models directory is what fills it in. This is the documented first-run
-// path, so it is pinned: the rescan must both adopt the model directories the
-// first account downloaded and PERSIST them, into a file this account owns.
-//
-// Before per-account state, both accounts resolved to one registry.json in the
-// group-writable shared root, where the sticky bit made the second account's
-// save fail EPERM: it could serve, but never record anything.
-func TestFirstRunRescanRebuildsASecondAccountsRegistry(t *testing.T) {
-	// The shared root's models directory, as the first account left it. The
-	// state paths below come from the real derivation, which resolves them into
-	// this account's home — so nothing here writes to the shared root.
-	models := filepath.Join(t.TempDir(), "models")
+// A registry.json that is missing — deleted, or never written — starts empty,
+// and the startup rescan of the models directory is what fills it in. The
+// rescan must both adopt the model directories it finds and PERSIST them, so
+// the next start reads them back.
+func TestFirstRunRescanRebuildsAMissingRegistry(t *testing.T) {
+	root := t.TempDir()
+	p := config.NewPaths(root)
+	models := p.Models
 	writeModelDir(t, models, "mlx-community", "Qwen3-8B-4bit", 1024)
-
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	p := config.NewPaths(config.SharedRoot)
-	if err := os.MkdirAll(filepath.Dir(p.State), 0o700); err != nil {
-		t.Fatal(err)
-	}
 
 	r, err := Open(p.State)
 	if err != nil {
@@ -1191,7 +1322,7 @@ func TestFirstRunRescanRebuildsASecondAccountsRegistry(t *testing.T) {
 		t.Fatalf("the first-run rescan could not record what it found: %v", err)
 	}
 	if _, err := r.Get("mlx-community/Qwen3-8B-4bit"); err != nil {
-		t.Fatalf("the rescan did not adopt the shared model directory: %v", err)
+		t.Fatalf("the rescan did not adopt the model directory: %v", err)
 	}
 
 	// Persisted, and readable back on the next start.
@@ -1201,8 +1332,5 @@ func TestFirstRunRescanRebuildsASecondAccountsRegistry(t *testing.T) {
 	}
 	if _, err := again.Get("mlx-community/Qwen3-8B-4bit"); err != nil {
 		t.Errorf("the rescan's result did not survive a restart: %v", err)
-	}
-	if !strings.HasPrefix(p.State, home) {
-		t.Errorf("registry.json is at %q, want it in this account's own directory", p.State)
 	}
 }

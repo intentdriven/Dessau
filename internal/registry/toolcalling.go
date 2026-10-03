@@ -38,9 +38,9 @@ func (tc *ToolCalling) StaleAgainst(runtime string) string {
 }
 
 // plausibleToolCalling bounds a verdict read from the file, for the reason
-// plausibleMeasurement bounds a measurement: registry.json is, in
-// shared-cache mode, a file another local account can write, and a verdict is
-// cleared rather than repaired into something that looks right.
+// plausibleMeasurement bounds a measurement: registry.json can be edited by
+// hand or left corrupt, and a verdict is cleared rather than repaired into
+// something that looks right.
 func plausibleToolCalling(tc *ToolCalling) bool {
 	if tc == nil {
 		return false

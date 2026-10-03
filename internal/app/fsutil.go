@@ -36,11 +36,9 @@ func dirSize(dir string) int64 {
 // issues a real completion.
 func validateModelDir(dir string) error {
 	// The registry owns the rule about what a model's config.json has to be,
-	// and the bounded, regular-file-only read behind it: in shared-cache mode
-	// a model directory adopted from another account stays writable by that
-	// account, which can replace config.json with a FIFO or a symlink at any
-	// time, and a plain Open here would block the download goroutine forever
-	// or follow the link. Calling the registry's check rather than keeping a
+	// and the bounded, regular-file-only read behind it: a model directory's
+	// config.json can be a FIFO or a symlink, and a plain Open here would block
+	// the download goroutine forever or follow the link. Calling the registry's check rather than keeping a
 	// copy of it is what stops a directory passing validation on download and
 	// then being refused by every rescan.
 	if err := registry.CheckModelConfig(dir); err != nil {

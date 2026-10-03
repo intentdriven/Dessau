@@ -1040,11 +1040,9 @@ func (s *FileStore) openWriter() (*storeWriter, error) {
 // directory as well, because here it is the directory that is created.
 func ensureStoreDir(dir string) error {
 	parent := filepath.Dir(dir)
-	// The account's own data folder may not exist at all. In shared-cache mode
-	// the layout is created under the shared root, and this store is the one
-	// thing Dessau keeps under the account's own — so for an account that has
-	// never run Dessau per-user there is nothing above the store yet. Created
-	// owner-only, and then held to the same rule as any other ancestor.
+	// The account's own data folder may not exist yet — a store opened before
+	// the layout is created has nothing above it. Created owner-only, and then
+	// held to the same rule as any other ancestor.
 	if _, err := os.Stat(parent); errors.Is(err, fs.ErrNotExist) {
 		if err := os.MkdirAll(parent, 0o700); err != nil {
 			return err

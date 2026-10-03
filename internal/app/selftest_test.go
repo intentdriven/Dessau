@@ -56,8 +56,8 @@ func TestASavedSwitchStartsTheSelfTestAtConstruction(t *testing.T) {
 	if !a.SelfTest.Enabled() {
 		t.Error("the saved switch did not start the self-test")
 	}
-	if want := filepath.Join(paths.Account, "selftest"); paths.SelfTest != want {
-		t.Errorf("results live at %q, want %q: beside the statistics store, under this account", paths.SelfTest, want)
+	if want := filepath.Join(paths.Root, "selftest"); paths.SelfTest != want {
+		t.Errorf("results live at %q, want %q: beside the statistics store, under the root", paths.SelfTest, want)
 	}
 }
 

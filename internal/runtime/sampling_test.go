@@ -45,8 +45,8 @@ func launchAndReadArgv(t *testing.T, s config.Sampling) []string {
 	l := &ExecLauncher{Paths: paths, LogDir: paths.Logs}
 	p, err := l.Launch(context.Background(), Spec{
 		RepoID:    "org/name",
-		ModelPath: t.TempDir(),
-		Port:      1234,
+		ModelPath: plainModelDir(t),
+		Socket:    privateSocket(t),
 		Sampling:  s,
 	})
 	if err != nil {
@@ -322,5 +322,111 @@ func TestIntegerFlagsRenderExactlyAndNeverNegative(t *testing.T) {
 				t.Errorf("max_tokens/top_k %d rendered %q, which argparse reads as a value", v, a)
 			}
 		}
+	}
+}
+
+// The pinned model server answers a request that omits its token budget with
+// the budget it was launched with, and with no flag that is 512 — so a reply
+// was cut off at 512 tokens whatever the window (iss-2610030652514762). With
+// no default of the operator's, the server is launched with the model's
+// served window as its budget instead, capped at Dessau's own ceiling; the
+// operator's default, when there is one, wins exactly as before. The window
+// is the one the pool resolved (App.ServedWindow, through
+// ResolvedModel.ServedContext), not a second derivation.
+func TestAnOmittedCompletionBudgetIsTheServedWindow(t *testing.T) {
+	cases := []struct {
+		name     string
+		operator *int
+		window   int64
+		want     string // "" means no --max-tokens flag at all
+	}{
+		{"no default of the operator's: the served window", nil, 40960, "40960"},
+		{"the operator's default wins over the window", iptr(8192), 40960, "8192"},
+		{"the operator's default wins even above the window", iptr(65536), 40960, "65536"},
+		{"an explicit zero stays the operator's", iptr(0), 40960, "0"},
+		{"a window above Dessau's ceiling is held to it", nil, 2 << 20, strconv.Itoa(config.MaxCompletionTokens)},
+		{"a window exactly at the ceiling", nil, config.MaxCompletionTokens, strconv.Itoa(config.MaxCompletionTokens)},
+		{"an unknown window passes nothing, as before", nil, 0, ""},
+		{"a nonsense window passes nothing", nil, -5, ""},
+		{"an out-of-range default is dropped and the window stands in", iptr(config.MaxCompletionTokens + 1), 40960, "40960"},
+		{"a negative default is dropped and the window stands in", iptr(-8), 40960, "40960"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			l := newFakeLauncher()
+			src := &fakeSource{
+				models: map[string]int64{"org/a": 1 << 20},
+				facts:  map[string]ResolvedModel{"org/a": {ServedContext: c.window}},
+			}
+			operator := config.Sampling{Temperature: fptr(0.7), MaxTokens: c.operator}
+			var before *int
+			if c.operator != nil {
+				v := *c.operator
+				before = &v
+			}
+			p := newTestPool(t, l, src, PoolOptions{
+				MaxResidentBytes: 1 << 30,
+				SamplingFor:      func(string) config.Sampling { return operator },
+			})
+			_, release, err := p.Acquire(context.Background(), "org/a")
+			if err != nil {
+				t.Fatalf("Acquire: %v", err)
+			}
+			release()
+
+			argv := launchArgs(l.specFor("org/a"))
+			got, ok := flagValue(argv, "--max-tokens")
+			if c.want == "" {
+				if ok {
+					t.Errorf("--max-tokens %q was passed for a model whose window is unknown: %v", got, argv)
+				}
+			} else if !ok || got != c.want {
+				t.Errorf("--max-tokens = %q (present=%v), want %s; argv %v", got, ok, c.want, argv)
+			}
+			if v, _ := flagValue(argv, "--temp"); v != "0.7" {
+				t.Errorf("--temp = %q, want the operator's 0.7 untouched", v)
+			}
+			// The operator's set is theirs: filling in the window must not
+			// write into what SamplingFor handed over.
+			// Compare values, not pointers: a write through the shared
+			// pointer keeps the pointer and changes what it holds.
+			changed := operator.MaxTokens != c.operator ||
+				(before != nil && *operator.MaxTokens != *before)
+			if changed {
+				t.Errorf("the operator's sampling was changed to %+v", operator)
+			}
+		})
+	}
+}
+
+// The load report says what the server was launched with, so a budget
+// filled in from the window is on it like any other launch value.
+func TestALoadEventCarriesTheWindowAsTheCompletionBudget(t *testing.T) {
+	l := newFakeLauncher()
+	src := &fakeSource{
+		models: map[string]int64{"org/a": 100},
+		facts:  map[string]ResolvedModel{"org/a": {ServedContext: 32768}},
+	}
+	obs := &recordingObserver{}
+	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30, Observer: obs})
+	_, release, err := p.Acquire(context.Background(), "org/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		obs.mu.Lock()
+		n := len(obs.samplings)
+		obs.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	obs.mu.Lock()
+	defer obs.mu.Unlock()
+	if len(obs.samplings) == 0 || obs.samplings[0].MaxTokens == nil || *obs.samplings[0].MaxTokens != 32768 {
+		t.Errorf("the load report carried %+v, want max_tokens 32768 from the served window", obs.samplings)
 	}
 }

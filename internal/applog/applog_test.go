@@ -366,8 +366,7 @@ func TestCloseIsIdempotent(t *testing.T) {
 }
 
 // The log directory belongs to this account and may not exist yet: on a first
-// run, and on a shared-cache install where this account has never run Dessau
-// per-user, nothing has created it. Opening the log creates it owner-only
+// run nothing has created it. Opening the log creates it owner-only
 // rather than refusing — the alternative is a first run with no log, which is
 // the run whose log is most worth having.
 func TestOpenCreatesTheLogDirectoryWhenItIsMissing(t *testing.T) {

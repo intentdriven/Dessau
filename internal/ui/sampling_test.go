@@ -74,8 +74,9 @@ var panelInputFor = map[string]string{
 	"max_tokens":  "setMaxTokens",
 }
 
-// The placeholders tell the user what a blank field means, so they must be the
-// model server's own defaults — read off the recorded bounds rather than
+// The placeholders tell the user what a blank field means — the model
+// server's own default, or for the completion-token budget the served window
+// Dessau launches the model with — read off the recorded bounds rather than
 // written out here, or the panel can drift from the figure the reference page
 // gives while both tests stay green.
 func TestBlankSamplingFieldsShowTheModelServerDefaults(t *testing.T) {
@@ -90,9 +91,9 @@ func TestBlankSamplingFieldsShowTheModelServerDefaults(t *testing.T) {
 			continue
 		}
 		ph := placeholderOf(inputTag(t, string(page), id))
-		if !strings.HasPrefix(ph, b.DefaultText()) {
-			t.Errorf("%s placeholder is %q, want it to open with the model server's own default %q",
-				id, ph, b.DefaultText())
+		if !strings.HasPrefix(ph, b.BlankText()) {
+			t.Errorf("%s placeholder is %q, want it to open with what a blank field means, %q",
+				id, ph, b.BlankText())
 		}
 	}
 }

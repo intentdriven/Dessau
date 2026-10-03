@@ -23,22 +23,22 @@ func TestLogFileNamesDoNotCollideAcrossDistinctRepoIDs(t *testing.T) {
 	}
 }
 
-// A second account must be able to launch a model the first account has
-// already served. The per-model log is opened O_CREATE|O_TRUNC at 0600 under a
-// name derived from the repo id, so while the two accounts shared one logs
-// directory the second account's open of the first account's log returned
-// EACCES and the model would not start at all — for every model the first
-// account had ever launched.
+// The launcher writes the per-model log into the logs directory it is given
+// and nowhere else. The log is opened O_CREATE|O_TRUNC at 0600 under a name
+// derived from the repo id, so a same-named log in another installation's
+// logs directory — one this process cannot even write — must neither stop the
+// launch nor be touched by it.
 //
-// A single-uid test cannot own a file as another account, so the first
-// account's log is made unwritable instead, which fails an open the same way.
-// Where the two logs directories come from under a shared cache is pinned in
-// internal/config; what is pinned here is that the launcher writes into the one
-// it is given and is unaffected by what is in the other.
-func TestASecondAccountLaunchesAModelTheFirstAlreadyLogged(t *testing.T) {
-	shared := t.TempDir() // the models, which both accounts read
-	model := filepath.Join(shared, "models", "org", "name")
+// A single-uid test cannot own a file as another account, so the other
+// installation's log is made unwritable instead, which fails an open the same
+// way. Where the logs directory comes from is pinned in internal/config.
+func TestTheLauncherWritesOnlyIntoItsOwnLogDirectory(t *testing.T) {
+	elsewhere := t.TempDir()
+	model := filepath.Join(elsewhere, "models", "org", "name")
 	if err := os.MkdirAll(model, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(model, "config.json"), []byte(plainConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -58,8 +58,8 @@ func TestASecondAccountLaunchesAModelTheFirstAlreadyLogged(t *testing.T) {
 	}
 	first, second := account(t), account(t)
 
-	// The first account has served this model: its log exists and no other
-	// account could write it.
+	// The other installation has served this model: its log exists and this
+	// process cannot write it.
 	firstLog := filepath.Join(first.Logs, logFileName("org/name"))
 	if err := os.WriteFile(firstLog, []byte("the first account's log\n"), 0o400); err != nil {
 		t.Fatal(err)
@@ -69,25 +69,24 @@ func TestASecondAccountLaunchesAModelTheFirstAlreadyLogged(t *testing.T) {
 	}
 
 	l := &ExecLauncher{Paths: second, LogDir: second.Logs}
-	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: model, Port: 1})
+	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: model, Socket: privateSocket(t)})
 	if p != nil {
 		<-p.Done()
 	}
 	if err != nil {
-		t.Fatalf("the second account could not launch a model the first had served: %v", err)
+		t.Fatalf("the launch failed over another installation's log: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(second.Logs, logFileName("org/name"))); err != nil {
-		t.Errorf("the second account's own log was not written: %v", err)
+		t.Errorf("the launcher's own log was not written: %v", err)
 	}
 	if b, _ := os.ReadFile(firstLog); string(b) != "the first account's log\n" {
-		t.Errorf("the first account's log was touched: %q", b)
+		t.Errorf("the other installation's log was touched: %q", b)
 	}
 }
 
-// The per-model log has a predictable name in the logs directory, which in
-// shared-cache mode is group-writable: another local account can plant a
-// symlink there and the truncating open would land on any file this account
-// can write. Launch must refuse to open anything but a regular file — and must
+// The per-model log has a predictable name in the logs directory, so a
+// symlink planted there would make the truncating open land on any file this
+// account can write. Launch must refuse to open anything but a regular file — and must
 // not block on a planted FIFO either.
 func TestLaunchRefusesSymlinkedLogFile(t *testing.T) {
 	root := t.TempDir()
@@ -110,7 +109,7 @@ func TestLaunchRefusesSymlinkedLogFile(t *testing.T) {
 	}
 
 	l := &ExecLauncher{Paths: paths, LogDir: paths.Logs}
-	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: t.TempDir(), Port: 1})
+	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: plainModelDir(t), Socket: privateSocket(t)})
 	if p != nil {
 		<-p.Done()
 	}
@@ -146,7 +145,7 @@ func TestLaunchDoesNotBlockOnFIFOLogFile(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		p, err := (&ExecLauncher{Paths: paths, LogDir: paths.Logs}).Launch(context.Background(),
-			Spec{RepoID: "org/name", ModelPath: t.TempDir(), Port: 1})
+			Spec{RepoID: "org/name", ModelPath: plainModelDir(t), Socket: privateSocket(t)})
 		if p != nil {
 			<-p.Done()
 		}
@@ -177,9 +176,9 @@ func TestLaunchDoesNotBlockOnFIFOLogFile(t *testing.T) {
 func TestAnUnarmedModelServerIsLaunchedAtInfoAndAnArmedOneAtDebug(t *testing.T) {
 	temp := 0.7
 	specs := map[string]Spec{
-		"a plain spec":            {RepoID: "org/a", ModelPath: "/models/org/a", Port: 1},
-		"with sampling defaults":  {RepoID: "org/b", ModelPath: "/models/org/b", Port: 2, Sampling: config.Sampling{Temperature: &temp}},
-		"with decode concurrency": {RepoID: "org/c", ModelPath: "/models/org/c", Port: 3, DecodeConcurrency: 4},
+		"a plain spec":            {RepoID: "org/a", ModelPath: "/models/org/a"},
+		"with sampling defaults":  {RepoID: "org/b", ModelPath: "/models/org/b", Sampling: config.Sampling{Temperature: &temp}},
+		"with decode concurrency": {RepoID: "org/c", ModelPath: "/models/org/c", DecodeConcurrency: 4},
 	}
 	for name, spec := range specs {
 		t.Run(name, func(t *testing.T) {
@@ -243,11 +242,21 @@ func stubbedLauncher(t *testing.T, script string) *ExecLauncher {
 	return &ExecLauncher{Paths: paths, LogDir: paths.Logs}
 }
 
+// plainConfig is the config.json of a model that ships no code of its own.
+const plainConfig = `{"model_type":"llama"}`
+
+// plainModelDir is a model directory the launcher will start: this account's
+// own, holding a config.json that names no model_file.
+func plainModelDir(t *testing.T) string {
+	t.Helper()
+	return modelDirWithConfig(t, plainConfig)
+}
+
 // launchAndWait launches spec and waits for the stub to exit.
 func launchAndWait(t *testing.T, l *ExecLauncher, spec Spec) {
 	t.Helper()
 	if spec.ModelPath == "" {
-		spec.ModelPath = t.TempDir()
+		spec.ModelPath = plainModelDir(t)
 	}
 	p, err := l.Launch(context.Background(), spec)
 	if err != nil {
@@ -268,7 +277,7 @@ func TestALaunchKeepsThePreviousRunsLog(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t)})
 
 	if b, err := os.ReadFile(previous); err != nil || string(b) != "the run Alice armed\n" {
 		t.Errorf("the previous run's log was not kept under %s: %q, %v", filepath.Base(previous), b, err)
@@ -293,9 +302,9 @@ func TestTwoConsecutiveLaunchesKeepOnlyOnePreviousLog(t *testing.T) {
 	}
 
 	t.Setenv("DESSAU_TEST_RUN", "1")
-	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t)})
 	t.Setenv("DESSAU_TEST_RUN", "2")
-	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t)})
 
 	if b, _ := os.ReadFile(previous); string(b) != "run 1\n" {
 		t.Errorf("the previous log holds %q, want the run before this one", b)
@@ -319,7 +328,7 @@ func TestTwoConsecutiveLaunchesKeepOnlyOnePreviousLog(t *testing.T) {
 // A first launch has no previous file, and that is not an error.
 func TestAFirstLaunchHasNoPreviousLogToKeep(t *testing.T) {
 	l := stubbedLauncher(t, "exit 0")
-	launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+	launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t)})
 	if _, err := os.Lstat(filepath.Join(l.LogDir, previousLogFileName("org/name"))); err == nil {
 		t.Error("a first launch left a previous file behind")
 	}
@@ -338,7 +347,7 @@ func TestAnArmedLaunchStopsItsLogAtTheBound(t *testing.T) {
 	t.Run("armed", func(t *testing.T) {
 		l := stubbedLauncher(t, script)
 		l.debugLogMaxBytes = 1000
-		launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1, DebugLog: true})
+		launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t), DebugLog: true})
 		b, err := os.ReadFile(filepath.Join(l.LogDir, logFileName("org/name")))
 		if err != nil {
 			t.Fatal(err)
@@ -358,7 +367,7 @@ func TestAnArmedLaunchStopsItsLogAtTheBound(t *testing.T) {
 	t.Run("unarmed", func(t *testing.T) {
 		l := stubbedLauncher(t, script)
 		l.debugLogMaxBytes = 1000
-		launchAndWait(t, l, Spec{RepoID: "org/name", Port: 1})
+		launchAndWait(t, l, Spec{RepoID: "org/name", Socket: privateSocket(t)})
 		b, err := os.ReadFile(filepath.Join(l.LogDir, logFileName("org/name")))
 		if err != nil {
 			t.Fatal(err)

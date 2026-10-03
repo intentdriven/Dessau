@@ -38,9 +38,8 @@ func TestServedContextSettingIsTheOperatorsFigureOrNothing(t *testing.T) {
 }
 
 // The window is a token count, bounded by the same ceiling a declared window
-// is bounded by: it is written to config.json, which another local account can
-// write in shared-cache mode, and it decides how much memory a model is
-// charged.
+// is bounded by: it is written to config.json, which is edited by hand too,
+// and it decides how much memory a model is charged.
 func TestServedContextIsValidated(t *testing.T) {
 	c := Default()
 	c.Models = map[string]ModelSettings{"org/a": {ServedContext: MaxContextLength + 1}}

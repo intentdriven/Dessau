@@ -64,10 +64,7 @@ you do about them.
 ## How much is kept, and where
 
 Records go to a `stats` folder inside your own Dessau data folder, normally
-`~/Library/Application Support/Dessau/stats`. On a Mac with the shared model
-cache, the models live in the shared folder and the records do not: they stay
-in the serving account's own folder, because a shared folder is writable by
-every account on the Mac.
+`~/Library/Application Support/Dessau/stats`.
 
 Two limits, both under the switch in **Settings → Request statistics**:
 
@@ -119,19 +116,18 @@ already written where they are.
 
 ## On a Mac several people share
 
-With the shared model cache, whoever launches Dessau first runs the server
-and everyone else's menu-bar app points at it, so one process serves every
-account. The records are that account's: they are kept in the serving
-account's own folder — not the shared one the models are in — under that
-account's opt-in, and they cover every request the server handled — including
-requests from other accounts on this Mac. The records still say nothing about
-who sent a request, because no client address is recorded.
+Dessau serves from one account, and the other accounts on this Mac reach it
+over `localhost`, so one process serves every account. The records are the
+serving account's: they are kept in its own folder, under its opt-in, and
+they cover every request the server handled — including requests from other
+accounts on this Mac. The records still say nothing about who sent a
+request, because no client address is recorded.
 
 ## Who can see it
 
 The control panel answers anyone who can reach it on this Mac, and asks for no
 password. On a Mac only you log into, that is you. If other people have
-accounts on this Mac — which is the point of the shared model cache — then any
+accounts on this Mac, then any
 of them can open the control panel, turn this switch on, and read what it
 records. What they would see is which of your models served each request, when
 it arrived, how many tokens it cost and how long it took: an activity
@@ -179,6 +175,13 @@ request's `stream_options` on the client's behalf, and removes the extra chunk
 from the answer before relaying it when the client did not ask for it. A
 client that did ask keeps it. Either way, what the client receives is the
 stream it would have received anyway.
+
+A request that asks for no stream is streamed from the model server whether
+recording is on or not, with the counts asked for, and is answered as the one
+object it asked for — see
+[what Dessau changes in a request](request-fields.md#what-dessau-changes-in-a-request-it-passes-on).
+It is recorded as unstreamed, with no time to first token, because the client
+hears nothing until the whole answer is in.
 
 ## The three states, and why they are three
 

@@ -199,9 +199,10 @@ was. A Mac with an impostor on the server port is not a Mac to install software
 on.
 
 That is the one ending where nothing is written. Something that holds the port
-and answers nothing at all is a different case: under per-account data roots
-that is what another account's Dessau looks like from here, so the update goes
-ahead and the serving version is reported as unknown.
+and answers nothing at all is a different case. Every account's Dessau keeps
+its own data root, and that silence is what another account's Dessau looks
+like from here; the update goes ahead and reports the serving version as
+unknown.
 
 ### The panel, again
 
@@ -262,29 +263,6 @@ deletes nothing and names the flag that answers for you:
 ```sh
 dessau uninstall --purge --yes
 ```
-
-### When this Mac uses a shared model cache
-
-With the shared cache from
-[Getting started, step 9](getting-started.md#9-sharing-across-user-accounts-optional),
-the models live in `/Users/Shared/Dessau` and everything belonging to your
-account — its settings, its model list, its runtime, its logs and its
-statistics — lives in your own `~/Library/Application Support/Dessau`.
-
-So uninstall removes your own directory and **leaves the shared root alone**.
-The output names what remains in it, how much it holds, and how many other
-accounts it belongs to, counted rather than named. Removing it removes every
-account's models, and it is one deliberate command to run once everybody has
-finished with it:
-
-```sh
-sudo /bin/rm -rf /Users/Shared/Dessau
-```
-
-`--purge` in this mode removes only the files your own account owns, which is
-the only removal the shared directory's permissions allow anyway. The output
-separates what it deleted from what it left, with the size of each. Another
-account's models are that account's to remove.
 
 ## Diagnose it
 

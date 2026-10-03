@@ -50,7 +50,7 @@ func (l *fakeLauncher) Launch(_ context.Context, spec runtime.Spec) (runtime.Pro
 	l.launched++
 	l.mu.Unlock()
 	srv := mlxtest.Start(mlxtest.Options{
-		ModelArg: spec.ModelPath, Port: spec.Port,
+		ModelArg: spec.ModelPath, Socket: spec.Socket,
 		PromptTokensFromBody: true, RefuseAbove: l.refuseAbove, ResponseDelay: l.responseDelay,
 	})
 	return &fakeProc{srv: srv, done: make(chan struct{})}, nil

@@ -66,11 +66,16 @@ func TestClientSamplingValuesReachTheModelServerUnchanged(t *testing.T) {
 		t.Errorf("temperature = %v, want the client's 0.3 — a request's own value wins over the default", got["temperature"])
 	}
 	// The model field is deliberately rewritten (it is a load instruction to
-	// mlx-lm); every other field must arrive with the value the client sent.
-	// Byte identity is not the bar: the handler re-marshals the body, which
-	// reorders keys and escapes output.
+	// mlx-lm), and an unstreamed request is asked for as a stream whose answer
+	// the gateway assembles (iss-2610030919536329); every other field must
+	// arrive with the value the client sent. Byte identity is not the bar:
+	// the handler re-marshals the body, which reorders keys and escapes
+	// output.
+	if got["stream"] != true {
+		t.Errorf("stream = %#v, want true: an unstreamed request is asked of the model server as a stream", got["stream"])
+	}
 	for key, want := range sent {
-		if key == "model" {
+		if key == "model" || key == "stream" {
 			continue
 		}
 		if !reflect.DeepEqual(got[key], want) {

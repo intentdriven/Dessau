@@ -12,10 +12,25 @@ model. To set one, see
 | Top-p | `top_p` | 1 |
 | Top-k | `top_k` | 0, which switches top-k off |
 | Min-p | `min_p` | 0, which switches min-p off |
-| Maximum completion tokens | `max_tokens`, and `max_completion_tokens` | 512 |
+| Maximum completion tokens | `max_tokens`, and `max_completion_tokens` | the served window, at most 1048576 |
 
 "Blank means" is the model server's own default, which applies when Dessau
-holds no value. Each field's placeholder in the panel shows the same figure.
+holds no value — except for the maximum completion tokens. Each field's
+placeholder in the panel shows the same thing.
+
+A blank maximum completion tokens means each model starts with the window it
+is served at as its answer length: `served_context` in the
+[models list](models-list.md#the-served-window), held to 1048576. A request
+that names no maximum is answered at up to that length rather than stopped
+short. A model whose configuration declares no window starts with the model
+server's own default of 512.
+
+That length is fixed when the model starts. A default served window moves with
+the memory budget and the batched requests, and the new figure reaches a model
+the next time it loads. The model server does not take the prompt off the
+length, so a long prompt with no maximum can use more memory than the window
+is charged for — see
+[Why there is a memory budget](memory-budget-explained.md).
 
 These are the parameters the model server accepts when it starts. Anything else
 a request can carry — repetition and presence penalties, `logit_bias`,
@@ -52,12 +67,15 @@ gets an empty answer.
 
 | The request | What is served |
 | --- | --- |
-| omits the parameter | the per-model override, if the model has one; otherwise the machine-wide default; otherwise the model server's own |
+| omits the parameter | the per-model override, if the model has one; otherwise the machine-wide default; otherwise what a blank field means, above |
 | carries its own value | the request's value |
 | carries `null` | nothing — the request fails, see [How sampling defaults work](sampling-explained.md#why-null-is-not-the-same-as-omitted) |
 
 No sampling parameter is ever added to or changed in a request body on its way
-to the model, and nothing here caps or overrides what a client asks for.
+to the model, and nothing here caps or overrides what a client asks for. Two
+fields that are not sampling parameters, `draft_model` and `adapters`, are
+refused rather than passed on — see
+[Fields a completion request may not carry](request-fields.md).
 
 Within an override, a blank field means "use the machine-wide value". There is
 no way to say "use the model server's own default for this one parameter while

@@ -44,8 +44,8 @@ const (
 
 // Probe classifies the process on the given port by comparing the instance
 // token it serves on the loopback control plane against the token this user's
-// server recorded in its data root. A match proves the responder shares our
-// root (our own server, a restart-in-progress, or a shared-cache peer). A
+// server recorded in its data root. A match proves the responder can read our
+// root, which is this account's own (our own server, or a restart-in-progress). A
 // mismatch — or a server that will not identify itself — is treated as foreign.
 func Probe(paths config.Paths, port int) Holder {
 	name, answer, err := writeChallenge(paths)
@@ -92,17 +92,13 @@ func ProbeExisting(paths config.Paths, port int) Holder {
 // writeChallenge drops a single-use nonce file in the data root and returns its
 // name and the answer a holder must echo back.
 //
-// The file is written through a random O_EXCL temp and renamed, for the reason
-// the token write did: in shared mode the root is group-writable, so a direct
-// write to a predictable name could follow a symlink a peer pre-planted and
-// truncate a file this account owns. A rename replaces the final component
-// without following a link there.
+// The file is written through a random O_EXCL temp and renamed: a direct write
+// to a predictable name could follow a symlink planted there and truncate a
+// file this account owns. A rename replaces the final component without
+// following a link there.
 //
-// Mode 0640 rather than 0600 on purpose. The point of the probe is to let a
-// process that can read this ROOT prove it, and under a shared root that is a
-// peer account in the same group — the case a 0600 token could never serve,
-// which is why cross-account client mode never worked. In a per-user root the
-// group cannot traverse the directory, so 0640 grants nothing there.
+// Mode 0600. The point of the probe is to let a process that can read this
+// ROOT prove it, and the server that can is one running as this account.
 func writeChallenge(paths config.Paths) (name, answer string, err error) {
 	if err := os.MkdirAll(paths.Root, 0o755); err != nil {
 		return "", "", err
@@ -123,7 +119,7 @@ func writeChallenge(paths config.Paths) (name, answer string, err error) {
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op once the rename succeeds
-	if err := tmp.Chmod(0o640); err != nil {
+	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
 		return "", "", err
 	}
@@ -142,10 +138,9 @@ func writeChallenge(paths config.Paths) (name, answer string, err error) {
 
 // removeChallenge deletes a spent nonce, tolerating the failure.
 //
-// A shared root carries the sticky bit, so a delete can fail with EPERM on a
-// file another account owns — and the previous scheme's stale-token cleanup
-// failing that way is what left one account's server permanently misread as
-// foreign. A leftover challenge is harmless: it is single-use, its answer is
+// A delete can fail — a root this process cannot write, a file it does not
+// own — and a stale-token cleanup failing that way once left a server
+// permanently misread as foreign. A leftover challenge is harmless: it is single-use, its answer is
 // never reused, and nothing consults it again.
 func removeChallenge(paths config.Paths, name string) {
 	if p := config.ChallengePath(paths.Root, name); p != "" {

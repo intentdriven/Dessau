@@ -149,12 +149,11 @@ func OpenRotator(opts RotateOptions) (*Rotator, error) {
 	if opts.Keep <= 0 {
 		opts.Keep = DefaultKeep
 	}
-	// Created when it is missing, and only then. On a first run — and on a
-	// shared-cache install where this account has never run Dessau per-user —
-	// nothing has made this directory yet, and the run whose log is most worth
-	// having is the first one. Owner-only, following internal/stats's own rule
-	// for the directory it creates: config.Paths.EnsureDirs leaves an existing
-	// non-shared directory's mode alone, so a 0700 made here survives.
+	// Created when it is missing, and only then. On a first run nothing has
+	// made this directory yet, and the run whose log is most worth having is
+	// the first one. Owner-only, following internal/stats's own rule for the
+	// directory it creates: config.Paths.EnsureDirs leaves an existing
+	// directory's mode alone, so a 0700 made here survives.
 	if _, err := os.Lstat(opts.Dir); errors.Is(err, os.ErrNotExist) {
 		if err := os.MkdirAll(opts.Dir, 0o700); err != nil {
 			return nil, fmt.Errorf("create directory %s: %w", opts.Dir, err)

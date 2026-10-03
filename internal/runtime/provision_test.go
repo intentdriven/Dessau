@@ -155,10 +155,10 @@ func writeInterpreter(t *testing.T, paths config.Paths, mode os.FileMode) {
 	}
 }
 
-// The interpreter is executed under this account's uid, and in shared-cache
-// mode it sits under a setgid staff root where a group-writable file is one
-// any local account can rewrite in place. A group- or other-writable
-// interpreter must be treated as not installed, and refused before launch.
+// The interpreter is executed under this account's uid, and a group-writable
+// file is one another local account could rewrite in place. A group- or
+// other-writable interpreter must be treated as not installed, and refused
+// before launch.
 func TestInstalledRejectsGroupWritableInterpreter(t *testing.T) {
 	paths := config.NewPaths(t.TempDir())
 	writeInterpreter(t, paths, 0o775)
@@ -177,13 +177,13 @@ func TestPrecheckRejectsGroupWritableInterpreter(t *testing.T) {
 	paths := config.NewPaths(t.TempDir())
 	writeInterpreter(t, paths, 0o775)
 	l := &ExecLauncher{Paths: paths, LogDir: paths.Logs}
-	if err := l.Precheck(Spec{RepoID: "org/m", ModelPath: t.TempDir()}); err == nil {
+	if err := l.Precheck(Spec{RepoID: "org/m", ModelPath: plainModelDir(t)}); err == nil {
 		t.Error("Precheck accepted a group-writable interpreter")
 	}
 	if err := os.Chmod(paths.VenvPython(), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := l.Precheck(Spec{RepoID: "org/m", ModelPath: t.TempDir()}); err != nil {
+	if err := l.Precheck(Spec{RepoID: "org/m", ModelPath: plainModelDir(t)}); err != nil {
 		t.Errorf("Precheck rejected a correctly moded interpreter: %v", err)
 	}
 }
@@ -205,7 +205,7 @@ func TestPrecheckRejectsInterpreterNotOwnedByUs(t *testing.T) {
 	paths := config.NewPaths(t.TempDir())
 	writeInterpreter(t, paths, 0o755)
 	l := &ExecLauncher{Paths: paths, LogDir: paths.Logs, Owner: os.Geteuid() + 1}
-	if err := l.Precheck(Spec{RepoID: "org/m", ModelPath: t.TempDir()}); err == nil {
+	if err := l.Precheck(Spec{RepoID: "org/m", ModelPath: plainModelDir(t)}); err == nil {
 		t.Error("Precheck accepted an interpreter owned by another account")
 	}
 }

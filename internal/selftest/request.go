@@ -154,9 +154,13 @@ func (r *Runner) measure(ctx context.Context, up Upstream, spec testSpec) (measu
 		return measurement{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	client, err := UpstreamClient(r.opts.Client, up.Transport)
+	if err != nil {
+		return measurement{}, err
+	}
 
 	started := time.Now()
-	resp, err := r.opts.Client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return measurement{}, err
 	}

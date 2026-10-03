@@ -61,7 +61,28 @@ func closeAll(lns []net.Listener) {
 // it is the address every mode takes, so it is the only one two instances are
 // guaranteed to collide on, and it is the one the port-ownership challenge
 // contacts (adr-2609091123526871 rule 2).
+// requireWildcardBesideLoopback skips a test that needs a wildcard listener
+// and a loopback one on the same port at once. Darwin's SO_REUSEADDR allows
+// the pair, and acquireBind is built on it; Linux refuses the second listen
+// with EADDRINUSE whichever comes first. The kernel is asked rather than the
+// GOOS named, so the skip says what is missing and not where the test ran.
+func requireWildcardBesideLoopback(t *testing.T) {
+	t.Helper()
+	p := freePort(t)
+	lo, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lo.Close()
+	w, err := net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(p)))
+	if err != nil {
+		t.Skip("this kernel refuses a wildcard listener beside a loopback one on the same port (BSD SO_REUSEADDR semantics, which the bind relies on, are macOS's)")
+	}
+	w.Close()
+}
+
 func TestTheBindAcquiresLoopbackFirstAndThenTheSecondAddress(t *testing.T) {
+	requireWildcardBesideLoopback(t)
 	port := freePort(t)
 	lns, plan, claimed, err := acquireBind(bind.ForHost("0.0.0.0"), port, time.Second, func() portHolder { return holderNone })
 	if err != nil {
@@ -130,6 +151,7 @@ func TestASecondAddressThisMacDoesNotHoldServesLoopbackAndSaysSo(t *testing.T) {
 // The narrowing never widens. Whatever happens to the second listener, the
 // server answers on loopback and on nothing the plan did not name.
 func TestAFailedSecondListenerNeverWidensTheBind(t *testing.T) {
+	requireWildcardBesideLoopback(t)
 	port := freePort(t)
 	lns, _, _, err := acquireBind(bind.ForHost("192.0.2.5"), port, time.Second, func() portHolder { return holderNone })
 	if err != nil {
@@ -172,6 +194,7 @@ func TestAPeerHoldingLoopbackIsStillClientMode(t *testing.T) {
 // singleton exists to prevent, so loopback is released and the port is
 // classified the way it always was.
 func TestAPeerHoldingOnlyTheSecondAddressReleasesLoopbackAndDefers(t *testing.T) {
+	requireWildcardBesideLoopback(t)
 	port := freePort(t)
 	occupied, err := net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(port)))
 	if err != nil {
@@ -201,6 +224,7 @@ func TestAPeerHoldingOnlyTheSecondAddressReleasesLoopbackAndDefers(t *testing.T)
 // so this instance refuses rather than becoming its client — and releases
 // loopback on the way out for the same reason as above.
 func TestAForeignHolderOfTheSecondAddressIsRefused(t *testing.T) {
+	requireWildcardBesideLoopback(t)
 	port := freePort(t)
 	occupied, err := net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(port)))
 	if err != nil {
@@ -234,6 +258,7 @@ func TestAForeignHolderOfTheSecondAddressIsRefused(t *testing.T) {
 // has nothing to dial. The wildcard half is what keeps the skip honest, by
 // showing that the dial can tell the two binds apart at all.
 func TestAnAddressOutsideTheBindRefusesTheConnection(t *testing.T) {
+	requireWildcardBesideLoopback(t)
 	other := aNonLoopbackIPv4(t)
 	if other == "" {
 		t.Skip("this Mac holds no non-loopback IPv4 address, so there is nothing outside the bind to dial")
@@ -432,6 +457,7 @@ func TestTheKeyIsRequiredForWhatWasAcquiredAndNothingElse(t *testing.T) {
 	})
 
 	t.Run("a bind other machines reach generates and persists one", func(t *testing.T) {
+		requireWildcardBesideLoopback(t)
 		paths := config.NewPaths(t.TempDir())
 		cfg := config.Default()
 		cfg.Host = "0.0.0.0"
@@ -462,6 +488,7 @@ func TestTheKeyIsRequiredForWhatWasAcquiredAndNothingElse(t *testing.T) {
 	})
 
 	t.Run("a key that cannot be saved narrows the bind rather than serving open", func(t *testing.T) {
+		requireWildcardBesideLoopback(t)
 		// A root that cannot be written to: the save fails, and a key held
 		// only in memory would vanish at the next start and leave the endpoint
 		// open, so the exposure goes instead of the key.

@@ -367,10 +367,9 @@ func TestAnUnmeasurablePinDoesNotBlockALowerBudget(t *testing.T) {
 
 // A budget larger than the Mac is kept as the operator's figure and warned
 // about — but what the pool is allowed to fill is bounded by what exists.
-// Under the shared install another account can write the settings file, and a
-// planted figure would otherwise admit every model a LAN client names until
-// the machine swaps, restart after restart, with no way to clear it from a
-// panel whose own save cannot replace that account's file.
+// The settings file is hand-editable, and a figure written into it would
+// otherwise admit every model a LAN client names until the machine swaps,
+// restart after restart.
 func TestAPlantedBudgetIsEnforcedNoHigherThanTheMachine(t *testing.T) {
 	var logged bytes.Buffer
 	// Start from the defaults so the fields other settings validate (the

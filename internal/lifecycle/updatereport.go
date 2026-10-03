@@ -11,11 +11,11 @@ import (
 //
 // IT IS A CHECK ON UNTRUSTED TEXT, not a formatting preference. The version on
 // the serving line arrives from whatever holds the loopback port, and the
-// challenge that let it in proves a shared DATA ROOT rather than an identity —
-// deliberately, at mode 0640, so that a peer account can answer it under the
-// shared-cache mode this product documents. So a string from there is a string
-// a peer account chose: a newline in it forges lines that read as the report's
-// own, and an escape sequence reaches the terminal.
+// challenge that let it in proves access to this account's DATA ROOT rather
+// than an identity: any process that can read the root can answer it. So a
+// string from there is a string such a process chose: a newline in it forges
+// lines that read as the report's own, and an escape sequence reaches the
+// terminal.
 //
 // What this cannot check is whether a plausible version is a TRUE one. The
 // report's provenance for that line is the control plane, and a report that
@@ -50,10 +50,10 @@ const (
 	// portIdle: nothing is accepting connections on the port.
 	portIdle portHolder = iota
 	// portOurs: a Dessau that shares this account's data root answered the
-	// challenge — this account's own copy, or, under a shared root, a peer's.
+	// challenge — this account's own copy.
 	portOurs
 	// portSilent: something accepted a connection and answered no challenge.
-	// Under a per-account data root that description fits another account's
+	// Every account's Dessau keeps its own data root, so that description fits another account's
 	// Dessau exactly, which is why it is not a refusal.
 	portSilent
 	// portUnproven: something answered the challenge WRONGLY, or no proof
@@ -179,7 +179,7 @@ type updateReport struct {
 // Two ways to know it, and both are things that were observed rather than
 // assumed: the running server gave a version and it is not the one just
 // installed, or something holds the port and would not identify itself — which,
-// under a per-account data root, is exactly what another account's Dessau
+// since every account's Dessau keeps its own data root, is exactly what another account's Dessau
 // looks like from here.
 func (r updateReport) servedByAnother() bool {
 	if r.Holder == portSilent {

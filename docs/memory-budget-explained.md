@@ -69,8 +69,20 @@ and the concurrency as they change, and a settings file carried to another Mac
 carries no window chosen for a machine that no longer exists. It is one figure
 doing two jobs, and that is what makes it trustworthy: the memory budget
 charges the cache this window costs, and the gateway refuses a request
-estimated to be larger than it. Dessau never budgets for one window and then
-serves another.
+estimated to be larger than it. Dessau budgets for the window it serves, with
+one exception.
+
+The exception is a request that names no maximum answer length. The gateway
+judges it on its prompt alone, and the model server answers it at up to the
+served window — the length each model starts with when **Maximum completion
+tokens** is blank (see
+[Reference: sampling parameters](sampling-reference.md)). The model server
+does not take the prompt off that length, so a long prompt with no maximum can
+grow the cache to as much as twice the window the budget charges for. A
+request that sets `max_tokens` is held to the window, prompt and answer
+together. A request that names no maximum is judged on its prompt alone even
+when **Maximum completion tokens** holds a figure, and the model server then
+answers it at up to that figure.
 
 The default is the budget's answer, not the model's. A model declaring 262,144
 tokens can cost more than a whole Mac at that window, and every current

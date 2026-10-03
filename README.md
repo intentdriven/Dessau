@@ -38,7 +38,9 @@ Cross-machine LAN use works. The ordinary port is plain HTTP; only the paired-cl
   in full to reach a model published under another account; download with live
   progress, resume interrupted transfers.
 - **OpenAI-compatible server** — `/v1/chat/completions`, `/v1/completions`,
-  `/v1/models`, streaming included. Drop-in for any OpenAI SDK.
+  `/v1/models`, streaming included. Drop-in for any OpenAI SDK; the two
+  fields that would load files a request names, `draft_model` and `adapters`,
+  are refused ([reference](docs/request-fields.md)).
 - **Context window published** — the models list gives each model's maximum
   context, so a client can size its prompts instead of discovering the limit
   by failure ([reference](docs/models-list.md)).
@@ -135,9 +137,10 @@ Cross-machine LAN use works. The ordinary port is plain HTTP; only the paired-cl
   `dessau config show` prints every setting in force, with the API key, the
   HuggingFace token and the Discord bot token masked ([how to](docs/lifecycle.md),
   [reference](docs/lifecycle-reference.md)).
-- **Multi-account** — other user accounts on the same Mac share one copy of each
-  model on disk and on the GPU. The models are shared; each account keeps its
-  own settings and its own model list, so no key or token crosses accounts.
+- **One account serves** — Dessau runs in one macOS account and keeps
+  everything in that account's own folder. Other accounts on the same Mac use
+  it the way any client does, over `localhost`, with no key and no copy of
+  the models ([how to](docs/getting-started.md#9-use-it-from-other-accounts-on-this-mac-optional)).
 
 ## Install
 

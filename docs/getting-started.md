@@ -180,8 +180,13 @@ triggering a load — see the [models list reference](models-list.md).
 
 ### What Dessau reads of a request
 
-Dessau passes a request on to the model without reading what is in it. There
-is one exception, it is per model, and it is off until you switch it on:
+Dessau passes a request on to the model without reading what is in it. It
+does look at the names of the fields at the top of a request, and refuses one
+that carries `draft_model` or `adapters`, which would have the model server
+load files the request names — see
+[Fields a completion request may not carry](request-fields.md). There
+is one exception to not reading, it is per model, and it is off until you
+switch it on:
 **Settings → Merge system messages**, for a model whose template refuses a
 conversation whose instructions are not all at the top. For a model you switch
 it on for, Dessau reads that request's instruction messages and nothing else,
@@ -214,50 +219,35 @@ place, so the shape of last year's use survives the detail. See
 [Understanding the historical views](statistics-explained.md) for what the
 tab's tables over days and months mean.
 
-## 9. Sharing across user accounts (optional)
+## 9. Use it from other accounts on this Mac (optional)
 
-If several people log into this Mac, let them share one copy of each model:
+Dessau serves from one macOS account. If several people log into this Mac,
+run Dessau Server in one account only; everyone else uses that server the way
+any client does, over the network, and never needs the model files.
 
-```sh
-make install-shared     # creates /Users/Shared/Dessau, needs your password
-```
+From another account on this Mac, point a client at
+`http://localhost:11535/v1`, exactly as in step 4. A request addressed to
+`localhost` or `127.0.0.1` needs no API key, whichever account sends it, and
+the control panel at `http://localhost:11535/` opens from any account on this
+Mac too. Do not launch Dessau Server in the other accounts: a second copy
+finds the port held by a server that is not its own and stops with an error
+rather than route anything to it.
 
-After that, whoever launches Dessau first runs the server; everyone else's
-menu-bar app just points at it. One copy on disk, one on the GPU.
+The control panel asks for no key or password from this Mac, so every local
+account can administer the server through it: change its settings, delete
+models, start and cancel downloads, and load or unload models. The panel never
+shows the API key or the tokens Dessau holds, but anyone who can log into this
+Mac can do everything else there that the serving account can.
 
-The shared folder holds the model files and the download cache they arrive
-through. A folder set up by an earlier version may also hold a `registry.json`
-and a `logs` folder, which nothing uses any more; they are safe to delete, and
-Dessau does not remove them for you. Everything belonging to one account
-stays in that
-account's own `~/Library/Application Support/Dessau`: its settings
-(`config.json`, which holds the API key and the HuggingFace token), its list of
-models (`registry.json`), its model-server logs, Dessau's own log, its request
-statistics, and
-the private Python runtime it starts model servers with. So an API key or a
-token one account sets is never readable by another. What Dessau writes in
-that log, and how to make it say more while you are diagnosing something, is on
+Everything Dessau keeps lives in the serving account's own
+`~/Library/Application Support/Dessau`: the models and the download cache they
+arrive through, the settings (`config.json`, which holds the API key and the
+HuggingFace token), the list of models (`registry.json`), the model-server
+logs, Dessau's own log, the request statistics, and the private Python runtime
+it starts model servers with. If request statistics are on, they cover every
+request the server handles, from any account on this Mac. What Dessau writes in
+its log, and how to make it say more while you are diagnosing something, is on
 the [logging page](logging.md).
-
-The first time an account runs with the shared cache, its list of models starts
-empty and is rebuilt from the models already in the shared folder — nothing is
-downloaded again. Those models are offered for chat from the first start: a
-model that carries a chat template counts as able to chat until the Hub's own
-words for it arrive, which Dessau fetches in the background after each start
-(see [Choose which models are offered for chat](chat-models.md)). If that
-account had used the shared cache before this became
-the rule, the settings it kept in the shared folder are moved into its own on
-that first start, and are no longer readable by anyone else on the Mac.
-
-Request statistics stay with the account that runs the server: if that account
-has recording on, its records cover every request the server handled, from any
-account on this Mac, and they are kept in that account's own folder rather
-than the shared one.
-
-Dessau only uses `/Users/Shared/Dessau` when the installer created it: the
-directory must be owned by the administrator account (`root`), which is what
-`make install-shared` produces. A folder someone made by hand there is ignored
-and each account falls back to its own data directory.
 
 ## 10. Settings that live only in `config.json` (optional)
 
@@ -292,12 +282,20 @@ Preloading is not pinning. A preloaded model is loaded at startup and may still
 be unloaded to make room; a pinned model is protected from the moment something
 loads it. Pinning has a control, under **Settings → Pinned models**.
 
-### `upstream_header_timeout_sec` — how long to wait for a model's first header
+### `upstream_header_timeout_sec` — how long a model may take to start answering
 
-How long Dessau waits for a model server to send its first response header
-before giving up, in seconds. Zero — the default — means Dessau works the
-figure out itself from what the model is and what this Mac can do, which is the
-right answer almost always.
+How long Dessau waits, in seconds, for a model server to start answering a
+request before giving up with a `504`. Dessau asks the model server for every
+answer as a stream — one a client asked for unstreamed is put back together
+into a single object before it is returned — so the wait ends the moment the
+model server takes the request up. Reading the prompt and writing the answer
+come after that and are not counted against it: a long answer is never cut
+off by this wait. Nor is a stuck one: a model server that stops part-way
+through an answer without closing the connection holds the request, streamed
+or not, until the client hangs up, so give a client that must not wait for
+ever a timeout of its own. Zero — the default — means Dessau works the figure out from
+the size of the request: ten minutes, or more for a very large prompt, which
+is the right answer almost always.
 
 ```json
 {
@@ -307,9 +305,16 @@ right answer almost always.
 
 A positive value replaces that derivation for every model. It has no control
 because nobody has established a safe range for it: a box with a number in it
-invites a number being typed, and a figure below what a large model needs to
-warm up turns every first request into a timeout. Set it only if the derived
+invites a number being typed, and a figure too low turns a request that has to
+queue behind others on a busy model into a timeout. Set it only if the derived
 wait is wrong for your Mac, and put it back to zero when it is not.
+
+One kind of request is the exception. A request that asks for `logprobs` or
+`top_logprobs` without a stream is passed on unstreamed, because the model
+server returns those only in an unstreamed answer, and it sends nothing of
+such an answer until the whole of it is written. For that request the wait
+covers the whole answer; ask for it streamed if it is a long one. See
+[what Dessau changes in a request](request-fields.md#what-dessau-changes-in-a-request-it-passes-on).
 
 ## Troubleshooting
 
@@ -332,14 +337,36 @@ wait is wrong for your Mac, and put it back to zero when it is not.
 
   `make install` does this for you. You can also do it in **System Settings →
   Network → Firewall → Options** by setting Dessau Server to "Allow incoming
-  connections". Only the server app needs this; its Python helper only ever
-  listens on loopback.
+  connections". Only the server app needs this; its Python helper listens on
+  no network port at all, only on a private socket that nothing but the
+  account running Dessau can reach.
 
 - **A model answers the first message, then fails with a template error once the
   assistant repeats its instructions.** That model's chat template refuses a
   system message that is not the first one. Switch on **Merge system messages**
   for that model — see
   [Merge system messages for a template-strict model](system-message-merging.md).
+- **A model's card says *did not load* because the model ships its own
+  code.** A repository can carry a Python file of its own and name it in the
+  `model_file` field of its `config.json`. The model server would run that
+  file, with your account's access to your files, the moment the model
+  loads, so Dessau refuses to load such a model, before anything starts. The
+  card gives the reason — "this model ships its own code, which Dessau does
+  not run" — and so does the error a client on this Mac, or one holding the
+  API key, receives; the context probe and the self-test leave the model
+  alone. The files stay on disk and nothing in them is run. Pressing
+  **Load** reads `config.json` again and refuses again while it names a
+  `model_file`. Look for another conversion of the same model that loads
+  without code of its own, or delete this one from **My Models**.
+- **A model's card says *did not load* because its files belong to another
+  account.** Dessau loads a model only when its folder and its `config.json`
+  belong to the account running the server. A model folder copied in from
+  another account keeps that account as its owner, and the card says "this
+  model's files belong to another account, which Dessau does not load".
+  Delete the model and download it again from the serving account.
+- **A model's card says *did not load* because it has no `config.json`.**
+  The model server cannot load a model without one, so Dessau does not start
+  it. Download the model again.
 - **The menu-bar icon never appears.** Run it in the foreground to see errors:
   `./dist/DessauServer.app/Contents/MacOS/dessau`.
 - **A model stays "downloading" forever / fails.** Check the panel for the error.
@@ -387,16 +414,6 @@ the flag that removes them too:
 dessau uninstall --purge
 ```
 
-With the shared cache from step 9, your own account's directory is what goes.
-The shared folder holds every account's models, so uninstall never touches it;
-the output says how much it holds and how many other accounts it belongs to.
-Once everybody on this Mac has finished with Dessau, one deliberate command
-removes it:
-
-```sh
-sudo /bin/rm -rf /Users/Shared/Dessau
-```
-
-What each verb removes, what `--purge` does under a shared cache, and what a
-declined authorisation panel leaves behind are on
+What each verb removes, and what a declined authorisation panel leaves behind,
+are on
 [Install, repair and remove Dessau](lifecycle.md).

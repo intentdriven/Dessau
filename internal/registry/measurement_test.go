@@ -120,8 +120,8 @@ func TestARescanClearsAMeasurementForARedownloadedModel(t *testing.T) {
 	}
 }
 
-// registry.json is, in shared-cache mode, a file another local account can
-// write. A measurement read back is bounded exactly as one written by the
+// registry.json is a file that can be edited by hand or left corrupt. A
+// measurement read back is bounded exactly as one written by the
 // probe is, and an implausible one is cleared rather than repaired.
 func TestAPlantedMeasurementIsClearedOnLoad(t *testing.T) {
 	for _, tt := range []struct {

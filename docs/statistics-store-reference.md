@@ -9,14 +9,6 @@ while the switch is off.
 In a `stats` folder inside your own Dessau data folder — normally
 `~/Library/Application Support/Dessau/stats`.
 
-On a Mac with the [shared model cache](getting-started.md#9-sharing-across-user-accounts-optional)
-the store stays where it is: the models and the download cache they arrive
-through move to the shared folder, while `config.json`, `registry.json`, the
-server logs and the records stay in the serving account's own
-`~/Library/Application Support/Dessau`. A shared folder is writable by every
-account on the Mac, and one account's settings, its list of models and its
-record of what it served have no business there.
-
 The folder is yours alone (mode `0700`), and so is every file in it (`0600`).
 Dessau refuses to write records into a folder any other account on this Mac
 could write to, or one that belongs to another account; if it has to refuse, it
@@ -99,7 +91,7 @@ no answer, no key, no client address (see
 | `model` | The model's repo id. |
 | `duration_ms` | How long the load took. |
 | `failed` | Present and `true` when the model server started but never became ready. |
-| `sampling` | The sampling values the model server was launched with, by parameter name, only the ones set. It is what a request's `overrides` are overrides of. Absent when every value was the model's own default. |
+| `sampling` | The sampling values the model server was launched with, by parameter name, only the ones set — including the maximum tokens when it is the served window, which a model starts with when the operator has set no maximum. It is what a request's `overrides` are overrides of. Absent when every value was the model's own default. |
 
 A load carries no `reason`: nothing in Dessau knows why a model was loaded
 beyond the fact that something asked for it.

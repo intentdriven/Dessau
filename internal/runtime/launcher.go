@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 // Spec describes one model server process to launch.
@@ -24,14 +25,21 @@ type Spec struct {
 	// the exact string clients must put in the request's "model" field, which is
 	// why the pool hands it back to the gateway to rewrite with.
 	ModelPath string
-	Port      int
+	// Socket is the Unix socket the model server listens on, in a directory
+	// only this account can open (newSocketDir); the pool names it, and
+	// reaches the server there through childTransport. There is no TCP port:
+	// any account on the Mac can reach a loopback port, and the server behind
+	// it loads whatever directory a request names (iss-2610030846581757).
+	Socket string
 	// DecodeConcurrency maps to --decode-concurrency: how many requests are
 	// batched together during generation.
 	DecodeConcurrency int
 	// Sampling is the set of sampling defaults this server starts with. The
 	// server applies them to any request that omits the parameter, and a
 	// request's own value replaces them for that request alone — which is why
-	// they belong on the command line rather than in the relayed body.
+	// they belong on the command line rather than in the relayed body. The
+	// pool builds it with launchSampling, so a completion budget it holds may
+	// be the model's served window rather than a figure of the operator's.
 	Sampling config.Sampling
 	// DebugLog says this one launch runs at the model server's debug level, at
 	// which it writes every request body and every response to its log —
@@ -108,6 +116,40 @@ func samplingArgs(s config.Sampling) []string {
 	return args
 }
 
+// launchSampling is the sampling a model's server is launched with: the
+// operator's set, and — where that set holds no completion-token budget the
+// server would accept — the model's served window as the budget, held to
+// config.MaxCompletionTokens.
+//
+// The pinned server answers a request that omits max_tokens (and
+// max_completion_tokens) with its launch value, and with no flag that is 512:
+// every reply to such a request was cut off at 512 tokens whatever the window
+// (iss-2610030652514762). The window is the pool's resolved figure
+// (ResolvedModel.ServedContext, which App.ServedWindow answers), never a
+// second derivation; zero or less means the window is not known, and then
+// nothing is filled in and the server keeps its own 512, as before.
+//
+// Two costs are accepted rather than solved (.abcd/work/DECISIONS.md,
+// 2026-10-03). The server does not take the prompt off this budget, so one
+// request can grow its cache past the window the memory budget charges for.
+// And the flag is fixed at launch: a derived window that moves with the
+// budget or the batched requests reaches the server only when the model next
+// loads. The request is never touched — the gateway relays what the client
+// sent, and a client's own budget still replaces this one for that request.
+//
+// An out-of-range default of the operator's counts as none: samplingArgs
+// drops it, so the server would otherwise fall back to the 512 this exists to
+// replace. The operator's set is copied, never written into.
+func launchSampling(s config.Sampling, servedWindow int64) config.Sampling {
+	out := s.Clone()
+	if sane, _ := s.Sanitized(); sane.MaxTokens != nil || servedWindow <= 0 {
+		return out
+	}
+	n := int(min(servedWindow, int64(config.MaxCompletionTokens)))
+	out.MaxTokens = &n
+	return out
+}
+
 // formatSamplingValue renders one value for the command line.
 //
 // Negative zero is the one number that passes a "must be at least zero" check
@@ -179,6 +221,11 @@ func (e *LaunchError) Unwrap() error { return e.Err }
 // it comes from the process's own exit status, from the probe's timeout, or
 // from the terminal line of a traceback in the child's log with anything
 // path-shaped stripped out (fatalLoadLine), never from a path on this machine.
+//
+// A launcher's refusal of the model itself — one that ships its own code, or
+// whose files belong to another account (refuseModelCode) — is this failure
+// too, reached before any process exists: it is about these files and not about the installation, and its
+// message is written to be relayed.
 type NotReadyError struct {
 	Err error
 	// Reason is the failure without the model's name — "did not become
@@ -214,39 +261,61 @@ type ExecLauncher struct {
 	// DebugLogMaxBytes. A field so a test can reach the bound with a stub,
 	// not a setting: the figure the product ships is the constant.
 	debugLogMaxBytes int64
+	// modelOwner is the uid a model's files must belong to; zero means the
+	// account running Dessau. A field so a test can stand in for files
+	// another account owns, which a test running as one account cannot
+	// create: see modelFilesOwner.
+	modelOwner int
+	// socketRefresh is how often a running server's socket is touched; zero
+	// means socketRefreshEvery. A field so a test can see a refresh without
+	// waiting an hour, not a setting.
+	socketRefresh time.Duration
 
 	ledgerOnce sync.Once
 	ledger     *pidLedger
 }
 
 func (l *ExecLauncher) pidLedger() *pidLedger {
-	// This account's own directory, not the data root: the ledger records
-	// process groups only the uid that started them can signal, so it is no use
-	// to another account — and in a shared root the second account's write over
-	// the first account's ledger is refused by the sticky bit and swallowed,
-	// which ends orphan reaping for it without a word.
-	// Account, falling back to Root for a Paths built by hand without it — the
-	// same fallback config.Paths applies to the state directory. With neither,
-	// newPIDLedger returns an inert ledger rather than a relative path in
-	// whatever directory the process was started from.
+	// The data root. With none, newPIDLedger returns an inert ledger rather
+	// than a relative path in whatever directory the process was started from.
 	l.ledgerOnce.Do(func() {
-		dir := l.Paths.Account
-		if dir == "" {
-			dir = l.Paths.Root
-		}
-		l.ledger = newPIDLedger(dir)
+		l.ledger = newPIDLedger(l.Paths.Root)
 	})
 	return l.ledger
 }
 
-// ReapOrphans kills any model servers left running by a previous, crashed run.
-// Call once at startup before launching anything.
+// ReapOrphans kills any model servers left running by a previous, crashed run,
+// and removes the socket directories such a run left behind. Call once at
+// startup before launching anything.
 func (l *ExecLauncher) ReapOrphans() int {
-	return l.pidLedger().reapOrphans()
+	killed := l.pidLedger().reapOrphans()
+	for _, root := range socketRoots() {
+		sweepSocketDirs(root)
+	}
+	return killed
+}
+
+// prepareSocket refuses a socket a model server must not be started on — none
+// at all, one longer than a Unix socket's path may be, one in a directory that
+// is not this account's alone — and clears a stale socket left under its name.
+// It runs before any process exists; the launcher checks the directory again
+// itself before it binds.
+func prepareSocket(path string) error {
+	if path == "" {
+		return errors.New("no socket for the model server")
+	}
+	if len(path) > maxSocketPath {
+		return fmt.Errorf("socket path is %d bytes, longer than the %d a Unix socket may have", len(path), maxSocketPath)
+	}
+	if err := checkSocketDir(filepath.Dir(path), os.Geteuid()); err != nil {
+		return err
+	}
+	return removeSocket(path)
 }
 
 // Precheck confirms the venv interpreter is present and trustworthy (see
-// trustedExecutable) and the model directory exists.
+// trustedExecutable), the model directory exists, and the model is one
+// Dessau will hand to the model server (refuseModelCode).
 func (l *ExecLauncher) Precheck(spec Spec) error {
 	python := l.Paths.VenvPython()
 	if err := trustedExecutable(python, ownerOrSelf(l.Owner)); err != nil {
@@ -255,7 +324,76 @@ func (l *ExecLauncher) Precheck(spec Spec) error {
 	if _, err := os.Stat(spec.ModelPath); err != nil {
 		return fmt.Errorf("model directory is missing (%s): %w", spec.ModelPath, err)
 	}
-	return nil
+	return refuseModelCode(spec, l.modelFilesOwner())
+}
+
+// modelFilesOwner is the uid a model's directory and config.json must belong
+// to: the account running Dessau, or modelOwner where a test has set it.
+func (l *ExecLauncher) modelFilesOwner() int {
+	if l.modelOwner != 0 {
+		return l.modelOwner
+	}
+	return os.Geteuid()
+}
+
+// unreadableConfigReason is the reason given for a config.json that is there
+// and cannot be read as a JSON object, and missingConfigReason for one that is
+// not there. Neither names a path or a reader error, both of which carry this
+// account's own directories.
+const (
+	unreadableConfigReason = "its config.json could not be read, so Dessau does not start it"
+	missingConfigReason    = "it has no config.json, so Dessau does not start it"
+)
+
+// refuseModelCode refuses, before any process exists, a model the model
+// server could be made to run code from (iss-2610030709283687):
+//
+//   - one whose config.json names a model_file, which the model server would
+//     import and run under this account at load time;
+//   - one whose directory or config.json belongs to another account: Dessau
+//     serves from one account and keeps its models in that account's own
+//     data root, so this refuses nothing a normal install holds, and it is
+//     defence in depth;
+//   - one with no config.json, which the model server cannot load anyway;
+//   - one whose config.json is there but that this reader will not take: the
+//     model server's parser accepts some of what Go's refuses (NaN and
+//     Infinity, a number past float range), and a link is followed by the
+//     model server where the reader declines it, so waving those through
+//     would be a check the file could step round. That refusal alone is
+//     transient, since the file may read on another try.
+//
+// It is the last check before the interpreter starts — Launch makes it again
+// itself — so a client's request, the context probe, the tool-call probe, the
+// self-test and a preload all meet it. What it reads is the model directory
+// and config.json.
+//
+// The refusal is the model's own load failure, not a broken installation, so
+// it is a NotReadyError: the pool relays it rather than hiding it behind "the
+// model could not be started", and records it on the model, where idle work
+// leaves the model alone and the card says why. It stands until a person
+// retries or the provenance moves; a retry reads the files again.
+func refuseModelCode(spec Spec, owner int) error {
+	err := registry.CheckModelCode(spec.ModelPath, owner)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, registry.ErrModelCode), errors.Is(err, registry.ErrOtherAccount):
+		return &NotReadyError{
+			Err:    fmt.Errorf("%s cannot be loaded: %w", spec.RepoID, err),
+			Reason: err.Error(),
+		}
+	case errors.Is(err, fs.ErrNotExist):
+		return &NotReadyError{
+			Err:    fmt.Errorf("%s cannot be loaded: %s", spec.RepoID, missingConfigReason),
+			Reason: missingConfigReason,
+		}
+	default:
+		return &NotReadyError{
+			Err:       fmt.Errorf("%s cannot be loaded: %s", spec.RepoID, unreadableConfigReason),
+			Reason:    unreadableConfigReason,
+			Transient: true,
+		}
+	}
 }
 
 // launchArgs is the model server's whole command line, spec by spec.
@@ -273,15 +411,18 @@ func launchArgs(spec Spec) []string {
 	if spec.DebugLog {
 		level = debugLogLevel
 	}
-	// `python -m mlx_lm.server` is deprecated in 0.31; `python -m mlx_lm server`
-	// is the supported spelling.
+	// The interpreter runs isolated (-I: no PYTHON* variables, no user site,
+	// neither the working directory nor a script's directory on sys.path), so
+	// nothing but the runtime's own site-packages can supply mlx_lm or stand
+	// in for the launcher; -u is PYTHONUNBUFFERED, which -I would ignore. The
+	// launcher is serveScript, handed over with -c: the pinned server's own
+	// main(), handler and argument parser, served on Spec.Socket instead of a
+	// TCP port. Only the Go gateway faces the network, so it alone enforces
+	// auth and rewrites requests; the launcher's own refusals sit behind it.
 	args := []string{
-		"-m", "mlx_lm", "server",
+		"-I", "-u", "-c", serveScript,
+		"--dessau-socket", spec.Socket,
 		"--model", spec.ModelPath,
-		// Model servers are strictly loopback. Only the Go gateway faces the LAN,
-		// so it alone enforces auth and rewrites requests.
-		"--host", "127.0.0.1",
-		"--port", strconv.Itoa(spec.Port),
 		"--log-level", level,
 	}
 	args = append(args, samplingArgs(spec.Sampling)...)
@@ -296,8 +437,14 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 	if err := l.Precheck(spec); err != nil {
 		return nil, err
 	}
+	if err := prepareSocket(spec.Socket); err != nil {
+		return nil, err
+	}
 	python := l.Paths.VenvPython()
 	cmd := exec.Command(python, launchArgs(spec)...)
+	// The socket's own directory, which only this account can open: nothing
+	// the server writes relative to where it runs lands anywhere else.
+	cmd.Dir = filepath.Dir(spec.Socket)
 	cmd.Env = append(os.Environ(),
 		// Without an existing HF_HUB_CACHE directory, mlx_lm.server raises
 		// CacheNotFound while serving /v1/models and returns an empty 200.
@@ -306,7 +453,6 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 		// Inference must never reach the network: everything it needs is already
 		// in ModelPath, and a stray download would stall a request for minutes.
 		"HF_HUB_OFFLINE=1",
-		"PYTHONUNBUFFERED=1",
 	)
 	// Put the child in its own process group so we can signal the whole group;
 	// mlx_lm can spawn helpers that would otherwise outlive it.
@@ -331,15 +477,11 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 	// log from growing without bound across restarts; the previous run's file
 	// was renamed aside just above, so the truncation destroys nothing.
 	//
-	// LogDir is this account's own directory (config.Paths.Logs resolves through
-	// accountDir), which is what makes the open reachable at all: while the logs
-	// sat in the shared root, one account's 0600 log under a name derived from
-	// the repo id meant the NEXT account's O_CREATE|O_TRUNC returned EACCES and
-	// the model would not start for it.
+	// LogDir is the logs directory under this account's own data root
+	// (config.Paths.Logs).
 	//
-	// The hardening stays. The name is predictable, and a link or a FIFO left
-	// under it — by anything that can write this directory, or by an older
-	// install that kept logs elsewhere — would let a truncating open empty, then
+	// The name is predictable, and a link or a FIFO left under it — by anything
+	// that can write this directory — would let a truncating open empty, then
 	// stream logs into, any file this account can write. O_NOFOLLOW refuses the
 	// link; O_NONBLOCK keeps a planted FIFO from blocking the open forever (and
 	// is inert on the regular file the fstat below guarantees); the fstat on the
@@ -394,12 +536,20 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 		ledger:  l.pidLedger(),
 		pgid:    pgid,
 	}
+	refresh := l.socketRefresh
+	if refresh <= 0 {
+		refresh = socketRefreshEvery
+	}
+	go keepSocketFresh(spec.Socket, refresh, p.done)
 	go func() {
 		err := cmd.Wait()
 		p.mu.Lock()
 		p.err = err
 		p.mu.Unlock()
 		logFile.Close()
+		// A server that was killed leaves its socket behind; nothing answers
+		// on it now.
+		_ = removeSocket(spec.Socket)
 		// The process is gone; drop it from the crash-recovery ledger.
 		p.ledger.remove(p.pgid)
 		close(p.done)
@@ -431,8 +581,8 @@ func logFileName(repoID string) string {
 //
 // The rename goes through an os.Root on the logs directory, the discipline the
 // rest of the tree applies to these files (internal/applog's OpenIn): both
-// names are in the one directory, so the rename cannot cross a filesystem or
-// the account boundary the shared-cache install creates, and a name that
+// names are in the one directory, so the rename cannot cross a filesystem,
+// and a name that
 // leaves the directory is refused rather than followed. A link or a FIFO left
 // under the log's name is refused here, before the open would refuse it, so
 // that renaming it aside never turns a planted name into a kept one. No
@@ -632,18 +782,3 @@ func (p *execProcess) Stop(ctx context.Context) error {
 
 // LogPath is where this process's output is being written.
 func (p *execProcess) LogPath() string { return p.logPath }
-
-// freePort asks the kernel for an unused loopback TCP port.
-//
-// There is an unavoidable race between closing the listener and the child
-// binding the port. It is tolerable here because the ports are loopback-only and
-// handed out one at a time, and because a collision surfaces immediately as a
-// failed readiness probe rather than as silent corruption.
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
-}

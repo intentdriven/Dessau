@@ -41,7 +41,11 @@ type Model struct {
 	// RepoID is the HuggingFace repo, e.g. "mlx-community/Qwen3-8B-4bit".
 	// It doubles as the model's public name on the OpenAI API.
 	RepoID string `json:"repo_id"`
-	// Path is the directory passed to mlx_lm.server --model.
+	// Path is the model's directory, <models>/<org>/<name>, as last recorded.
+	// It is a record, never an instruction: everything that acts on a model's
+	// files — the launch, the delete — derives the directory from RepoID
+	// (config.ModelDirIn), and Rescan rewrites Path to that derived directory,
+	// so a stored value naming anywhere else steers nothing.
 	Path string `json:"path"`
 	// Bytes is the on-disk size of the model's files.
 	Bytes int64 `json:"bytes"`
@@ -91,8 +95,9 @@ type Model struct {
 	// non-empty chat_template in tokenizer_config.json, or a
 	// chat_template.jinja beside it. It is what the runtime renders a
 	// conversation through, so it is what says a model can hold one when the
-	// Hub's word above is absent — a model adopted from the shared cache by
-	// a second account, which never downloaded it and so never heard the Hub.
+	// Hub's word above is absent — a model directory the rescan found rather
+	// than downloaded (copied in by hand, or left by an earlier install), which
+	// never heard the Hub.
 	// A fact about the directory, re-derived at every rescan like the
 	// context length, and never a value the Hub supplies
 	// (iss-2609202237468921).
@@ -121,8 +126,8 @@ type Model struct {
 }
 
 // MaxTags and MaxTagBytes bound the category. A repo's tags are typed by its
-// owner and republished by this Mac to its network, and registry.json is, in
-// shared-cache mode, a file another local account can write — so the words are
+// owner and republished by this Mac to its network, and registry.json can be
+// edited by hand or left corrupt — so the words are
 // bounded wherever they enter the registry, exactly as the context length is.
 //
 // A word beyond the bound is dropped rather than cut down: a truncated tag is a
@@ -222,8 +227,8 @@ func hubTagRune(b byte) bool {
 }
 
 // MaxContextLength bounds the context length Dessau will believe. A model
-// directory's config.json is, in shared-cache mode, a file another local
-// account can write, and the figure it declares is served to the LAN — so a
+// directory's config.json is whatever a third party's repository shipped,
+// and the figure it declares is served to the LAN — so a
 // hostile or corrupt configuration must not be able to hand a client an
 // absurd number to size buffers from.
 //
@@ -276,12 +281,11 @@ const maxRegistryBytes = 8 << 20
 // Open loads the registry from path, creating an empty one if absent.
 //
 // The read is hardened (see config.OpenRegular): registry.json is created
-// lazily in the data root, which in shared-cache mode is group-writable, so a
-// FIFO planted under its name would otherwise wedge startup after the port is
-// claimed, and a symlink would load an index — whose `path` fields feed
-// `mlx_lm.server --model` — from outside the root. A non-regular or oversized file is an
-// error, not an empty index: the sticky bit means this account can never
-// replace the plant, so pretending the index is empty would only hide it.
+// lazily in the data root, so a FIFO under its name would otherwise wedge
+// startup after the port is claimed, and a symlink would load an index —
+// whose `path` fields feed `mlx_lm.server --model` — from outside the root. A
+// non-regular or oversized file is an error, not an empty index: pretending
+// the index is empty would only hide what is there.
 func Open(path string) (*Registry, error) {
 	r := &Registry{
 		path:   path,
@@ -412,7 +416,7 @@ func (r *Registry) Put(m Model) error {
 	r.mu.Lock()
 	// A re-cased Put updates the existing entry but never renames it: the
 	// first-seen spelling stays the model's public name. Path is taken from
-	// the caller as before — it must be able to move when the root does.
+	// the caller, which derives it from the repo id (config.ModelDirIn).
 	if existing, ok := r.models[key(m.RepoID)]; ok {
 		m.RepoID = existing.RepoID
 	}
@@ -527,11 +531,10 @@ func (r *Registry) UpdateProgress(repoID string, progress float64) {
 
 // Remove deletes a model from the index and removes dir — its files — from
 // disk. The directory is a parameter, derived by the caller from the validated
-// repo id, and never the entry's stored Path: registry.json is created lazily
-// in the data root, which in shared-cache mode is group-writable, so another
-// local account can plant an index whose `path` names a directory this
-// account owns, and one click on Remove would then os.RemoveAll it under this
-// account's privileges. Every write path derives Path from the same root and
+// repo id, and never the entry's stored Path: an index edited by hand, or
+// planted, can carry a `path` that names any directory this account owns,
+// and one click on Remove would then os.RemoveAll it under this account's
+// privileges. Every write path derives Path from the same root and
 // id, so recomputing loses nothing legitimate. An empty dir removes only the
 // index entry.
 func (r *Registry) Remove(repoID, dir string) error {
@@ -566,8 +569,8 @@ func (r *Registry) Remove(repoID, dir string) error {
 
 // removeModelDir deletes a <models>/<org>/<name> directory without following
 // a symlink at <org>. os.RemoveAll by path resolves ancestors with ordinary
-// symlink semantics, and in the shared cache any account can plant
-// models/<org> as a link to a directory the victim owns — so the removal is
+// symlink semantics, and a models/<org> that is a link to a directory this
+// account owns would send the removal there — so the removal is
 // done relative to an os.Root at the models directory, after an Lstat has
 // confirmed the org entry is a real directory. A missing org or model is not
 // an error: the index entry is already gone and there is nothing to delete.
@@ -610,8 +613,8 @@ func (r *Registry) saveLocked() error {
 		return err
 	}
 	// A random-named temp (O_EXCL) rather than a predictable "registry.json.tmp":
-	// in a group-writable shared root another local account could pre-plant that
-	// fixed name as a symlink and redirect the write. registry.json holds no
+	// a symlink created ahead of the write under that fixed name would redirect
+	// it. registry.json holds no
 	// secrets (a lost one rebuilds via Rescan), but the unsafe pattern is the same
 	// one hardened in config.Save, so keep them consistent.
 	tmp, err := os.CreateTemp(dir, "registry-*.json.tmp")
@@ -668,24 +671,42 @@ func (r *Registry) broadcast(snapshot []Model) {
 }
 
 // Rescan rebuilds the index from the model directory tree. It adopts any
-// complete model directory it finds — which is what makes a shared cache work:
-// a second user account sees models the first account downloaded.
+// complete model directory it finds — one copied in by hand, or left by an
+// earlier install, as well as the ones this server downloaded.
 //
 // A directory counts as a model when it holds a plausible model config.json,
 // at least one .safetensors file, and every weight shard its
 // model.safetensors.index.json names. Anything mid-download (a .dessau-part
 // file present) or incomplete is skipped rather than adopted as ready — and an
 // existing failed record for it keeps its state and diagnostic.
+//
+// Every entry that survives the scan — whatever its state, and even when the
+// models directory is missing or unreadable — leaves it with Path set to the
+// directory derived from its repo id under modelsDir.
 func (r *Registry) Rescan(modelsDir string) error {
 	found := map[string]Model{}
 
 	// Models live at <modelsDir>/<org>/<name>, so walk exactly two levels.
 	orgs, err := os.ReadDir(modelsDir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
 	if err != nil {
-		return fmt.Errorf("scan models dir: %w", err)
+		// A models root that is missing (an unmounted volume) or cannot be
+		// listed is not proof that any model was deleted, so every entry is
+		// kept — but each carries its derived directory from here on, as it
+		// would after a full scan, so the index never lists or writes back a
+		// stored path naming somewhere else.
+		r.mu.Lock()
+		for k, m := range r.models {
+			m.Path = config.ModelDirIn(modelsDir, m.RepoID)
+			r.models[k] = m
+		}
+		snapshot := r.listLocked()
+		saveErr := r.saveLocked()
+		r.mu.Unlock()
+		r.broadcast(snapshot)
+		if errors.Is(err, fs.ErrNotExist) {
+			return saveErr
+		}
+		return errors.Join(fmt.Errorf("scan models dir: %w", err), saveErr)
 	}
 
 	for _, org := range orgs {
@@ -700,15 +721,15 @@ func (r *Registry) Rescan(modelsDir string) error {
 			if !repo.IsDir() {
 				continue
 			}
-			dir := filepath.Join(modelsDir, org.Name(), repo.Name())
+			repoID := org.Name() + "/" + repo.Name()
+			dir := config.ModelDirIn(modelsDir, repoID)
 			complete, size, facts := inspectModelDir(dir)
 			if !complete {
 				continue
 			}
-			repoID := org.Name() + "/" + repo.Name()
 			// Adopt only well-formed repo ids. Every write path (Download/Delete)
-			// gates on ValidRepoID, so an id that fails it here — a directory name
-			// another account chose in the shared cache, say — would be served on
+			// gates on ValidRepoID, so an id that fails it here — the name of a
+			// directory someone copied in by hand, say — would be served on
 			// /v1/models yet could never be deleted through the app. Skip it rather
 			// than create an undeletable phantom.
 			if !config.ValidRepoID(repoID) {
@@ -730,11 +751,13 @@ func (r *Registry) Rescan(modelsDir string) error {
 	r.mu.Lock()
 	for repoID, m := range found {
 		if existing, ok := r.models[key(repoID)]; ok {
-			// Don't clobber an in-flight download with a "ready" verdict.
+			existing.Path = m.Path
+			// Don't clobber an in-flight download with a "ready" verdict; its
+			// path is the derived one all the same.
 			if existing.State == StateDownloading {
+				r.models[key(repoID)] = existing
 				continue
 			}
-			existing.Path = m.Path
 			existing.Bytes = m.Bytes
 			// Assigned like every other field the scan re-derives, so a model
 			// recorded by a build that predates the figure gains it at the
@@ -762,27 +785,34 @@ func (r *Registry) Rescan(modelsDir string) error {
 	}
 	// Drop an entry ONLY when its directory has genuinely vanished (deleted
 	// outside the app). An entry that is merely absent from `found` might just be
-	// mid-write — for a shared cache, another account could be part-way through
-	// downloading it right now, so inspectModelDir transiently reports it
+	// mid-write — a copy could be part-way through filling it right now, so
+	// inspectModelDir transiently reports it
 	// incomplete. Dropping it then would wipe a healthy model from the index on a
 	// race. Distinguish "gone" from "incomplete" with an explicit stat.
+	//
+	// The directory stat'ed is the one derived from the repo id, never the
+	// stored Path, and the entry that survives carries the derived one: an
+	// index written by an earlier layout, or edited by hand, can name a folder
+	// outside modelsDir that still exists, and keeping the entry on the
+	// strength of that folder would list as served a model this account's
+	// models directory does not hold.
 	for k, m := range r.models {
 		if foundKeys[k] {
 			continue
 		}
-		if m.State == StateDownloading {
-			continue
-		}
-		if m.Path != "" {
-			if _, err := os.Stat(m.Path); err == nil || !errors.Is(err, fs.ErrNotExist) {
-				// Directory still exists, or the stat failed for some other reason
-				// (a permission hiccup, a transient I/O error) — that is not proof
-				// of deletion, so leave the entry alone rather than risk dropping a
-				// healthy model from the index.
+		dir := config.ModelDirIn(modelsDir, m.RepoID)
+		if m.State != StateDownloading {
+			// A stat that fails for a reason other than "does not exist" (a
+			// permission hiccup, a transient I/O error) is not proof of
+			// deletion, so the entry stays rather than risk dropping a healthy
+			// model from the index.
+			if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
+				delete(r.models, k)
 				continue
 			}
 		}
-		delete(r.models, k)
+		m.Path = dir
+		r.models[k] = m
 	}
 	snapshot := r.listLocked()
 	err = r.saveLocked()
@@ -899,8 +929,8 @@ func factsFrom(dir string, cfg map[string]any) ModelFacts {
 //
 // It is the offline answer to "can this model hold a conversation": the
 // template is what the runtime renders the messages through, so a model
-// without one cannot, whatever the Hub might say. Both files are, in the
-// shared cache, files another account can write, so tokenizer_config.json is
+// without one cannot, whatever the Hub might say. Both files are whatever a
+// third party's repository shipped, so tokenizer_config.json is
 // read under the cap every manifest is read under and a file that is
 // oversized, not regular, or not JSON says "no template" rather than
 // anything else; the jinja file is not read at all, only opened as a regular
@@ -951,32 +981,51 @@ const maxManifestJSON = 8 << 20
 // failed — missing, not a regular file, oversized, or not valid JSON — so a
 // caller that has to explain a rejection to a person can.
 //
-// In the shared cache another account can plant a FIFO — or a symlink to one —
-// under a manifest name, and a plain Open would block until a writer appears,
-// wedging the startup rescan for every account; the downloader only ever
-// writes manifests as regular files. config.ReadRegular refuses both.
+// A FIFO — or a symlink to one — can sit under a manifest name, and a plain
+// Open would block until a writer appears, wedging the startup rescan; the
+// downloader only ever writes manifests as regular files.
+// config.ReadRegular refuses both.
 func readManifest(dir, name string, v any) error {
-	b, err := config.ReadRegular(filepath.Join(dir, name), maxManifestJSON)
+	_, err := readManifestInfo(dir, name, v)
+	return err
+}
+
+// readManifestInfo is readManifest, and also returns the FileInfo of the
+// handle the bytes were read from (config.ReadRegularInfo), for a caller that
+// decides something from the file's owner: decided from this, the owner and
+// the content are of the same open file, not of two looks at a path.
+func readManifestInfo(dir, name string, v any) (os.FileInfo, error) {
+	b, info, err := config.ReadRegularInfo(filepath.Join(dir, name), maxManifestJSON)
 	if err != nil {
-		return fmt.Errorf("%s is missing, unreadable, or oversized: %w", name, err)
+		return nil, fmt.Errorf("%s is missing, unreadable, or oversized: %w", name, err)
 	}
 	if err := json.Unmarshal(b, v); err != nil {
-		return fmt.Errorf("%s is not valid JSON: %w", name, err)
+		return nil, fmt.Errorf("%s is not valid JSON: %w", name, err)
 	}
-	return nil
+	return info, nil
 }
 
 // readModelConfig decodes dir's config.json. This is the only decoder of a
 // model's configuration in Dessau; every question asked of that file —
-// whether the directory is a model, what positional range it declares, and
-// whether a finished download is worth advertising — is answered from the map
-// it returns.
+// whether the directory is a model, what positional range it declares,
+// whether a finished download is worth advertising, and whether it names code
+// the model server would run (CheckModelCode) — is answered from the map it
+// returns (CheckModelCode reads it through readModelConfigInfo, which is this
+// and the open handle's FileInfo).
 func readModelConfig(dir string) (map[string]any, error) {
+	cfg, _, err := readModelConfigInfo(dir)
+	return cfg, err
+}
+
+// readModelConfigInfo is readModelConfig, and also returns the FileInfo of
+// the handle config.json was read through (see readManifestInfo).
+func readModelConfigInfo(dir string) (map[string]any, os.FileInfo, error) {
 	var cfg map[string]any
-	if err := readManifest(dir, "config.json", &cfg); err != nil {
-		return nil, err
+	info, err := readManifestInfo(dir, "config.json", &cfg)
+	if err != nil {
+		return nil, nil, err
 	}
-	return cfg, nil
+	return cfg, info, nil
 }
 
 // plausibleConfig reports whether a decoded config.json can be a model
@@ -1058,8 +1107,8 @@ func plausibleContextLength(n int64) bool {
 }
 
 // MaxKVChargePerToken bounds the cache cost the registry will believe, for the
-// reason MaxContextLength bounds the window: the figure is persisted and, in
-// shared-cache mode, derived from a file another local account can write, and
+// reason MaxContextLength bounds the window: the figure is persisted and
+// derived from a file a third party's repository shipped, and
 // it decides how much of this Mac's memory one model is charged. 16 MB per
 // token is far above any real model — the most expensive reading of the four
 // the lab measured implies about 940 KB, which is 6.6 MB once charged — and
@@ -1076,9 +1125,10 @@ const MaxKVChargePerToken = 1 << 24
 // instead. Within a level:
 //
 //   - Only layers that keep a per-token cache are counted. A hybrid model
-//     declares which those are, in one of three spellings: layer_types (a list
+//     declares which those are, in one of four spellings: layer_types (a list
 //     naming each layer), hybrid_override_pattern (a letter per layer, "*" for
-//     attention), or full_attention_interval (every nth layer). A
+//     attention), layers_block_type (a list naming each layer, "attention"
+//     for attention), or full_attention_interval (every nth layer). A
 //     configuration with none of them is charged as though every layer
 //     attended over the whole prompt, which is the conservative floor: no
 //     model of a given depth costs more than that.
@@ -1092,8 +1142,8 @@ const MaxKVChargePerToken = 1 << 24
 // The figure is bounded here, where it is worked out, and not only where it is
 // read back from the index: a claim the scan accepts is charged against this
 // Mac's memory for the whole of the session and would fall to nothing only at
-// the next restart. In shared-cache mode config.json is a file another local
-// account can write (see capability.KVShape's own bounds), so the ceiling is
+// the next restart. A model's config.json is whatever its repository shipped
+// (see capability.KVShape's own bounds), so the ceiling is
 // part of reading it, not part of trusting it later.
 func kvChargePerTokenFrom(cfg map[string]any) int64 {
 	n := kvShapeFrom(cfg).ChargedBytesPerToken()
@@ -1146,27 +1196,28 @@ func kvShapeFrom(cfg map[string]any) capability.KVShape {
 
 // fullAttentionLayers is how many of a model's layers keep a per-token cache.
 // A configuration that declares no hybrid layout gets the whole depth, which
-// over-charges a hybrid model whose spelling is not one of these three and
+// over-charges a hybrid model whose spelling is not one of these four and
 // under-charges nothing.
 //
 // An interval wider than the model is deep is not a layout, it is a claim that
 // one layer in a model of any depth attends — a sixty-fourfold under-charge on
-// a 64-layer model, and one that would be charged rather than refused. In
-// shared-cache mode the account writing config.json need not be the account
-// serving from it, so an implausible interval takes the same floor a
-// configuration that says nothing takes.
+// a 64-layer model, and one that would be charged rather than refused. The
+// repository writing config.json is not the account serving from it, so an
+// implausible interval takes the same floor a configuration that says
+// nothing takes.
 func fullAttentionLayers(level map[string]any, layers int64) int64 {
-	if types, ok := level["layer_types"].([]any); ok && len(types) > 0 {
-		var n int64
-		for _, t := range types {
-			if s, ok := t.(string); ok && s == "full_attention" {
-				n++
-			}
-		}
+	if n, ok := countLayersNamed(level, "layer_types", "full_attention"); ok {
 		return n
 	}
 	if pattern, ok := level["hybrid_override_pattern"].(string); ok && pattern != "" {
 		return int64(strings.Count(pattern, "*"))
+	}
+	// Read after the pattern because mlx-lm reads it only when the pattern
+	// is absent (models/nemotron_h.py), and only its "attention" entries get
+	// a KVCache there: a "mamba" layer keeps a fixed-size state per sequence,
+	// a "moe" or "mlp" layer nothing.
+	if n, ok := countLayersNamed(level, "layers_block_type", "attention"); ok {
+		return n
 	}
 	if interval, ok := configNumber(level, "full_attention_interval"); ok && interval <= layers {
 		// Rounded up: a depth that does not divide by the interval has a
@@ -1174,6 +1225,23 @@ func fullAttentionLayers(level map[string]any, layers int64) int64 {
 		return (layers + interval - 1) / interval
 	}
 	return layers
+}
+
+// countLayersNamed counts the entries of a per-layer list that name a
+// cache-bearing layer, and reports whether the list is present and non-empty;
+// an absent or empty list leaves the decision to the next spelling.
+func countLayersNamed(level map[string]any, key, name string) (int64, bool) {
+	types, ok := level[key].([]any)
+	if !ok || len(types) == 0 {
+		return 0, false
+	}
+	var n int64
+	for _, t := range types {
+		if s, ok := t.(string); ok && s == name {
+			n++
+		}
+	}
+	return n, true
 }
 
 // configNumber reads one positive whole number out of a configuration level.
@@ -1238,9 +1306,10 @@ func CheckShards(dir string) error {
 }
 
 // SetCategory records what the Hub says a model is — its pipeline tag and its
-// tags — for a model whose download never heard it: one adopted from the
-// shared cache by an account that did not download it, or downloaded while the
-// Hub was unreachable. The words are bounded exactly as a download's are.
+// tags — for a model whose download never heard it: a model directory the
+// rescan found rather than downloaded (copied in by hand, or left by an
+// earlier install), or one downloaded while the Hub was unreachable. The
+// words are bounded exactly as a download's are.
 //
 // An answer with nothing usable in it is recorded too, as HubSilent: the Hub
 // was asked and had no words, so there is nothing to ask for again. An answer
@@ -1277,8 +1346,9 @@ func (m Model) HasHubWord() bool { return m.PipelineTag != "" || len(m.Tags) > 0
 // When the Hub's word is present, the operator's rule decides, exactly as it
 // always has: a model the Hub calls a speech model is not a chat model
 // however its tokenizer is written. When the Hub's word is absent — a model
-// adopted from the shared cache by an account that never downloaded it, or
-// downloaded while the Hub was unreachable — the directory decides: a model
+// directory the rescan found rather than downloaded (copied in by hand, or
+// left by an earlier install), or one downloaded while the Hub was
+// unreachable — the directory decides: a model
 // with a chat template can hold a conversation, and one without cannot. The
 // rule is not consulted then, because it would be asked about words nobody
 // has, and its shipped form would say no to every such model

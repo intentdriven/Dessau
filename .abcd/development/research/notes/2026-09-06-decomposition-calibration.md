@@ -737,3 +737,93 @@ loading idle-held model; the pin wins) and each was chosen, not assumed. Two
 captures landed at the interview, not late. Grade: routing survived; the
 reviewers' "candidate ADR" is carried as a decision line pending the design
 review, which is a deferral of the ADR, not a disagreement with the routing.
+
+## 2026-10-03 — itd-2610030656210408, Dessau answers typed questions with odds
+
+Filed as a draft from a peer session's request to serve a Clef decision model;
+two adversarial reviews (design/feasibility, record discipline) before the
+interview. The record reviewer proposed SPLIT; the design reviewer found three
+blockers (the runtime cannot hold mlx-vlm as pinned, every idle job drives
+chat, downloaded Python can run) that reshaped the questions.
+
+| part | type | home |
+|---|---|---|
+| Typed questions answered with a probability per option at `/v1/systemone`; decision models marked and refused on chat | capability | itd-2610030656210408 (planned, spc-2610030846273729) |
+| Dessau never runs code that comes with a download | trust-boundary rule | the fix for iss-2610030709283687 and its decision line; the refused request fields (iss-2610030752128514) and the private socket (iss-2610030846581757) complete it |
+| Adopting a trimmed copy of the reference implementation, and its licence | architecture | an ADR, a prerequisite in the spec |
+| mlx-vlm and the runtime upgrade | dependency | a sign-off decision line, a prerequisite in the spec |
+| Images in requests | capability | a later intent (not yet filed) |
+| The hand-run reference server meanwhile | already decided | the 2026-10-03 decision line, struck from the press release |
+| The 512-token reply cap | bug, not this intent | iss-2610030652514762 |
+
+Verdict proposed: SPLIT. Verdict adopted: SPLIT, confirmed by the maintainer
+as the first question of the interview. Reversal flagged and chosen, not
+assumed: refusing chat models on the decision endpoint and decision models on
+chat reverses cond-2609091236502214 of itd-2609091129451578, so the impact is
+breaking. Three security captures landed during the interview from the
+reviews of the fixes it prompted, not late. Grade: routing survived; the ADR
+and the dependency sign-off are carried as prerequisites in the spec rather
+than written at the interview.
+
+## 2026-10-03 — itd-2610030857275099, Dessau checks downloaded models for newer versions
+
+Filed from the maintainer's one-line request; no reviews yet (a draft).
+
+| part | type | home |
+|---|---|---|
+| Check downloaded models for a newer version at startup and at an interval set in Settings; mark them in the panel | capability | itd-2610030857275099 (draft) |
+| Dessau may contact Hugging Face unasked, revealing which models it holds | trust-boundary rule, reversal-flagged | adr-2610030857208746 (proposed), to supersede adr-2609201008476813 if accepted |
+| Knowing which revision each download came from | plumbing | the intent's spec |
+| A newer version invalidates the measured context and the tool-call verdict | refines itd-2609091301112705, itd-2609201445423499 | acceptance criteria at the interview |
+| Decision models stay on their reviewed revision | refines itd-2610030656210408 | an acceptance criterion |
+| The interval in both the panel and config.json | three-surfaces rule | an acceptance criterion |
+
+Verdict proposed: SPLIT. Verdict adopted: SPLIT, confirmed by the maintainer
+before filing; the reversal of the outbound-connections clause was flagged and
+left for the maintainer to decide in the ADR, not assumed. Grade: routing
+survived.
+
+Addendum (same day, after the two adversarial reviews and the interview): the
+reviews proposed routing "acting on an update" to its own intent; the
+maintainer instead chose a mark plus a one-click update, so the staged,
+hash-checked, atomic update joined itd-2610030857275099 (planned,
+spc-2610030929021692). The proposed ADR's reversal flag dissolved: the
+maintainer chose an opt-in check, which the 2026-09-08 precedent puts outside
+adr-2609201008476813, and adr-2610030857208746 was accepted without
+superseding it. Revised grade: routing survived in part; one part the reviewers
+would have split was kept in by the maintainer.
+
+## 2026-10-03 — itd-2610030932551549 and itd-2610030932556747, builds of the same model
+
+Filed from the maintainer's one-paragraph request (several builds of one model;
+clients need human-readable descriptions).
+
+| part | type | home |
+|---|---|---|
+| The models list and panel group builds of one model and publish their facts | capability | itd-2610030932551549 (planned, spc-2610030950480763) |
+| Dessau Chat offers a model's builds as described choices | capability | itd-2610030932556747 (planned, spc-2610030950592909), blocked by the server intent |
+| Pairing Flash with full builds | capability, infeasible from Hub data | left out by the maintainer |
+| Grouping by name or model shape | reversal-flagged (no taxonomy of our own) | declined: Hub label only |
+| Operator-written descriptions | new setting | declined: facts worded by the client |
+
+Verdict proposed: FILE-AS-IS (one intent). Verdict adopted: SPLIT into server and
+client, the maintainer's choice at filing, then delivered separately in order.
+Both reversals the record review flagged (the no-taxonomy rule; the per-chat
+picker rule) were put to the maintainer and each resolved without reversing.
+Grade: routing did not survive; the maintainer split what was proposed as one.
+
+## 2026-10-03 — itd-2610031004535845, who can open the control panel
+
+Request: options "User Account / local Machine / Local Network".
+
+| part | type | home |
+|---|---|---|
+| Choose this account only or anyone on this Mac | capability | itd-2610031004535845 (planned, spc-2610031016319710) |
+| Opening the panel to the local network | trust-boundary rule | declined by the maintainer (decision line), not filed |
+| Telling the serving account's connections apart | trust-boundary rule | adr-2610031016411351 (accepted), refining adr-2609091123526871 |
+
+Verdict proposed: SPLIT (intent plus an ADR for the network option). Verdict
+adopted at routing: intent only, no network, no ADR. The record review then
+showed the account check itself reverses a recorded statement, and the
+maintainer accepted an ADR for it at the interview. Grade: routing survived in
+part; an ADR the routing ruled out came back for a different part.

@@ -83,9 +83,9 @@ type Identity struct {
 // The key is read through the same hardened path config.json is read through:
 // a symlink is refused rather than followed, a FIFO cannot wedge the start, and
 // a file this account does not own — or one any other account could have read —
-// is refused rather than adopted. In shared-cache mode the data root is
-// group-writable at mode 3775, where the sticky bit stops a co-tenant deleting
-// a file but not creating one, so a key that is merely "present" is not a key.
+// is refused rather than adopted. A key that is merely "present" is not a key:
+// one with a loose mode or a second link could have been read or written by
+// something other than this server.
 //
 // The leaf is derived and never stored. A renamed Mac or a new address reissues
 // it and no client re-pairs, because what a client pinned is the KEY's

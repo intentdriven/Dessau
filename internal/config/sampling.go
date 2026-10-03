@@ -40,15 +40,32 @@ type SamplingBound struct {
 	// Integer reports whether the parameter is a whole number.
 	Integer bool
 	// ServerDefault is what the model server applies when it is passed no flag
-	// for this parameter — which is what a blank field in Settings means. The
-	// panel's placeholder and the reference page both have to say this figure,
-	// so it is held here rather than written out in each of them.
+	// for this parameter — which is what a blank field in Settings means,
+	// unless BlankMeans says otherwise.
 	ServerDefault float64
+	// BlankMeans is what a blank field means where Dessau passes a flag of
+	// its own rather than leaving the server's default in force. Empty means
+	// the server's default applies. Only the completion-token budget sets it:
+	// with no figure of the operator's, a model is launched with its served
+	// window as the budget, because the server's own 512 cut every reply to a
+	// request that omits the parameter short (iss-2610030652514762).
+	BlankMeans string
 }
 
-// DefaultText renders the model server's own default as the panel and the
-// documentation must show it.
-func (b SamplingBound) DefaultText() string { return formatBound(b.ServerDefault, b.Integer) }
+// BlankText is what a blank field means, as the panel's placeholder and the
+// reference page must both show it — held here rather than written out in
+// each of them.
+func (b SamplingBound) BlankText() string {
+	if b.BlankMeans != "" {
+		return b.BlankMeans
+	}
+	return formatBound(b.ServerDefault, b.Integer)
+}
+
+// BlankMaxTokens is what a blank completion-token budget means: the window
+// the model is served at (App.ServedWindow), held to MaxCompletionTokens. A
+// model whose window is not known keeps the model server's own default.
+const BlankMaxTokens = "the served window"
 
 // samplingParam couples one bound to the field it governs, so validation,
 // sanitizing and the range test all read the same table.
@@ -125,7 +142,7 @@ var samplingParams = []samplingParam{
 	{
 		bound: SamplingBound{
 			Field: "max_tokens", Min: 0, Max: MaxCompletionTokens, HasMax: true, Integer: true,
-			ServerDefault: 512,
+			ServerDefault: 512, BlankMeans: BlankMaxTokens,
 		},
 		get:    func(s Sampling) (float64, bool) { return derefInt(s.MaxTokens) },
 		getInt: func(s Sampling) (int, bool) { return derefIntExact(s.MaxTokens) },
@@ -368,8 +385,7 @@ func (c Config) validateSampling() error {
 // sanitized with the rest of the per-model settings, in sanitizeModels.
 //
 // This is the file path, not the settings path. A configuration file can be
-// hand-edited (and, in shared-cache mode, is writable by another local
-// account), and refusing the whole file over one out-of-range preference
+// hand-edited, and refusing the whole file over one out-of-range preference
 // would send the server into its fail-closed loopback-only mode — a
 // machine-wide outage caused by a number that only ever wanted to be ignored.
 // The strict, refusing check lives at /api/settings instead.

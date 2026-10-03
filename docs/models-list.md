@@ -71,11 +71,9 @@ release.
 **When they are absent.** Either field is omitted, rather than sent empty, when:
 
 - The Hub carries no tag of that kind for the repository.
-- This account did not download the model: it found it in the
-  [shared cache](getting-started.md#9-sharing-across-user-accounts-optional),
-  put there by another account on this Mac, or it was recorded by a Dessau
-  that predates these fields. Nothing on disk says what the Hub calls the
-  model.
+- The server did not download the model: it found it in its models folder,
+  copied there by hand, or it was recorded by a Dessau that predates these
+  fields. Nothing on disk says what the Hub calls the model.
 - HuggingFace could not be reached for the repository's metadata when the
   download finished. The model is complete and served as normal; only the words
   are missing.
@@ -126,8 +124,8 @@ the rule has no words to test and is not consulted. The model's own files
 decide instead: `chat` is `true` when `chat_template` is, and `false` when it
 is not. A chat template is what the model's server renders a conversation
 through, so a model without one cannot hold a conversation whatever a rule
-might say, and a model with one can. This is what makes a model another
-account downloaded into the shared cache usable for chat on this account
+might say, and a model with one can. This is what gives a model found in the
+models folder, rather than downloaded through this server, its `chat` flag
 before, or without, the Hub's words arriving.
 
 **The flag is this server's answer, not the last word.** A client is free to

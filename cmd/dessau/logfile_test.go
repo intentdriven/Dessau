@@ -100,15 +100,14 @@ func TestTheLogStartsAtTheLevelTheSettingsName(t *testing.T) {
 	}
 }
 
-// The log lives beside the model servers' own logs, in the directory that
-// belongs to this account rather than to the installation — never in the
-// shared root, where every other account on the Mac could read it.
-func TestTheLogLivesInTheAccountsOwnLogDirectory(t *testing.T) {
+// The log lives beside the model servers' own logs, in the root's logs
+// directory.
+func TestTheLogLivesInTheLogDirectory(t *testing.T) {
 	paths := config.NewPaths(t.TempDir())
 	if paths.Logs == "" {
 		t.Fatal("Paths.Logs is empty")
 	}
-	if got := filepath.Dir(paths.Logs); got != paths.Account {
-		t.Errorf("the log directory is under %q, want the account directory %q", got, paths.Account)
+	if got := filepath.Dir(paths.Logs); got != paths.Root {
+		t.Errorf("the log directory is under %q, want the root %q", got, paths.Root)
 	}
 }

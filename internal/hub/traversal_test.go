@@ -61,8 +61,8 @@ func TestDownloadRejectsPathTraversal(t *testing.T) {
 	}
 }
 
-// A symlinked parent directory planted inside the model dir (possible in the
-// shared, group-writable cache) must not let a download write outside it. The
+// A symlinked parent directory planted inside the model dir must not let a
+// download write outside it. The
 // O_NOFOLLOW-on-final-component guard alone misses this; os.Root closes it.
 func TestDownloadRefusesSymlinkedParentDir(t *testing.T) {
 	outside := t.TempDir()
@@ -120,9 +120,9 @@ func TestSafeJoinContainsPaths(t *testing.T) {
 	}
 }
 
-// The org and name directories under the models root are created by whichever
-// account downloads first, and in the shared cache any account can create an
-// absent name there. A symlink planted at models/<org> would make every write
+// The org and name directories under the models root are created by the first
+// download from that org, and a name absent until then can be taken by
+// anything that writes the models root. A symlink planted at models/<org> would make every write
 // — and the registry's later delete — land under the attacker's target, since
 // os.Root confines only what is below the directory it was opened at, not the
 // path used to reach it. Creating and opening Dest relative to the models root

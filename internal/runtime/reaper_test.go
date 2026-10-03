@@ -11,30 +11,10 @@ import (
 	"time"
 
 	"github.com/intentdriven/Dessau/internal/config"
-	"golang.org/x/sys/unix"
 )
 
-// The pid ledger belongs to the account that wrote it, not to the install. Its
-// entries are process groups only the uid that started them can signal, so it
-// is no use to any other account — and in the data root, where it used to live,
-// the second account's rename over the first account's ledger is refused by the
-// sticky bit and swallowed, which silently ends orphan reaping for that
-// account.
-func TestPIDLedgerLivesInThisAccountsOwnDirectory(t *testing.T) {
-	root := t.TempDir()
-	acct := t.TempDir()
-	l := &ExecLauncher{Paths: config.Paths{Root: root, Account: acct}}
-	got := l.pidLedger().path
-	if want := filepath.Join(acct, pidFileName); got != want {
-		t.Errorf("ledger path = %q, want this account's own %q", got, want)
-	}
-	if strings.HasPrefix(got, root) {
-		t.Errorf("ledger path %q is in the data root, which every account shares", got)
-	}
-}
-
-// A Paths with no account directory falls back to the data root, and a Paths
-// with neither gets a ledger that writes nothing. Joining an empty directory
+// The pid ledger lives in the data root, and a Paths with no root gets a
+// ledger that writes nothing. Joining an empty directory
 // with the file name would otherwise yield the relative "running-servers.pids"
 // — a file in whatever directory the process was started from, which the next
 // launch would read as a list of process groups to kill.
@@ -42,7 +22,7 @@ func TestPIDLedgerNeverFallsBackToTheWorkingDirectory(t *testing.T) {
 	root := t.TempDir()
 	l := &ExecLauncher{Paths: config.Paths{Root: root}}
 	if got, want := l.pidLedger().path, filepath.Join(root, pidFileName); got != want {
-		t.Errorf("ledger path = %q, want the data root's %q when there is no account directory", got, want)
+		t.Errorf("ledger path = %q, want the data root's %q", got, want)
 	}
 
 	inert := newPIDLedger("")
@@ -158,9 +138,8 @@ func TestReapOrphansIgnoresDeadPIDs(t *testing.T) {
 	}
 }
 
-// The ledger lives in the data root, which in shared mode is group-writable
-// and where the file is created lazily — so another local account can plant a
-// FIFO under its name. readLocked runs at startup (after the port is claimed)
+// The ledger lives in the data root, where the file is created lazily — so a
+// FIFO can sit under its name before the first write. readLocked runs at startup (after the port is claimed)
 // and on every model launch, holding the ledger mutex; a blocking open would
 // wedge both with no way to recover from the app.
 func TestReadLockedDoesNotBlockOnFIFOLedger(t *testing.T) {
@@ -227,10 +206,10 @@ func TestReadLockedDropsUnkillableProcessGroupIDs(t *testing.T) {
 	}
 }
 
-// In shared-cache mode another local account can plant a regular ledger in the
-// group-writable root, permanently (the sticky bit blocks our os.Remove), and
-// kern.boottime and kern.proc start times are readable cross-uid — so only
-// provenance protects the reaper. A ledger not owned by our euid is ignored.
+// A ledger can be planted wherever the file can be created — under a
+// DESSAU_ROOT another account can write, say — and kern.boottime and
+// kern.proc start times are readable cross-uid, so only provenance protects
+// the reaper. A ledger not owned by our euid is ignored.
 func TestReapOrphansIgnoresLedgerNotOwnedByUs(t *testing.T) {
 	dir := t.TempDir()
 	cmd := exec.Command("sleep", "30")
@@ -273,9 +252,9 @@ func TestTheLedgerStampIsTheBootSessionNotTheClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	head := strings.Fields(strings.SplitN(string(b), "\n", 2)[0])
-	want, err := unix.Sysctl("kern.bootsessionuuid")
+	want, err := kernelBootSession()
 	if err != nil {
-		t.Skip("this Mac does not answer kern.bootsessionuuid")
+		t.Skipf("the kernel does not report its boot session: %v", err)
 	}
 	if len(head) != 2 || head[0] != "session" || head[1] != want {
 		t.Errorf("ledger header = %q, want [session %s]", head, want)

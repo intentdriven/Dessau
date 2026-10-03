@@ -232,8 +232,9 @@ func New(opts Options) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Adopt whatever is already on disk. This is what lets a second macOS user
-	// account — or a reinstall — pick up models without re-downloading them.
+	// Adopt whatever is already in this account's models directory — what lets
+	// a reinstall pick up models without re-downloading them — and drop any
+	// entry whose model is not there, whatever path the index stored for it.
 	if err := reg.Rescan(opts.Paths.Models); err != nil {
 		opts.Log.Warn("could not scan the models directory", "err", err)
 	}
@@ -660,10 +661,9 @@ func (a *App) effectiveBudget(stored int64) int64 {
 // The stored figure is not rewritten and the save path judges the operator's
 // own number — this bounds what gets *enforced*. A budget above physical memory
 // is not satisfiable anyway, so nothing legitimate is lost, and without the
-// bound a figure planted in a settings file another local account can write
-// (the shared install) would have the pool admitting every model a client names
-// until the machine swaps, across restarts, and a panel whose own save cannot
-// replace that account's file could not clear it.
+// bound a figure written into the hand-editable settings file would have the
+// pool admitting every model a client names until the machine swaps, across
+// restarts.
 //
 // A Mac whose memory could not be read has nothing to hold the figure down to;
 // that residual is what the conservative unmeasured default and the panel
@@ -1417,8 +1417,11 @@ func (s modelSource) Resolve(repoID string) (runtime.ResolvedModel, error) {
 	// will let a client fill. Resolved under the pool's own lock, which is why
 	// ServedWindow reads the budget from the settings rather than the pool.
 	window, _ := s.app.ServedWindow(m)
+	// The directory is derived from the repo id, never read from the index's
+	// stored path (config.ModelDirIn says why): what is launched is always the
+	// folder this account's own models directory holds under that name.
 	return runtime.ResolvedModel{
-		Path:             m.Path,
+		Path:             s.app.Paths.ModelDir(m.RepoID),
 		Bytes:            m.Bytes,
 		ServedContext:    window,
 		KVChargePerToken: m.KVChargePerToken,
@@ -1497,8 +1500,8 @@ func (a *App) Download(repoID string) error {
 	// parked on dl.done. Every way out of this function that does not reach the
 	// goroutine has to release it, or that Delete waits for a goroutine nobody
 	// ever started — one control-plane handler stuck for the life of the
-	// process. A registry write failing is not hypothetical here: in
-	// shared-cache mode another account owns the index file.
+	// process. A registry write failing is not hypothetical here: a full disk
+	// or an unwritable index file fails it.
 	handedOff := false
 	defer func() {
 		if handedOff {
