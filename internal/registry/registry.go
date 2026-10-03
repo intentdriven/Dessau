@@ -102,6 +102,11 @@ type Model struct {
 	// context length, and never a value the Hub supplies
 	// (iss-2609202237468921).
 	ChatTemplate bool `json:"chat_template,omitempty"`
+	// QuantizationBits is the precision the model's own configuration
+	// declares, or zero for a model that declares none. A fact about the
+	// directory, re-derived at every rescan like the context length
+	// (itd-2610030932551549).
+	QuantizationBits int `json:"quantization_bits,omitempty"`
 	// Measured is what the context probe found for this model on this Mac,
 	// or nil while nothing has been measured. It is a fact about these files
 	// on this machine: a re-download's Put carries none, so the figure goes
@@ -125,6 +130,12 @@ type Model struct {
 	// are; a re-download records its own (itd-2610030857275099).
 	Commit     string            `json:"commit,omitempty"`
 	FileHashes map[string]string `json:"file_hashes,omitempty"`
+	// Update is what the last update check found about the version on disk,
+	// or nil while none has. A download records one, since resolving the
+	// commit it fetched is the same question; a check records one only
+	// against the commit it compared (SetUpdate). It stays as it was when a
+	// check cannot reach the Hub.
+	Update *UpdateCheck `json:"update,omitempty"`
 	// LoadFailure says the model's server started and never became ready
 	// under the provenance it carries, and stands until that moves or a
 	// person retries the model by hand: while it does, no idle job picks the
@@ -132,6 +143,93 @@ type Model struct {
 	// (iss-2609211334570516). Like Measured it is a fact about these files:
 	// a re-download's Put carries none.
 	LoadFailure *LoadFailure `json:"load_failure,omitempty"`
+}
+
+// UpdateCheck is what one update check found for one model.
+type UpdateCheck struct {
+	// Status is one of the Update* values.
+	Status string `json:"status"`
+	// Commit is the newer upstream commit the check found; empty when the
+	// version on disk is current.
+	Commit string `json:"commit,omitempty"`
+	// CheckedAt is when the Hub answered. Wall-clock time, compared with the
+	// clock when the next check is due, so a Mac that slept is not skewed.
+	CheckedAt time.Time `json:"checked_at"`
+}
+
+// What an update check can find. Every value but UpdateCurrent is a mark on
+// the model's card; only UpdateAvailable offers Update.
+const (
+	// UpdateCurrent: no file Dessau uses differs from the version on disk.
+	UpdateCurrent = "current"
+	// UpdateAvailable: a newer version changes a file Dessau uses.
+	UpdateAvailable = "available"
+	// UpdateRunsOwnCode: the newer version's config.json names a model_file,
+	// which Dessau will not run.
+	UpdateRunsOwnCode = "runs_own_code"
+	// UpdateAwaitingReview: a decision model's newer version has not been
+	// reviewed by a Dessau release, so it is not offered until one has.
+	UpdateAwaitingReview = "awaiting_review"
+)
+
+// ErrVersionMoved is SetUpdate's refusal when the model on disk is no longer
+// the version the check compared.
+var ErrVersionMoved = errors.New("the model's version changed while it was being checked")
+
+// sanitizeUpdate holds a recorded check to what a check writes. A status this
+// build does not know, or a newer version that is not a commit, drops the
+// record — the next check writes it again. A check time more than a day in
+// the future is not believed, since it would put the next check off for as
+// long as it says.
+func sanitizeUpdate(m Model) Model {
+	u := m.Update
+	if u == nil {
+		return m
+	}
+	ok := m.Commit != ""
+	switch u.Status {
+	case UpdateCurrent:
+		ok = ok && u.Commit == ""
+	case UpdateAvailable, UpdateRunsOwnCode, UpdateAwaitingReview:
+		ok = ok && validCommit(u.Commit) && u.Commit != m.Commit
+	default:
+		ok = false
+	}
+	if !ok {
+		m.Update = nil
+		return m
+	}
+	cp := *u
+	if cp.CheckedAt.After(time.Now().Add(24 * time.Hour)) {
+		cp.CheckedAt = time.Time{}
+	}
+	m.Update = &cp
+	return m
+}
+
+// SetUpdate records what a check found, provided the model on disk is still
+// the version the check compared (onDisk is that version's commit): a model
+// downloaded again while its check was in flight is not described by it.
+func (r *Registry) SetUpdate(repoID, onDisk string, u UpdateCheck) error {
+	r.mu.Lock()
+	m, ok := r.models[key(repoID)]
+	if !ok {
+		r.mu.Unlock()
+		return fmt.Errorf("%q: %w", repoID, ErrNotFound)
+	}
+	if m.Commit == "" || m.Commit != onDisk || m.State != StateReady {
+		r.mu.Unlock()
+		return fmt.Errorf("%q: %w", repoID, ErrVersionMoved)
+	}
+	m.Update = &u
+	m = sanitizeUpdate(m)
+	r.models[key(repoID)] = m
+	snapshot := r.listLocked()
+	err := r.saveLocked()
+	r.mu.Unlock()
+
+	r.broadcast(snapshot)
+	return err
 }
 
 // VersionKnown reports whether Dessau recorded which upstream version these
@@ -342,6 +440,40 @@ func hubTagRune(b byte) bool {
 // how a served window comes to be accepted that a declared one is not.
 const MaxContextLength = config.MaxContextLength
 
+// PlausibleQuantizationBits reports whether n is a precision a model can
+// declare: a whole number of bits from 1 to 16. The one rule, applied where
+// the figure is read from a configuration, where a record enters the index
+// (Put, Open) and where the models list publishes it.
+func PlausibleQuantizationBits(n int) bool { return n >= 1 && n <= 16 }
+
+// buildOfTag is the prefix of the Hub tag that says a repository is a
+// quantised build of another: "base_model:quantized:<origin>".
+const buildOfTag = "base_model:quantized:"
+
+// BuildOf is the model HuggingFace names as this one's origin, folded by
+// config.FoldRepoID, when the model's own tags say exactly once that it is a
+// quantised build of it; "" otherwise (itd-2610030932551549). Nothing is read
+// from the model's name: a repository the Hub does not label stands on its
+// own. Tags that name one origin in two spellings name one origin.
+func (m Model) BuildOf() string {
+	origin := ""
+	for _, tag := range m.Tags {
+		rest, ok := strings.CutPrefix(tag, buildOfTag)
+		if !ok {
+			continue
+		}
+		if !config.ValidRepoID(rest) {
+			return ""
+		}
+		folded := config.FoldRepoID(rest)
+		if origin != "" && origin != folded {
+			return ""
+		}
+		origin = folded
+	}
+	return origin
+}
+
 // Ready reports whether the model can be served.
 func (m Model) Ready() bool { return m.State == StateReady }
 
@@ -443,9 +575,15 @@ func Open(path string) (*Registry, error) {
 		// carry an unbounded tag list straight to the LAN with no download in
 		// between. Bound words read back exactly as words from the Hub are.
 		m = sanitizeCategory(m)
+		// And the declared precision, published on the models list: a
+		// figure no configuration could declare is cleared, not repaired.
+		if !PlausibleQuantizationBits(m.QuantizationBits) {
+			m.QuantizationBits = 0
+		}
 		// And the recorded version, compared with the Hub's answer and shown
 		// on the panel: held to the shapes a download writes.
 		m = sanitizeVersion(m)
+		m = sanitizeUpdate(m)
 		// And the measurement, which is published on the models list and
 		// offered for adoption as the served window: cleared, not repaired,
 		// when any part of it is outside what the probe could have written.
@@ -521,9 +659,14 @@ func (r *Registry) Put(m Model) error {
 	// The Hub's words arrive here from a download, bounded once for every path
 	// that publishes them afterwards.
 	m = sanitizeCategory(m)
+	// And the declared precision, under the rule Open applies.
+	if !PlausibleQuantizationBits(m.QuantizationBits) {
+		m.QuantizationBits = 0
+	}
 	// And the version, which is compared with the Hub's answer and shown on
-	// the panel.
+	// the panel, and what the last check of it found.
 	m = sanitizeVersion(m)
+	m = sanitizeUpdate(m)
 	r.mu.Lock()
 	// A re-cased Put updates the existing entry but never renames it: the
 	// first-seen spelling stays the model's public name. Path is taken from
@@ -853,6 +996,7 @@ func (r *Registry) Rescan(modelsDir string) error {
 				ContextLength:    facts.ContextLength,
 				KVChargePerToken: facts.KVChargePerToken,
 				ChatTemplate:     facts.ChatTemplate,
+				QuantizationBits: facts.QuantizationBits,
 				State:            StateReady,
 				AddedAt:          time.Now(),
 			}
@@ -876,6 +1020,7 @@ func (r *Registry) Rescan(modelsDir string) error {
 			existing.ContextLength = m.ContextLength
 			existing.KVChargePerToken = m.KVChargePerToken
 			existing.ChatTemplate = m.ChatTemplate
+			existing.QuantizationBits = m.QuantizationBits
 			// The category is deliberately NOT re-derived. It is the Hub's
 			// word, fetched when the model was downloaded, and nothing in the
 			// directory can tell us it again — so a rescan that assigned it,
@@ -1008,6 +1153,7 @@ type ModelFacts struct {
 	ContextLength    int64
 	KVChargePerToken int64
 	ChatTemplate     bool
+	QuantizationBits int
 }
 
 // ReadModelFacts reads both figures out of the model configuration in dir, in
@@ -1030,7 +1176,30 @@ func factsFrom(dir string, cfg map[string]any) ModelFacts {
 		ContextLength:    contextLengthFrom(cfg),
 		KVChargePerToken: kvChargePerTokenFrom(cfg),
 		ChatTemplate:     hasChatTemplate(dir),
+		QuantizationBits: quantizationBitsFrom(cfg),
 	}
+}
+
+// quantizationBitsFrom is the precision a quantised model's own configuration
+// declares: the top-level "bits" of the quantization block mlx-lm writes
+// ("quantization", or "quantization_config" in conversions that keep the
+// transformers spelling). Zero when there is none, or when it is not a whole
+// number from 1 to 16 — a figure published to clients is held to what a
+// precision can be, as the context length is. A per-layer override does not
+// change the model's declared precision and is not read.
+func quantizationBitsFrom(cfg map[string]any) int {
+	for _, key := range []string{"quantization", "quantization_config"} {
+		q, ok := cfg[key].(map[string]any)
+		if !ok {
+			continue
+		}
+		bits, ok := q["bits"].(float64)
+		if !ok || bits != float64(int(bits)) || !PlausibleQuantizationBits(int(bits)) {
+			return 0
+		}
+		return int(bits)
+	}
+	return 0
 }
 
 // hasChatTemplate reports whether dir carries a chat template: a non-empty
@@ -1238,7 +1407,7 @@ const MaxKVChargePerToken = 1 << 24
 //   - Only layers that keep a per-token cache are counted. A hybrid model
 //     declares which those are, in one of four spellings: layer_types (a list
 //     naming each layer), hybrid_override_pattern (a letter per layer, "*" for
-//     attention), layers_block_type (a list naming each layer, "attention"
+//     attention, as a string or a list), layers_block_type (a list naming each layer, "attention"
 //     for attention), or full_attention_interval (every nth layer). A
 //     configuration with none of them is charged as though every layer
 //     attended over the whole prompt, which is the conservative floor: no
@@ -1320,8 +1489,14 @@ func fullAttentionLayers(level map[string]any, layers int64) int64 {
 	if n, ok := countLayersNamed(level, "layer_types", "full_attention"); ok {
 		return n
 	}
+	// The pattern is a string in the configurations seen so far, and a list
+	// of one-character strings in the type mlx-lm gives it
+	// (models/nemotron_h.py); either spelling is read (iss-2610031018231170).
 	if pattern, ok := level["hybrid_override_pattern"].(string); ok && pattern != "" {
 		return int64(strings.Count(pattern, "*"))
+	}
+	if n, ok := countLayersNamed(level, "hybrid_override_pattern", "*"); ok {
+		return n
 	}
 	// Read after the pattern because mlx-lm reads it only when the pattern
 	// is absent (models/nemotron_h.py), and only its "attention" entries get

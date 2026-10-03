@@ -52,6 +52,7 @@ escaping helper.
 1. The group and the facts in the models list
    - packages: internal/registry, internal/hub, internal/gateway
    - tests: two builds tagged with one origin share build_of and keep their ids; no tag or two tags means no group; quantization_bits from config.json; size_bytes; a decision and a chat build with one origin are not one group; a group name is refused as a model name
+   - landed: #161
 2. The control panel and the docs
    - packages: internal/ui, internal/gateway, docs
    - tests: the panel groups exactly as the list does; markup in Hub strings is shown as text; docs/models-list.md documents the three fields and the grouping rule
