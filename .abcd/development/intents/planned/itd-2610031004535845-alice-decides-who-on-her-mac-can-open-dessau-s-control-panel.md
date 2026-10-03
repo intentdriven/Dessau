@@ -95,6 +95,12 @@ it named was declined (decision line of the same day).
    and not a password prompt; a spike across Safari, Chrome and Firefox comes
    first.
 
+5. Added 2026-10-03 at the planning interview of itd-2610031024247803: under
+   "this account only", unloading through the model API keeps the API's own
+   rule (adr-2610031153127219), so another account's trusted program can still
+   unload an idle, unpinned model; only the panel and its own routes are
+   limited.
+
 Typed links: builds on itd-2609081259493890 (three surfaces); refines
 itd-2609100519003748 (cond-2609201007364804).
 
