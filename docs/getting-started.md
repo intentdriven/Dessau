@@ -180,8 +180,13 @@ triggering a load — see the [models list reference](models-list.md).
 
 ### What Dessau reads of a request
 
-Dessau passes a request on to the model without reading what is in it. There
-is one exception, it is per model, and it is off until you switch it on:
+Dessau passes a request on to the model without reading what is in it. It
+does look at the names of the fields at the top of a request, and refuses one
+that carries `draft_model` or `adapters`, which would have the model server
+load files the request names — see
+[Fields a completion request may not carry](request-fields.md). There
+is one exception to not reading, it is per model, and it is off until you
+switch it on:
 **Settings → Merge system messages**, for a model whose template refuses a
 conversation whose instructions are not all at the top. For a model you switch
 it on for, Dessau reads that request's instruction messages and nothing else,
@@ -224,6 +229,17 @@ make install-shared     # creates /Users/Shared/Dessau, needs your password
 
 After that, whoever launches Dessau first runs the server; everyone else's
 menu-bar app just points at it. One copy on disk, one on the GPU.
+
+A server loads only the models whose files belong to the account it runs as —
+the models that account downloaded, including those another account asked
+for through its control panel. Dessau serves from one account, and the others
+reach it over the network rather than through the files. In the shared folder
+a model's files belong to the account that downloaded them, and that account
+can change them while another account's server is loading them, so a model
+downloaded under another account is listed but not loaded: its card says
+*did not load*, "this model's files belong to another account, which Dessau
+does not load". Keep one account running the server, or download the model
+again from the account that does.
 
 The shared folder holds the model files and the download cache they arrive
 through. A folder set up by an earlier version may also hold a `registry.json`
@@ -340,6 +356,28 @@ wait is wrong for your Mac, and put it back to zero when it is not.
   system message that is not the first one. Switch on **Merge system messages**
   for that model — see
   [Merge system messages for a template-strict model](system-message-merging.md).
+- **A model's card says *did not load* because the model ships its own
+  code.** A repository can carry a Python file of its own and name it in the
+  `model_file` field of its `config.json`. The model server would run that
+  file, with your account's access to your files, the moment the model
+  loads, so Dessau refuses to load such a model, before anything starts. The
+  card gives the reason — "this model ships its own code, which Dessau does
+  not run" — and so does the error a client on this Mac, or one holding the
+  API key, receives; the context probe and the self-test leave the model
+  alone. The files stay on disk and nothing in them is run. Pressing
+  **Load** reads `config.json` again and refuses again while it names a
+  `model_file`. Look for another conversion of the same model that loads
+  without code of its own, or delete this one from **My Models**.
+- **A model's card says *did not load* because its files belong to another
+  account.** With the shared cache, a server loads only the models its own
+  account downloaded — see
+  [Sharing across user accounts](#9-sharing-across-user-accounts-optional).
+  The card says "this model's files belong to another account, which Dessau
+  does not load". Run the server from the account that downloaded the model,
+  or delete the model and download it again from this one.
+- **A model's card says *did not load* because it has no `config.json`.**
+  The model server cannot load a model without one, so Dessau does not start
+  it. Download the model again.
 - **The menu-bar icon never appears.** Run it in the foreground to see errors:
   `./dist/DessauServer.app/Contents/MacOS/dessau`.
 - **A model stays "downloading" forever / fails.** Check the panel for the error.

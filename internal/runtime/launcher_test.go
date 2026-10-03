@@ -30,6 +30,11 @@ func TestLogFileNamesDoNotCollideAcrossDistinctRepoIDs(t *testing.T) {
 // EACCES and the model would not start at all — for every model the first
 // account had ever launched.
 //
+// The model directory is the second account's own here, as it has to be for
+// the launcher to load it at all (refuseModelCode): the case is a repository
+// the first account served, deleted, and the second downloaded again under
+// the same id, and so the same log name.
+//
 // A single-uid test cannot own a file as another account, so the first
 // account's log is made unwritable instead, which fails an open the same way.
 // Where the two logs directories come from under a shared cache is pinned in
@@ -39,6 +44,9 @@ func TestASecondAccountLaunchesAModelTheFirstAlreadyLogged(t *testing.T) {
 	shared := t.TempDir() // the models, which both accounts read
 	model := filepath.Join(shared, "models", "org", "name")
 	if err := os.MkdirAll(model, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(model, "config.json"), []byte(plainConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -110,7 +118,7 @@ func TestLaunchRefusesSymlinkedLogFile(t *testing.T) {
 	}
 
 	l := &ExecLauncher{Paths: paths, LogDir: paths.Logs}
-	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: t.TempDir(), Port: 1})
+	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: plainModelDir(t), Port: 1})
 	if p != nil {
 		<-p.Done()
 	}
@@ -146,7 +154,7 @@ func TestLaunchDoesNotBlockOnFIFOLogFile(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		p, err := (&ExecLauncher{Paths: paths, LogDir: paths.Logs}).Launch(context.Background(),
-			Spec{RepoID: "org/name", ModelPath: t.TempDir(), Port: 1})
+			Spec{RepoID: "org/name", ModelPath: plainModelDir(t), Port: 1})
 		if p != nil {
 			<-p.Done()
 		}
@@ -243,11 +251,21 @@ func stubbedLauncher(t *testing.T, script string) *ExecLauncher {
 	return &ExecLauncher{Paths: paths, LogDir: paths.Logs}
 }
 
+// plainConfig is the config.json of a model that ships no code of its own.
+const plainConfig = `{"model_type":"llama"}`
+
+// plainModelDir is a model directory the launcher will start: this account's
+// own, holding a config.json that names no model_file.
+func plainModelDir(t *testing.T) string {
+	t.Helper()
+	return modelDirWithConfig(t, plainConfig)
+}
+
 // launchAndWait launches spec and waits for the stub to exit.
 func launchAndWait(t *testing.T, l *ExecLauncher, spec Spec) {
 	t.Helper()
 	if spec.ModelPath == "" {
-		spec.ModelPath = t.TempDir()
+		spec.ModelPath = plainModelDir(t)
 	}
 	p, err := l.Launch(context.Background(), spec)
 	if err != nil {

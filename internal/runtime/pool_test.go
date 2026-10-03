@@ -14,6 +14,7 @@ import (
 
 	"github.com/intentdriven/Dessau/internal/capability"
 	"github.com/intentdriven/Dessau/internal/mlxtest"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 // fakeSource resolves models without touching the filesystem.
@@ -97,6 +98,10 @@ type fakeLauncher struct {
 	// failPrecheckFor makes Precheck fail for a repo, simulating a missing venv
 	// or a model directory that vanished before Launch runs.
 	failPrecheckFor string
+	// refuseFor makes Precheck refuse a repo the way the real launcher
+	// refuses a model that ships its own code: as the model's own load
+	// failure, with the plain reason.
+	refuseFor string
 	// dieAfter makes the process exit on its own shortly after launch, as a
 	// real model server does when the weights are corrupt.
 	dieAfter map[string]bool
@@ -145,6 +150,10 @@ func (l *fakeLauncher) Precheck(spec Spec) error {
 	l.prechecks++
 	if l.failPrecheckFor == spec.RepoID {
 		return errors.New("simulated precheck failure")
+	}
+	if l.refuseFor == spec.RepoID {
+		return &NotReadyError{Err: fmt.Errorf("%s cannot be loaded: %w", spec.RepoID, registry.ErrModelCode),
+			Reason: registry.ErrModelCode.Error()}
 	}
 	return nil
 }

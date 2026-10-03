@@ -30,6 +30,53 @@ GitHub release notes.
   batched requests reaches it at the model's next load. A model whose
   configuration declares no window keeps the model server's 512
   (iss-2610030652514762).
+### Changed
+
+- **A request carrying `draft_model` or `adapters` is refused.**
+  `impact: breaking`. Security. The model server reads both as an
+  instruction to load files from a path the request gives — a second model
+  for speculative decoding, or adapter weights, with the served model
+  reloaded to apply them — and a model it loads that way can name a Python
+  file of its own that loading runs. Dessau checks the model it loads before
+  the model server starts, and could not check one a request named. A
+  request on `/v1/chat/completions` or `/v1/completions` whose top level
+  carries either field, with any value, `null` included, is now answered
+  with a 400 naming the field — for example `"draft_model" is not accepted:
+  Dessau does not load a second model for a request` — before any model is
+  loaded or evicted, and the model server never receives it. No sampling
+  parameter is affected. See
+  [Fields a completion request may not carry](docs/request-fields.md).
+- **With the shared cache, a server loads only the models its own account
+  downloaded.** `impact: breaking`. Security. In `/Users/Shared/Dessau` a
+  model's files belong to the account that downloaded them, and that account
+  can change them while another account's server is loading them. A model
+  whose folder or `config.json` belongs to another account is now refused
+  before any process starts, and its card says why: "this model's files
+  belong to another account, which Dessau does not load". Dessau serves from
+  one account, and the others reach it over the network; a model downloaded
+  through that server's control panel, by whoever asked, belongs to it. The
+  shared cache itself, and its permissions, are unchanged.
+
+### Fixed
+
+- **Dessau no longer loads a model whose `config.json` names code of its
+  own.** `impact: fix`. Security. A repository can ship a Python file of its
+  own and name it in the `model_file` field of its `config.json`; the model
+  server imports and runs that file, under the account serving Dessau, the
+  moment the model loads, so downloading a hostile repository was enough to
+  run its code. A model whose `config.json` names a `model_file` is now
+  refused before any process starts — for a client's request, a preload, the
+  context probe and the self-test alike — and its card says why: "this model
+  ships its own code, which Dessau does not run". A client on this Mac, or
+  one holding the API key, is told the same reason; the probe and the
+  self-test leave the model alone. The files are still downloaded and
+  nothing in them is run. A `config.json` that is present but cannot be
+  read as JSON is refused too, since the model server's parser accepts some
+  of what Dessau's does not, and so is a model with no `config.json`, which
+  the model server cannot load anyway. One case is not closed: with the
+  shared cache, an account that owns a folder above a model's own folder can
+  swap the model's folder in the seconds between Dessau's check and the
+  model server's start.
 
 ## [0.9.3] - 2026-09-21
 

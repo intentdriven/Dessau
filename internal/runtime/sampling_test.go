@@ -45,7 +45,7 @@ func launchAndReadArgv(t *testing.T, s config.Sampling) []string {
 	l := &ExecLauncher{Paths: paths, LogDir: paths.Logs}
 	p, err := l.Launch(context.Background(), Spec{
 		RepoID:    "org/name",
-		ModelPath: t.TempDir(),
+		ModelPath: plainModelDir(t),
 		Port:      1234,
 		Sampling:  s,
 	})

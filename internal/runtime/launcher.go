@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/registry"
 )
 
 // Spec describes one model server process to launch.
@@ -215,6 +217,11 @@ func (e *LaunchError) Unwrap() error { return e.Err }
 // it comes from the process's own exit status, from the probe's timeout, or
 // from the terminal line of a traceback in the child's log with anything
 // path-shaped stripped out (fatalLoadLine), never from a path on this machine.
+//
+// A launcher's refusal of the model itself — one that ships its own code, or
+// whose files belong to another account (refuseModelCode) — is this failure
+// too, reached before any process exists: it is about these files and not about the installation, and its
+// message is written to be relayed.
 type NotReadyError struct {
 	Err error
 	// Reason is the failure without the model's name — "did not become
@@ -250,6 +257,11 @@ type ExecLauncher struct {
 	// DebugLogMaxBytes. A field so a test can reach the bound with a stub,
 	// not a setting: the figure the product ships is the constant.
 	debugLogMaxBytes int64
+	// modelOwner is the uid a model's files must belong to; zero means the
+	// account running Dessau. A field so a test can stand in for files
+	// another account owns, which a test running as one account cannot
+	// create: see modelFilesOwner.
+	modelOwner int
 
 	ledgerOnce sync.Once
 	ledger     *pidLedger
@@ -282,7 +294,8 @@ func (l *ExecLauncher) ReapOrphans() int {
 }
 
 // Precheck confirms the venv interpreter is present and trustworthy (see
-// trustedExecutable) and the model directory exists.
+// trustedExecutable), the model directory exists, and the model is one
+// Dessau will hand to the model server (refuseModelCode).
 func (l *ExecLauncher) Precheck(spec Spec) error {
 	python := l.Paths.VenvPython()
 	if err := trustedExecutable(python, ownerOrSelf(l.Owner)); err != nil {
@@ -291,7 +304,86 @@ func (l *ExecLauncher) Precheck(spec Spec) error {
 	if _, err := os.Stat(spec.ModelPath); err != nil {
 		return fmt.Errorf("model directory is missing (%s): %w", spec.ModelPath, err)
 	}
-	return nil
+	return refuseModelCode(spec, l.modelFilesOwner())
+}
+
+// modelFilesOwner is the uid a model's directory and config.json must belong
+// to: the account running Dessau, or modelOwner where a test has set it.
+func (l *ExecLauncher) modelFilesOwner() int {
+	if l.modelOwner != 0 {
+		return l.modelOwner
+	}
+	return os.Geteuid()
+}
+
+// unreadableConfigReason is the reason given for a config.json that is there
+// and cannot be read as a JSON object, and missingConfigReason for one that is
+// not there. Neither names a path or a reader error, both of which carry this
+// account's own directories.
+const (
+	unreadableConfigReason = "its config.json could not be read, so Dessau does not start it"
+	missingConfigReason    = "it has no config.json, so Dessau does not start it"
+)
+
+// refuseModelCode refuses, before any process exists, a model the model
+// server could be made to run code from (iss-2610030709283687):
+//
+//   - one whose config.json names a model_file, which the model server would
+//     import and run under this account at load time;
+//   - one whose directory or config.json belongs to another account, which
+//     could put a model_file there after this check has read the file and
+//     before the model server reads it — in the shared cache a model's files
+//     belong to whichever account downloaded them, and an owner can rename
+//     over its own file, or over any file in a directory it owns;
+//   - one with no config.json, which the model server cannot load anyway,
+//     and which in the shared cache — where a model directory is writable by
+//     every account in the group — another account could create in that same
+//     window;
+//   - one whose config.json is there but that this reader will not take: the
+//     model server's parser accepts some of what Go's refuses (NaN and
+//     Infinity, a number past float range), and a link is followed by the
+//     model server where the reader declines it, so waving those through
+//     would be a check the file could step round. That refusal alone is
+//     transient, since the file may read on another try.
+//
+// It is the last check before the interpreter starts — Launch makes it again
+// itself — so a client's request, the context probe, the tool-call probe, the
+// self-test and a preload all meet it. What it reads is the model directory
+// and config.json; what it cannot see is the directories above the model
+// directory. Where another account owns one of those — in the shared cache,
+// the models root and an organisation's directory belong to whichever account
+// created them first — that account can move the whole model directory aside
+// in the seconds between this check and the model server's read, and put its
+// own in its place. That race is not closed here; the 2026-10-03 decision in
+// the ledger records it as open.
+//
+// The refusal is the model's own load failure, not a broken installation, so
+// it is a NotReadyError: the pool relays it rather than hiding it behind "the
+// model could not be started", and records it on the model, where idle work
+// leaves the model alone and the card says why. It stands until a person
+// retries or the provenance moves; a retry reads the files again.
+func refuseModelCode(spec Spec, owner int) error {
+	err := registry.CheckModelCode(spec.ModelPath, owner)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, registry.ErrModelCode), errors.Is(err, registry.ErrOtherAccount):
+		return &NotReadyError{
+			Err:    fmt.Errorf("%s cannot be loaded: %w", spec.RepoID, err),
+			Reason: err.Error(),
+		}
+	case errors.Is(err, fs.ErrNotExist):
+		return &NotReadyError{
+			Err:    fmt.Errorf("%s cannot be loaded: %s", spec.RepoID, missingConfigReason),
+			Reason: missingConfigReason,
+		}
+	default:
+		return &NotReadyError{
+			Err:       fmt.Errorf("%s cannot be loaded: %s", spec.RepoID, unreadableConfigReason),
+			Reason:    unreadableConfigReason,
+			Transient: true,
+		}
+	}
 }
 
 // launchArgs is the model server's whole command line, spec by spec.

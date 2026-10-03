@@ -67,7 +67,9 @@ marked on its card: **did not load**, with the reason. While that mark
 stands, neither the probe nor the [self-test](self-test.md) picks the model
 again, a queued measurement of it is dropped, and a request for it is
 refused at once with the same reason rather than waiting through another
-load. The mark is lifted when the runtime, the memory budget or the model's
+load. A model whose `config.json` names code of its own to run, or whose files
+belong to another account, is marked the same way without ever being started — see
+[Troubleshooting](getting-started.md#troubleshooting). The mark is lifted when the runtime, the memory budget or the model's
 served window changes — the load may go differently under them — when the
 model is downloaded again, and when you press **Load** or **Measure now**
 on its card, which is how to try it once more by hand. A mark whose reason

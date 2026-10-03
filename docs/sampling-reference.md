@@ -72,7 +72,10 @@ gets an empty answer.
 | carries `null` | nothing — the request fails, see [How sampling defaults work](sampling-explained.md#why-null-is-not-the-same-as-omitted) |
 
 No sampling parameter is ever added to or changed in a request body on its way
-to the model, and nothing here caps or overrides what a client asks for.
+to the model, and nothing here caps or overrides what a client asks for. Two
+fields that are not sampling parameters, `draft_model` and `adapters`, are
+refused rather than passed on — see
+[Fields a completion request may not carry](request-fields.md).
 
 Within an override, a blank field means "use the machine-wide value". There is
 no way to say "use the model server's own default for this one parameter while
