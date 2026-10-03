@@ -293,8 +293,7 @@ func TestAnUnrecordedFileIsAddedOnlyWhenItIsNotOnDisk(t *testing.T) {
 	}
 
 	os.Remove(filepath.Join(dir, "tokenizer.json"))
-	a.Registry.SetUpdate("org/m", onDisk, registry.UpdateCheck{Status: registry.UpdateCurrent, CheckedAt: time.Now().Add(-48 * time.Hour)})
-	a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
+	a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now().Add(25*time.Hour)))
 	if u := update(t, a, "org/m"); u == nil || u.Status != registry.UpdateAvailable {
 		t.Errorf("a file the newer version added did not mark the model: %+v", u)
 	}
@@ -530,5 +529,33 @@ func TestAConfigOnTheContentCDNDoesNotStopTheCheck(t *testing.T) {
 	round := a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
 	if u := update(t, a, "org/m"); u == nil || u.Status != registry.UpdateAvailable {
 		t.Errorf("Update = %+v (round %+v), want available", u, round)
+	}
+}
+
+// A round cut short leaves the models it did not reach due at the next tick,
+// and a round cut short by the switch says nothing about the Hub.
+func TestARoundCutShortLeavesTheRestDue(t *testing.T) {
+	repos := map[string]upstreamRepo{}
+	recorded := map[string]map[string]string{}
+	for _, id := range []string{"org/a", "org/b"} {
+		repos[id] = upstreamRepo{commit: onDisk, files: recordedFiles()}
+		recorded[id] = recordedFiles()
+	}
+	h := newCheckFakeHub(t, repos)
+	h.ratelim = `"api";r=1;t=60`
+	a, logs := newCheckApp(t, h, true, recorded)
+	now := time.Now()
+	a.updateCheckTickAt(context.Background(), now)
+	if n := len(h.requests()); n != 1 {
+		t.Fatalf("%d requests in the first round, want 1", n)
+	}
+	h.mu.Lock()
+	h.ratelim = ""
+	h.mu.Unlock()
+	if due := a.updateCheckDue(now.Add(time.Minute)); len(due) != 1 {
+		t.Errorf("%d models due a minute later, want the one the round did not reach", len(due))
+	}
+	if strings.Contains(logs.String(), "could not reach") {
+		t.Error("a round cut short by the budget says the Hub was not reached")
 	}
 }

@@ -92,12 +92,7 @@ func (a *App) updateCheckTickAt(ctx context.Context, now time.Time) {
 	if len(due) == 0 {
 		return
 	}
-	a.updateMu.Lock()
-	for _, m := range due {
-		a.updateAttempted[dlKey(m.RepoID)] = now
-	}
-	a.updateMu.Unlock()
-	a.CheckForUpdates(ctx, due)
+	a.checkForUpdatesAt(ctx, due, now)
 }
 
 // StartCheckingForUpdates runs the update check's schedule in the background
@@ -144,6 +139,14 @@ func (a *App) startCheckingForUpdates() {
 // Hub's remaining budget is forgotten at the start, so a low figure some
 // other request heard does not end the round; only this round's answers do.
 func (a *App) CheckForUpdates(ctx context.Context, models []registry.Model) UpdateRound {
+	return a.checkForUpdatesAt(ctx, models, time.Now())
+}
+
+// checkForUpdatesAt is CheckForUpdates on the schedule's clock: each model is
+// stamped as attempted at now when it is asked about, so a model a round did
+// not reach — the round cut short by the rate limit or the switch — is due
+// again at the next tick, not an interval later.
+func (a *App) checkForUpdatesAt(ctx context.Context, models []registry.Model, now time.Time) UpdateRound {
 	var round UpdateRound
 	a.Hub.ForgetRateLimit()
 	for i, m := range models {
@@ -157,9 +160,17 @@ func (a *App) CheckForUpdates(ctx context.Context, models []registry.Model) Upda
 		if !a.Config().UpdateCheck {
 			break
 		}
+		a.updateMu.Lock()
+		a.updateAttempted[dlKey(m.RepoID)] = now
+		a.updateMu.Unlock()
 		found, err := a.checkOne(ctx, m)
 		if ctx.Err() != nil {
 			return round
+		}
+		if errors.Is(err, errChecksOff) {
+			// Not a Hub that did not answer: the operator turned checks
+			// off, and the round says nothing about the model it left.
+			break
 		}
 		if err != nil {
 			round.Unreachable++
