@@ -99,7 +99,7 @@ no answer, no key, no client address (see
 | `model` | The model's repo id. |
 | `duration_ms` | How long the load took. |
 | `failed` | Present and `true` when the model server started but never became ready. |
-| `sampling` | The sampling values the model server was launched with, by parameter name, only the ones set. It is what a request's `overrides` are overrides of. Absent when every value was the model's own default. |
+| `sampling` | The sampling values the model server was launched with, by parameter name, only the ones set — including the maximum tokens when it is the served window, which a model starts with when the operator has set no maximum. It is what a request's `overrides` are overrides of. Absent when every value was the model's own default. |
 
 A load carries no `reason`: nothing in Dessau knows why a model was loaded
 beyond the fact that something asked for it.

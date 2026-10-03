@@ -88,9 +88,9 @@ func TestSamplingDocsMatchTheCode(t *testing.T) {
 			t.Errorf("the table has no blank-means cell for %q", b.Field)
 			continue
 		}
-		if !strings.HasPrefix(cell, b.DefaultText()) {
-			t.Errorf("%s: the table says a blank field means %q, but the model server's own default is %s",
-				b.Field, cell, b.DefaultText())
+		if !strings.HasPrefix(cell, b.BlankText()) {
+			t.Errorf("%s: the table says a blank field means %q, but it means %s",
+				b.Field, cell, b.BlankText())
 		}
 	}
 

@@ -38,9 +38,11 @@ type ResolvedModel struct {
 	// Bytes is the model's size on disk.
 	Bytes int64
 	// ServedContext is the window Dessau serves this model at: the operator's
-	// per-model setting, or the window the model declares when they have set
-	// none (config.Config.ServedContext). The gateway refuses a request
-	// estimated to be larger, so it is the window the pool charges.
+	// per-model setting, or the default derived to fit the memory budget when
+	// they have set none (App.ServedWindow). The gateway refuses a request
+	// estimated to be larger, so it is the window the pool charges — and,
+	// with no completion budget of the operator's, the budget the server is
+	// launched with (launchSampling). Zero means it is not known.
 	ServedContext int64
 	// KVChargePerToken is what one token of that window is charged against the
 	// budget (registry.Model.KVChargePerToken).
@@ -1334,6 +1336,9 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 	if p.opts.SamplingFor != nil {
 		sampling = p.opts.SamplingFor(repoID)
 	}
+	// With no completion budget of the operator's, the served window is the
+	// budget the server answers an omitted max_tokens with, not its own 512.
+	sampling = launchSampling(sampling, m.ServedContext)
 	// The debug mark is read here and cleared below, under the one acquisition
 	// of p.mu this whole function runs under — so two launches of the same
 	// model cannot both consume it — but the clear waits for Launch to return
