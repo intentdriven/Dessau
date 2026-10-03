@@ -79,9 +79,9 @@ Dessau restarts: a slow load on a busy Mac says nothing about the next one.
 
 Nor is a [pinned](pinning-models.md) model. The probe stops the model before every
 step, and a pin promises that nothing stops it, so the pin wins: a pinned
-model is never picked, **Measure now** on its card says so, and a model
-pinned while it is being measured stops at its next step, keeping the sizes
-it has already verified. Unpin it, and the next run goes on from there.
+model is never picked, **Measure now** on its card says so, and when a model
+is pinned while it is being measured, the measurement stops at its next step,
+keeping the sizes it has already verified. Unpin it, and the next run goes on from there.
 
 To measure one model without switching the probe on, open the **My Models** tab
 and press **Measure now** on its card. The run starts at the next idle
@@ -146,8 +146,8 @@ least that large, and still stands. Setting it to any other figure does.
 ## Stop it
 
 Clear the box and save, or quit Dessau. A run in progress stops at once,
-writes no figure, leaves the model unloaded, and the card says the probe was
-incomplete. It is not retried on its own; press **Measure now** to run it
+writes no figure, leaves the model unloaded unless it is pinned, and the card
+says the probe was incomplete. It is not retried on its own; press **Measure now** to run it
 again.
 
 While a run holds a model, the memory that model is charged is not free for
