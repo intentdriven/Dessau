@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/intentdriven/Dessau/internal/config"
-	"golang.org/x/sys/unix"
 )
 
 // The pid ledger lives in the data root, and a Paths with no root gets a
@@ -253,9 +252,9 @@ func TestTheLedgerStampIsTheBootSessionNotTheClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	head := strings.Fields(strings.SplitN(string(b), "\n", 2)[0])
-	want, err := unix.Sysctl("kern.bootsessionuuid")
+	want, err := kernelBootSession()
 	if err != nil {
-		t.Skip("this Mac does not answer kern.bootsessionuuid")
+		t.Skipf("the kernel does not report its boot session: %v", err)
 	}
 	if len(head) != 2 || head[0] != "session" || head[1] != want {
 		t.Errorf("ledger header = %q, want [session %s]", head, want)
