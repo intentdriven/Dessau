@@ -112,10 +112,10 @@ func (p *stubPool) Acquire(ctx context.Context, repoID string) (*runtime.Upstrea
 	}, release, nil
 }
 
-func (p *stubPool) Resident() []runtime.Resident { return p.resident }
-func (p *stubPool) Pinned() []string             { return p.pinned }
-func (p *stubPool) Unload(string) error          { return nil }
-func (p *stubPool) Release(string) error         { return nil }
+func (p *stubPool) Resident() []runtime.Resident         { return p.resident }
+func (p *stubPool) Pinned() []string                     { return p.pinned }
+func (p *stubPool) Unload(string) error                  { return nil }
+func (p *stubPool) Release(string, runtime.Caller) error { return nil }
 
 func (p *stubPool) releases() int {
 	p.mu.Lock()

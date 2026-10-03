@@ -1016,7 +1016,7 @@ func (o poolObserver) EntryStopped(repoID string, reason runtime.StopReason) {
 	}
 	o.rec.Removed(repoID, mapped)
 	// The other half of the pair above: a model that is no longer in memory,
-	// and which of the seven ways it went. The reason is on the sparse line
+	// and which of the eight ways it went. The reason is on the sparse line
 	// rather than below it because "unloaded" and "evicted" are different
 	// events to the person reading, not two levels of detail about one — an
 	// operator whose model keeps going away needs to know at a glance whether
@@ -1036,6 +1036,19 @@ var stopReasons = map[runtime.StopReason]string{
 	runtime.StopLoadFailed: stats.ReasonLoadFailed,
 	runtime.StopCrashed:    stats.ReasonCrashed,
 	runtime.StopShutdown:   stats.ReasonShutdown,
+	runtime.StopReleased:   stats.ReasonReleased,
+}
+
+// EntryReleased is EntryStopped for a model a program released through the
+// model API: the record and the log line say which kind of caller asked, and
+// a paired client by the name the operator paired it under — never the key.
+func (o poolObserver) EntryReleased(repoID string, by runtime.Caller) {
+	o.rec.Released(repoID, by.Kind, by.Client)
+	if by.Kind == stats.CallerPairedClient {
+		o.log.Info("model unloaded", "model", repoID, "reason", stats.ReasonReleased, "by", by.Kind, "client", by.Client)
+		return
+	}
+	o.log.Info("model unloaded", "model", repoID, "reason", stats.ReasonReleased, "by", by.Kind)
 }
 
 // PinnedFitWarning is what the control panel says when the pinned models can no

@@ -85,6 +85,11 @@ func TestTheStatisticsPageNamesEveryFieldTheStoreWrites(t *testing.T) {
 			t.Errorf("the page does not name %q, which a line of the store can carry", field)
 		}
 	}
+	for _, kind := range stats.CallerKinds() {
+		if !strings.Contains(page, "`"+kind+"`") {
+			t.Errorf("the page does not name %q, which a release can carry as its caller", kind)
+		}
+	}
 	for _, reason := range stats.RemovalReasons() {
 		if !strings.Contains(page, "`"+reason+"`") {
 			t.Errorf("the page does not name %q, which a removal line can carry as its reason", reason)
@@ -134,6 +139,11 @@ func knownOther(name string) bool {
 	}
 	for _, reason := range stats.RemovalReasons() {
 		if reason == name {
+			return true
+		}
+	}
+	for _, kind := range stats.CallerKinds() {
+		if kind == name {
 			return true
 		}
 	}

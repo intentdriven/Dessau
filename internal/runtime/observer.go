@@ -48,7 +48,7 @@ type Footprinter interface {
 }
 
 // StopReason says why a model server left the pool. The pool removes an entry
-// by seven paths and only one of them is an eviction, so counting them as one
+// by eight paths and only one of them is an eviction, so counting them as one
 // would make the load and eviction figures disagree with what happened.
 type StopReason string
 
@@ -70,7 +70,26 @@ const (
 	StopCrashed StopReason = "crashed"
 	// StopShutdown is every model server at the moment the pool closes.
 	StopShutdown StopReason = "shutdown"
+	// StopReleased is a model a program unloaded through the model API
+	// because it had finished with it (adr-2610031153127219).
+	StopReleased StopReason = "released"
 )
+
+// Caller is who asked for a model to be released, as the gateway admitted
+// them: the kind of caller and, for a paired client, the name the operator
+// paired it under. It never carries the API key or the source tag the pool's
+// queue is shared out by; the pool passes it on and reads nothing in it.
+type Caller struct {
+	Kind   string
+	Client string
+}
+
+// ReleaseObserver is told who released a model, beside why it left. It is a
+// second, optional interface for the reason FootprintObserver is: an observer
+// that does not implement it is told EntryStopped with StopReleased instead.
+type ReleaseObserver interface {
+	EntryReleased(repoID string, by Caller)
+}
 
 // notify hands one report to the observer, if there is one.
 //

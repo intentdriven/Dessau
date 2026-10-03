@@ -1354,6 +1354,8 @@ function renderSettings() {
   $('setChatPipelines').value = (rule.pipeline_tags || []).join(', ');
   $('setChatTags').value = (rule.required_tags || []).join(', ');
   $('setContextProbe').checked = !!c.context_probe;
+  // The file says off; the switch says allowed, so an absent key reads as on.
+  $('setAPIUnload').checked = !c.api_unload_off;
   $('setIdleThreshold').value = c.idle_threshold_sec || '';
   $('setSelfTest').checked = !!c.self_test;
   $('setStats').checked = !!c.statistics;
@@ -1947,6 +1949,7 @@ $('ovApply').addEventListener('click', () => {
 });
 
 $('setContextProbe').addEventListener('change', () => { settingsTouched = true; });
+$('setAPIUnload').addEventListener('change', () => { settingsTouched = true; });
 $('setIdleThreshold').addEventListener('input', () => { settingsTouched = true; });
 $('setSelfTest').addEventListener('change', () => { settingsTouched = true; });
 $('setStats').addEventListener('change', () => { settingsTouched = true; });
@@ -2076,6 +2079,7 @@ $('settingsForm').addEventListener('submit', async (e) => {
     eviction_max_wait_sec: parseInt($('setGraceWait').value, 10) || 0,
     chat_rule:          chatRule($('setChatPipelines').value, $('setChatTags').value),
     context_probe:      $('setContextProbe').checked,
+    api_unload_off:     !$('setAPIUnload').checked,
     // Blank posts zero, which the server reads as the default.
     idle_threshold_sec: parseInt($('setIdleThreshold').value, 10) || 0,
     self_test:          $('setSelfTest').checked,

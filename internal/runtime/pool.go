@@ -2159,8 +2159,21 @@ func (p *Pool) wakeDelayLocked(w *loadWaiter) time.Duration {
 // back until the process does. Until then the charge sits in the drain tally,
 // where every admission decision still counts it.
 func (p *Pool) stopEntryLocked(e *entry, reason StopReason) {
+	p.stopEntryByLocked(e, reason, nil)
+}
+
+// stopEntryByLocked is stopEntryLocked for a removal somebody asked for by
+// name: by, when set, goes to an observer that wants it. Callers must hold
+// p.mu.
+func (p *Pool) stopEntryByLocked(e *entry, reason StopReason, by *Caller) {
 	delete(p.entries, config.FoldRepoID(e.repoID))
-	p.notify(func(o PoolObserver) { o.EntryStopped(e.repoID, reason) })
+	p.notify(func(o PoolObserver) {
+		if ro, ok := o.(ReleaseObserver); ok && by != nil {
+			ro.EntryReleased(e.repoID, *by)
+			return
+		}
+		o.EntryStopped(e.repoID, reason)
+	})
 	proc := e.proc
 	if proc == nil {
 		// Nothing is holding the memory, so nothing has to be waited for.
@@ -2390,7 +2403,9 @@ func (p *Pool) Remove(repoID string) error {
 // hold included, so idle work is never interrupted — or is inside its
 // eviction grace is refused at once, with nothing changed and nothing waited
 // for. The operator's Unload keeps its own rule.
-func (p *Pool) Release(repoID string) error {
+//
+// by is who asked, which the observer is told with the removal.
+func (p *Pool) Release(repoID string, by Caller) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	e, ok := p.entries[config.FoldRepoID(repoID)]
@@ -2411,7 +2426,7 @@ func (p *Pool) Release(repoID string) error {
 	if !p.graceElapsedLocked(e, 0) {
 		return fmt.Errorf("%s is inside its eviction grace: %w", repoID, ErrInGrace)
 	}
-	p.stopEntryLocked(e, StopUnloaded)
+	p.stopEntryByLocked(e, StopReleased, &by)
 	return nil
 }
 

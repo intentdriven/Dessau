@@ -2,6 +2,7 @@
   "settings": {
     "advertise": true,
     "api_key": "********",
+    "api_unload_off": false,
     "bind_mode": "",
     "chat_rule.pipeline_tags": [
       "text-generation",

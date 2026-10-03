@@ -401,6 +401,13 @@ type Config struct {
 	// EffectiveIdleThresholdSec.
 	IdleThresholdSec int `json:"idle_threshold_sec,omitempty"`
 
+	// APIUnloadOff turns off POST /v1/dessau/unload, the model API's request
+	// for a program to unload a model it has finished with
+	// (adr-2610031153127219). Absent means on: the route is open only to the
+	// callers this server already trusts, and only for a model nobody is
+	// relying on. The control panel's own Unload is not affected.
+	APIUnloadOff bool `json:"api_unload_off,omitempty"`
+
 	// LogLevel decides how much Dessau writes about itself, in its own log and
 	// on standard error. "sparse" — the default, and what every configuration
 	// written before this field carries — is one line per event that mattered:
