@@ -106,7 +106,14 @@ func TestSamplingDocsMatchTheCode(t *testing.T) {
 func TestSamplingReferenceStatesTheRealRanges(t *testing.T) {
 	page := readDoc(t, "sampling-reference.md")
 	for _, b := range config.SamplingBounds() {
-		if b.Min != 0 {
+		// Every floor is 0 but the token budget's, which is 1: mlx-lm 0.32.0
+		// fails on an empty budget, and the page says so.
+		switch {
+		case b.Field == "max_tokens" && b.Min == 1:
+			if !strings.Contains(page, "a whole number, 1 to") || !strings.Contains(page, "floor of 1") {
+				t.Errorf("the page does not state the token budget's floor of 1")
+			}
+		case b.Min != 0:
 			t.Fatalf("%s has a lower bound of %v the page does not describe", b.Field, b.Min)
 		}
 		if !b.HasMax {

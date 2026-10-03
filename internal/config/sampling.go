@@ -141,7 +141,7 @@ var samplingParams = []samplingParam{
 	},
 	{
 		bound: SamplingBound{
-			Field: "max_tokens", Min: 0, Max: MaxCompletionTokens, HasMax: true, Integer: true,
+			Field: "max_tokens", Min: 1, Max: MaxCompletionTokens, HasMax: true, Integer: true,
 			ServerDefault: 512, BlankMeans: BlankMaxTokens,
 		},
 		get:    func(s Sampling) (float64, bool) { return derefInt(s.MaxTokens) },

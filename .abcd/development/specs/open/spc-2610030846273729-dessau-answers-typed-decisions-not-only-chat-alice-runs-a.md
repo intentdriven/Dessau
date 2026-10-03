@@ -160,6 +160,7 @@ tokens and latency. Whether the planned transcript store
 1. The runtime upgrade
    - packages: internal/runtime
    - tests: the regenerated hash-pinned lock (mlx-lm 0.32.0, mlx 0.32.3, mlx-vlm 0.7.4, the signed-off set); reprovisioning keyed on the lock's hash; the sampling-flag, served-window, model_file-refusal, refused-field and socket-launcher checks re-verified against the new versions and their evidence recorded; no OTEL exporter configuration reaches a child
+   - landed: #163
 2. Recognising and pinning decision models
    - packages: internal/registry, internal/hub, internal/capability
    - tests: the recorded upstream commit (shared with spc-2610030929021692 step 1; land it here if that step has not); the embedded reviewed-build manifest; the decision kind beside CanChat; a manifest mismatch refused at load; the fits verdict and the pool's charge read one figure

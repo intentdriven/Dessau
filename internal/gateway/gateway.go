@@ -722,6 +722,16 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	if msg := emptyAnswerBudget(payload); msg != "" {
+		obs.failed(stats.ClassClientError)
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if msg := badStop(payload); msg != "" {
+		obs.failed(stats.ClassClientError)
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 
 	var requested string
 	if rawModel, ok := payload["model"]; ok {
@@ -1718,7 +1728,7 @@ const refusalLogEvery = time.Minute
 
 // loadFields are the request fields the model server reads as an instruction
 // to load something the client names, with the refusal each is given. The
-// pinned mlx-lm 0.31.3 server takes both from the top level of the body
+// pinned mlx-lm server (0.31.3, re-verified at 0.32.0) takes both from the top level of the body
 // without checking them (server.py, handle_completion's parameter reads):
 // draft_model is handed to load() as a second model, which runs whatever code
 // that model's config.json names in model_file, from any directory the
@@ -1756,6 +1766,89 @@ func loadField(payload map[string]json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+// emptyAnswerBudget is the refusal for a request that asks for no answer at
+// all: max_tokens or max_completion_tokens of zero, a negative number, or
+// false, which the model server's Python reads as zero. The pinned mlx-lm
+// 0.32.0 server accepts such a budget and then fails on it: on the batched
+// path the generation thread dies, and every later request to that model is
+// answered "generation thread died" until it is restarted, so one client's
+// request would take the model away from everyone
+// (.abcd/development/research/notes/2026-10-03-mlx-lm-0.32.0-reverification.md).
+// It is refused here, before anything is resolved or loaded, as loadField's
+// fields are. A value that is not a number or a boolean is the model server's
+// own to refuse, as it was.
+func emptyAnswerBudget(payload map[string]json.RawMessage) string {
+	for _, key := range []string{"max_tokens", "max_completion_tokens"} {
+		raw, ok := payload[key]
+		if !ok {
+			continue
+		}
+		t := bytes.TrimSpace(raw)
+		// null is the field left unset, which the model server reads as
+		// absent; a bool would decode it as false.
+		if string(t) == "null" {
+			continue
+		}
+		var b bool
+		if json.Unmarshal(t, &b) == nil {
+			if !b {
+				return fmt.Sprintf("%q must be at least 1", key)
+			}
+			continue
+		}
+		// A bare number only: json.Number also takes a quoted one, and "0"
+		// is a string, which the model server refuses itself.
+		var n json.Number
+		if len(t) == 0 || t[0] == '"' || json.Unmarshal(t, &n) != nil {
+			continue
+		}
+		if f, err := n.Float64(); err == nil && f < 1 {
+			return fmt.Sprintf("%q must be at least 1", key)
+		}
+	}
+	return ""
+}
+
+// badStop is the refusal for a stop the model server would take and then fail
+// on: anything but a string, an array of non-empty strings, or null. An
+// element is held to being a JSON string itself, because a null decodes into
+// a Go string without complaint and reaches the server as None, which its
+// tokenizer is then asked to encode; an empty one becomes an empty stop
+// sequence, which nothing in the server guards either. The pinned server
+// (0.31.3 and 0.32.0 alike) does not check it, and on the batched path a
+// number, a list of numbers or a nested list raises inside the generation
+// loop and kills the thread for every client until the model restarts
+// (adversarial review of spc-2610030846273729 step 1).
+func badStop(payload map[string]json.RawMessage) string {
+	raw, ok := payload["stop"]
+	if !ok {
+		return ""
+	}
+	t := bytes.TrimSpace(raw)
+	if string(t) == "null" {
+		return ""
+	}
+	var one string
+	if len(t) > 0 && t[0] == '"' && json.Unmarshal(t, &one) == nil && one != "" {
+		return ""
+	}
+	var many []json.RawMessage
+	if json.Unmarshal(t, &many) == nil {
+		ok := true
+		for _, m := range many {
+			m = bytes.TrimSpace(m)
+			if len(m) == 0 || m[0] != '"' || json.Unmarshal(m, &one) != nil || one == "" {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return ""
+		}
+	}
+	return `"stop" must be a string or an array of strings`
 }
 
 // writeError renders an OpenAI-shaped error, which is what clients parse.
