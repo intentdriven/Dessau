@@ -671,7 +671,6 @@ const maxStreamLine = maxResponseBody
 // the read phase; it is cleared before the model request so generation is unbounded.
 const bodyReadTimeout = 30 * time.Second
 
-// handleCompletions proxies a chat/text completion to the right model server.
 // handleChatCompletions is handleCompletions for the chat route, which holds
 // a conversation: the route itself says so, rather than a comparison of the
 // path a later alias route could slip past (iss-2610031010371709).
@@ -679,6 +678,7 @@ func (g *Gateway) handleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	g.completions(w, r, true)
 }
 
+// handleCompletions proxies a chat/text completion to the right model server.
 func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	g.completions(w, r, false)
 }
