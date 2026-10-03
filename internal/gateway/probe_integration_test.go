@@ -286,6 +286,7 @@ func TestUnloadFromThePanelTakesTheModelBackFromTheProbe(t *testing.T) {
 	if !inFlight() {
 		t.Fatalf("the probe never held the model with a request in flight: %+v %+v", a.SelfTest.Status(), a.Pool.Residency())
 	}
+	held := a.Pool.Residency().Models[0].LoadedAt
 	resp, err := http.Post(panel.URL+"/api/models/unload", "application/json", strings.NewReader(`{"model":"org/m"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +296,14 @@ func TestUnloadFromThePanelTakesTheModelBackFromTheProbe(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Unload on the probe's model got %d: %s", resp.StatusCode, raw)
 	}
-	if res := a.Pool.Residency(); len(res.Models) != 0 {
-		t.Errorf("the model is still resident after Unload: %+v", res.Models)
+	// What Unload promises is that the instance the probe held is gone. The
+	// probe it interrupted yields, and a yielded probe resumes at the next
+	// idle tick — on this stack's test cadence, possibly before the read
+	// below — so a model found here must be a fresh load, never the one held
+	// (iss-2610031752289366).
+	for _, m := range a.Pool.Residency().Models {
+		if m.RepoID == "org/m" && !m.LoadedAt.After(held) {
+			t.Errorf("the instance the probe held is still resident after Unload: %+v", m)
+		}
 	}
 }
