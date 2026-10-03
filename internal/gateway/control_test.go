@@ -1136,6 +1136,7 @@ func TestModelActionsRefuseAnOversizedBody(t *testing.T) {
 
 	modelPaths := []string{
 		"/api/models/download",
+		"/api/models/update",
 		"/api/models/cancel",
 		"/api/models/delete",
 		"/api/models/load",

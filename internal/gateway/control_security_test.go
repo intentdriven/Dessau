@@ -40,6 +40,7 @@ func TestControlAPIRejectsNonLoopback(t *testing.T) {
 		{"POST", "/api/settings", `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1}`},
 		{"POST", "/api/models/delete", `{"model":"org/m"}`},
 		{"POST", "/api/models/download", `{"model":"org/m"}`},
+		{"POST", "/api/models/update", `{"model":"org/m"}`},
 	}
 	for _, d := range dangerous {
 		req := httptest.NewRequest(d.method, d.path, strings.NewReader(d.body))

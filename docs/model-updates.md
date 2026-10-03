@@ -52,10 +52,25 @@ you are serving.
   version's `config.json` names a `model_file`, Dessau records that it will not
   run that version.
 
+## What the marks mean
+
+Each model's card under **My Models** says what the last check found:
+
+| On the card | What it means | Update |
+| --- | --- | --- |
+| **newer version** | A newer version changes a file the model server reads. | Offered |
+| **newer version not run** | The newer version ships its own code, which Dessau does not run. | Not offered |
+| Version unknown | Dessau did not record which version it downloaded, so it cannot tell whether a newer one exists. | Offered: it fetches the current version and records it |
+| Nothing | The last check found nothing newer, or checks are off. | Not offered |
+
+Click **Update** to fetch the newer version. The card shows how far it has
+come, and **Cancel update** stops it; the model keeps answering requests
+meanwhile.
+
 ## How a newer version replaces the one you serve
 
-Downloading a model you already have fetches its newer version beside the one
-being served, which goes on answering requests the whole time. Dessau fetches
+**Update**, like downloading a model you already have, fetches its newer
+version beside the one being served, which goes on answering requests the whole time. Dessau fetches
 every file at one exact version, checks each against the hash HuggingFace
 lists for it, and checks the new version as it checks any model before it
 starts one. Only then does it swap the two: it waits for requests already
