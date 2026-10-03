@@ -229,7 +229,7 @@ func (a *App) stagedDownload(ctx context.Context, repoID, commit string, prior r
 	if err := validateModelDir(staging); err != nil {
 		return fail(fmt.Errorf("the new version is not a usable MLX model: %w", err))
 	}
-	if err := a.launcher.Precheck(runtime.Spec{RepoID: repoID, ModelPath: staging}); err != nil {
+	if err := a.prechecked(runtime.Spec{RepoID: repoID, ModelPath: staging}); err != nil {
 		return fail(fmt.Errorf("the new version would not be started: %w", err))
 	}
 	// Read before the swap, so the moment the new files are in place is the
@@ -548,4 +548,20 @@ func readDirIn(root *os.Root, rel string) ([]os.DirEntry, error) {
 	}
 	defer f.Close()
 	return f.ReadDir(-1)
+}
+
+// prechecked holds a staged version to the launcher's Precheck, or — when the
+// runtime is not installed yet, and only then — to the model half of it,
+// which needs no runtime (iss-2610031317475284, at the maintainer's answer).
+// An interpreter that is there but not trusted is still a refusal, and so is
+// a launcher that cannot check a model on its own.
+func (a *App) prechecked(spec runtime.Spec) error {
+	err := a.launcher.Precheck(spec)
+	if !errors.Is(err, runtime.ErrRuntimeNotInstalled) {
+		return err
+	}
+	if mc, ok := a.launcher.(runtime.ModelPrechecker); ok {
+		return mc.PrecheckModel(spec)
+	}
+	return err
 }

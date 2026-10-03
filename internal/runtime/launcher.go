@@ -321,8 +321,32 @@ func prepareSocket(path string) error {
 func (l *ExecLauncher) Precheck(spec Spec) error {
 	python := l.Paths.VenvPython()
 	if err := trustedExecutable(python, ownerOrSelf(l.Owner)); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("python runtime is not installed (%s): %w: %w", python, ErrRuntimeNotInstalled, err)
+		}
 		return fmt.Errorf("python runtime is not installed (%s): %w", python, err)
 	}
+	return l.PrecheckModel(spec)
+}
+
+// ErrRuntimeNotInstalled is Precheck's answer when there is no interpreter at
+// all — a fresh install, or one mid-provisioning — as opposed to one that is
+// there and not trusted, which is refused as ever.
+var ErrRuntimeNotInstalled = errors.New("the runtime is not installed yet")
+
+// ModelPrechecker is a Launcher that can check a model's own files without
+// the runtime: what Precheck checks of the model, and nothing of the
+// interpreter.
+type ModelPrechecker interface {
+	PrecheckModel(spec Spec) error
+}
+
+// PrecheckModel is Precheck's model half: the directory is there, and the
+// model is not one the model server could be made to run code from. It
+// needs no runtime, so a version staged before the runtime is installed is
+// still held to the refusal that matters (iss-2610031317475284); the whole
+// Precheck still runs at every launch.
+func (l *ExecLauncher) PrecheckModel(spec Spec) error {
 	if _, err := os.Stat(spec.ModelPath); err != nil {
 		return fmt.Errorf("model directory is missing (%s): %w", spec.ModelPath, err)
 	}
