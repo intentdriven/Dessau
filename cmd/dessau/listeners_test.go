@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/Dessau/internal/gateway"
 )
 
 // serveOn stands a listener server up on loopback and hands back its address.
@@ -198,9 +200,15 @@ func TestBothListenersAreBuiltThroughListenerServer(t *testing.T) {
 // read bound is set and the write bound is not, and neither of those is a
 // detail: one of them is the fix and the other would cut a generation off.
 func TestTheListenerBoundsAreTheOnesThisServerMeansToHave(t *testing.T) {
-	if requestReadTimeout != 30*time.Second {
-		t.Errorf("the request read bound is %s, want 30s — the figure internal/gateway already "+
-			"puts on the completions body", requestReadTimeout)
+	// One figure, not two that happen to agree: the listener's whole-request
+	// bound is the gateway's completions-body bound (iss-2609190254515481).
+	if requestReadTimeout != gateway.BodyReadTimeout {
+		t.Errorf("the request read bound is %s, want gateway.BodyReadTimeout (%s) — the figure "+
+			"internal/gateway puts on the completions body", requestReadTimeout, gateway.BodyReadTimeout)
+	}
+	if gateway.BodyReadTimeout != 30*time.Second {
+		t.Errorf("the request read bound is %s, want the 30s the docs and both comments name",
+			gateway.BodyReadTimeout)
 	}
 	srv := listenerServer(http.NotFoundHandler(), requestReadTimeout)
 	if srv.ReadTimeout != requestReadTimeout {
