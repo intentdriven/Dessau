@@ -77,6 +77,20 @@ GitHub release notes.
   shared cache, an account that owns a folder above a model's own folder can
   swap the model's folder in the seconds between Dessau's check and the
   model server's start.
+- **Only the account running Dessau can reach its model servers.**
+  `impact: fix`. Security. Each model server listened on a port on this
+  Mac that every account on it could reach, around Dessau and its checks,
+  and a model server does what the request in front of it asks. Each one
+  now listens on a private socket, in a folder only the account running
+  Dessau can open, and has no network port at all; Dessau reaches it there
+  and nothing else can. It is started through a small launcher of Dessau's
+  own, which also answers every request with the model Dessau loaded and
+  refuses `draft_model` and `adapters`, as the gateway does. Clients are
+  unaffected: they talk to Dessau's own port, as before. The control panel's
+  list of loaded models no longer carries a port for each one. A program
+  already running as the account that runs Dessau can still reach the
+  socket, as it could reach anything else that account owns
+  (iss-2610030846581757).
 
 ## [0.9.3] - 2026-09-21
 

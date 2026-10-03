@@ -348,8 +348,9 @@ wait is wrong for your Mac, and put it back to zero when it is not.
 
   `make install` does this for you. You can also do it in **System Settings →
   Network → Firewall → Options** by setting Dessau Server to "Allow incoming
-  connections". Only the server app needs this; its Python helper only ever
-  listens on loopback.
+  connections". Only the server app needs this; its Python helper listens on
+  no network port at all, only on a private socket that nothing but the
+  account running Dessau can reach.
 
 - **A model answers the first message, then fails with a template error once the
   assistant repeats its instructions.** That model's chat template refuses a
