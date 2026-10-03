@@ -470,3 +470,143 @@ func TestADecisionModelIsUpdatedOnlyToAReviewedVersion(t *testing.T) {
 		t.Errorf("a reviewed version was not taken: %s", m.Commit)
 	}
 }
+
+// A link planted in the staging folder is never followed: not by the
+// removal that clears the folder before a download, not by the swap, and not
+// by the recovery at start. Whatever it names, inside the models folder or
+// outside it, is untouched (adversarial review of step 3).
+func TestALinkPlantedInTheStagingFolderIsNeverFollowed(t *testing.T) {
+	for name, plant := range map[string]func(t *testing.T, a *App, outside string){
+		"the org inside staging links outside": func(t *testing.T, a *App, outside string) {
+			os.MkdirAll(filepath.Join(a.Paths.Models, stagingDirName), 0o755)
+			if err := os.Symlink(outside, filepath.Join(a.Paths.Models, stagingDirName, "org")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"the staging folder links outside": func(t *testing.T, a *App, outside string) {
+			if err := os.Symlink(filepath.Dir(outside), filepath.Join(a.Paths.Models, stagingDirName)); err != nil {
+				t.Fatal(err)
+			}
+			os.MkdirAll(filepath.Join(filepath.Dir(outside), "org"), 0o755)
+			os.MkdirAll(filepath.Join(filepath.Dir(outside), "org", "repo"), 0o755)
+			os.WriteFile(filepath.Join(filepath.Dir(outside), "org", "repo", "precious.txt"), []byte("keep"), 0o644)
+		},
+		"the org inside staging links to the served model's org": func(t *testing.T, a *App, outside string) {
+			os.MkdirAll(filepath.Join(a.Paths.Models, stagingDirName), 0o755)
+			if err := os.Symlink(filepath.Join(a.Paths.Models, "org"), filepath.Join(a.Paths.Models, stagingDirName, "org")); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a, h := newStagedApp(t)
+			outside := filepath.Join(t.TempDir(), "victim")
+			os.MkdirAll(filepath.Join(outside, "repo"), 0o755)
+			os.WriteFile(filepath.Join(outside, "repo", "precious.txt"), []byte("keep"), 0o644)
+			plant(t, a, outside)
+
+			h.set(func(h *versionedHub) { h.current = commitV2 })
+			if err := a.Download("org/repo"); err != nil {
+				t.Fatal(err)
+			}
+			waitSettled(t, a)
+			if b, err := os.ReadFile(filepath.Join(outside, "repo", "precious.txt")); err != nil || string(b) != "keep" {
+				t.Errorf("a file the planted link names was touched: %v", err)
+			}
+			if b, err := os.ReadFile(filepath.Join(filepath.Dir(outside), "org", "repo", "precious.txt")); err == nil && string(b) != "keep" {
+				t.Error("a file the planted staging link names was changed")
+			}
+			// Whatever happened to the update, the model is served whole.
+			got := filesIn(t, a.Paths.ModelDir("org/repo"))
+			if !sameFiles(got, v1Files()) && !sameFiles(got, v2Files()) {
+				t.Errorf("the model folder holds neither version whole: %v", got)
+			}
+			if m, _ := a.Registry.Get("org/repo"); !m.Ready() {
+				t.Error("the model is no longer ready")
+			}
+		})
+	}
+}
+
+// A retry never clears the only copy of a model: when a swap's folder is
+// missing and the copy left aside is the one remaining, it is put back.
+func TestARetryNeverClearsTheOnlyCopy(t *testing.T) {
+	a, h := newStagedApp(t)
+	aside := filepath.Join(a.Paths.Models, stagingDirName, "org", "repo"+asideSuffix)
+	os.MkdirAll(filepath.Dir(aside), 0o755)
+	if err := os.Rename(a.Paths.ModelDir("org/repo"), aside); err != nil {
+		t.Fatal(err)
+	}
+	h.set(func(h *versionedHub) { h.current = commitV2 })
+	if err := a.Download("org/repo"); err != nil {
+		t.Fatal(err)
+	}
+	waitSettled(t, a)
+	if got := filesIn(t, a.Paths.ModelDir("org/repo")); !sameFiles(got, v1Files()) {
+		t.Errorf("the copy left aside was not put back: %v", got)
+	}
+}
+
+// A first download retried at another commit keeps none of the earlier
+// attempt's files the new version does not name: a shard left over would be
+// loaded beside the new ones (iss-2610030913179523).
+func TestARetriedFirstDownloadKeepsNoStaleFiles(t *testing.T) {
+	h := newVersionedHub(t, map[string]map[string][]byte{commitV1: v1Files(), commitV2: v2Files()}, commitV2)
+	a, err := New(Options{Paths: config.NewPaths(t.TempDir()), Config: config.Default()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { a.Close() })
+	a.Hub.BaseURL = h.srv.URL
+	dir := a.Paths.ModelDir("org/repo")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "model-00002-of-00002.safetensors"), []byte("left by an attempt at v1"), 0o644)
+	if err := a.Download("org/repo"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the model to be ready", func() bool {
+		m, err := a.Registry.Get("org/repo")
+		return err == nil && m.Ready()
+	})
+	if got := filesIn(t, dir); !sameFiles(got, v2Files()) {
+		t.Errorf("the model folder holds %v, want exactly the version downloaded", got)
+	}
+}
+
+// The swapping mark is lifted in the same step as the new record is written:
+// once loads are admitted again, the record describes the new files.
+func TestTheNewRecordLandsBeforeLoadsResume(t *testing.T) {
+	a, h := newStagedApp(t)
+	h.set(func(h *versionedHub) { h.current = commitV2 })
+	stop := make(chan struct{})
+	var bad []string
+	var mu sync.Mutex
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if !a.isSwapping("org/repo") {
+				m, _ := a.Registry.Get("org/repo")
+				b, _ := os.ReadFile(filepath.Join(a.Paths.ModelDir("org/repo"), "config.json"))
+				if strings.Contains(string(b), "40961") && m.Commit != commitV2 {
+					mu.Lock()
+					bad = append(bad, m.Commit)
+					mu.Unlock()
+				}
+			}
+		}
+	}()
+	if err := a.Download("org/repo"); err != nil {
+		t.Fatal(err)
+	}
+	waitSettled(t, a)
+	close(stop)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bad) > 0 {
+		t.Errorf("loads were admitted while the new files carried the old record (%d observations)", len(bad))
+	}
+}

@@ -320,7 +320,7 @@ func New(opts Options) (*App, error) {
 		updateTimeout:   updateCheckRequestTimeout,
 		swapping:        map[string]bool{},
 		drainWait:       drainWait,
-		freeSpace:       freeBytes,
+		freeSpace:       capability.FreeDisk,
 	}
 	a.jobsCtx, a.stopJobs = context.WithCancel(context.Background())
 
@@ -1615,12 +1615,14 @@ func (a *App) startDownload(repoID, commit string) error {
 
 		var snap hub.Snapshot
 		var err error
+		var st stagedVersion
 		if dl.staged.Load() {
 			// The registry's progress is the served version's; this one's
 			// is the download's own.
-			snap, err = a.stagedDownload(ctx, repoID, commit, prior, func(p hub.Progress) {
+			st, err = a.stagedDownload(ctx, repoID, commit, prior, func(p hub.Progress) {
 				dl.progress.Store(int64(p.Percent() * 100))
 			})
+			snap = st.snap
 		} else {
 			snap, err = a.Hub.Download(ctx, hub.DownloadRequest{
 				RepoID:      repoID,
@@ -1671,14 +1673,33 @@ func (a *App) startDownload(repoID, commit string) error {
 			// carries its context length from the moment it is ready, not only
 			// after the next startup rescan. Both touch the disk, so both are
 			// done here, before the lock.
-			bytes := a.measureDir(dest)
-			facts := registry.ReadModelFacts(dest)
-			// And what the Hub says this model is. It is the one reading here
-			// that is not on the disk — nothing in a model directory says
-			// whether it transcribes speech or holds a conversation — so it is
-			// read from the Hub, once, at the only moment we are certain to be
-			// talking to it about this repo.
-			pipelineTag, tags, answered := a.repoCategory(ctx, repoID)
+			//
+			// A staged version was read before it was swapped in, so its
+			// record is written the moment it is in place: the swapping mark
+			// is lifted in the same step as the record, and a load never
+			// starts the new files under the old version's record.
+			var bytes int64
+			var facts registry.ModelFacts
+			var pipelineTag string
+			var tags []string
+			var answered bool
+			if dl.staged.Load() {
+				bytes, facts = st.bytes, st.facts
+				pipelineTag, tags, answered = st.pipelineTag, st.tags, st.answered
+			} else {
+				// A version fetched into the model's own folder over an
+				// earlier attempt's files keeps none of that attempt's
+				// files the listing does not name (iss-2610030913179523).
+				a.pruneUnlisted(repoID, snap.Paths)
+				bytes = a.measureDir(dest)
+				facts = registry.ReadModelFacts(dest)
+				// And what the Hub says this model is. It is the one reading
+				// here that is not on the disk — nothing in a model directory
+				// says whether it transcribes speech or holds a conversation —
+				// so it is read from the Hub, once, at the only moment we are
+				// certain to be talking to it about this repo.
+				pipelineTag, tags, answered = a.repoCategory(ctx, repoID)
+			}
 			// HubSilent is kept by the registry only when the answer had no
 			// words: a repo the Hub is silent about is not asked again at the
 			// next start, and one the Hub was not heard for is.
@@ -1703,7 +1724,12 @@ func (a *App) startDownload(repoID, commit string) error {
 					Progress: 100,
 					AddedAt:  addedAt,
 				})
+				// Inside finishDownload's hold of dlMu, where the mark lives.
+				delete(a.swapping, dlKey(repoID))
 			})
+			if dl.staged.Load() {
+				a.removeAside(repoID)
+			}
 			if perr != nil {
 				// The files are on disk; only the index write failed. Surface it —
 				// a silently unrecorded model would look missing until a rescan.
