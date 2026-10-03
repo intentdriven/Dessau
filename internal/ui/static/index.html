@@ -691,6 +691,22 @@
       <div id="pinList"></div>
       <p id="pinBudget" class="hint"></p>
     </fieldset>
+
+    <fieldset class="group">
+      <legend>Unloading from a program</legend>
+      <label class="switch">
+        <input id="setAPIUnload" type="checkbox">
+        <span>Let a program unload a model it has finished with</span>
+      </label>
+      <p class="hint">On unless you turn it off. While it is on, a program on this Mac, a
+        program that sends the API key, or a paired client may ask the model API to unload
+        a model, with <code>POST /v1/dessau/unload</code> &mdash; and only a model that is
+        not pinned, not answering or loading a request, and not inside its eviction grace.
+        Turning it off refuses every such request; the <strong>Unload</strong> button on
+        My Models is not affected. The
+        <a href="https://github.com/intentdriven/Dessau/blob/main/docs/unload-reference.md">unloading
+        page</a> says who can use each.</p>
+    </fieldset>
     <button type="submit">Save settings</button>
     <p id="settingsMsg" class="msg"></p>
   </form>

@@ -4,6 +4,9 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // contextWithTimeout is a small helper so handlers can spawn background work
@@ -40,4 +43,29 @@ func withAdmittedKeyed(r *http.Request, keyed bool) *http.Request {
 func (g *Gateway) admittedKeyed(r *http.Request) bool {
 	keyed, _ := r.Context().Value(admittedKeyedKey{}).(bool)
 	return keyed
+}
+
+// callerKey is the context key under which the admission records which kind
+// of caller it admitted, for the one route that says who asked.
+type callerKey struct{}
+
+// withCaller returns r carrying the kind of caller its admission established:
+// withAuth sets it for a verified API key, pairedOnly for a paired client.
+func withCaller(r *http.Request, c runtime.Caller) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), callerKey{}, c))
+}
+
+// callerOf is the kind of caller that sent r, as its admission established
+// it. A caller neither withAuth nor pairedOnly tagged is a program on this Mac
+// only when fromThisMachine says so; anything else is of no known kind, so a
+// route that reads this without entitled in front of it cannot label a
+// network caller as this Mac. It never carries the key.
+func callerOf(r *http.Request) runtime.Caller {
+	if c, ok := r.Context().Value(callerKey{}).(runtime.Caller); ok {
+		return c
+	}
+	if fromThisMachine(r) {
+		return runtime.Caller{Kind: stats.CallerThisMac}
+	}
+	return runtime.Caller{}
 }

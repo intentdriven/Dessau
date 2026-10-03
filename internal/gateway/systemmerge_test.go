@@ -863,5 +863,5 @@ func TestMergeSystemMessagesLeavesAConversationThatNeedsNoRewrite(t *testing.T) 
 	}
 }
 
-func (p *urlPool) Footprint(string) int64 { return 0 }
-func (p *urlPool) Release(string) error   { return nil }
+func (p *urlPool) Footprint(string) int64               { return 0 }
+func (p *urlPool) Release(string, runtime.Caller) error { return nil }

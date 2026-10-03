@@ -1063,7 +1063,7 @@ func (o poolObserver) EntryStopped(repoID string, reason runtime.StopReason) {
 	}
 	o.rec.Removed(repoID, mapped)
 	// The other half of the pair above: a model that is no longer in memory,
-	// and which of the seven ways it went. The reason is on the sparse line
+	// and which of the eight ways it went. The reason is on the sparse line
 	// rather than below it because "unloaded" and "evicted" are different
 	// events to the person reading, not two levels of detail about one — an
 	// operator whose model keeps going away needs to know at a glance whether
@@ -1083,6 +1083,22 @@ var stopReasons = map[runtime.StopReason]string{
 	runtime.StopLoadFailed: stats.ReasonLoadFailed,
 	runtime.StopCrashed:    stats.ReasonCrashed,
 	runtime.StopShutdown:   stats.ReasonShutdown,
+	runtime.StopReleased:   stats.ReasonReleased,
+}
+
+// EntryReleased is EntryStopped for a model a program released through the
+// model API. The record says which kind of caller asked and nothing more, as
+// no record says who; the log line, which is the operator's, also names a
+// paired client, by the name it was paired under and the fingerprint that
+// identifies it, as the pairing lines do. Never the key.
+func (o poolObserver) EntryReleased(repoID string, by runtime.Caller) {
+	o.rec.Released(repoID, by.Kind)
+	if by.Kind == stats.CallerPairedClient {
+		o.log.Info("model unloaded", "model", repoID, "reason", stats.ReasonReleased, "by", by.Kind,
+			"client", by.Client, "fingerprint", by.Fingerprint)
+		return
+	}
+	o.log.Info("model unloaded", "model", repoID, "reason", stats.ReasonReleased, "by", by.Kind)
 }
 
 // PinnedFitWarning is what the control panel says when the pinned models can no
@@ -1712,6 +1728,7 @@ func (a *App) startDownload(repoID, commit string) error {
 					ContextLength:    facts.ContextLength,
 					KVChargePerToken: facts.KVChargePerToken,
 					ChatTemplate:     facts.ChatTemplate,
+					QuantizationBits: facts.QuantizationBits,
 					PipelineTag:      pipelineTag,
 					Tags:             tags,
 					HubSilent:        answered,

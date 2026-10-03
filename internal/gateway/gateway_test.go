@@ -112,10 +112,10 @@ func (p *stubPool) Acquire(ctx context.Context, repoID string) (*runtime.Upstrea
 	}, release, nil
 }
 
-func (p *stubPool) Resident() []runtime.Resident { return p.resident }
-func (p *stubPool) Pinned() []string             { return p.pinned }
-func (p *stubPool) Unload(string) error          { return nil }
-func (p *stubPool) Release(string) error         { return nil }
+func (p *stubPool) Resident() []runtime.Resident         { return p.resident }
+func (p *stubPool) Pinned() []string                     { return p.pinned }
+func (p *stubPool) Unload(string) error                  { return nil }
+func (p *stubPool) Release(string, runtime.Caller) error { return nil }
 
 func (p *stubPool) releases() int {
 	p.mu.Lock()
@@ -1135,8 +1135,11 @@ func TestModelsListReferenceDocumentsEveryFieldServed(t *testing.T) {
 		// are in the set the page is held to.
 		// Carrying a category and a current measurement, so the fields a
 		// model with each is served are in the set the page is held to.
+		// And labelled as a quantised build of another model, with a
+		// declared precision and a size, so the build fields are in it too.
 		{RepoID: "org/m", State: registry.StateReady, ContextLength: 131072,
-			PipelineTag: "text-generation", Tags: []string{"mlx", "conversational"},
+			PipelineTag: "text-generation", Tags: []string{"mlx", "conversational", "base_model:quantized:org/base"},
+			QuantizationBits: 4, Bytes: 1 << 30,
 			Measured: &registry.Measurement{Window: 91000, Bound: registry.BoundModel, Runtime: "0.31.3"}},
 	}}
 	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})

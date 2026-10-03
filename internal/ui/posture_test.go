@@ -298,8 +298,8 @@ func TestTheStatisticsLineSaysWhatIsRecordedAndForHowLong(t *testing.T) {
 		"being recorded on this Mac",
 		"when a model was loaded or evicted, and the settings in force",
 		"no prompt, no answer, no key and no client address",
-		"3 months", "10.0 MB",
-		"records from 2026-09-06 onwards, 1.5 MB in 2 files",
+		"3 months", "10.0 MiB",
+		"records from 2026-09-06 onwards, 1.5 MiB in 2 files",
 		"every account on this Mac")
 	empty := posture(t, edited(t, `{
 		"config": {"statistics":true},
