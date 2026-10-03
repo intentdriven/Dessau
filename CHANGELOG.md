@@ -81,6 +81,13 @@ GitHub release notes.
   out, or a version Dessau does not run — until an update succeeds. The
   registry records the class (`update_failed`), never the error's text
   ([how-to](docs/model-updates.md); iss-2610031320392078).
+- **An update lands on a model in steady use.** `impact: fix`. The swap
+  waited up to two minutes for the model to fall idle, and under overlapping
+  requests it never did, so the update was abandoned and its download thrown
+  away. While the swap waits, a new request for that model is now refused
+  with `503`, saying it is being updated, so the requests in flight finish and
+  the swap goes ahead ([model updates](docs/model-updates.md);
+  iss-2610031317470004).
 - **An update no longer fails while the runtime is still being installed.**
   `impact: fix`. A newer version was held to the whole check a model has
   before it starts, which needs the runtime, so on a fresh install every
