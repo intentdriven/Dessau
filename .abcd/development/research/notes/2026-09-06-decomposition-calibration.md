@@ -782,3 +782,13 @@ Verdict proposed: SPLIT. Verdict adopted: SPLIT, confirmed by the maintainer
 before filing; the reversal of the outbound-connections clause was flagged and
 left for the maintainer to decide in the ADR, not assumed. Grade: routing
 survived.
+
+Addendum (same day, after the two adversarial reviews and the interview): the
+reviews proposed routing "acting on an update" to its own intent; the
+maintainer instead chose a mark plus a one-click update, so the staged,
+hash-checked, atomic update joined itd-2610030857275099 (planned,
+spc-2610030929021692). The proposed ADR's reversal flag dissolved: the
+maintainer chose an opt-in check, which the 2026-09-08 precedent puts outside
+adr-2609201008476813, and adr-2610030857208746 was accepted without
+superseding it. Revised grade: routing survived in part; one part the reviewers
+would have split was kept in by the maintainer.
