@@ -73,7 +73,10 @@ meanwhile.
 version beside the one being served, which goes on answering requests the whole time. Dessau fetches
 every file at one exact version, checks each against the hash HuggingFace
 lists for it, and checks the new version as it checks any model before it
-starts one. Only then does it swap the two: it waits for requests already
+starts one — or, while the runtime Dessau starts models with is not
+installed yet, checks the new version's own files, refusing one that ships
+its own code, and leaves the rest to the check every model has before it
+starts. Only then does it swap the two: it waits for requests already
 being answered by the model to finish, moves the new version in, and removes
 the old one. If anything fails along the way — a file that is not what
 HuggingFace lists, a download that stops, a version that ships its own code,
