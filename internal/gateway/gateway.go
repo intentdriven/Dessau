@@ -1776,7 +1776,11 @@ func emptyAnswerBudget(payload map[string]json.RawMessage) string {
 }
 
 // badStop is the refusal for a stop the model server would take and then fail
-// on: anything but a string, an array of strings, or null. The pinned server
+// on: anything but a string, an array of non-empty strings, or null. An
+// element is held to being a JSON string itself, because a null decodes into
+// a Go string without complaint and reaches the server as None, which its
+// tokenizer is then asked to encode; an empty one becomes an empty stop
+// sequence, which nothing in the server guards either. The pinned server
 // (0.31.3 and 0.32.0 alike) does not check it, and on the batched path a
 // number, a list of numbers or a nested list raises inside the generation
 // loop and kills the thread for every client until the model restarts
@@ -1791,14 +1795,15 @@ func badStop(payload map[string]json.RawMessage) string {
 		return ""
 	}
 	var one string
-	if json.Unmarshal(t, &one) == nil {
+	if len(t) > 0 && t[0] == '"' && json.Unmarshal(t, &one) == nil && one != "" {
 		return ""
 	}
 	var many []json.RawMessage
 	if json.Unmarshal(t, &many) == nil {
 		ok := true
 		for _, m := range many {
-			if json.Unmarshal(m, &one) != nil {
+			m = bytes.TrimSpace(m)
+			if len(m) == 0 || m[0] != '"' || json.Unmarshal(m, &one) != nil || one == "" {
 				ok = false
 				break
 			}

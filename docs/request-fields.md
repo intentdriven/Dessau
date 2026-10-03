@@ -62,9 +62,10 @@ written as a string is passed on, and the model server refuses it itself.
 
 ## A stop that is not text
 
-A request whose `stop` is anything but a string, an array of strings or `null`
-— a number, an array holding a number, a nested array, an object — is refused
-with **400** and the message `"stop" must be a string or an array of strings`.
+A request whose `stop` is anything but a string, an array of non-empty strings
+or `null` — a number, an array holding a number, `null` or an empty string, a
+nested array, an object — is refused with **400** and the message
+`"stop" must be a string or an array of strings`.
 The model server takes such a value and then fails on it, in the same way as an
 empty answer budget.
 
