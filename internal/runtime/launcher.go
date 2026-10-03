@@ -73,11 +73,13 @@ const debugLogLevel = "DEBUG"
 // launch, which no test with a stand-in interpreter can see. A version bump
 // therefore has to come past
 // TestSamplingFlagsWereVerifiedAgainstThePinnedServer.
-const samplingFlagsVerifiedAgainst = "0.31.3"
+const samplingFlagsVerifiedAgainst = "0.32.0"
 
 // samplingFlags is the model server's own spelling of each sampling
 // parameter's launch flag, read from its argument parser (see
-// .abcd/development/research/notes/2026-09-06-mlx-lm-sampling-launch-flags.md).
+// .abcd/development/research/notes/2026-09-06-mlx-lm-sampling-launch-flags.md,
+// re-verified for 0.32.0 in
+// .abcd/development/research/notes/2026-10-03-mlx-lm-0.32.0-reverification.md).
 var samplingFlags = map[string]string{
 	"temperature": "--temp",
 	"top_p":       "--top-p",
@@ -432,6 +434,20 @@ func launchArgs(spec Spec) []string {
 	return args
 }
 
+// childEnv is a model server's environment: this process's, without any
+// OpenTelemetry configuration (childEnviron), and with the Hub kept offline.
+func (l *ExecLauncher) childEnv() []string {
+	return append(childEnviron(),
+		// Without an existing HF_HUB_CACHE directory, mlx_lm.server raises
+		// CacheNotFound while serving /v1/models and returns an empty 200.
+		"HF_HOME="+filepath.Dir(l.Paths.HFCache),
+		"HF_HUB_CACHE="+l.Paths.HFCache,
+		// Inference must never reach the network: everything it needs is already
+		// in ModelPath, and a stray download would stall a request for minutes.
+		"HF_HUB_OFFLINE=1",
+	)
+}
+
 // Launch spawns mlx_lm.server for one model.
 func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 	if err := l.Precheck(spec); err != nil {
@@ -445,15 +461,7 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 	// The socket's own directory, which only this account can open: nothing
 	// the server writes relative to where it runs lands anywhere else.
 	cmd.Dir = filepath.Dir(spec.Socket)
-	cmd.Env = append(os.Environ(),
-		// Without an existing HF_HUB_CACHE directory, mlx_lm.server raises
-		// CacheNotFound while serving /v1/models and returns an empty 200.
-		"HF_HOME="+filepath.Dir(l.Paths.HFCache),
-		"HF_HUB_CACHE="+l.Paths.HFCache,
-		// Inference must never reach the network: everything it needs is already
-		// in ModelPath, and a stray download would stall a request for minutes.
-		"HF_HUB_OFFLINE=1",
-	)
+	cmd.Env = l.childEnv()
 	// Put the child in its own process group so we can signal the whole group;
 	// mlx_lm can spawn helpers that would otherwise outlive it.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
