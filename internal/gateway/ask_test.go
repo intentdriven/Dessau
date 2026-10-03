@@ -298,3 +298,32 @@ type refusingPool struct {
 func (p *refusingPool) Acquire(ctx context.Context, repoID string) (*runtime.Upstream, func(), error) {
 	return nil, nil, p.err
 }
+
+// A body that is not a JSON object — null, an array, a bare value — is
+// refused with an AskError before anything is done with it, and never
+// panics the request goroutine (iss-2610030822065191).
+func TestAskRefusesABodyThatIsNotAnObject(t *testing.T) {
+	g, _, _ := askGateway(t, "ok")
+	for _, body := range []string{`null`, ` null `, `[]`, `[{"model":"x"}]`, `1`, `"text"`, `true`} {
+		t.Run(body, func(t *testing.T) {
+			var err error
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Fatalf("Ask panicked on %s: %v", body, r)
+					}
+				}()
+				err = g.Ask(context.Background(), AskRequest{
+					Model: testModelID, Body: []byte(body), Source: stats.SourceBridge,
+				})
+			}()
+			var askErr *AskError
+			if !errors.As(err, &askErr) {
+				t.Fatalf("Ask(%s) = %v, want an *AskError", body, err)
+			}
+			if askErr.Public() != genericRefusal {
+				t.Errorf("the travelling text is %q, want the generic refusal", askErr.Public())
+			}
+		})
+	}
+}

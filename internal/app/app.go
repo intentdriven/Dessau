@@ -138,6 +138,18 @@ type App struct {
 	stopJobs context.CancelFunc
 	jobsWG   sync.WaitGroup
 
+	// The update check (updatecheck.go). updateAttempted is when this
+	// process last asked about each model, guarded by updateMu;
+	// updateStarted keeps the schedule to one goroutine; reviewed is
+	// Options.Reviewed; updatePause and updateTimeout are the pacing, fixed
+	// at New and shortened only by a test.
+	updateMu        sync.Mutex
+	updateAttempted map[string]time.Time
+	updateStarted   sync.Once
+	reviewed        ReviewedBuilds
+	updatePause     time.Duration
+	updateTimeout   time.Duration
+
 	// bridge is the Discord bridge, wired after the gateway exists and nil in
 	// every build and every test that carries none. See bridge.go.
 	bridge bridges
@@ -203,6 +215,10 @@ type Options struct {
 	// that drives the whole path — the probe's request through the gateway to
 	// a real pool — cannot wait a minute a tick.
 	Idle IdleOptions
+	// Reviewed says which models are decision models and which of their
+	// upstream commits a Dessau release has reviewed, for the update check.
+	// Nil means no model is a decision model.
+	Reviewed ReviewedBuilds
 }
 
 // IdleOptions is the cadence the idle loop and the context probe run at; see
@@ -275,6 +291,11 @@ func New(opts Options) (*App, error) {
 		deleting:    map[string]bool{},
 		measureDir:  dirSize,
 		idleQuiet:   opts.Idle.Quiet,
+
+		reviewed:        opts.Reviewed,
+		updateAttempted: map[string]time.Time{},
+		updatePause:     updateCheckPause,
+		updateTimeout:   updateCheckRequestTimeout,
 	}
 	a.jobsCtx, a.stopJobs = context.WithCancel(context.Background())
 
@@ -1630,14 +1651,18 @@ func (a *App) Download(repoID string) error {
 					ContextLength:    facts.ContextLength,
 					KVChargePerToken: facts.KVChargePerToken,
 					ChatTemplate:     facts.ChatTemplate,
+					QuantizationBits: facts.QuantizationBits,
 					PipelineTag:      pipelineTag,
 					Tags:             tags,
 					HubSilent:        answered,
 					Commit:           snap.Commit,
 					FileHashes:       snap.Files,
-					State:            registry.StateReady,
-					Progress:         100,
-					AddedAt:          addedAt,
+					// Resolving the commit this download fetched asked the
+					// question a check asks, and it is the newest there is.
+					Update:   &registry.UpdateCheck{Status: registry.UpdateCurrent, CheckedAt: time.Now()},
+					State:    registry.StateReady,
+					Progress: 100,
+					AddedAt:  addedAt,
 				})
 			})
 			if perr != nil {
@@ -1774,8 +1799,10 @@ func (a *App) restoreReady(repoID, dest string, prior registry.Model) bool {
 		Tags:             prior.Tags,
 		HubSilent:        prior.HubSilent,
 		ChatTemplate:     prior.ChatTemplate,
+		QuantizationBits: prior.QuantizationBits,
 		Commit:           prior.Commit,
 		FileHashes:       prior.FileHashes,
+		Update:           prior.Update,
 		State:            registry.StateReady,
 		Progress:         100,
 		AddedAt:          prior.AddedAt,

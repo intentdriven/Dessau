@@ -1,0 +1,241 @@
+package hub
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+)
+
+// checkHub is a fake Hub for the update check: one repository, whose commit
+// endpoint answers anonymously or only with a token, and which records the
+// Authorization header of every request.
+type checkHub struct {
+	commit  string
+	private bool // refuse an anonymous request with 401
+	files   []File
+	small   map[string]string
+	ratelim string // the RateLimit header to send, if any
+
+	mu    sync.Mutex
+	auths []string
+	paths []string
+}
+
+func (h *checkHub) server(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.mu.Lock()
+		h.auths = append(h.auths, r.Header.Get("Authorization"))
+		h.paths = append(h.paths, r.URL.Path)
+		h.mu.Unlock()
+		if h.ratelim != "" {
+			w.Header().Set("RateLimit", h.ratelim)
+		}
+		if h.private && r.Header.Get("Authorization") == "" {
+			http.Error(w, `{"error":"Repository not found"}`, http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.URL.Path == "/api/models/org/repo":
+			fmt.Fprintf(w, `{"id":"org/repo","sha":%q}`, h.commit)
+		case r.URL.Path == "/api/models/org/repo/tree/"+h.commit:
+			json.NewEncoder(w).Encode(h.files)
+		case strings.HasPrefix(r.URL.Path, "/org/repo/resolve/"+h.commit+"/"):
+			body, ok := h.small[strings.TrimPrefix(r.URL.Path, "/org/repo/resolve/"+h.commit+"/")]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprint(w, body)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func (h *checkHub) authorizations() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.auths...)
+}
+
+// A check sends no token to a public repository, whatever Settings holds: the
+// token ties the list of models on this Mac to the operator's account.
+func TestACheckOfAPublicRepositorySendsNoToken(t *testing.T) {
+	h := &checkHub{commit: testCommit, files: []File{{Path: "config.json", OID: testCommit}}}
+	srv := h.server(t)
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	c.SetToken("hf_secret")
+
+	up, err := c.Latest(context.Background(), "org/repo")
+	if err != nil {
+		t.Fatalf("Latest: %v", err)
+	}
+	if up.Commit != testCommit {
+		t.Errorf("Commit = %q", up.Commit)
+	}
+	if _, err := c.FilesAt(context.Background(), up); err != nil {
+		t.Fatalf("FilesAt: %v", err)
+	}
+	for i, a := range h.authorizations() {
+		if a != "" {
+			t.Errorf("request %d carried %q to a public repository", i, a)
+		}
+	}
+}
+
+// A private or gated repository refuses the anonymous request; only then is
+// the request made again with the token, and what follows for that
+// repository carries it too.
+func TestACheckSendsTheTokenOnlyAfterARefusal(t *testing.T) {
+	h := &checkHub{commit: testCommit, private: true, files: []File{{Path: "config.json"}}}
+	srv := h.server(t)
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	c.SetToken("hf_secret")
+
+	up, err := c.Latest(context.Background(), "org/repo")
+	if err != nil {
+		t.Fatalf("Latest: %v", err)
+	}
+	if _, err := c.FilesAt(context.Background(), up); err != nil {
+		t.Fatalf("FilesAt: %v", err)
+	}
+	got := h.authorizations()
+	if len(got) != 3 || got[0] != "" || got[1] != "Bearer hf_secret" || got[2] != "Bearer hf_secret" {
+		t.Errorf("authorizations = %q, want an anonymous request, then the token for it and for the listing", got)
+	}
+}
+
+// With no token in Settings a refused repository is one the check cannot
+// read, and it says so without a second request.
+func TestACheckWithNoTokenStopsAtTheRefusal(t *testing.T) {
+	h := &checkHub{commit: testCommit, private: true}
+	srv := h.server(t)
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+
+	_, err := c.Latest(context.Background(), "org/repo")
+	if !IsAuthRequired(err) {
+		t.Fatalf("err = %v, want the refusal", err)
+	}
+	if n := len(h.authorizations()); n != 1 {
+		t.Errorf("%d requests, want 1", n)
+	}
+}
+
+// A missing repository answers an anonymous request with 401, the same as a
+// gated one, so the refusal must not send an operator to add a token that
+// cannot help: anonymously it says missing, private or gated; with a token
+// sent it says access was refused (iss-2610030913177383).
+func TestARefusalSaysWhatItMeans(t *testing.T) {
+	anon := (&APIError{StatusCode: http.StatusUnauthorized, URL: "u"}).Error()
+	for _, want := range []string{"missing", "private", "gated"} {
+		if !strings.Contains(anon, want) {
+			t.Errorf("an anonymous 401 says %q, which does not say %q", anon, want)
+		}
+	}
+	if strings.Contains(anon, "may be gated; add an access token") {
+		t.Errorf("an anonymous 401 still says only that the repo may be gated: %q", anon)
+	}
+	authed := (&APIError{StatusCode: http.StatusUnauthorized, URL: "u", TokenSent: true}).Error()
+	if !strings.Contains(authed, "refused") || !strings.Contains(authed, "token") {
+		t.Errorf("a 401 to a request with a token says %q, want that the token was refused", authed)
+	}
+
+	// And the flag is set from the request that was actually sent.
+	h := &checkHub{commit: testCommit, private: true}
+	srv := h.server(t)
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	_, err := c.Latest(context.Background(), "org/repo")
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.TokenSent {
+		t.Errorf("an anonymous refusal reads as one with a token: %#v", err)
+	}
+	c.SetToken("hf_wrong")
+	h.private = true
+	h2 := &checkHub{commit: testCommit, private: true}
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h2.mu.Lock()
+		h2.auths = append(h2.auths, r.Header.Get("Authorization"))
+		h2.mu.Unlock()
+		http.Error(w, "no", http.StatusUnauthorized)
+	}))
+	defer srv2.Close()
+	c2 := &Client{BaseURL: srv2.URL, HTTP: srv2.Client()}
+	c2.SetToken("hf_wrong")
+	_, err = c2.Latest(context.Background(), "org/repo")
+	if !errors.As(err, &ae) || !ae.TokenSent {
+		t.Errorf("a refusal of the token reads as an anonymous one: %#v", err)
+	}
+}
+
+// The small file a check reads — the new config.json — is fetched at the
+// commit, from the Hub's own origin, under the same token choice, and
+// bounded.
+func TestACheckReadsASmallFileAtTheCommit(t *testing.T) {
+	h := &checkHub{commit: testCommit, small: map[string]string{"config.json": `{"model_file":"x.py"}`}}
+	srv := h.server(t)
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	up, err := c.Latest(context.Background(), "org/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := c.SmallFileAt(context.Background(), up, "config.json", 1<<20)
+	if err != nil {
+		t.Fatalf("SmallFileAt: %v", err)
+	}
+	if string(b) != `{"model_file":"x.py"}` {
+		t.Errorf("body = %q", b)
+	}
+	if _, err := c.SmallFileAt(context.Background(), up, "config.json", 4); !errors.Is(err, ErrOversizedBody) {
+		t.Errorf("a body past the bound: err = %v, want ErrOversizedBody", err)
+	}
+}
+
+// The Hub's rate-limit header is read off every answer, so a round of checks
+// can stop before it spends what is left.
+func TestTheRateLimitHeaderIsRead(t *testing.T) {
+	h := &checkHub{commit: testCommit, ratelim: `"api";r=7;t=120`}
+	srv := h.server(t)
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	if _, ok := c.RateRemaining(); ok {
+		t.Error("a budget is known before any answer")
+	}
+	if _, err := c.Latest(context.Background(), "org/repo"); err != nil {
+		t.Fatal(err)
+	}
+	if n, ok := c.RateRemaining(); !ok || n != 7 {
+		t.Errorf("RateRemaining = %d, %v; want 7", n, ok)
+	}
+	for header, want := range map[string]int{
+		`"api";r=0;t=30`:                    0,
+		`limit=500, remaining=42, reset=10`: 42,
+	} {
+		if got, ok := parseRateRemaining(http.Header{"Ratelimit": {header}}); !ok || got != want {
+			t.Errorf("parseRateRemaining(%q) = %d, %v; want %d", header, got, ok, want)
+		}
+	}
+	if got, ok := parseRateRemaining(http.Header{"X-Ratelimit-Remaining": {"5"}}); !ok || got != 5 {
+		t.Errorf("X-RateLimit-Remaining read as %d, %v", got, ok)
+	}
+	if _, ok := parseRateRemaining(http.Header{"Ratelimit": {"nonsense"}}); ok {
+		t.Error("a header with no remaining figure was read as one")
+	}
+}
+
+// An Upstream formatted any way never spells out the token it carries.
+func TestAnUpstreamNeverFormatsItsToken(t *testing.T) {
+	up := Upstream{RepoID: "org/repo", Commit: testCommit, Authed: true, token: "hf_secret"}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s"} {
+		if got := fmt.Sprintf(verb, up); strings.Contains(got, "hf_secret") {
+			t.Errorf("%s formats the token: %s", verb, got)
+		}
+	}
+}

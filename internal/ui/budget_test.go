@@ -83,7 +83,7 @@ func TestSettingsFormOmitsTheShareOfAMachineItCannotMeasure(t *testing.T) {
 	if strings.Contains(line, "%") {
 		t.Errorf("budgetHint = %q, want no percentage when this Mac cannot be measured", line)
 	}
-	if !strings.Contains(line, "8.0 GB") {
+	if !strings.Contains(line, "8.0 GiB") {
 		t.Errorf("budgetHint = %q, want the budget itself", line)
 	}
 }

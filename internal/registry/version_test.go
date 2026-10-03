@@ -1,11 +1,13 @@
 package registry
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -231,5 +233,87 @@ func TestAVersionRecordsOnlyPlainNames(t *testing.T) {
 	m, _ := r.Get("org/m")
 	if len(m.FileHashes) != 2 || m.FileHashes["sub/dir/tokenizer_config.json"] != aBlobID {
 		t.Errorf("FileHashes = %v, want the two plain names only", m.FileHashes)
+	}
+}
+
+// What a check found is recorded on the model and read back, and only
+// against the version it compared: a check that finished after the model was
+// downloaded again describes files that are no longer there.
+func TestACheckIsRecordedAgainstTheVersionItCompared(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	r, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Put(Model{RepoID: "org/m", State: StateReady, Commit: aCommit}); err != nil {
+		t.Fatal(err)
+	}
+	const newer = "fedcba9876543210fedcba9876543210fedcba98"
+	at := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	if err := r.SetUpdate("org/m", aCommit, UpdateCheck{Status: UpdateAvailable, Commit: newer, CheckedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	r2, _ := Open(path)
+	m, _ := r2.Get("org/m")
+	if m.Update == nil || m.Update.Status != UpdateAvailable || m.Update.Commit != newer || !m.Update.CheckedAt.Equal(at) {
+		t.Fatalf("Update = %+v", m.Update)
+	}
+	if err := r.SetUpdate("org/m", newer, UpdateCheck{Status: UpdateCurrent, CheckedAt: at}); !errors.Is(err, ErrVersionMoved) {
+		t.Errorf("a check of another version was recorded: err = %v", err)
+	}
+	if err := r.SetUpdate("org/absent", aCommit, UpdateCheck{Status: UpdateCurrent, CheckedAt: at}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
+// A planted check record is held to what a check writes: a status this build
+// does not know, or a newer version that is not a commit, is dropped; and a
+// check time in the future — which would put the next check off for as long
+// as it says — is not believed.
+func TestAPlantedCheckIsHeldToWhatACheckWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	planted := `[
+	  {"repo_id":"org/a","state":"ready","commit":"` + aCommit + `","update":{"status":"<b>new</b>","commit":"` + aCommit + `","checked_at":"2026-10-03T12:00:00Z"}},
+	  {"repo_id":"org/b","state":"ready","commit":"` + aCommit + `","update":{"status":"available","commit":"main","checked_at":"2026-10-03T12:00:00Z"}},
+	  {"repo_id":"org/c","state":"ready","commit":"` + aCommit + `","update":{"status":"current","checked_at":"2999-01-01T00:00:00Z"}},
+	  {"repo_id":"org/d","state":"ready","update":{"status":"current","checked_at":"2026-10-03T12:00:00Z"}}
+	]`
+	if err := os.WriteFile(path, []byte(planted), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"org/a", "org/b", "org/d"} {
+		if m, _ := r.Get(id); m.Update != nil {
+			t.Errorf("%s: a planted check was kept: %+v", id, m.Update)
+		}
+	}
+	if m, _ := r.Get("org/c"); m.Update != nil && m.Update.CheckedAt.After(time.Now().Add(48*time.Hour)) {
+		t.Errorf("a check time in the future was believed: %v", m.Update.CheckedAt)
+	}
+}
+
+// The rule the model server loads code by, applied to the bytes of a
+// config.json a check fetched rather than to a file on disk.
+func TestAConfigThatNamesModelCodeIsRecognisedFromItsBytes(t *testing.T) {
+	for body, want := range map[string]bool{
+		`{"model_type":"qwen3"}`:                  false,
+		`{"model_file":null}`:                     false,
+		`{"model_file":"modeling.py"}`:            true,
+		`{"model_file":""}`:                       true,
+		`{"Model_File":"x.py"}`:                   false,
+		`{"nested":{"model_file":"x.py"}}`:        false,
+		`{"model_file":"x.py","model_file":null}`: false,
+		`{"model_file":null,"model_file":"x.py"}`: true,
+	} {
+		got, err := ConfigNamesModelCode([]byte(body))
+		if err != nil || got != want {
+			t.Errorf("ConfigNamesModelCode(%s) = %v, %v; want %v", body, got, err, want)
+		}
+	}
+	if _, err := ConfigNamesModelCode([]byte(`[1,2]`)); err == nil {
+		t.Error("a config that is not an object was read as one")
 	}
 }

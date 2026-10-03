@@ -498,6 +498,10 @@ type Defaults struct {
 	// beside it — and both were the constant copied into the markup
 	// (iss-2609190146152463).
 	IdleThresholdSec int `json:"idle_threshold_sec"`
+
+	// UpdateCheckIntervalHours is how often the update check runs for a
+	// panel whose interval field is blank: daily.
+	UpdateCheckIntervalHours int `json:"update_check_interval_hours"`
 }
 
 // snapshot builds the state the UI renders.
@@ -534,6 +538,8 @@ func (c *Control) snapshot() State {
 			EvictionGraceSec:   config.DefaultEvictionGraceSec,
 			EvictionMaxWaitSec: config.DefaultEvictionMaxWaitSec,
 			IdleThresholdSec:   config.DefaultIdleThresholdSec,
+
+			UpdateCheckIntervalHours: config.DefaultUpdateCheckIntervalHours,
 		},
 		Pinned:       c.App.Pool.Pinned(),
 		DebugArmed:   c.App.Pool.DebugArmed(),
