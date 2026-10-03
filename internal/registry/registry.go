@@ -136,6 +136,10 @@ type Model struct {
 	// against the commit it compared (SetUpdate). It stays as it was when a
 	// check cannot reach the Hub.
 	Update *UpdateCheck `json:"update,omitempty"`
+	// UpdateFailed is why the last update of the version on disk failed, as
+	// one of the UpdateFailed* classes, or "" when none has since the
+	// download that put it there (SetUpdateFailure).
+	UpdateFailed string `json:"update_failed,omitempty"`
 	// LoadFailure says the model's server started and never became ready
 	// under the provenance it carries, and stands until that moves or a
 	// person retries the model by hand: while it does, no idle job picks the
@@ -180,8 +184,12 @@ var ErrVersionMoved = errors.New("the model's version changed while it was being
 // build does not know, or a newer version that is not a commit, drops the
 // record — the next check writes it again. A check time more than a day in
 // the future is not believed, since it would put the next check off for as
-// long as it says.
+// long as it says. An update failure that is not one of the classes is
+// dropped too: the card has words only for those.
 func sanitizeUpdate(m Model) Model {
+	if !validUpdateFailure(m.UpdateFailed) {
+		m.UpdateFailed = ""
+	}
 	u := m.Update
 	if u == nil {
 		return m

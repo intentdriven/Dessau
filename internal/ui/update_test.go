@@ -68,3 +68,39 @@ func TestTheVersionLinesAreEscaped(t *testing.T) {
 		t.Error("the update's progress bar is drawn from the snapshot's value unconverted")
 	}
 }
+
+// A failed update is said on the card, in the class's own words, beside what
+// the last check found; an update under way says only that
+// (iss-2610031320392078).
+func TestTheCardSaysWhyTheLastUpdateFailed(t *testing.T) {
+	const c = `"commit":"1111111111111111111111111111111111111111"`
+	const avail = `"update":{"status":"available","commit":"2222222222222222222222222222222222222222"}`
+	cases := []struct{ model, want, alsoWant string }{
+		{`{"state":"ready",` + c + `,"update_failed":"download"}`, `The last update failed: a file did not download or did not match`, ``},
+		{`{"state":"ready",` + c + `,"update_failed":"no_space"}`, `no room for the new version`, ``},
+		{`{"state":"ready",` + c + `,"update_failed":"refused"}`, `did not pass the checks`, ``},
+		{`{"state":"ready",` + c + `,"update_failed":"busy"}`, `still answering requests`, ``},
+		{`{"state":"ready",` + c + `,"update_failed":"not_offered"}`, `not one Dessau runs`, ``},
+		{`{"state":"ready",` + c + `,` + avail + `,"update_failed":"download"}`, `The last update failed`, `A newer version is available (222222222222).`},
+		{`{"state":"ready","update_failed":"download"}`, `The last update failed`, `Version unknown`},
+	}
+	for _, tc := range cases {
+		v := evalPanelValue(t, "({text: updateText("+tc.model+")})", "updateText")
+		text, _ := v["text"].(string)
+		if !strings.Contains(text, tc.want) || !strings.Contains(text, tc.alsoWant) {
+			t.Errorf("updateText(%s) = %q, want it to say %q and %q", tc.model, text, tc.want, tc.alsoWant)
+		}
+	}
+	under := `{"state":"ready",` + c + `,"updating":3,"update_failed":"download"}`
+	v := evalPanelValue(t, "({text: updateText("+under+")})", "updateText")
+	if text, _ := v["text"].(string); strings.Contains(text, "failed") {
+		t.Errorf("an update under way still shows the last failure: %q", text)
+	}
+	for _, planted := range []string{`"<b>x</b>"`, `"constructor"`, `"toString"`} {
+		m := `{"state":"ready",` + c + `,"update_failed":` + planted + `}`
+		v = evalPanelValue(t, "({text: updateText("+m+")})", "updateText")
+		if text, _ := v["text"].(string); text != "" {
+			t.Errorf("a class the panel does not know, %s, is shown: %q", planted, text)
+		}
+	}
+}
