@@ -199,9 +199,10 @@ was. A Mac with an impostor on the server port is not a Mac to install software
 on.
 
 That is the one ending where nothing is written. Something that holds the port
-and answers nothing at all is a different case: every account's Dessau keeps
-its own data root, so that is what another account's Dessau looks like from here, so the update goes
-ahead and the serving version is reported as unknown.
+and answers nothing at all is a different case. Every account's Dessau keeps
+its own data root, and that silence is what another account's Dessau looks
+like from here; the update goes ahead and reports the serving version as
+unknown.
 
 ### The panel, again
 
