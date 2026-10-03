@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"strconv"
 	"strings"
@@ -15,19 +17,35 @@ import (
 // bootSessionUUID returns this boot's identifier, or "" if it cannot be read.
 //
 // /proc/sys/kernel/random/boot_id is Linux's kern.bootsessionuuid: a random
-// UUID generated once per boot and never adjusted, in the same 8-4-4-4-12
-// shape (lower-case, which isBootSessionUUID accepts). Anything else reads as
-// no session, which reaps nothing.
+// UUID generated once per boot and never adjusted. But a boot is not enough on
+// Linux: every container on a host shares its boot_id, while pids — and so the
+// pgids the ledger records — are numbered per pid namespace. Two containers
+// sharing a data root would each read the other's ledger as this session's.
+// So the session is the boot and the pid namespace together, folded into the
+// UUID shape the ledger stores. Either one unreadable reads as no session,
+// which reaps nothing.
 func bootSessionUUID() string {
 	b, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if err != nil {
 		return ""
 	}
-	s := strings.TrimSpace(string(b))
-	if !isBootSessionUUID(s) {
+	boot := strings.TrimSpace(string(b))
+	if !isBootSessionUUID(boot) {
 		return ""
 	}
-	return s
+	ns, err := os.Readlink("/proc/self/ns/pid")
+	if err != nil || ns == "" {
+		return ""
+	}
+	return sessionOf(boot, ns)
+}
+
+// sessionOf folds a boot id and a pid namespace into one identifier in the
+// 8-4-4-4-12 shape isBootSessionUUID accepts.
+func sessionOf(boot, pidNamespace string) string {
+	sum := sha256.Sum256([]byte(boot + "\x00" + pidNamespace))
+	h := hex.EncodeToString(sum[:16])
+	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
 }
 
 // userHz is the unit /proc/<pid>/stat states a start time in. It is the

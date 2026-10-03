@@ -8,11 +8,37 @@ import (
 	"time"
 )
 
-// kernelBootSession is the oracle the ledger's stamp is checked against, read
-// independently of bootSessionUUID.
+// kernelBootSession is the oracle the ledger's stamp is checked against: the
+// kernel's two readings, read here rather than through bootSessionUUID.
 func kernelBootSession() (string, error) {
 	b, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
-	return strings.TrimSpace(string(b)), err
+	if err != nil {
+		return "", err
+	}
+	ns, err := os.Readlink("/proc/self/ns/pid")
+	if err != nil {
+		return "", err
+	}
+	return sessionOf(strings.TrimSpace(string(b)), ns), nil
+}
+
+// Containers on one host share a boot id and number their pids apart, so one
+// boot in two pid namespaces is two sessions: a ledger written in one is not
+// this one's to reap from.
+func TestOneBootInTwoPidNamespacesIsTwoSessions(t *testing.T) {
+	const boot = "6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b"
+	a, b := sessionOf(boot, "pid:[4026531836]"), sessionOf(boot, "pid:[4026532201]")
+	if a == b {
+		t.Errorf("both namespaces read as session %s", a)
+	}
+	for _, s := range []string{a, b} {
+		if !isBootSessionUUID(s) {
+			t.Errorf("session %q is not the shape the ledger reads back", s)
+		}
+	}
+	if again := sessionOf(boot, "pid:[4026531836]"); again != a {
+		t.Errorf("one boot and namespace gave %s then %s", a, again)
+	}
 }
 
 // A process names itself, so its name can carry spaces and parentheses that
