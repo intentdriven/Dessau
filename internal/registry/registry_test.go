@@ -513,18 +513,99 @@ func TestRescanKeepsModelWhenStatFailsForReasonOtherThanNotExist(t *testing.T) {
 }
 
 // If the models root itself is unreachable — an unmounted external volume, a
-// shared directory that is not available to this account — Rescan must leave the
-// index alone. Treating "root missing" as "everything was deleted" would wipe
-// the registry for a transient condition.
+// shared directory that is not available to this account — Rescan must keep
+// every entry in the index. Treating "root missing" as "everything was
+// deleted" would wipe the registry for a transient condition.
 func TestRescanLeavesIndexAloneWhenModelsRootIsMissing(t *testing.T) {
 	r, dir := newTestRegistry(t)
 	r.Put(Model{RepoID: "org/m", Path: "/some/where", State: StateReady})
 
 	if err := r.Rescan(filepath.Join(dir, "does-not-exist")); err != nil {
-		t.Errorf("Rescan of a missing root should be a no-op, got: %v", err)
+		t.Errorf("Rescan of a missing root should not fail, got: %v", err)
 	}
 	if _, err := r.Get("org/m"); err != nil {
 		t.Error("an unreachable models root must not wipe the registry")
+	}
+}
+
+// Keeping the entries while the models root is missing does not mean keeping
+// what the index stored for them: each entry comes out of the scan pointing at
+// its directory derived from the repo id, so no `path` naming somewhere else
+// is listed, or written back, for the time the volume is away.
+func TestRescanRepointsEveryPathWhenModelsRootIsMissing(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	elsewhere := writeModelDir(t, filepath.Join(dir, "elsewhere"), "org", "m", 64)
+	r.Put(Model{RepoID: "org/m", Path: elsewhere, State: StateReady})
+	r.Put(Model{RepoID: "org/d", Path: elsewhere, State: StateDownloading})
+	models := filepath.Join(dir, "does-not-exist")
+
+	if err := r.Rescan(models); err != nil {
+		t.Fatalf("Rescan of a missing root should not fail, got: %v", err)
+	}
+	reopened, err := Open(filepath.Join(dir, "registry.json"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	for _, reg := range []*Registry{r, reopened} {
+		for _, id := range []string{"org/m", "org/d"} {
+			m, err := reg.Get(id)
+			if err != nil {
+				t.Fatalf("an unreachable models root must not drop %s: %v", id, err)
+			}
+			if want := config.ModelDirIn(models, id); m.Path != want {
+				t.Errorf("%s: Path = %q, want the derived %q", id, m.Path, want)
+			}
+		}
+	}
+}
+
+// A models root that exists but cannot be listed is reported, and its entries
+// are kept as for a missing one — but re-pointed at their derived directories
+// all the same.
+func TestRescanRepointsEveryPathWhenModelsRootIsUnreadable(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	elsewhere := writeModelDir(t, filepath.Join(dir, "elsewhere"), "org", "m", 64)
+	r.Put(Model{RepoID: "org/m", Path: elsewhere, State: StateReady})
+	// A regular file where the models directory should be: listing it fails
+	// with ENOTDIR whatever account the test runs as.
+	models := filepath.Join(dir, "models")
+	if err := os.WriteFile(models, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Rescan(models); err == nil {
+		t.Error("Rescan of an unreadable root should report it")
+	}
+	m, err := r.Get("org/m")
+	if err != nil {
+		t.Fatalf("an unreadable models root must not drop the entry: %v", err)
+	}
+	if want := config.ModelDirIn(models, "org/m"); m.Path != want {
+		t.Errorf("Path = %q, want the derived %q", m.Path, want)
+	}
+}
+
+// An in-flight download keeps its state through a scan that finds its
+// directory complete, but not the stored path: it too carries the derived one.
+func TestRescanRepointsAnInFlightDownloadFoundInTheModelsDir(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	models := filepath.Join(dir, "models")
+	want := writeModelDir(t, models, "org", "m", 64)
+	elsewhere := writeModelDir(t, filepath.Join(dir, "elsewhere"), "org", "m", 64)
+	r.Put(Model{RepoID: "org/m", Path: elsewhere, State: StateDownloading, Progress: 42})
+
+	if err := r.Rescan(models); err != nil {
+		t.Fatal(err)
+	}
+	m, err := r.Get("org/m")
+	if err != nil {
+		t.Fatalf("in-flight download was dropped by Rescan: %v", err)
+	}
+	if m.State != StateDownloading || m.Progress != 42 {
+		t.Errorf("Rescan clobbered an in-flight download: %+v", m)
+	}
+	if m.Path != want {
+		t.Errorf("Path = %q, want the derived %q", m.Path, want)
 	}
 }
 

@@ -679,16 +679,34 @@ func (r *Registry) broadcast(snapshot []Model) {
 // model.safetensors.index.json names. Anything mid-download (a .dessau-part
 // file present) or incomplete is skipped rather than adopted as ready — and an
 // existing failed record for it keeps its state and diagnostic.
+//
+// Every entry that survives the scan — whatever its state, and even when the
+// models directory is missing or unreadable — leaves it with Path set to the
+// directory derived from its repo id under modelsDir.
 func (r *Registry) Rescan(modelsDir string) error {
 	found := map[string]Model{}
 
 	// Models live at <modelsDir>/<org>/<name>, so walk exactly two levels.
 	orgs, err := os.ReadDir(modelsDir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
 	if err != nil {
-		return fmt.Errorf("scan models dir: %w", err)
+		// A models root that is missing (an unmounted volume) or cannot be
+		// listed is not proof that any model was deleted, so every entry is
+		// kept — but each carries its derived directory from here on, as it
+		// would after a full scan, so the index never lists or writes back a
+		// stored path naming somewhere else.
+		r.mu.Lock()
+		for k, m := range r.models {
+			m.Path = config.ModelDirIn(modelsDir, m.RepoID)
+			r.models[k] = m
+		}
+		snapshot := r.listLocked()
+		saveErr := r.saveLocked()
+		r.mu.Unlock()
+		r.broadcast(snapshot)
+		if errors.Is(err, fs.ErrNotExist) {
+			return saveErr
+		}
+		return errors.Join(fmt.Errorf("scan models dir: %w", err), saveErr)
 	}
 
 	for _, org := range orgs {
@@ -733,11 +751,13 @@ func (r *Registry) Rescan(modelsDir string) error {
 	r.mu.Lock()
 	for repoID, m := range found {
 		if existing, ok := r.models[key(repoID)]; ok {
-			// Don't clobber an in-flight download with a "ready" verdict.
+			existing.Path = m.Path
+			// Don't clobber an in-flight download with a "ready" verdict; its
+			// path is the derived one all the same.
 			if existing.State == StateDownloading {
+				r.models[key(repoID)] = existing
 				continue
 			}
-			existing.Path = m.Path
 			existing.Bytes = m.Bytes
 			// Assigned like every other field the scan re-derives, so a model
 			// recorded by a build that predates the figure gains it at the
