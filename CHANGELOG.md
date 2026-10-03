@@ -13,6 +13,15 @@ GitHub release notes.
 
 ### Fixed
 
+- **The panel's memory line says what is reserved, in the units it
+  measures.** `impact: fix`. The line at the head of **My Models** called the
+  sum of each loaded model's charge "resident", and the default window is
+  worked out to fill the budget, so Alice's one 16.6 GiB model read as the
+  whole 76.8 of 76.8 budget resident while far less memory was in use. It now
+  reads `memory budget: 76.8 GiB of 76.8 GiB reserved by 1 model in memory
+  (weights 16.6 GiB)`. The panel's sizes were worked out in units of 1,024
+  and labelled GB, MB and KB; they are now labelled GiB, MiB and KiB
+  (iss-2610031010360026).
 - **A hybrid model that lists its layer kinds by name now leaves room for
   others beside it.** `impact: fix`. Dessau charges a model's memory per
   token of its window from the layers its configuration says keep a cache,

@@ -35,7 +35,7 @@ func TestTheMeasurementViewsReachThePanel(t *testing.T) {
 		t.Errorf("no requests gave %v", none["temperature"])
 	}
 	fp := evalPanelValue(t, `footprintRow({model:"org/m", points:[{at:1,bytes:1073741824},{at:2,bytes:3221225472},{at:3,bytes:2147483648}]})`, "bytes", "sparkline", "footprintRow")
-	if fp["samples"] != float64(3) || fp["lowest"] != "1.0 GB" || fp["highest"] != "3.0 GB" || fp["latest"] != "2.0 GB" {
+	if fp["samples"] != float64(3) || fp["lowest"] != "1.0 GiB" || fp["highest"] != "3.0 GiB" || fp["latest"] != "2.0 GiB" {
 		t.Errorf("footprintRow = %v", fp)
 	}
 	if fp["line"] != "▁█▅" {

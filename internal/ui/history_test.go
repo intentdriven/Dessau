@@ -377,7 +377,7 @@ func TestTheBoundsLineNamesTheBoundThatFired(t *testing.T) {
 		{"records", "1000000 records"},
 		{"lines", "1000000 lines of the records"},
 		{"rows", "20000 rows of the table"},
-		{"bytes", "512 MB of records"},
+		{"bytes", "512 MiB of records"},
 	} {
 		t.Run(c.by, func(t *testing.T) {
 			got := evalPanel(t,
