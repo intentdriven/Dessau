@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,5 +111,34 @@ func TestAnInstallClearsEveryMarkerFirst(t *testing.T) {
 	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Errorf("the clear removed more than markers: %v", err)
+	}
+}
+
+// Precheck tells a runtime that is not there yet from one that is there and
+// not trusted: only the first is ErrRuntimeNotInstalled, so only the first
+// lets a staged version fall back to the model check (iss-2610031317475284).
+func TestPrecheckTellsAMissingRuntimeFromAnUntrustedOne(t *testing.T) {
+	paths := config.NewPaths(t.TempDir())
+	l := &ExecLauncher{Paths: paths, LogDir: paths.Logs}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"model_type":"qwen3"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spec := Spec{RepoID: "org/m", ModelPath: dir}
+	if err := l.Precheck(spec); !errors.Is(err, ErrRuntimeNotInstalled) {
+		t.Errorf("no interpreter: err = %v, want ErrRuntimeNotInstalled", err)
+	}
+	if err := l.PrecheckModel(spec); err != nil {
+		t.Errorf("the model half on a clean model: %v", err)
+	}
+	writeInterpreter(t, paths, 0o775)
+	if err := l.Precheck(spec); err == nil || errors.Is(err, ErrRuntimeNotInstalled) {
+		t.Errorf("a group-writable interpreter: err = %v, want a refusal that is not 'not installed'", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"model_type":"qwen3","model_file":"x.py"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.PrecheckModel(spec); err == nil {
+		t.Error("the model half accepted a model that ships its own code")
 	}
 }
