@@ -204,3 +204,48 @@ func TestAnAsideCopyThatCannotGoBackIsKeptAtStart(t *testing.T) {
 		t.Errorf("a staged version was kept at start: %v", err)
 	}
 }
+
+// The old version a completed swap left aside — the process died before it
+// removed it — is removed at start: the model's folder holds a version that
+// checks out, so the aside copy is not the last one.
+func TestAStaleAsideCopyIsRemovedAtStart(t *testing.T) {
+	models := t.TempDir()
+	aside := filepath.Join(models, stagingDirName, "org", "repo"+asideSuffix+"abc")
+	os.MkdirAll(aside, 0o755)
+	os.WriteFile(filepath.Join(aside, "model.safetensors"), []byte("old"), 0o644)
+	served := filepath.Join(models, "org", "repo")
+	os.MkdirAll(served, 0o755)
+	os.WriteFile(filepath.Join(served, "config.json"), []byte(`{"model_type":"qwen3"}`), 0o644)
+	os.WriteFile(filepath.Join(served, "model.safetensors"), []byte("new"), 0o644)
+
+	recoverStaging(models, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	if _, err := os.Stat(aside); !os.IsNotExist(err) {
+		t.Errorf("a stale aside copy was kept beside a version that checks out: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(served, "model.safetensors")); string(b) != "new" {
+		t.Error("the served version changed")
+	}
+}
+
+// Of several copies earlier swaps left aside, the newest is the one put back.
+func TestTheNewestAsideCopyIsTheOnePutBack(t *testing.T) {
+	models := t.TempDir()
+	root, err := os.OpenRoot(models)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	for _, attempt := range []string{"zz", "1abc", "zzzzzzzzzzz", "a"} {
+		os.MkdirAll(filepath.Join(models, stagingDirName, "org", "repo"+asideSuffix+attempt), 0o755)
+	}
+	sorg, err := openStagingOrg(root, "org/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sorg.Close()
+	left, ok := asideLeft(sorg, "org/repo")
+	if want := "repo" + asideSuffix + "zzzzzzzzzzz"; !ok || filepath.Base(left) != want {
+		t.Errorf("asideLeft = %q, %v; want %q", left, ok, want)
+	}
+}
