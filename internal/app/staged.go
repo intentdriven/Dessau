@@ -139,9 +139,8 @@ func openStagingOrg(root *os.Root, repoID string) (*stagingOrg, error) {
 // still refuses unless the name the staging org folder was opened at is
 // still that folder. A rename names both of its ends from the models root,
 // so it is asked just before each one. That narrows the window rather than
-// closing it, and a rename needs no more: one that a link planted in the gap
-// misdirects removes nothing — it moves a folder within the models folder —
-// and the failed swap's put-back undoes what it can.
+// closing it, so swapIn also checks after each rename that it moved the
+// folder it meant to.
 func (s *stagingOrg) still(root *os.Root) error {
 	fi, err := root.Lstat(s.rel)
 	if err != nil {
@@ -263,6 +262,9 @@ func (a *App) stagedDownload(ctx context.Context, repoID, commit string, prior r
 		return fail(err)
 	}
 	files := hub.WantedFiles(listing)
+	if err := sorg.still(root); err != nil {
+		return fail(err)
+	}
 	linked := a.linkUnchanged(root, repoID, prior, files)
 	var need int64
 	for _, f := range files {
@@ -386,7 +388,8 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoI
 	attempt := strconv.FormatInt(time.Now().UnixNano(), 36)
 	dest, staging := destRel(repoID), stagingRel(repoID)
 	aside = asideRel(repoID, attempt)
-	if _, err := root.Lstat(dest); err != nil {
+	old, err := root.Lstat(dest)
+	if err != nil {
 		// The model's folder is not there to move aside. If an earlier swap
 		// left the only copy aside, it goes back rather than being cleared
 		// to make way: an update never removes the last copy of a model.
@@ -404,8 +407,23 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoI
 	if err := sorg.still(root); err != nil {
 		return "", err
 	}
+	if a.beforeSwapRename != nil {
+		a.beforeSwapRename("aside")
+	}
 	if err := root.Rename(dest, aside); err != nil {
 		return "", fmt.Errorf("move the old version aside: %w", err)
+	}
+	// Each rename is checked to have moved the folder it meant to, where it
+	// meant to: a link planted between the last check of the staging
+	// folder's name and the rename sends it elsewhere — into another org's
+	// folder, or another org's model in as this one. A misdirected rename is
+	// undone through the same names and the update abandoned; removeAside is
+	// never reached, so nothing is removed.
+	if got, err := sorg.Lstat(filepath.Base(aside)); err != nil || !os.SameFile(old, got) {
+		if rerr := root.Rename(aside, dest); rerr != nil {
+			a.Log.Error("could not undo a misdirected move of the old version", "model", repoID, "err", rerr)
+		}
+		return "", errors.New("the staging folder changed while the old version was moved aside; the update is abandoned")
 	}
 	putBack := func() {
 		if rerr := root.Rename(aside, dest); rerr != nil {
@@ -413,18 +431,36 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoI
 				"model", repoID, "err", rerr)
 		}
 	}
+	_, name, _ := strings.Cut(repoID, "/")
+	staged, err := sorg.Lstat(name)
+	if err != nil {
+		putBack()
+		return "", err
+	}
 	if err := sorg.still(root); err != nil {
 		putBack()
 		return "", err
+	}
+	if a.beforeSwapRename != nil {
+		a.beforeSwapRename("in")
 	}
 	if err := root.Rename(staging, dest); err != nil {
 		putBack()
 		return "", fmt.Errorf("move the new version in: %w", err)
 	}
+	if got, err := root.Lstat(dest); err != nil || !os.SameFile(staged, got) {
+		if rerr := root.Rename(dest, staging); rerr != nil {
+			a.Log.Error("could not undo a misdirected move into the model's folder", "model", repoID, "err", rerr)
+		}
+		putBack()
+		return "", errors.New("the staging folder changed while the new version was moved in; the update is abandoned")
+	}
 	if err := validateModelDir(a.Paths.ModelDir(repoID)); err != nil {
 		// Not expected — the staged copy was checked — but a check that
 		// fails here puts the old version back rather than serving neither.
-		if rerr := root.Rename(dest, staging); rerr != nil {
+		if rerr := sorg.still(root); rerr != nil {
+			a.Log.Error("could not move a failed new version out of the way", "model", repoID, "err", rerr)
+		} else if rerr := root.Rename(dest, staging); rerr != nil {
 			a.Log.Error("could not move a failed new version out of the way", "model", repoID, "err", rerr)
 		} else {
 			putBack()

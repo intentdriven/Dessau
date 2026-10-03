@@ -42,3 +42,61 @@ func TestALinkReplantedMidUpdateNeverReachesTheServedModel(t *testing.T) {
 		t.Errorf("the record changed: state %s, commit %s", m.State, m.Commit)
 	}
 }
+
+// A link planted at the staging org folder's name just before either swap
+// rename — after the last check of that name — pointing at another org's
+// folder never moves the other org's model in as this one, and never removes
+// either model's files.
+func TestALinkPlantedJustBeforeASwapRenameMovesNoOtherModel(t *testing.T) {
+	for _, step := range []string{"aside", "in"} {
+		t.Run(step, func(t *testing.T) {
+			a, h := newStagedApp(t)
+			other := filepath.Join(a.Paths.Models, "org2", "repo")
+			if err := os.MkdirAll(other, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			os.WriteFile(filepath.Join(other, "config.json"), []byte(`{"model_type":"other"}`), 0o644)
+			os.WriteFile(filepath.Join(other, "model.safetensors"), []byte("other-weights"), 0o644)
+			otherBefore := filesIn(t, other)
+			stagingOrg := filepath.Join(a.Paths.Models, stagingDirName, "org")
+			a.beforeSwapRename = func(s string) {
+				if s != step {
+					return
+				}
+				if err := os.Rename(stagingOrg, stagingOrg+".moved"); err != nil {
+					t.Error(err)
+				}
+				if err := os.Symlink(filepath.Join("..", "org2"), stagingOrg); err != nil {
+					t.Error(err)
+				}
+			}
+			h.set(func(h *versionedHub) { h.current = commitV2 })
+			if err := a.Download("org/repo"); err != nil {
+				t.Fatal(err)
+			}
+			waitSettled(t, a)
+
+			if got := filesIn(t, other); len(got) != len(otherBefore) || got["config.json"] != otherBefore["config.json"] {
+				t.Errorf("the other org's model moved or changed: %v", got)
+			}
+			served := filesIn(t, a.Paths.ModelDir("org/repo"))
+			if served["config.json"] == otherBefore["config.json"] {
+				t.Errorf("the other org's model is served as org/repo: %v", served)
+			}
+			// The old version is never removed by a misdirected swap: it is
+			// served, or left aside where nothing removes it.
+			if !sameFiles(served, v1Files()) && !sameFiles(served, v2Files()) {
+				aside := false
+				filepath.WalkDir(a.Paths.Models, func(p string, d os.DirEntry, err error) error {
+					if err == nil && !d.IsDir() && filepath.Base(p) == "model-00002-of-00002.safetensors" {
+						aside = true
+					}
+					return nil
+				})
+				if !aside {
+					t.Errorf("the old version is gone and the folder holds neither version whole: %v", served)
+				}
+			}
+		})
+	}
+}
