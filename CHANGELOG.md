@@ -61,7 +61,9 @@ GitHub release notes.
   nor serves anything from the machine-wide folder under `/Users/Shared`: a
   model is served only from the serving account's own models folder, and at
   start-up any model the index still records elsewhere is dropped from the
-  list rather than served from there. Dessau keeps everything —
+  list when the serving account's models folder is there and holds no copy of
+  it, and is otherwise re-pointed at its place in that folder — never served
+  from where the index recorded it. Dessau keeps everything —
   models, settings, logs, statistics and its private runtime — in the serving
   account's own `~/Library/Application Support/Dessau` (or wherever
   `DESSAU_ROOT` points, as before). Other accounts on the same Mac use the
