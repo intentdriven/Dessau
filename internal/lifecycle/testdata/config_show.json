@@ -46,6 +46,8 @@
     "stats_max_bytes": 209715200,
     "stats_months": 6,
     "tls_port": 0,
+    "update_check_enabled": false,
+    "update_check_interval_hours": 0,
     "upstream_header_timeout_sec": 45
   }
 }

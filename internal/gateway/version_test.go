@@ -39,3 +39,40 @@ func TestThePanelStateCarriesTheCommitButNotTheFileHashes(t *testing.T) {
 		t.Error("building the panel's view changed what the registry holds")
 	}
 }
+
+// Saving any other setting never turns update checks on, and a save that
+// turns them on, with an interval, is kept by the next unrelated save
+// (itd-2610030857275099 criteria 1 and 10).
+func TestAnUnrelatedSaveLeavesTheUpdateCheckAsItWas(t *testing.T) {
+	srv, a := newTestControlApp(t, config.Default())
+	unrelated := `{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"idle_timeout_sec":0,"context_probe":true}`
+
+	resp := postJSON(t, srv, "/api/settings", unrelated)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if a.Config().UpdateCheck {
+		t.Fatal("an unrelated save turned update checks on")
+	}
+
+	resp = postJSON(t, srv, "/api/settings",
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"update_check_enabled":true,"update_check_interval_hours":6}`)
+	resp.Body.Close()
+	if c := a.Config(); !c.UpdateCheck || c.UpdateCheckIntervalHours != 6 {
+		t.Fatalf("the save did not turn checks on every 6 hours: %v %d", c.UpdateCheck, c.UpdateCheckIntervalHours)
+	}
+	resp = postJSON(t, srv, "/api/settings", unrelated)
+	resp.Body.Close()
+	if c := a.Config(); !c.UpdateCheck || c.UpdateCheckIntervalHours != 6 {
+		t.Errorf("an unrelated save changed the update check: %v %d", c.UpdateCheck, c.UpdateCheckIntervalHours)
+	}
+
+	resp = postJSON(t, srv, "/api/settings",
+		`{"host":"0.0.0.0","port":11535,"api_key":"","decode_concurrency":1,"update_check_interval_hours":721}`)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), "update_check_interval_hours") {
+		t.Errorf("an interval past thirty days: status %d, %s", resp.StatusCode, body)
+	}
+}

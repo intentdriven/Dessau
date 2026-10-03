@@ -1,0 +1,62 @@
+# Check your models for newer versions
+
+A model on HuggingFace changes after you download it: a fixed chat template, a
+corrected configuration, a better quantisation. Dessau can check the models you
+downloaded for newer versions, so you hear about those fixes rather than finding
+out when a client misbehaves. Checks are off until you turn them on.
+
+## Turn checks on
+
+1. Open the control panel and go to **Settings**.
+2. Under **Model updates**, tick **Check the models you downloaded for newer
+   versions**.
+3. Leave **Check every (hours)** blank to check daily, or type a figure from 1
+   to 720 (thirty days).
+4. **Save settings**.
+
+The first check runs within a few minutes. After that Dessau checks at each
+start once the last check is older than the interval, and then at each
+interval. The schedule compares the clock with the time of the last check, so a
+Mac that slept through a check runs it soon after it wakes.
+
+To turn checks off, untick the box and save. A check already running stops
+before it asks about another model. Saving any other setting never turns
+checks on.
+
+The same two settings are in `config.json`:
+
+| Key | Value |
+| --- | --- |
+| `update_check_enabled` | `true` to check; absent or `false` sends nothing. |
+| `update_check_interval_hours` | 1 to 720; absent or `0` is daily. A figure outside that range is replaced by the default when Dessau starts, and the control panel says so. |
+
+## What a check sends
+
+For each model you downloaded, a check sends HuggingFace the name of each model
+— its repository, such as `mlx-community/Qwen3-8B-4bit` — and asks for that
+repository's latest version. It sends no access token, even when one is set in
+Settings, unless that repository refuses a request without one: a private or
+gated model is then asked again with the token. Nothing else is sent, and
+nothing is sent to anyone but HuggingFace. A check never touches the files
+you are serving.
+
+## What is checked
+
+- **Only models whose version Dessau recorded.** A download records the
+  version it fetched. A model downloaded before Dessau recorded versions, or
+  copied into the models folder by hand, is "version unknown" and is not
+  checked.
+- **Only the files a model server reads.** A newer version that changes only
+  a README, a licence or other Markdown is not counted as newer.
+- **A newer version that ships its own code is named as such.** If the newer
+  version's `config.json` names a `model_file`, Dessau records that it will not
+  run that version.
+
+## When HuggingFace cannot be reached
+
+The check leaves what it recorded last time as it was, writes one line to the
+server log, and tries again at the next interval. Serving is not slowed: a
+check waits on nothing a request needs.
+
+A check is also cut short when HuggingFace says few requests are left in its
+current window; the models it did not reach are checked at the next interval.

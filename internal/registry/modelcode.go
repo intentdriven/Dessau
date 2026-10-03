@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -121,6 +122,23 @@ func checkModelCode(dir string, owned func(fs.FileInfo) bool) error {
 		return ErrModelCode
 	}
 	return nil
+}
+
+// ConfigNamesModelCode applies the rule CheckModelCode applies to a model's
+// config.json, to the bytes of one an update check fetched from the Hub: the
+// top-level key "model_file", spelled exactly, with any value but null, the
+// last of duplicate keys deciding. An error means the bytes are not a JSON
+// object, which says nothing either way.
+func ConfigNamesModelCode(b []byte) (bool, error) {
+	var cfg map[string]any
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		return false, err
+	}
+	if cfg == nil {
+		return false, errors.New("config.json is not an object")
+	}
+	v, ok := cfg["model_file"]
+	return ok && v != nil, nil
 }
 
 // fileOwner is the uid fi belongs to, when the platform says.
