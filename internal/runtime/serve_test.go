@@ -313,15 +313,91 @@ func TestTheLauncherRefusesASocketInAnOpenDirectory(t *testing.T) {
 	if err := os.Chmod(open, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(paths.VenvPython(), launchArgs(Spec{ModelPath: plainModelDir(t), Socket: filepath.Join(open, "m1")})...)
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("the launcher accepted a socket in a directory others can open:\n%s", out)
-	}
-	if !strings.Contains(string(out), "dessau-serve") {
-		t.Errorf("the refusal does not say whose it is:\n%s", out)
+	out := runLauncherExpectingRefusal(t, paths, launchArgs(Spec{ModelPath: plainModelDir(t), Socket: filepath.Join(open, "m1")}))
+	if !strings.Contains(out, "socket directory is open to other accounts") {
+		t.Errorf("the refusal does not say why:\n%s", out)
 	}
 	if _, err := os.Lstat(filepath.Join(open, "m1")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a socket was bound in the open directory: %v", err)
+	}
+}
+
+// launcherRefusalBound is how long a launcher that must refuse is given to
+// exit. Refusing is the interpreter starting and the launcher reading its
+// arguments, well inside a second; a launcher still running at the bound went
+// past the check that should have stopped it and is serving.
+const launcherRefusalBound = 10 * time.Second
+
+// runLauncherExpectingRefusal runs the launcher with argv and returns what it
+// wrote. It fails the test when the launcher exits zero, when the refusal is
+// not marked as the launcher's, and — at launcherRefusalBound rather than at
+// the test binary's timeout — when the launcher does not exit at all.
+func runLauncherExpectingRefusal(t *testing.T, paths config.Paths, argv []string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), launcherRefusalBound)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, paths.VenvPython(), argv...)
+	cmd.WaitDelay = time.Second
+	raw, err := cmd.CombinedOutput()
+	out := string(raw)
+	if ctx.Err() != nil {
+		t.Fatalf("the launcher was still running after %s: it did not refuse, and went on to serve; its output:\n%s", launcherRefusalBound, out)
+	}
+	if err == nil {
+		t.Fatalf("the launcher exited 0 where it should have refused; its output:\n%s", out)
+	}
+	if !strings.Contains(out, "dessau-serve") {
+		t.Errorf("the refusal does not say whose it is:\n%s", out)
+	}
+	return out
+}
+
+// A launch that names something for the server to load besides its model —
+// a draft model, adapter weights — or that trusts a tokenizer's remote code is
+// refused by the launcher itself, before it binds: the Go side never passes
+// these flags, and the launcher is the last thing between them and load().
+func TestTheLauncherRefusesALaunchThatLoadsSomethingElse(t *testing.T) {
+	paths := standInRuntime(t)
+	t.Setenv("STANDIN_TCP_MARKER", filepath.Join(t.TempDir(), "tcp"))
+	other := t.TempDir()
+	for _, c := range []struct {
+		name   string
+		flags  []string
+		reason string
+	}{
+		{"a draft model", []string{"--draft-model", other}, "a draft model is not loaded"},
+		{"adapter weights", []string{"--adapter-path", other}, "adapter weights are not loaded"},
+		{"remote tokenizer code", []string{"--trust-remote-code"}, "remote tokenizer code is not trusted"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sock := privateSocket(t)
+			argv := append(launchArgs(Spec{ModelPath: plainModelDir(t), Socket: sock}), c.flags...)
+			out := runLauncherExpectingRefusal(t, paths, argv)
+			if !strings.Contains(out, c.reason) {
+				t.Errorf("the refusal does not say %q:\n%s", c.reason, out)
+			}
+			if _, err := os.Lstat(sock); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("a socket was bound for a refused launch: %v", err)
+			}
+		})
+	}
+}
+
+// Something under the socket's name that is not a socket is not the
+// launcher's to remove: it refuses to start and leaves the file as it was,
+// rather than unlinking whatever it finds and binding in its place.
+func TestTheLauncherRefusesAFileInItsSocketsPlace(t *testing.T) {
+	paths := standInRuntime(t)
+	t.Setenv("STANDIN_TCP_MARKER", filepath.Join(t.TempDir(), "tcp"))
+	sock := privateSocket(t)
+	if err := os.WriteFile(sock, []byte("not a socket"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := runLauncherExpectingRefusal(t, paths, launchArgs(Spec{ModelPath: plainModelDir(t), Socket: sock}))
+	if !strings.Contains(out, "something other than a socket") {
+		t.Errorf("the refusal does not say why:\n%s", out)
+	}
+	if b, err := os.ReadFile(sock); err != nil || string(b) != "not a socket" {
+		t.Errorf("the file in the socket's place was not left as it was: %q, %v", b, err)
 	}
 }
