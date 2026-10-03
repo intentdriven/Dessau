@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-2610030656210408, itd-2609081259493890]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
@@ -35,23 +35,34 @@ production_mode: hand-written
 
 ## Open Questions
 
-- What happens when a newer version is found: a mark only, a one-click update,
-  or an automatic update (and whether a loaded model is replaced in place)?
-- Off or on by default, and the default interval? Gated by
-  adr-2610030857208746 (proposed), which reverses part of
-  adr-2609201008476813: Dessau's outbound connections today are only those
-  needed to fetch models and provision the runtime, and nothing about the
-  Mac's models leaves it.
-- How "newer" is judged: the hub downloads `main` and records no revision
-  today, so models downloaded before this lands have no known revision.
-- Gated or private repositories that need a token; a repository renamed or
-  deleted upstream; behaviour when offline.
-- Typed links to confirm at the interview: refines itd-2609091301112705 (a newer
-  version's measured context no longer applies) and itd-2609201445423499 (nor
-  does its tool-calling verdict); refines itd-2610030656210408 (decision models
-  stay on their reviewed version and are never offered an update).
+- What happens when a newer version is found: a mark only, a mark with a
+  one-click update, or an automatic update? Acting on an update safely needs a
+  staged download at a pinned commit, a hash check of every file and an atomic
+  swap (today a re-download over a changed repository can leave a mixed model:
+  iss-2610030913179523), which the reviews route to its own intent.
+- How the check runs, and whether it is on by default: see
+  adr-2610030857208746 (proposed), which lays out six options. Under the
+  2026-09-08 precedent an opt-in, off-by-default check needs no supersession of
+  adr-2609201008476813; a check on by default does.
+- The existing startup category job already asks the Hub about some
+  repositories unasked (2026-09-21): was that within "needed to fetch models",
+  or a reversal to ratify by name?
+- What "newer" means: a change to a file Dessau downloads and reads, not a new
+  commit (a README edit is a commit). Needs the commit and per-file hashes
+  recorded at download, shared with the revision field spc-2610030846273729
+  plans for decision models; models downloaded before that show "version
+  unknown", never a mark.
+- The token: checks send no HuggingFace token unless a repository refuses
+  anonymous access (a repository's commit is readable anonymously, even when
+  gated).
+- Typed links: builds on itd-2610030656210408 (one revision field; decision
+  models stay on their reviewed version and are never marked) and
+  itd-2609081259493890 (the setting on all three surfaces); refines
+  itd-2609100519003748 (where the panel shows it). The draft's earlier
+  "refines itd-2609091301112705 / itd-2609201445423499" are withdrawn: a
+  re-download already clears the measured context and the tool-call verdict.
 - Seeded 2026-10-03 from the maintainer's request; routing confirmed at filing
-  (SPLIT: this capability, the ADR above, revision tracking in the spec).
+  (SPLIT) and corrected after the two adversarial reviews the same day.
 
 ## Audit Notes
 
