@@ -21,15 +21,16 @@ interview the same day.
 
 ## Prerequisites (each is its own record, settled before the build starts)
 
-1. **Dependency sign-off.** mlx-vlm 0.7.x requires `mlx>=0.32.2`; the lock pins
+1. **Dependency sign-off. Settled 2026-10-03: the full set** (decision line of
+   that date in `.abcd/work/DECISIONS.md`). mlx-vlm 0.7.x requires `mlx>=0.32.2`; the lock pins
    `mlx==0.32.0`, so the upgrade moves the whole runtime (the reference was
    tested on mlx 0.32.3, mlx-lm 0.32.0, mlx-vlm 0.7.4). The maintainer signs
    off the full transitive list `uv pip compile` produces (mlx-vlm brings
    Pillow, opencv-python, mlx-audio and its audio stack, fastapi, uvicorn and
    more), or a narrower `--no-deps` set proved sufficient by the import chain.
-2. **ADR: adopting the reference implementation.** Dessau carries its own
-   trimmed copy of `clef_mlx.py` (Apache-2.0) in an MIT project: attribution,
-   NOTICE handling, how a reviewed upstream change enters, and who reviews it.
+2. **ADR on the reference implementation. Settled 2026-10-03:
+   adr-2610030929484599** — Dessau serves from its own rewrite, held to the
+   reference by golden fixtures, with attribution in `ACKNOWLEDGEMENTS`.
 3. **The model server's private socket** (iss-2610030846581757) has landed: the
    decision server listens through the same Dessau-owned launcher.
 
@@ -71,19 +72,23 @@ revision is ignored until a Dessau release ships its review. Initial builds:
 reviewed; each has its own golden fixture.
 
 ### The decision server
-Dessau's own Python module, embedded in the binary and written into the runtime
-by the launcher, derived from the reference implementation:
-- kept: request encoding, the prompt layout, the joint schema head, loading
-  through mlx-vlm, and the answer computation;
-- removed: image URL fetching, client `media_kwargs`, the `snapshot_download`
-  fallback, the CLI's file reads, silent truncation, and its own bind address;
-- added: caps on the number of questions, options per `choice` (2–16), score
-  levels, and text sizes; images refused (a later intent); a state longer
-  than the window refused with the excess named; generic messages for internal
-  errors; one request at a time (the reference holds a single lock).
-It listens on the private socket and is launched, refused and reaped exactly as
-a chat child is, through the same Precheck (`model_file`, ownership,
-`config.json`) plus the manifest check.
+Dessau's own rewrite (adr-2610030929484599), embedded in the binary and launched
+through the same private launcher as every model server, re-implementing only:
+request encoding, the prompt layout, the joint schema head, loading the
+reviewed weights through mlx-vlm, and the answer computation. Nothing from the
+reference or the model repository is imported. Its behaviour:
+- caps on the number of questions, options per `choice` (2–16), score levels,
+  and text sizes; images refused (a later intent); a state longer than the
+  window refused with the excess named; generic messages for internal errors;
+  one request at a time;
+- no URL fetching, no client keyword arguments to any processor, no download
+  fallback, no truncation;
+- held to the reference by golden fixtures per reviewed build, generated from
+  the reference at that build's pinned upstream version (same top answer,
+  |Δp| ≤ 0.001); the fixtures are kept in the repository, the reference code is
+  not.
+It is launched, refused and reaped exactly as a chat child is, through the same
+Precheck (`model_file`, ownership, `config.json`) plus the manifest check.
 
 ### Gateway
 `POST /v1/systemone` is registered inside `routes()`, so `withAuth` and
