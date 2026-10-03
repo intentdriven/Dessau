@@ -45,6 +45,7 @@ unload route.
 2. The setting, statistics and docs
    - packages: internal/config, internal/gateway, internal/ui, internal/stats, docs
    - tests: the switch off refuses the route and leaves the panel's Unload working; the three surfaces agree and an absent key means on; the new stop reason and caller kind are recorded without the key; the docs page names both routes
+   - landed: #158
 
 ## Footprint
 
