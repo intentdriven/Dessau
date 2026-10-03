@@ -86,3 +86,29 @@ func TestNoOpenTelemetryConfigurationReachesAChild(t *testing.T) {
 		}
 	}
 }
+
+// An install clears every marker before it touches the venv, so a venv in the
+// middle of an install, or one a failed install left, is not one an older
+// lock's marker still vouches for (adversarial review of step 1).
+func TestAnInstallClearsEveryMarkerFirst(t *testing.T) {
+	venv := t.TempDir()
+	for _, m := range []string{".dessau-mlx-0.31.3", ".dessau-mlx-0.32.0-0123456789abcdef", mlxMarkerName()} {
+		if err := os.WriteFile(filepath.Join(venv, m), []byte("ok"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keep := filepath.Join(venv, "pyvenv.cfg")
+	if err := os.WriteFile(keep, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeMLXMarkers(venv); err != nil {
+		t.Fatal(err)
+	}
+	left, _ := filepath.Glob(filepath.Join(venv, ".dessau-mlx-*"))
+	if len(left) != 0 {
+		t.Errorf("markers left: %v", left)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("the clear removed more than markers: %v", err)
+	}
+}

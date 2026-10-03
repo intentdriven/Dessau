@@ -701,6 +701,11 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	if msg := badStop(payload); msg != "" {
+		obs.failed(stats.ClassClientError)
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 
 	var requested string
 	if rawModel, ok := payload["model"]; ok {
@@ -1744,8 +1749,14 @@ func emptyAnswerBudget(payload map[string]json.RawMessage) string {
 		if !ok {
 			continue
 		}
+		t := bytes.TrimSpace(raw)
+		// null is the field left unset, which the model server reads as
+		// absent; a bool would decode it as false.
+		if string(t) == "null" {
+			continue
+		}
 		var b bool
-		if json.Unmarshal(raw, &b) == nil {
+		if json.Unmarshal(t, &b) == nil {
 			if !b {
 				return fmt.Sprintf("%q must be at least 1", key)
 			}
@@ -1754,7 +1765,7 @@ func emptyAnswerBudget(payload map[string]json.RawMessage) string {
 		// A bare number only: json.Number also takes a quoted one, and "0"
 		// is a string, which the model server refuses itself.
 		var n json.Number
-		if t := bytes.TrimSpace(raw); len(t) == 0 || t[0] == '"' || json.Unmarshal(t, &n) != nil {
+		if len(t) == 0 || t[0] == '"' || json.Unmarshal(t, &n) != nil {
 			continue
 		}
 		if f, err := n.Float64(); err == nil && f < 1 {
@@ -1762,6 +1773,41 @@ func emptyAnswerBudget(payload map[string]json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+// badStop is the refusal for a stop the model server would take and then fail
+// on: anything but a string, an array of strings, or null. The pinned server
+// (0.31.3 and 0.32.0 alike) does not check it, and on the batched path a
+// number, a list of numbers or a nested list raises inside the generation
+// loop and kills the thread for every client until the model restarts
+// (adversarial review of spc-2610030846273729 step 1).
+func badStop(payload map[string]json.RawMessage) string {
+	raw, ok := payload["stop"]
+	if !ok {
+		return ""
+	}
+	t := bytes.TrimSpace(raw)
+	if string(t) == "null" {
+		return ""
+	}
+	var one string
+	if json.Unmarshal(t, &one) == nil {
+		return ""
+	}
+	var many []json.RawMessage
+	if json.Unmarshal(t, &many) == nil {
+		ok := true
+		for _, m := range many {
+			if json.Unmarshal(m, &one) != nil {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return ""
+		}
+	}
+	return `"stop" must be a string or an array of strings`
 }
 
 // writeError renders an OpenAI-shaped error, which is what clients parse.

@@ -435,10 +435,19 @@ func (p *Provisioner) ensureMLX(ctx context.Context) error {
 	// into the binary or the install fails. This closes the gap a bare
 	// `mlx-lm==<v>` left open: version-pinning stops drift, not a compromised or
 	// republished PyPI package. uv reads the requirements from stdin ("-r -").
+	//
+	// Every marker goes first, whichever lock wrote it: from here until the
+	// check below passes, the venv is not one any build verified, and an older
+	// Dessau run on the same data must not find its own marker and serve it.
+	// --no-build refuses a source build, whose build tools are not in the lock.
+	if err := removeMLXMarkers(p.Paths.Venv); err != nil {
+		return err
+	}
 	cmd := exec.CommandContext(ctx, p.Paths.UV(),
 		"pip", "install",
 		"--python", p.Paths.VenvPython(),
 		"--require-hashes",
+		"--no-build",
 		"-r", "-",
 	)
 	cmd.Env = p.uvEnv()
@@ -450,9 +459,13 @@ func (p *Provisioner) ensureMLX(ctx context.Context) error {
 	// Import it for real. A wheel can install cleanly and still fail to load —
 	// wrong architecture, missing Metal — and finding that out here is far better
 	// than at first inference.
-	check := exec.CommandContext(ctx, p.Paths.VenvPython(), "-c",
+	// Isolated, as the model server runs (-I: no PYTHON* variables, no user
+	// site, no working directory on sys.path), from the venv's own directory:
+	// only the venv's site-packages can satisfy the import it vouches for.
+	check := exec.CommandContext(ctx, p.Paths.VenvPython(), "-I", "-c",
 		`import mlx.core as mx, mlx_lm; assert mx.metal.is_available(); print(mx.__version__)`)
 	check.Env = childEnviron()
+	check.Dir = p.Paths.Venv
 	out, err := check.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("MLX installed but will not run on this machine: %w: %s",
@@ -473,6 +486,20 @@ func (p *Provisioner) ensureMLX(ctx context.Context) error {
 func mlxMarkerName() string {
 	sum := sha256.Sum256(mlxRequirements)
 	return ".dessau-mlx-" + mlxLMVersion + "-" + hex.EncodeToString(sum[:8])
+}
+
+// removeMLXMarkers removes every install marker in the venv, from any lock.
+func removeMLXMarkers(venv string) error {
+	old, err := filepath.Glob(filepath.Join(venv, ".dessau-mlx-*"))
+	if err != nil {
+		return err
+	}
+	for _, m := range old {
+		if err := os.Remove(m); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // childEnviron is this process's environment for a Python child, without

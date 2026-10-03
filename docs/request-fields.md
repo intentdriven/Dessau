@@ -4,7 +4,7 @@
 to the model server, changing only the fields listed under
 [What Dessau changes in a request it passes on](#what-dessau-changes-in-a-request-it-passes-on).
 Two fields are refused instead, and a request carrying either goes no further;
-so is a request that asks for an empty answer.
+so is a request that asks for an empty answer or whose `stop` is not text.
 
 ## The refused fields
 
@@ -59,6 +59,14 @@ with **400** and the message `"max_tokens" must be at least 1` (or
 budget and then fails on it, and on a model serving batched requests the
 failure stops that model answering anyone until it is restarted. A budget
 written as a string is passed on, and the model server refuses it itself.
+
+## A stop that is not text
+
+A request whose `stop` is anything but a string, an array of strings or `null`
+— a number, an array holding a number, a nested array, an object — is refused
+with **400** and the message `"stop" must be a string or an array of strings`.
+The model server takes such a value and then fails on it, in the same way as an
+empty answer budget.
 
 ## What Dessau changes in a request it passes on
 

@@ -42,9 +42,9 @@ GitHub release notes.
   under the new runtime. No OpenTelemetry setting in the environment Dessau
   starts from reaches the runtime. A maximum completion tokens of 0 is no
   longer a setting — the panel refuses it and a hand-edited `config.json`
-  drops it — and a request asking for an empty answer is refused with `400`:
-  the new model server fails on such a budget, and on a model serving batched
-  requests stops answering anyone until it is restarted
+  drops it — and a request asking for an empty answer, or whose `stop` is
+  not text, is refused with `400`: the model server fails on either, and on a
+  model serving batched requests stops answering anyone until it is restarted
   ([request fields](docs/request-fields.md#an-empty-answer-budget);
   itd-2610030656210408).
 
