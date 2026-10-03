@@ -89,12 +89,16 @@ func TestAnAbsurdSizeIsNotPublished(t *testing.T) {
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: "/m", Reply: "OK"})
 	defer fake.Close()
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/huge", State: registry.StateReady, Bytes: 9007199254740993},
+		{RepoID: "org/huge", State: registry.StateReady, Bytes: 9007199254740993, QuantizationBits: 99},
 	}}
 	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})
 	srv := httptest.NewServer(g.Handler())
 	defer srv.Close()
-	if e := firstModelEntry(t, srv); e["size_bytes"] != nil {
+	e := firstModelEntry(t, srv)
+	if e["size_bytes"] != nil {
 		t.Errorf("size_bytes = %v, want it withheld", e["size_bytes"])
+	}
+	if e["quantization_bits"] != nil {
+		t.Errorf("quantization_bits = %v, want it withheld", e["quantization_bits"])
 	}
 }
