@@ -35,7 +35,7 @@ func servedGateway(t *testing.T, cfg config.Config, declared int64) (string, *st
 	const modelPath = "/models/" + servedModel
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: servedModel, Path: modelPath, State: registry.StateReady,
 		ContextLength: declared,
 	}}}
@@ -266,7 +266,7 @@ func resolvedGateway(t *testing.T, declared int64, served func(registry.Model) (
 	const modelPath = "/models/" + servedModel
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: servedModel, Path: modelPath, State: registry.StateReady,
 		ContextLength: declared,
 	}}}

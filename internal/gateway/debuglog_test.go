@@ -34,7 +34,7 @@ func newDebugLogControl(t *testing.T, cfg config.Config) (*httptest.Server, *app
 		t.Fatalf("app.New: %v", err)
 	}
 	t.Cleanup(func() { a.Close() })
-	if err := a.Registry.Put(registry.Model{
+	if err := a.Registry.Put(registry.Model{ChatTemplate: true,
 		RepoID: "org/keeper", Path: a.Paths.ModelDir("org/keeper"),
 		Bytes: 1 << 20, State: registry.StateReady, Progress: 100,
 	}); err != nil {

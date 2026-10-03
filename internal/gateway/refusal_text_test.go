@@ -44,8 +44,8 @@ func refusingGatewayLogging(t *testing.T, key string, err error, level slog.Leve
 	cfg := config.Default()
 	cfg.APIKey = key
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm"},
-		{RepoID: "org/other", State: registry.StateReady, Path: "/models/org/other"},
+		{ChatTemplate: true, RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm"},
+		{ChatTemplate: true, RepoID: "org/other", State: registry.StateReady, Path: "/models/org/other"},
 	}}
 	var logged bytes.Buffer
 	return New(Options{

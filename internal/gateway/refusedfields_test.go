@@ -157,7 +157,7 @@ func TestAskRefusesARequestNamingSomethingToLoad(t *testing.T) {
 			g := New(Options{
 				Config: config.Default(),
 				Pool:   pool,
-				Models: &stubModels{models: []registry.Model{{
+				Models: &stubModels{models: []registry.Model{{ChatTemplate: true,
 					RepoID: testModelID, Path: modelPath, State: registry.StateReady, ContextLength: 131072,
 				}}},
 			})

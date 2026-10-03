@@ -16,7 +16,7 @@ import (
 func TestThePanelStateCarriesTheCommitButNotTheFileHashes(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 	const commit = "0123456789abcdef0123456789abcdef01234567"
-	if err := a.Registry.Put(registry.Model{
+	if err := a.Registry.Put(registry.Model{ChatTemplate: true,
 		RepoID: "org/m", Path: a.Paths.ModelDir("org/m"), State: registry.StateReady,
 		Commit:     commit,
 		FileHashes: map[string]string{"config.json": "89abcdef0123456789abcdef0123456789abcdef"},
@@ -83,7 +83,7 @@ func TestTheUpdateRouteRefusesWhereNoneIsOffered(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
 	const commit = "0123456789abcdef0123456789abcdef01234567"
 	const newer = "fedcba9876543210fedcba9876543210fedcba98"
-	if err := a.Registry.Put(registry.Model{
+	if err := a.Registry.Put(registry.Model{ChatTemplate: true,
 		RepoID: "org/m", Path: a.Paths.ModelDir("org/m"), State: registry.StateReady, Commit: commit,
 		Update: &registry.UpdateCheck{Status: registry.UpdateRunsOwnCode, Commit: newer},
 	}); err != nil {

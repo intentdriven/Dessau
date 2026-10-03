@@ -162,6 +162,9 @@ type App struct {
 	// freeSpace says how much room the models folder's volume has; a seam
 	// so a test can be the full disk it cannot make.
 	freeSpace func(dir string) (int64, bool)
+	// beforeSwapRename is a test seam, nil in production: called with
+	// "aside" and "in" just before the swap's two renames.
+	beforeSwapRename func(step string)
 
 	// bridge is the Discord bridge, wired after the gateway exists and nil in
 	// every build and every test that carries none. See bridge.go.
@@ -1778,6 +1781,10 @@ func (a *App) startDownload(repoID, commit string) error {
 				a.Log.Info("update cancelled; the version being served is untouched", "model", repoID)
 			} else {
 				a.Log.Warn("update failed; the version being served is untouched", "model", repoID, "err", err)
+				// Said on the model too, so the card is not silent about it.
+				if serr := a.Registry.SetUpdateFailure(repoID, updateFailureClass(err)); serr != nil {
+					a.Log.Warn("could not record why an update failed", "model", repoID, "err", serr)
+				}
 			}
 
 		case errors.Is(err, context.Canceled):

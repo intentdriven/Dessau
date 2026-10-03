@@ -61,7 +61,7 @@ func unloadGatewayWith(t *testing.T, cfg config.Config) (*Gateway, *releasePool)
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: "/m"})
 	t.Cleanup(fake.Close)
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm"},
+		{ChatTemplate: true, RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm"},
 	}}
 	pool := &releasePool{stubPool: stubPool{srv: fake}}
 	return New(Options{Config: cfg, Pool: pool, Models: models}), pool

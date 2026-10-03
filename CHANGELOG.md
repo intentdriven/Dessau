@@ -56,6 +56,17 @@ GitHub release notes.
 
 ### Changed
 
+- **A chat request to a model that cannot chat is refused, and the panel
+  no longer offers to load one.** `impact: breaking`. A model `/v1/models`
+  marks `"chat": false` — a speech, OCR or decision model, or a base model
+  the chat rule leaves out — was started as a chat server when a chat request
+  or the panel's **Load** named it: it answered nonsense, and its window could
+  evict a model someone was using. `/v1/chat/completions`, the Discord bridge
+  and the panel's load route now refuse it before anything is loaded, the
+  card shows no **Load** or **Measure now**, and the idle self-test leaves it
+  alone; `/v1/completions` still serves every model
+  ([models list](docs/models-list.md#the-chat-flag); iss-2610031010371709).
+
 - **The model runtime moves to mlx-lm 0.32.0.** `impact: breaking`. The
   private runtime is mlx-lm 0.32.0 on MLX 0.32.3, with mlx-vlm 0.7.4 and the
   packages it declares, every one hash-locked as before; the first start after
@@ -92,6 +103,26 @@ GitHub release notes.
   the model's vocabulary. A `max_tokens` too large to hold now counts against
   the served window instead of skipping it
   ([request fields](docs/request-fields.md#sampling-values-the-model-server-would-fail-on)).
+- **A failed update says why on the model's card.** `impact: fix`. An update
+  that failed was only logged: the progress bar went and the card offered
+  **Update** again with no word of why. The card's version line now says
+  which of five things stopped it — a file that did not download or match its
+  hash, no room on the disk, a version that did not pass the checks made
+  before a model starts, a model still answering requests when the wait ran
+  out, or a version Dessau does not run — until an update succeeds. The
+  registry records the class (`update_failed`), never the error's text
+  ([how-to](docs/model-updates.md); iss-2610031320392078).
+- **A link re-planted in the staging folder during an update no longer
+  reaches the served model.** `impact: fix`. A program running under the
+  same account that replaced the staging folder's org folder with a link to
+  the model's own org folder, while a new version downloaded, made the failed
+  update's clean-up remove the served model's whole folder. Every removal
+  under the staging folder, and both of the swap's renames, now go through
+  the folders Dessau checked and opened rather than through their names, and
+  each rename is checked to have moved the directory it meant to; one that
+  did not is undone and the update abandoned. A start keeps an old version
+  left aside that it cannot put back, rather than removing it with the rest
+  of the staging folder (iss-2610031324593822).
 - **An update lands on a model in steady use.** `impact: fix`. The swap
   waited up to two minutes for the model to fall idle, and under overlapping
   requests it never did, so the update was abandoned and its download thrown

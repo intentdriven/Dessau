@@ -546,7 +546,7 @@ func TestSavingSettingsWithoutNamingPinnedKeepsThePins(t *testing.T) {
 // refused, and the panel shows the operator why.
 func TestSettingsRefusesAPinnedSetLargerThanTheBudget(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
-	if err := a.Registry.Put(registry.Model{
+	if err := a.Registry.Put(registry.Model{ChatTemplate: true,
 		RepoID: "org/enormous", Path: a.Paths.ModelDir("org/enormous"),
 		Bytes: 1 << 50, State: registry.StateReady, Progress: 100,
 	}); err != nil {
@@ -622,7 +622,7 @@ func TestTheSnapshotPublishesTheVersionBeingServed(t *testing.T) {
 // an open LAN endpoint, on the same surface, not only in the log.
 func TestStateWarnsWhenThePinnedSetNoLongerFits(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
-	if err := a.Registry.Put(registry.Model{
+	if err := a.Registry.Put(registry.Model{ChatTemplate: true,
 		RepoID: "org/enormous", Path: a.Paths.ModelDir("org/enormous"),
 		Bytes: 1 << 50, State: registry.StateReady, Progress: 100,
 	}); err != nil {
@@ -640,7 +640,7 @@ func TestStateWarnsWhenThePinnedSetNoLongerFits(t *testing.T) {
 	if err := a.SetConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Registry.Put(registry.Model{
+	if err := a.Registry.Put(registry.Model{ChatTemplate: true,
 		RepoID: "org/gone", Path: a.Paths.ModelDir("org/gone"),
 		Bytes: 1 << 50, State: registry.StateReady, Progress: 100,
 	}); err != nil {
@@ -669,7 +669,7 @@ func warned(t *testing.T, srv *httptest.Server) bool {
 // has to be held to carrying them.
 func TestStateCarriesThePinnedSetAndTheMemoryBudget(t *testing.T) {
 	srv, a := newTestControlApp(t, config.Default())
-	if err := a.Registry.Put(registry.Model{
+	if err := a.Registry.Put(registry.Model{ChatTemplate: true,
 		RepoID: "org/keeper", Path: a.Paths.ModelDir("org/keeper"),
 		Bytes: 1 << 20, State: registry.StateReady, Progress: 100,
 	}); err != nil {

@@ -182,7 +182,7 @@ func TestNothingFromTheRequestReachesTheStore(t *testing.T) {
 	const modelPath = "/models/" + testModelID
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
-	models := &stubModels{models: []registry.Model{{RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true, RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
 
 	dir := filepath.Join(t.TempDir(), "stats")
 	store := stats.NewStore(dir, stats.StoreOptions{})
@@ -318,7 +318,7 @@ func TestNothingFromTheRequestReachesTheSummary(t *testing.T) {
 	const modelPath = "/models/" + testModelID
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
-	models := &stubModels{models: []registry.Model{{RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true, RepoID: testModelID, Path: modelPath, State: registry.StateReady}}}
 
 	dir := filepath.Join(t.TempDir(), "stats")
 	// A cap the first handful of records passes, so the drop that writes the

@@ -88,7 +88,11 @@ update a model that takes long requests when it is quiet. If anything fails
 along the way — a file that is not what HuggingFace lists, a download that
 stops, a version that ships its own code, or a disk without room for both
 versions at once — the new version is removed and the old one keeps serving,
-unchanged. A file both versions share is not fetched again.
+unchanged. The model's card then says why on its version line — a file that
+did not download or match, no room on the disk, a version that did not pass
+the checks, a model still answering requests when the wait ran out, or a
+version Dessau does not run — until an update succeeds. A file both versions
+share is not fetched again.
 
 What Dessau learned about the old files goes with them: the measured context
 window, whether the model calls tools, and a recorded failure to load. What

@@ -181,7 +181,7 @@ func newTestGateway(t *testing.T, cfg config.Config) (*httptest.Server, *stubPoo
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	t.Cleanup(fake.Close)
 
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: "mlx-community/Qwen3-8B-4bit",
 		Path:   modelPath,
 		State:  registry.StateReady,
@@ -540,7 +540,7 @@ func TestListModelsHidesUnreadyModels(t *testing.T) {
 	defer fake.Close()
 
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/ready", State: registry.StateReady},
+		{ChatTemplate: true, RepoID: "org/ready", State: registry.StateReady},
 		{RepoID: "org/downloading", State: registry.StateDownloading},
 	}}
 	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})
@@ -650,7 +650,7 @@ func TestPoolErrorBecomes503(t *testing.T) {
 	defer fake.Close()
 
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/m", State: registry.StateReady},
+		{ChatTemplate: true, RepoID: "org/m", State: registry.StateReady},
 	}}
 	pool := &stubPool{srv: fake, acquireErr: fmt.Errorf("not enough memory to load another model")}
 	g := New(Options{Config: config.Default(), Pool: pool, Models: models})
@@ -684,7 +684,7 @@ func TestLaunchErrorDoesNotLeakLocalPaths(t *testing.T) {
 	defer fake.Close()
 
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/m", State: registry.StateReady},
+		{ChatTemplate: true, RepoID: "org/m", State: registry.StateReady},
 	}}
 	leaky := fmt.Errorf("python runtime is not installed (/Users/carol/Library/Application Support/Dessau/venv/bin/python): file does not exist")
 	pool := &stubPool{srv: fake, acquireErr: fmt.Errorf("start model server for org/m: %w", &runtime.LaunchError{Err: leaky})}
@@ -736,7 +736,7 @@ func gatewayWithKey(t *testing.T, key string) http.Handler {
 
 	cfg := config.Default()
 	cfg.APIKey = key
-	models := &stubModels{models: []registry.Model{{RepoID: "org/m", State: registry.StateReady}}}
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true, RepoID: "org/m", State: registry.StateReady}}}
 	g := New(Options{Config: cfg, Pool: &stubPool{srv: fake}, Models: models})
 	return g.Handler()
 }
@@ -790,7 +790,7 @@ func TestAPIKeyChangeTakesEffectLive(t *testing.T) {
 	t.Cleanup(fake.Close)
 
 	live := config.Default() // starts with no key
-	models := &stubModels{models: []registry.Model{{RepoID: "org/m", State: registry.StateReady}}}
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true, RepoID: "org/m", State: registry.StateReady}}}
 	g := New(Options{
 		ConfigFunc: func() config.Config { return live },
 		Pool:       &stubPool{srv: fake},
@@ -903,7 +903,7 @@ func TestClientTokenIsNotForwardedUpstream(t *testing.T) {
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath})
 	defer fake.Close()
 
-	models := &stubModels{models: []registry.Model{{RepoID: "org/m", Path: modelPath, State: registry.StateReady}}}
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true, RepoID: "org/m", Path: modelPath, State: registry.StateReady}}}
 	g := New(Options{Config: cfg, Pool: &stubPool{srv: fake}, Models: models})
 	srv := httptest.NewServer(g.Handler())
 	defer srv.Close()
@@ -1002,7 +1002,7 @@ func TestListModelsPublishesContextLengthUnderBothNames(t *testing.T) {
 	defer fake.Close()
 
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/wide", State: registry.StateReady, ContextLength: 262144},
+		{ChatTemplate: true, RepoID: "org/wide", State: registry.StateReady, ContextLength: 262144},
 	}}
 	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})
 
@@ -1048,7 +1048,7 @@ func TestListModelsOmitsAnUnknownContextLength(t *testing.T) {
 	defer fake.Close()
 
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/quiet", State: registry.StateReady},
+		{ChatTemplate: true, RepoID: "org/quiet", State: registry.StateReady},
 	}}
 	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})
 	srv := httptest.NewServer(g.Handler())
@@ -1073,7 +1073,7 @@ func TestListModelsRefusesAnAbsurdContextLength(t *testing.T) {
 	defer fake.Close()
 
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/absurd", State: registry.StateReady, ContextLength: registry.MaxContextLength + 1},
+		{ChatTemplate: true, RepoID: "org/absurd", State: registry.StateReady, ContextLength: registry.MaxContextLength + 1},
 	}}
 	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})
 	srv := httptest.NewServer(g.Handler())
@@ -1318,8 +1318,8 @@ func residencyGateway(t *testing.T, key string, resident ...runtime.Resident) ht
 	cfg.APIKey = key
 	added := time.Unix(1757145600, 0)
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm", AddedAt: added},
-		{RepoID: "org/cold", State: registry.StateReady, Path: "/models/org/cold", AddedAt: added},
+		{ChatTemplate: true, RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm", AddedAt: added},
+		{ChatTemplate: true, RepoID: "org/cold", State: registry.StateReady, Path: "/models/org/cold", AddedAt: added},
 	}}
 	g := New(Options{Config: cfg, Pool: &stubPool{srv: fake, resident: resident}, Models: models})
 	return g.Handler()
@@ -1507,7 +1507,7 @@ func TestListModelsDecidesOnTheConfigItWasAdmittedUnder(t *testing.T) {
 		return cfg
 	}
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/warm", State: registry.StateReady, AddedAt: time.Unix(1757145600, 0)},
+		{ChatTemplate: true, RepoID: "org/warm", State: registry.StateReady, AddedAt: time.Unix(1757145600, 0)},
 	}}
 	pool := &stubPool{srv: fake, resident: []runtime.Resident{{
 		RepoID:   "org/warm",
@@ -1902,7 +1902,7 @@ func TestListModelsWithoutTheAuthMiddlewareReportsNoResidency(t *testing.T) {
 	cfg := config.Default()
 	cfg.APIKey = "bh_secret"
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/warm", State: registry.StateReady, AddedAt: time.Unix(1757145600, 0)},
+		{ChatTemplate: true, RepoID: "org/warm", State: registry.StateReady, AddedAt: time.Unix(1757145600, 0)},
 	}}
 	pool := &stubPool{srv: fake, resident: []runtime.Resident{{
 		RepoID:   "org/warm",
@@ -1940,9 +1940,9 @@ func TestModelsListReportsPinnedOnlyOnAKeyedInstall(t *testing.T) {
 
 	added := time.Unix(1757145600, 0)
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/warm", State: registry.StateReady, AddedAt: added},
-		{RepoID: "org/cold", State: registry.StateReady, AddedAt: added},
-		{RepoID: "org/plain", State: registry.StateReady, AddedAt: added},
+		{ChatTemplate: true, RepoID: "org/warm", State: registry.StateReady, AddedAt: added},
+		{ChatTemplate: true, RepoID: "org/cold", State: registry.StateReady, AddedAt: added},
+		{ChatTemplate: true, RepoID: "org/plain", State: registry.StateReady, AddedAt: added},
 	}}
 	// org/warm is pinned and loaded; org/cold is pinned and not loaded, under a
 	// spelling the registry does not use; org/plain is neither.
@@ -1987,7 +1987,7 @@ func TestRefusalToANetworkClientNamesNoPinnedModel(t *testing.T) {
 	}
 	// 200 bytes is charged 240, so a 250-byte budget holds exactly one of them.
 	for _, id := range []string{"org/protected", "org/wanted"} {
-		if err := reg.Put(registry.Model{
+		if err := reg.Put(registry.Model{ChatTemplate: true,
 			RepoID: id, Path: paths.ModelDir(id), Bytes: 200,
 			State: registry.StateReady, Progress: 100,
 		}); err != nil {
