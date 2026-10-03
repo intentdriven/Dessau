@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/Dessau/internal/config"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // A request value the pinned mlx-lm's own checks let through and its one
@@ -51,11 +53,19 @@ func TestAValueTheGenerationThreadWouldDieOnIsRefused(t *testing.T) {
 		{"logit_bias with a word for a key", chatCompletionsPath, chat + `"logit_bias":{"abc":5}}`, true},
 		{"logit_bias with a huge value", chatCompletionsPath, chat + `"logit_bias":{"12":1000}}`, true},
 		{"logit_bias not an object", chatCompletionsPath, chat + `"logit_bias":[1,2]}`, true},
-		{"logit_bias ordinary", chatCompletionsPath, chat + `"logit_bias":{"12":-100,"7":2.5}}`, false},
-		{"logit_bias at the entry cap", chatCompletionsPath, chat + `"logit_bias":` + bias(300) + `}`, false},
+		{"logit_bias ordinary, refused until keys can be held to the vocabulary", chatCompletionsPath, chat + `"logit_bias":{"12":-100,"7":2.5}}`, true},
+		{"logit_bias null, which is unset", chatCompletionsPath, chat + `"logit_bias":null}`, false},
+		{"a key spelled with an escape", chatCompletionsPath, chat + `"top\u005fk":5000}`, true},
+		{"the last of a duplicated key", chatCompletionsPath, chat + `"top_k":5,"top_k":5000}`, true},
+		{"a duplicated key whose last is fine", chatCompletionsPath, chat + `"top_k":5000,"top_k":5}`, false},
+		{"a numeric field written as a string, for the server to refuse", chatCompletionsPath, chat + `"top_k":"5000"}`, false},
+		{"stop with an escaped backslash before a lone surrogate", chatCompletionsPath, chat + `"stop":["\\\ud800"]}`, true},
+		{"stop with a high surrogate before a plain escape", chatCompletionsPath, chat + `"stop":["\ud800\u0041"]}`, true},
+		{"stop with an uppercase lone surrogate", chatCompletionsPath, chat + `"stop":["\uD800"]}`, true},
+		{"stop with two high surrogates", chatCompletionsPath, chat + `"stop":["\ud800\ud800\udc00"]}`, true},
 		{"stop with a lone surrogate", chatCompletionsPath, chat + `"stop":["\ud800"]}`, true},
 		{"stop with a lone low surrogate", chatCompletionsPath, chat + `"stop":"a\udc00b"}`, true},
-		{"stop with a surrogate pair", chatCompletionsPath, chat + `"stop":["😀"]}`, false},
+		{"stop with a surrogate pair", chatCompletionsPath, chat + `"stop":["\ud83d\ude00"]}`, false},
 		{"stop with an escaped backslash before u", chatCompletionsPath, chat + `"stop":["\\ud800"]}`, false},
 		{"chat_template_kwargs that change the template's answer", chatCompletionsPath, chat + `"chat_template_kwargs":{"return_dict":true}}`, true},
 		{"chat_template_kwargs carrying a template", chatCompletionsPath, chat + `"chat_template_kwargs":{"chat_template":"{{ 1 }}"}}`, true},
@@ -97,5 +107,21 @@ func TestAValueTheGenerationThreadWouldDieOnIsRefused(t *testing.T) {
 func TestAnOverflowingBudgetIsTheLargest(t *testing.T) {
 	if got := asTokenCount(json.RawMessage(strings.Repeat("9", 401))); got != math.MaxInt64 {
 		t.Errorf("asTokenCount of a 401-digit budget = %d, want MaxInt64", got)
+	}
+}
+
+// The bridge's in-process path holds the same rule as the network's.
+func TestTheBridgeRefusesAValueTheGenerationThreadWouldDieOn(t *testing.T) {
+	g, _, fake := askGateway(t, "ok")
+	err := g.Ask(context.Background(), AskRequest{
+		Model:  testModelID,
+		Body:   []byte(`{"model":"` + testModelID + `","messages":[{"role":"user","content":"hi"}],"xtc_probability":0.5,"xtc_threshold":0.9}`),
+		Source: stats.SourceBridge,
+	})
+	if err == nil {
+		t.Fatal("the bridge relayed an xtc_threshold the generation thread dies on")
+	}
+	if fake.LastBody() != nil {
+		t.Error("the refused request reached the model server")
 	}
 }

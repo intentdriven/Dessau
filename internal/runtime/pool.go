@@ -1499,7 +1499,7 @@ func (p *Pool) waitReady(e *entry) {
 // watchHealth asks a ready model's server /health until the process exits,
 // and stops a server that answers 503: the pinned mlx-lm says so once its one
 // generation thread has died, while the process and its socket stay up and
-// every request to it waits for an answer that never comes. Stopping it is
+// every request to it fails until it restarts. Stopping it is
 // what lets watchExit take the entry out as crashed and the next request
 // start the model afresh (iss-2610031444343397). Only a 503 counts: a /health
 // that does not answer at all is not the evidence, and an exit has its own

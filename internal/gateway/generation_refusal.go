@@ -17,7 +17,8 @@ import (
 // of mlx-lm 0.32.0 found raising there, and is refused here, before anything
 // is resolved or loaded, as emptyAnswerBudget and badStop are. A value that
 // is not a number, where one is expected, is the model server's own to
-// refuse, as it was: its type checks run on the handler thread.
+// refuse, as it was: its type checks run on the handler thread. Ask holds
+// the same rule on the bridge's path.
 
 // numericBounds are the sampling fields mlx-lm passes to its sampler and
 // logits processors, with the range each is held to. Each bound is far beyond
@@ -42,15 +43,6 @@ var numericBounds = []struct {
 	{"presence_context_size", 0, 1 << 20},
 	{"frequency_context_size", 0, 1 << 20},
 }
-
-// logit_bias is held to what a client can mean by it: a few hundred token
-// ids, each a decimal integer an int32 holds, each biased by at most what
-// OpenAI documents (-100 to 100). A key past the model's own vocabulary is
-// not known here; the pool's health watch is the net for that.
-const (
-	maxLogitBiasEntries = 300
-	maxLogitBias        = 100
-)
 
 // templateOwnArgs are apply_chat_template's own parameters, which
 // chat_template_kwargs is merged into (server.py): one of them changes what
@@ -111,30 +103,18 @@ func jsonNumber(raw json.RawMessage) (float64, bool) {
 
 func fmtBound(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
 
-// badLogitBias is the refusal for a logit_bias outside the bounds above.
+// badLogitBias is the refusal for any logit_bias. The model server adds each
+// bias at its token id with a scatter into the logits that checks no bound
+// (sample_utils.py), and the gateway does not know the model's vocabulary: a
+// key past it may raise on the generation thread or write out of bounds,
+// which no health check sees. It is refused until keys can be held to the
+// vocabulary (iss-2610031811486498).
 func badLogitBias(payload map[string]json.RawMessage) string {
 	raw, ok := payload["logit_bias"]
 	if !ok || string(bytes.TrimSpace(raw)) == "null" {
 		return ""
 	}
-	var bias map[string]json.RawMessage
-	if json.Unmarshal(raw, &bias) != nil {
-		return `"logit_bias" must be an object of token ids to numbers`
-	}
-	if len(bias) > maxLogitBiasEntries {
-		return fmt.Sprintf(`"logit_bias" may name at most %d tokens`, maxLogitBiasEntries)
-	}
-	for k, v := range bias {
-		id, err := strconv.ParseInt(k, 10, 32)
-		if err != nil || id < 0 || strconv.FormatInt(id, 10) != k {
-			return `"logit_bias" keys must be token ids: whole numbers from 0`
-		}
-		f, isNumber := jsonNumber(v)
-		if !isNumber || math.IsNaN(f) || f < -maxLogitBias || f > maxLogitBias {
-			return fmt.Sprintf(`"logit_bias" values must be numbers between %d and %d`, -maxLogitBias, maxLogitBias)
-		}
-	}
-	return ""
+	return `"logit_bias" is not accepted: Dessau cannot yet hold its token ids to the model's vocabulary`
 }
 
 // badStopText is the refusal for a stop string the model server's tokenizer

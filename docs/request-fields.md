@@ -74,8 +74,13 @@ empty answer budget.
 These values pass the model server's own checks and then fail on the thread
 that answers every request to that model, so that model stops answering anyone
 until it is restarted. Each is refused with **400** and a message naming the
-field and its bounds. A value written as a string is passed on, and the model
+field and its bounds. A number written as a string is passed on, and the model
 server refuses it itself.
+
+`logit_bias` is not accepted at all, and is refused with **400**: the model
+server writes each bias at its token id without checking the id against the
+model's vocabulary, and Dessau does not yet know the vocabulary to check it
+against.
 
 | Field | Accepted |
 | --- | --- |
@@ -86,7 +91,6 @@ server refuses it itself.
 | `repetition_penalty` | 0 to 100 |
 | `presence_penalty`, `frequency_penalty` | −100 to 100 |
 | `repetition_context_size`, `presence_context_size`, `frequency_context_size` | 0 to 1,048,576 |
-| `logit_bias` | an object of at most 300 token ids (whole numbers from 0) to numbers from −100 to 100 |
 | `stop` | text: a surrogate escape (`\ud800`) that is not half of a pair is refused |
 | `chat_template_kwargs` | an object of booleans, numbers or strings that sets none of the template call's own arguments (`chat_template`, `tokenize`, `return_dict`, `return_tensors`, `return_assistant_tokens_mask`, `add_generation_prompt`, `continue_final_message`, `tools`, `documents`, `conversation`, `tokenizer_kwargs`, `truncation`, `max_length`, `padding`) |
 

@@ -75,20 +75,22 @@ GitHub release notes.
 - **A model server that can no longer generate is restarted.** `impact: fix`.
   The pinned mlx-lm answers every request from one generation thread, and a
   request value that raises there kills it for every client while the process
-  stays up, so each later request waited for an answer that never came until
-  someone restarted Dessau. The pool now asks each loaded model server's
-  `/health` every ten seconds and stops one that answers `503` as crashed; the
-  next request starts it again ([models list](docs/models-list.md);
+  stays up, so every later request to that model failed until someone
+  restarted Dessau. The pool now asks each loaded model server's `/health`
+  every ten seconds and stops one that answers `503` as crashed; the next
+  request starts it again ([models list](docs/models-list.md);
   iss-2610031444343397).
 - **Sampling values the model server would fail on are refused.**
-  `impact: breaking`. An audit of mlx-lm 0.32.0 found values that pass its
-  own checks and then stop the model answering anyone: an `xtc_threshold`
-  above 0.5, a `top_k` at or above the vocabulary, numbers too large to hold,
-  out-of-range `logit_bias` entries, a stop string with a lone surrogate, and
-  `chat_template_kwargs` that set the template call's own
-  arguments. Each is refused with `400` before anything is loaded, within
-  bounds far beyond any useful value; a `max_tokens` too large to hold now
-  counts against the served window instead of skipping it
+  `impact: breaking`. An audit of mlx-lm 0.32.0 found values that pass its own checks
+  and then stop the model answering anyone: an `xtc_threshold` above 0.5, a
+  `top_k` at or above the vocabulary, numbers too large to hold, a stop string
+  with a lone surrogate, and `chat_template_kwargs` that set the template
+  call's own arguments. Each is refused with `400` before anything is loaded,
+  within bounds far beyond any useful value, on the network and the bridge
+  alike. `logit_bias` is refused outright for now: its token ids reach an
+  unchecked write into the model's scores, and Dessau cannot yet hold them to
+  the model's vocabulary. A `max_tokens` too large to hold now counts against
+  the served window instead of skipping it
   ([request fields](docs/request-fields.md#sampling-values-the-model-server-would-fail-on)).
 - **An update no longer fails while the runtime is still being installed.**
   `impact: fix`. A newer version was held to the whole check a model has
