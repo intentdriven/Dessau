@@ -89,6 +89,11 @@ GitHub release notes.
 
 ### Fixed
 
+- **A start keeps an old version left aside whenever the rescan would refuse
+  the model's folder.** `impact: fix`. The start judged the folder with a
+  looser check than the rescan's, so a folder holding a part file from an
+  unfinished download could pass it and the copy left aside be removed. It
+  now uses the rescan's own check (iss-2610031807030740).
 - **A model server that can no longer generate is restarted.** `impact: fix`.
   The pinned mlx-lm answers every request from one generation thread, and a
   request value that raises there kills it for every client while the process
