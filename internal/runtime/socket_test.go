@@ -273,6 +273,45 @@ func TestTheChildTransportReachesTheServerThroughItsSocket(t *testing.T) {
 	}
 }
 
+// macOS clears from a temporary directory what has not been touched for three
+// days (dirhelper, nightly), and a pinned model's server runs for longer than
+// that: its socket would vanish under it, and every request after would find
+// nothing to connect to. So the launcher keeps a running server's socket, and
+// the directory it is in, fresh for as long as the process lives.
+func TestARunningServersSocketIsKeptFresh(t *testing.T) {
+	sock := privateSocket(t)
+	l := stubbedLauncher(t, `sleep 1; exit 0`)
+	l.socketRefresh = 50 * time.Millisecond
+	p, err := l.Launch(context.Background(), Spec{RepoID: "org/name", ModelPath: plainModelDir(t), Socket: sock})
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	defer func() { <-p.Done() }()
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.(*net.UnixListener).SetUnlinkOnClose(false)
+	defer ln.Close()
+
+	old := time.Now().Add(-4 * 24 * time.Hour)
+	for _, path := range []string{sock, filepath.Dir(sock)} {
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(300 * time.Millisecond)
+	for _, path := range []string{sock, filepath.Dir(sock)} {
+		fi, err := os.Lstat(path)
+		if err != nil {
+			t.Fatalf("%s: %v", filepath.Base(path), err)
+		}
+		if age := time.Since(fi.ModTime()); age > time.Hour {
+			t.Errorf("%s was left %s old while its server ran", filepath.Base(path), age.Round(time.Hour))
+		}
+	}
+}
+
 // shortTempDir is a temporary directory with a short path: t.TempDir is named
 // after the test and can push a socket path past the kernel's limit.
 func shortTempDir(t *testing.T) string {

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // A model server listens on a Unix socket in a directory only the serving
@@ -125,6 +126,33 @@ func removeSocket(path string) error {
 		return fmt.Errorf("%s is not a socket", filepath.Base(path))
 	}
 	return os.Remove(path)
+}
+
+// socketRefreshEvery is how often a running server's socket and its directory
+// are touched. macOS clears what has gone untouched for three days from a
+// temporary directory (dirhelper, nightly), and a pinned model's server runs
+// for longer than that; an hour is far inside the three days and costs two
+// system calls.
+const socketRefreshEvery = time.Hour
+
+// keepSocketFresh touches the socket at path, and the directory it is in,
+// every interval until done is closed. Touching is all it does: a socket that
+// has gone is not made again, since only the server can make it.
+func keepSocketFresh(path string, interval time.Duration, done <-chan struct{}) {
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-tick.C:
+			now := time.Now()
+			_ = os.Chtimes(filepath.Dir(path), now, now)
+			if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSocket != 0 {
+				_ = os.Chtimes(path, now, now)
+			}
+		}
+	}
 }
 
 // sweepSocketDirs removes the socket directories under root that a run which

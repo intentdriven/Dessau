@@ -266,6 +266,10 @@ type ExecLauncher struct {
 	// another account owns, which a test running as one account cannot
 	// create: see modelFilesOwner.
 	modelOwner int
+	// socketRefresh is how often a running server's socket is touched; zero
+	// means socketRefreshEvery. A field so a test can see a refresh without
+	// waiting an hour, not a setting.
+	socketRefresh time.Duration
 
 	ledgerOnce sync.Once
 	ledger     *pidLedger
@@ -557,6 +561,11 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 		ledger:  l.pidLedger(),
 		pgid:    pgid,
 	}
+	refresh := l.socketRefresh
+	if refresh <= 0 {
+		refresh = socketRefreshEvery
+	}
+	go keepSocketFresh(spec.Socket, refresh, p.done)
 	go func() {
 		err := cmd.Wait()
 		p.mu.Lock()

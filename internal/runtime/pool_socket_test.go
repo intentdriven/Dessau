@@ -75,3 +75,46 @@ func TestThePoolReachesItsModelServerOverItsPrivateSocket(t *testing.T) {
 		t.Errorf("the socket directory outlived the pool: %v", err)
 	}
 }
+
+// A socket directory that has gone while nothing was loaded — macOS clears a
+// temporary directory's untouched entries after three days — is made again
+// at the next load rather than refusing every load from then on. One that is
+// no longer this account's alone is not used either.
+func TestAPoolWhoseSocketDirectoryWentMakesANewOne(t *testing.T) {
+	l := newFakeLauncher()
+	src := &fakeSource{models: map[string]int64{"org/m": 1 << 20}}
+	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30})
+
+	load := func() string {
+		t.Helper()
+		_, release, err := p.Acquire(context.Background(), "org/m")
+		if err != nil {
+			t.Fatalf("Acquire: %v", err)
+		}
+		release()
+		dir := filepath.Dir(l.specFor("org/m").Socket)
+		if err := p.Unload("org/m"); err != nil {
+			t.Fatalf("Unload: %v", err)
+		}
+		return dir
+	}
+	first := load()
+	if err := os.RemoveAll(first); err != nil {
+		t.Fatal(err)
+	}
+	second := load()
+	if err := checkSocketDir(second, os.Geteuid()); err != nil {
+		t.Errorf("the second load's socket directory: %v", err)
+	}
+	if err := os.Chmod(second, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	third := load()
+	if third == second {
+		t.Error("a socket directory others could open was used again")
+	}
+	if err := checkSocketDir(third, os.Geteuid()); err != nil {
+		t.Errorf("the third load's socket directory: %v", err)
+	}
+	os.RemoveAll(second)
+}

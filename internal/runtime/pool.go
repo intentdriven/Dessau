@@ -1377,8 +1377,14 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 
 // nextSocketLocked names the socket the next model server listens on: a fresh
 // name in the pool's private socket directory, which the first launch makes.
-// Callers must hold p.mu.
+// A directory that has gone since — macOS clears a temporary directory's
+// untouched entries after three days, and with nothing loaded nothing touches
+// it — or that is no longer this account's alone is replaced by a new one
+// rather than refusing every load from then on. Callers must hold p.mu.
 func (p *Pool) nextSocketLocked() (string, error) {
+	if p.sockDir != "" && checkSocketDir(p.sockDir, os.Geteuid()) != nil {
+		p.sockDir = ""
+	}
 	if p.sockDir == "" {
 		dir, err := newSocketDir()
 		if err != nil {
