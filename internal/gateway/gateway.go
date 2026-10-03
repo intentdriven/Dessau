@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"mime"
 	"net/http"
 	"os"
 	"strconv"
@@ -50,6 +51,10 @@ type Pool interface {
 	Resident() []runtime.Resident
 	Pinned() []string
 	Unload(repoID string) error
+	// Release is the unload a program asks for (POST /v1/dessau/unload),
+	// which keeps every protection Unload overrides: pinned, busy, loading
+	// and in-grace models are refused (runtime.Pool.Release).
+	Release(repoID string) error
 	// Footprint is the model server's newest sampled memory, or 0.
 	Footprint(repoID string) int64
 }
@@ -194,6 +199,10 @@ func (g *Gateway) routes() http.Handler {
 	mux.HandleFunc("POST /v1/chat/completions", g.handleCompletions)
 	mux.HandleFunc("POST /v1/completions", g.handleCompletions)
 	mux.HandleFunc("GET /health", g.handleHealth)
+	// The one state-changing verb on /v1 (adr-2610031153127219). There is
+	// no DELETE here, and nothing reachable from these routes deletes a
+	// model's files.
+	mux.HandleFunc("POST /v1/dessau/unload", g.handleUnload)
 	return mux
 }
 
@@ -1581,6 +1590,56 @@ func (g *Gateway) idleHolder(err error) string {
 			res.RepoID, state, job, held)
 	}
 	return ""
+}
+
+// maxUnloadBody bounds an unload request's body, which names one model.
+const maxUnloadBody = 64 << 10
+
+// handleUnload unloads a model a program has finished with
+// (adr-2610031153127219): for the callers this server already entitles —
+// a program on this Mac, a key holder, a paired client — and only a model
+// nobody is relying on. A caller not entitled is refused with one fixed
+// answer before the body is read, whatever it names, so it learns nothing
+// about what is loaded. The body must be JSON: a form a web page can post
+// without asking is not a request this route takes, on top of the
+// same-machine guards entitled already applies.
+func (g *Gateway) handleUnload(w http.ResponseWriter, r *http.Request) {
+	// A keyed install admits a loopback caller without the key, and a page
+	// in this Mac's browser connects from loopback too. Such a page cannot
+	// send this JSON body cross-origin without a preflight nothing here
+	// answers, but the browser's own word on where a request came from is
+	// read as well, as fromThisMachine reads it for a keyless install.
+	if !g.entitled(r) || (isLoopback(r.RemoteAddr) && !sameOriginFetch(r)) {
+		writeError(w, http.StatusForbidden, "unloading a model is not available to this client")
+		return
+	}
+	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
+		writeError(w, http.StatusUnsupportedMediaType, `the body must be JSON, sent as "Content-Type: application/json"`)
+		return
+	}
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxUnloadBody)).Decode(&req); err != nil || req.Model == "" {
+		writeError(w, http.StatusBadRequest, `the body must be {"model": "<id>"}`)
+		return
+	}
+	id, err := g.resolveModel(req.Model)
+	if err != nil {
+		writeError(w, http.StatusNotFound, notServedText(err, true))
+		return
+	}
+	if err := g.pool.Release(id); err != nil {
+		switch {
+		case errors.Is(err, runtime.ErrNotLoaded), errors.Is(err, runtime.ErrPinned), errors.Is(err, runtime.ErrBusy),
+			errors.Is(err, runtime.ErrLoading), errors.Is(err, runtime.ErrInGrace):
+			writeError(w, http.StatusConflict, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "the model could not be unloaded")
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "unloaded", "model": id})
 }
 
 // notServedError is the 404 for a model this server will not serve, and it
