@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"os/exec"
+	goruntime "runtime"
 	"testing"
 	"time"
 )
@@ -37,6 +38,9 @@ const (
 // says so and skips — never a false green, and never a failure blamed on the
 // reader for the load on the machine.
 func TestExecProcessReportsAFootprintWhileAlive(t *testing.T) {
+	if goruntime.GOOS != "darwin" {
+		t.Skip("Footprint reads macOS top (-l, -stats), which no other platform has: off a Mac it answers zero by design")
+	}
 	p := sleeper(t)
 	var got int64
 	tries := 0

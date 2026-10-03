@@ -8,8 +8,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-
-	"golang.org/x/sys/unix"
 )
 
 // serveScript is the launcher every model server is started through: the
@@ -84,18 +82,18 @@ func peerIs(conn net.Conn, uid int) error {
 	if err != nil {
 		return err
 	}
-	var cred *unix.Xucred
+	var peer uint32
 	var credErr error
 	if err := raw.Control(func(fd uintptr) {
-		cred, credErr = unix.GetsockoptXucred(int(fd), unix.SOL_LOCAL, unix.LOCAL_PEERCRED)
+		peer, credErr = socketPeerUID(int(fd))
 	}); err != nil {
 		return err
 	}
 	if credErr != nil {
 		return fmt.Errorf("model server's credentials: %w", credErr)
 	}
-	if int(cred.Uid) != uid {
-		return fmt.Errorf("the model server's socket is held by another account (uid %d)", cred.Uid)
+	if int(peer) != uid {
+		return fmt.Errorf("the model server's socket is held by another account (uid %d)", peer)
 	}
 	return nil
 }

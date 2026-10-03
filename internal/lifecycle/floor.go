@@ -3,8 +3,6 @@ package lifecycle
 import (
 	"strconv"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 // THE PRODUCT FLOOR, on the one surface neither the installer nor Launch
@@ -29,13 +27,6 @@ import (
 // and TestEverySurfaceDeclaresTheSameMacOSFloor holds it to that plist along
 // with the other three.
 const minMacOSMajor = 27
-
-// hostMacOSVersion reads this Mac's product version — "27.0", "26.5.2" — the
-// same value `sw_vers -productVersion` prints, without a subprocess or a PATH
-// lookup. kern.osproductversion is the kernel's own copy of it.
-func hostMacOSVersion() (string, error) {
-	return unix.Sysctl("kern.osproductversion")
-}
 
 // belowFloor says whether a product version is under the floor, and hands back
 // the sentence to print when it is. A version that cannot be read or cannot be

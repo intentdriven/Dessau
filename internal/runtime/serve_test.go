@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -278,7 +279,16 @@ func TestTheLauncherServesOnlyOnItsPrivateSocket(t *testing.T) {
 	if b, err := os.ReadFile(poisonMarker); err == nil {
 		t.Errorf("an mlx_lm from PYTHONPATH was imported (%s)", b)
 	}
-	if out, err := exec.Command("/usr/sbin/lsof", "-a", "-p", strconv.Itoa(p.Pid()), "-i").Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
+	// /usr/sbin/lsof on a Mac; a Linux distribution keeps it on PATH, if at all.
+	lsof := "/usr/sbin/lsof"
+	if goruntime.GOOS != "darwin" {
+		if found, err := exec.LookPath("lsof"); err == nil {
+			lsof = found
+		} else {
+			t.Log("lsof is not installed, so the internet-socket check was not made")
+		}
+	}
+	if out, err := exec.Command(lsof, "-a", "-p", strconv.Itoa(p.Pid()), "-i").Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
 		t.Errorf("the model server holds an internet socket:\n%s", out)
 	}
 

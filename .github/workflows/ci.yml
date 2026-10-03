@@ -1,10 +1,12 @@
 name: ci
 
 # Lightweight gates on every push and pull request: format + build + vet + test
-# (macOS only — Dessau is a macOS menu-bar app that links AppKit/systray via cgo
-# and uses darwin-only syscalls, so it does not build on Linux like the
-# cross-platform sibling projects do), plus full-history secret scanning and a
-# workflow self-audit.
+# on macOS, which is where Dessau runs and the only place its behaviour is
+# verified; vet + test on Linux, which only keeps the server code building there
+# (with Linux counterparts for the macOS-only parts: real readings, or an
+# explicit "not supported" error, never a faked answer) so a session in a
+# Linux container can check its own work; plus full-history secret scanning and
+# a workflow self-audit.
 on:
   push:
     # The merge queue's own refs are excluded. A queue entry is pushed to
@@ -105,6 +107,45 @@ jobs:
 
       - name: Test (race, internal)
         run: go test -race ./internal/...
+
+  # Vet + test on Linux. Dessau only ever runs on a Mac; this job exists so the
+  # module keeps compiling for Linux, where autonomous implementation sessions
+  # run in a container and need to check their own work. The macOS-only parts
+  # have Linux counterparts in *_linux.go files, and tests of inherently macOS
+  # behaviour skip themselves here with a reason. Nothing this job passes says
+  # anything about how Dessau behaves on a Mac: that is the check job's.
+  # TestCIVetsAndTestsTheModuleOnLinux holds this job in place.
+  linux:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.25'
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Vet (release configuration)
+        run: go vet -tags prod ./...
+
+      # The statistics store refuses a directory with an ancestor other
+      # accounts can write, and /tmp, where t.TempDir() lands on Linux, is
+      # 1777; a Mac's per-account temporary directory is not. So the tests get
+      # a temporary directory of their own under the runner's, and a umask
+      # that leaves the directories t.TempDir() makes unwritable by others.
+      - name: Test
+        run: |
+          set -euo pipefail
+          umask 022
+          export TMPDIR="$RUNNER_TEMP/gotmp"
+          mkdir -m 0700 "$TMPDIR"
+          go test ./...
 
   # Secrets never land in history: the whole history OF THE REF UNDER TEST is
   # scanned on every push/PR. Run as a pinned, checksum-verified CLI (not the
