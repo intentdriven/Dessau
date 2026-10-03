@@ -732,7 +732,8 @@ func recoverStaging(models string, log interface {
 
 // clearStagingKeepingAside removes every staged version and everything else
 // in the staging folder but an old version left aside that could not be put
-// back while nothing that checks out stands in its model's folder: that may
+// back while nothing the rescan would adopt stands in its model's folder — the
+// rescan's own check, so the two never disagree — that may
 // be the only copy of the model, and an update never removes the last copy.
 // It is kept and named in the log for the person to look at. An aside copy
 // beside a model folder that checks out is what a swap that finished but
@@ -767,7 +768,7 @@ func clearStagingKeepingAside(root *os.Root, models string, log interface{ Warn(
 			if name, _, isAside := strings.Cut(e.Name(), asideSuffix); isAside && e.IsDir() && e.Type()&fs.ModeSymlink == 0 {
 				repoID := org.Name() + "/" + name
 				// One whose name gives no model can never go back, and goes.
-				if config.ValidRepoID(repoID) && validateModelDir(filepath.Join(models, filepath.FromSlash(repoID))) != nil {
+				if config.ValidRepoID(repoID) && !registry.ModelDirComplete(filepath.Join(models, filepath.FromSlash(repoID))) {
 					log.Warn("an old version an interrupted update left aside could not be put back, because something else stands in its model's folder; it is kept",
 						"path", filepath.ToSlash(filepath.Join(orgRel, e.Name())))
 					continue
