@@ -8,6 +8,8 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"path/filepath"
+	goruntime "runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -49,6 +51,17 @@ func loopbackPair(t testing.TB) (local, remote netip.AddrPort, client net.Conn) 
 	return netip.MustParseAddrPort(a.c.LocalAddr().String()), netip.MustParseAddrPort(a.c.RemoteAddr().String()), client
 }
 
+// A Mac build answers the lookup: one without cgo would get the fallback,
+// which refuses every connection to a panel narrowed to this account, the
+// operator's own included. The release builds on Macs with a C toolchain, and
+// this keeps one that lost it from shipping quietly (adversarial review of
+// #153).
+func TestAMacBuildCanAskTheKernel(t *testing.T) {
+	if goruntime.GOOS == "darwin" && !peerLookupSupported {
+		t.Error("this macOS build has no libproc lookup: it was built without cgo")
+	}
+}
+
 // The decision on the kernel's answer, for every answer: only a socket found
 // and held by this account is this account's. A socket held by another
 // account — which one account's test cannot open on a Mac without root —
@@ -70,6 +83,8 @@ func TestOnlyASocketThisAccountHoldsIsThisAccounts(t *testing.T) {
 		"lookup failed":           {me, true, failed, false},
 	} {
 		t.Run(name, func(t *testing.T) {
+			// peerUIDLookup is package state: no test that swaps it may run
+			// in parallel with one that reads it.
 			old := peerUIDLookup
 			t.Cleanup(func() { peerUIDLookup = old })
 			peerUIDLookup = func(netip.AddrPort, netip.AddrPort) (uint32, bool, error) { return c.uid, c.found, c.err }
@@ -152,18 +167,40 @@ func TestAConnectionFromAnotherAccountIsNotAttributedToThisOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ln.Close()
-	cmd := exec.Command(os.Args[0], "-test.run=^TestPeerHelperProcess$")
+	// The test binary sits in go test's own work directory, which only root
+	// may enter, so the other account runs a copy from a directory it can.
+	dir, err := os.MkdirTemp("/tmp", "dessau-peer-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin, err := os.ReadFile(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper := filepath.Join(dir, "peer-helper")
+	if err := os.WriteFile(helper, bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(helper, "-test.run=^TestPeerHelperProcess$")
 	cmd.Env = append(os.Environ(), "DESSAU_PEER_HELPER_ADDR="+ln.Addr().String())
 	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 4294967294, Gid: 4294967294}} // nobody
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stdin.Close()
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer cmd.Wait()
+	// Closing its standard input is what lets the helper exit, so it comes
+	// before the wait, in one deferred call: two would run the other way round.
+	defer func() {
+		stdin.Close()
+		cmd.Wait()
+	}()
 	ln.(*net.TCPListener).SetDeadline(time.Now().Add(10 * time.Second))
 	conn, err := ln.Accept()
 	if err != nil {
