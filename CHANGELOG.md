@@ -80,6 +80,16 @@ GitHub release notes.
   `/health` every ten seconds and stops one that answers `503` as crashed; the
   next request starts it again ([models list](docs/models-list.md);
   iss-2610031444343397).
+- **Sampling values the model server would fail on are refused.**
+  `impact: breaking`. An audit of mlx-lm 0.32.0 found values that pass its
+  own checks and then stop the model answering anyone: an `xtc_threshold`
+  above 0.5, a `top_k` at or above the vocabulary, numbers too large to hold,
+  out-of-range `logit_bias` entries, a stop string with a lone surrogate, and
+  `chat_template_kwargs` that set the template call's own
+  arguments. Each is refused with `400` before anything is loaded, within
+  bounds far beyond any useful value; a `max_tokens` too large to hold now
+  counts against the served window instead of skipping it
+  ([request fields](docs/request-fields.md#sampling-values-the-model-server-would-fail-on)).
 - **An update no longer fails while the runtime is still being installed.**
   `impact: fix`. A newer version was held to the whole check a model has
   before it starts, which needs the runtime, so on a fresh install every
