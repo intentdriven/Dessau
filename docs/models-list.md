@@ -397,10 +397,12 @@ request loads it. See
 **A snapshot, not a reservation.** The values describe the moment the list is
 built. Reading `loaded` holds nothing warm on your behalf: another client's
 request, the idle timeout, an eviction, or the model server crashing can take
-that model away before your own request arrives. Treat the values as a hint
-worth acting on, never as a promise: a request is still the thing that decides.
-A client that lists before each request, or on a short schedule, keeps a
-picture worth acting on; one that lists once at start-up does not.
+that model away before your own request arrives. A model server that stays up
+but can no longer generate — its own health check says so — counts as crashed:
+Dessau stops it, and the next request starts it again. Treat the values as a
+hint worth acting on, never as a promise: a request is still the thing that
+decides. A client that lists before each request, or on a short schedule,
+keeps a picture worth acting on; one that lists once at start-up does not.
 
 ## The memory budget and eviction
 

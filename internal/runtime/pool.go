@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -202,6 +203,13 @@ type PoolOptions struct {
 	// the pool cannot distinguish two anonymous callers, and an address is not
 	// a client.
 	MaxLoadWaitersPerSource int
+	// HealthInterval is how often a ready model's server is asked /health.
+	// The pinned mlx-lm serves every request from one generation thread, and
+	// a request value that raises there kills it for every client while the
+	// process and its socket stay up; /health is what then answers 503, and
+	// the pool stops such a server as crashed (iss-2610031444343397). Zero
+	// means every ten seconds; less than zero, never.
+	HealthInterval time.Duration
 	// ReadyTimeout bounds how long we wait for a model to load. Large models on
 	// a cold page cache genuinely take minutes.
 	ReadyTimeout time.Duration
@@ -501,6 +509,9 @@ func NewPool(opts PoolOptions) *Pool {
 	}
 	if opts.ReadyTimeout == 0 {
 		opts.ReadyTimeout = 10 * time.Minute
+	}
+	if opts.HealthInterval == 0 {
+		opts.HealthInterval = 10 * time.Second
 	}
 	if opts.DecodeConcurrency < 1 {
 		opts.DecodeConcurrency = 1
@@ -1479,6 +1490,44 @@ func (p *Pool) waitReady(e *entry) {
 	p.notify(func(o PoolObserver) { o.LoadFinished(e.repoID, took, reported, e.sampling) })
 	if err == nil && e.proc != nil {
 		go p.watchExit(e)
+		if p.opts.HealthInterval > 0 {
+			go p.watchHealth(e)
+		}
+	}
+}
+
+// watchHealth asks a ready model's server /health until the process exits,
+// and stops a server that answers 503: the pinned mlx-lm says so once its one
+// generation thread has died, while the process and its socket stay up and
+// every request to it waits for an answer that never comes. Stopping it is
+// what lets watchExit take the entry out as crashed and the next request
+// start the model afresh (iss-2610031444343397). Only a 503 counts: a /health
+// that does not answer at all is not the evidence, and an exit has its own
+// watch.
+func (p *Pool) watchHealth(e *entry) {
+	client := &http.Client{Transport: e.transport, Timeout: 5 * time.Second}
+	t := time.NewTicker(p.opts.HealthInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-e.proc.Done():
+			return
+		case <-t.C:
+		}
+		resp, err := client.Get(childBaseURL + "/health")
+		if err != nil {
+			continue
+		}
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable {
+			continue
+		}
+		p.opts.Log.Warn("model server stopped: its generation thread has died, so it would answer no request; the next request starts it again", "model", e.repoID)
+		ctx, cancel := context.WithTimeout(context.Background(), stopBound)
+		_ = e.proc.Stop(ctx)
+		cancel()
+		return
 	}
 }
 

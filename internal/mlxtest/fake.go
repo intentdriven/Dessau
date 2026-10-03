@@ -64,6 +64,9 @@ type Server struct {
 	httpSrv   *httptest.Server
 	readyAt   time.Time
 	completed atomic.Int64
+	// unhealthy makes /health answer 503, as the real server does once its
+	// generation thread has died (SetGenerationDead).
+	unhealthy atomic.Bool
 
 	mu       sync.Mutex
 	lastBody map[string]any
@@ -221,8 +224,18 @@ func (s *Server) ready() bool { return !time.Now().Before(s.readyAt) }
 // real behavior, and the reason a readiness probe must do a real completion.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if s.unhealthy.Load() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"status": "unavailable"}`)
+		return
+	}
 	fmt.Fprint(w, `{"status": "ok"}`)
 }
+
+// SetGenerationDead makes the fake answer /health as the pinned mlx-lm does
+// once its one generation thread has died: 503, while the process and its
+// socket stay up and every request waits for an answer that never comes.
+func (s *Server) SetGenerationDead() { s.unhealthy.Store(true) }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

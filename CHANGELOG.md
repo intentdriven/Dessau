@@ -72,6 +72,14 @@ GitHub release notes.
 
 ### Fixed
 
+- **A model server that can no longer generate is restarted.** `impact: fix`.
+  The pinned mlx-lm answers every request from one generation thread, and a
+  request value that raises there kills it for every client while the process
+  stays up, so each later request waited for an answer that never came until
+  someone restarted Dessau. The pool now asks each loaded model server's
+  `/health` every ten seconds and stops one that answers `503` as crashed; the
+  next request starts it again ([models list](docs/models-list.md);
+  iss-2610031444343397).
 - **An update no longer fails while the runtime is still being installed.**
   `impact: fix`. A newer version was held to the whole check a model has
   before it starts, which needs the runtime, so on a fresh install every
