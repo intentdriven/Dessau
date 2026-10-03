@@ -49,13 +49,27 @@ var ErrOtherAccount = errors.New("this model's files belong to another account, 
 //
 // The model server reads config.json again, by path, after this check, so
 // the check is worth only as much as the guarantee that nobody else can
-// change the file in between. Dessau serves from one account and keeps its
-// models in that account's own data root; as defence in depth, the files are
-// this account's own or they are not loaded: the model directory (the link
-// and what it leads to, when it is a link) and config.json — the latter's
-// owner read off the very handle its bytes came from, so the owner and the
-// content are of one open file. Other accounts reach Dessau over the network
-// and have no need to load another account's copy of a model.
+// change the file in between. Dessau serves from one account, and the
+// directory it launches is derived from the repo id under that account's own
+// models folder (config.ModelDirIn) — but a path under this account's root is
+// not the same as files this account owns, and this check is what makes it
+// so. It still guards two ways another account's files can reach a launch:
+//
+//   - a model folder reached through a link: the models folder, an org folder
+//     or the model folder itself can be a symbolic link — EnsureDirs keeps a
+//     linked models folder, so models can live on another disk, and the
+//     launch follows any of them by path — and the link can lead to a
+//     directory another account can write;
+//   - any path handed in that did not come from that derivation, a `path`
+//     stored in registry.json among them.
+//
+// So the files are this account's own or they are not loaded: the model
+// directory (the link and what it leads to, when it is a link) and
+// config.json — the latter's owner read off the very handle its bytes came
+// from, so the owner and the content are of one open file. Other accounts
+// reach Dessau over the network and have no need to load another account's
+// copy of a model. Keeping the models in this account's own root does not
+// make this check redundant; do not remove it on that ground.
 //
 // It goes through readModelConfigInfo, the one decoder of a model's
 // configuration, so the file is opened as every manifest is: a link or a
