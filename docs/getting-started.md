@@ -282,12 +282,20 @@ Preloading is not pinning. A preloaded model is loaded at startup and may still
 be unloaded to make room; a pinned model is protected from the moment something
 loads it. Pinning has a control, under **Settings → Pinned models**.
 
-### `upstream_header_timeout_sec` — how long to wait for a model's first header
+### `upstream_header_timeout_sec` — how long a model may take to start answering
 
-How long Dessau waits for a model server to send its first response header
-before giving up, in seconds. Zero — the default — means Dessau works the
-figure out itself from what the model is and what this Mac can do, which is the
-right answer almost always.
+How long Dessau waits, in seconds, for a model server to start answering a
+request before giving up with a `504`. Dessau asks the model server for every
+answer as a stream — one a client asked for unstreamed is put back together
+into a single object before it is returned — so the wait ends the moment the
+model server takes the request up. Reading the prompt and writing the answer
+come after that and are not counted against it: a long answer is never cut
+off by this wait. Nor is a stuck one: a model server that stops part-way
+through an answer without closing the connection holds the request, streamed
+or not, until the client hangs up, so give a client that must not wait for
+ever a timeout of its own. Zero — the default — means Dessau works the figure out from
+the size of the request: ten minutes, or more for a very large prompt, which
+is the right answer almost always.
 
 ```json
 {
@@ -297,9 +305,16 @@ right answer almost always.
 
 A positive value replaces that derivation for every model. It has no control
 because nobody has established a safe range for it: a box with a number in it
-invites a number being typed, and a figure below what a large model needs to
-warm up turns every first request into a timeout. Set it only if the derived
+invites a number being typed, and a figure too low turns a request that has to
+queue behind others on a busy model into a timeout. Set it only if the derived
 wait is wrong for your Mac, and put it back to zero when it is not.
+
+One kind of request is the exception. A request that asks for `logprobs` or
+`top_logprobs` without a stream is passed on unstreamed, because the model
+server returns those only in an unstreamed answer, and it sends nothing of
+such an answer until the whole of it is written. For that request the wait
+covers the whole answer; ask for it streamed if it is a long one. See
+[what Dessau changes in a request](request-fields.md#what-dessau-changes-in-a-request-it-passes-on).
 
 ## Troubleshooting
 

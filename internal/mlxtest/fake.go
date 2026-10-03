@@ -19,6 +19,12 @@
 //     raises inside the real server, which answers 500. A gateway that merges
 //     into a client's own stream_options must therefore always write the key
 //     rather than assume it is there.
+//   - A stream always ends with a chunk carrying the finish reason, after the
+//     last word; every chunk before it carries none. The gateway assembles an
+//     unstreamed answer from a stream, so the fake's stream carries whatever
+//     its unstreamed answer would: the finish reason, a tool call, an empty
+//     message, the response delay and the prompt count (read from server.py,
+//     handle_completion, 2026-10-03).
 package mlxtest
 
 import (
@@ -108,17 +114,21 @@ type Options struct {
 	HangAbove int
 	// ResponseDelay holds a non-streaming answer back, standing in for a
 	// prefill on that path the way FirstTokenDelay does for the streaming
-	// one.
+	// one. A stream is held back by it too, after its headers — where the
+	// real server's prefill falls on a stream — so a gateway that streams an
+	// unstreamed request is held for the same time.
 	ResponseDelay time.Duration
 	// ToolCall makes the non-streaming answer the one a model that calls
 	// tools gives: a tool_calls array on the message, no content, and a
 	// finish_reason of "tool_calls" — the shape mlx-lm 0.31.3 returns when
 	// the chat template renders the request's tools and the model takes one.
-	// The streaming path is unchanged; nothing here probes it.
+	// Streamed, the call rides a chunk with the "index" the server's
+	// streaming formatter adds, and the last chunk finishes "tool_calls".
 	ToolCall bool
 	// EmptyMessage makes the non-streaming answer a message with empty
 	// content and no tool call, which is what the pinned runtime returns for
-	// some families asked with tools declared.
+	// some families asked with tools declared. Streamed, it is a stream of
+	// the final chunk alone.
 	EmptyMessage bool
 }
 
@@ -271,7 +281,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"KeyError: 'include_usage'"}`, http.StatusInternalServerError)
 			return
 		}
-		s.streamReply(w, includeUsage)
+		s.streamReply(w, r, includeUsage, promptTokens)
 		return
 	}
 
@@ -350,11 +360,12 @@ func streamIncludeUsage(body map[string]any) (bool, error) {
 }
 
 // streamReply emits one SSE chunk per word, flushing each so a proxy that
-// buffers the body instead of streaming it will be caught by the tests. When
-// the request asked for usage, one more event follows the words: an empty
-// choices array and the token counts, which is the shape the real server
-// emits and the only way a streaming client learns what it spent.
-func (s *Server) streamReply(w http.ResponseWriter, includeUsage bool) {
+// buffers the body instead of streaming it will be caught by the tests, and
+// then the chunk that carries the finish reason. When the request asked for
+// usage, one more event follows: an empty choices array and the token counts,
+// which is the shape the real server emits and the only way a streaming
+// client learns what it spent.
+func (s *Server) streamReply(w http.ResponseWriter, r *http.Request, includeUsage bool, promptTokens int) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
@@ -363,44 +374,58 @@ func (s *Server) streamReply(w http.ResponseWriter, includeUsage bool) {
 	if !ok {
 		return
 	}
+	flusher.Flush()
+	if s.ResponseDelay > 0 {
+		select {
+		case <-time.After(s.ResponseDelay):
+		case <-r.Context().Done():
+			return
+		}
+	}
 	if s.FirstTokenDelay > 0 {
 		time.Sleep(s.FirstTokenDelay)
 	}
-	if s.RolePreamble {
+	chunk := func(delta map[string]any, finish any) {
 		b, _ := json.Marshal(map[string]any{
 			"id":     "chatcmpl-fake",
 			"object": "chat.completion.chunk",
 			"model":  s.ModelArg,
 			"choices": []any{map[string]any{
-				"index": 0,
-				"delta": map[string]any{"role": "assistant"},
+				"index":         0,
+				"finish_reason": finish,
+				"delta":         delta,
 			}},
 		})
 		fmt.Fprintf(w, "data: %s\n\n", b)
 		flusher.Flush()
 	}
-	for i, word := range splitWords(s.Reply) {
-		// The role-only chunk is a chunk: a word that follows one is paced
-		// like any other, not sent alongside it. Without this the preamble and
-		// the first word leave together, and a reader of the stream cannot
-		// tell a figure taken at the preamble from one taken at the first word
-		// by anything but how fast the machine is (iss-2609112100298761).
-		if (i > 0 || s.RolePreamble) && s.ChunkDelay > 0 {
-			time.Sleep(s.ChunkDelay)
-		}
-		chunk := map[string]any{
-			"id":     "chatcmpl-fake",
-			"object": "chat.completion.chunk",
-			"model":  s.ModelArg,
-			"choices": []any{map[string]any{
-				"index": 0,
-				"delta": map[string]any{"role": "assistant", "content": word},
-			}},
-		}
-		b, _ := json.Marshal(chunk)
-		fmt.Fprintf(w, "data: %s\n\n", b)
-		flusher.Flush()
+	if s.RolePreamble {
+		chunk(map[string]any{"role": "assistant"}, nil)
 	}
+	finish := "stop"
+	switch {
+	case s.ToolCall:
+		finish = "tool_calls"
+		chunk(map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{
+			"id": "call_fake", "type": "function", "index": 0,
+			"function": map[string]any{"name": "get_time", "arguments": `{"city": "Paris"}`},
+		}}}, nil)
+	case s.EmptyMessage:
+	default:
+		for i, word := range splitWords(s.Reply) {
+			// The role-only chunk is a chunk: a word that follows one is
+			// paced like any other, not sent alongside it. Without this the
+			// preamble and the first word leave together, and a reader of
+			// the stream cannot tell a figure taken at the preamble from one
+			// taken at the first word by anything but how fast the machine
+			// is (iss-2609112100298761).
+			if (i > 0 || s.RolePreamble) && s.ChunkDelay > 0 {
+				time.Sleep(s.ChunkDelay)
+			}
+			chunk(map[string]any{"role": "assistant", "content": word}, nil)
+		}
+	}
+	chunk(map[string]any{"role": "assistant"}, finish)
 	if includeUsage {
 		b, _ := json.Marshal(map[string]any{
 			"id":      "chatcmpl-fake",
@@ -408,7 +433,7 @@ func (s *Server) streamReply(w http.ResponseWriter, includeUsage bool) {
 			"model":   s.ModelArg,
 			"choices": []any{},
 			"usage": map[string]any{
-				"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7,
+				"prompt_tokens": promptTokens, "completion_tokens": 4, "total_tokens": promptTokens + 4,
 			},
 		})
 		fmt.Fprintf(w, "data: %s\n\n", b)

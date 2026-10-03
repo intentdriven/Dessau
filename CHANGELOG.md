@@ -30,6 +30,24 @@ GitHub release notes.
   batched requests reaches it at the model's next load. A model whose
   configuration declares no window keeps the model server's 512
   (iss-2610030652514762).
+- **A long answer asked for without streaming is no longer cut off with a
+  504.** `impact: fix`. The model server sends nothing of an unstreamed
+  answer until the whole of it is written, so Dessau's wait for the model
+  server to start answering — at least ten minutes — was timing the answer
+  too: Bob asked a reasoning model for a long answer without streaming and
+  got a `504` that blamed the prompt and pointed at a Settings control that
+  does not exist, while the model server went on writing the answer for
+  nobody and slowed his retry. Dessau now asks the model server for a stream
+  and returns the answer as the one JSON object the request asked for, field
+  for field. The wait ends once the model server starts answering, a client
+  that hangs up stops the answer being generated, an answer the model server
+  stops part-way through is a `502` rather than part of an object, and one
+  larger than 64 MiB is a `502` that says to ask for it streamed. A request
+  asking for `logprobs` or `top_logprobs` is still answered unstreamed,
+  because the model server returns those only there. The `504` now says the
+  model server did not start answering in time and names
+  `upstream_header_timeout_sec` in `config.json`, where the wait is set
+  (iss-2610030919536329).
 ### Changed
 
 - **A request carrying `draft_model` or `adapters` is refused.**
