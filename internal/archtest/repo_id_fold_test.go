@@ -45,6 +45,7 @@ var repoIDFoldAllowList = map[string]string{
 	`wanted[strings.ToLower(filepath.ToSlash(filepath.Clean(filepath.FromSlash(p))))] = true`: "a file name inside a model's folder, folded because a Mac's default volume treats names in two cases as one file; not a repo id",
 	`if !wanted[strings.ToLower(rel)] {`:                                                      "the same file-name comparison; not a repo id",
 	`base := strings.ToLower(path.Base(p))`:                                                   "a repository file's name, folded to tell a README or licence from a model file; not a repo id",
+	`if strings.HasPrefix(strings.ToUpper(kv), "OTEL_") {`:                                    "an environment variable's name, matched in any case so no OpenTelemetry setting reaches a Python child; not a repo id",
 }
 
 // Every part that keys anything by a repo id must fold it through

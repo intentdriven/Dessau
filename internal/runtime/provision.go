@@ -31,11 +31,17 @@ import (
 // republished PyPI package, or dependency confusion on a transitive name, is
 // rejected by hash rather than silently executed under the user's account.
 //
-// Regenerate when bumping mlxLMVersion (needs the pinned uv, macOS/arm64):
+// Regenerate when bumping mlxLMVersion, starting from this file so every pin
+// that still fits is kept (the pinned uv resolves for a Mac from any host):
 //
-//	echo "mlx-lm==<version>" > requirements.in
-//	uv pip compile requirements.in --generate-hashes --python-version 3.12 \
+//	printf 'mlx-lm==0.32.0\nmlx==0.32.3\nmlx-vlm==0.7.4\n' > requirements.in
+//	MACOSX_DEPLOYMENT_TARGET=14.0 uv pip compile requirements.in \
+//	    --generate-hashes --python-version 3.12 \
+//	    --python-platform aarch64-apple-darwin \
 //	    -o internal/runtime/mlx-requirements.txt
+//
+// mlx-vlm and every package it declares are the set signed off for
+// itd-2610030656210408 (.abcd/work/DECISIONS.md, 2026-10-03).
 //
 //go:embed mlx-requirements.txt
 var mlxRequirements []byte
@@ -47,7 +53,7 @@ var mlxRequirements []byte
 // server flags and response shapes. These versions are the ones Dessau is
 // tested against.
 const (
-	mlxLMVersion  = "0.31.3"
+	mlxLMVersion  = "0.32.0"
 	pythonVersion = "3.12"
 )
 
@@ -210,8 +216,9 @@ func (p *Provisioner) installed() bool {
 		return false
 	}
 	// The venv existing is not enough — a half-finished pip install leaves the
-	// interpreter in place without mlx_lm.
-	marker := filepath.Join(p.Paths.Venv, ".dessau-mlx-"+mlxLMVersion)
+	// interpreter in place without mlx_lm — and neither is a runtime installed
+	// from another lock: the marker names the lock it was installed from.
+	marker := filepath.Join(p.Paths.Venv, mlxMarkerName())
 	_, err := os.Stat(marker)
 	return err == nil
 }
@@ -428,10 +435,19 @@ func (p *Provisioner) ensureMLX(ctx context.Context) error {
 	// into the binary or the install fails. This closes the gap a bare
 	// `mlx-lm==<v>` left open: version-pinning stops drift, not a compromised or
 	// republished PyPI package. uv reads the requirements from stdin ("-r -").
+	//
+	// Every marker goes first, whichever lock wrote it: from here until the
+	// check below passes, the venv is not one any build verified, and an older
+	// Dessau run on the same data must not find its own marker and serve it.
+	// --no-build refuses a source build, whose build tools are not in the lock.
+	if err := removeMLXMarkers(p.Paths.Venv); err != nil {
+		return err
+	}
 	cmd := exec.CommandContext(ctx, p.Paths.UV(),
 		"pip", "install",
 		"--python", p.Paths.VenvPython(),
 		"--require-hashes",
+		"--no-build",
 		"-r", "-",
 	)
 	cmd.Env = p.uvEnv()
@@ -443,24 +459,69 @@ func (p *Provisioner) ensureMLX(ctx context.Context) error {
 	// Import it for real. A wheel can install cleanly and still fail to load —
 	// wrong architecture, missing Metal — and finding that out here is far better
 	// than at first inference.
-	check := exec.CommandContext(ctx, p.Paths.VenvPython(), "-c",
+	// Isolated, as the model server runs (-I: no PYTHON* variables, no user
+	// site, no working directory on sys.path), from the venv's own directory:
+	// only the venv's site-packages can satisfy the import it vouches for.
+	check := exec.CommandContext(ctx, p.Paths.VenvPython(), "-I", "-c",
 		`import mlx.core as mx, mlx_lm; assert mx.metal.is_available(); print(mx.__version__)`)
+	check.Env = childEnviron()
+	check.Dir = p.Paths.Venv
 	out, err := check.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("MLX installed but will not run on this machine: %w: %s",
 			err, tail(string(out), 500))
 	}
 
-	marker := filepath.Join(p.Paths.Venv, ".dessau-mlx-"+mlxLMVersion)
+	marker := filepath.Join(p.Paths.Venv, mlxMarkerName())
 	if err := os.WriteFile(marker, []byte(strings.TrimSpace(string(out))), 0o644); err != nil {
 		return err
 	}
 	return nil
 }
 
+// mlxMarkerName is the file a finished install leaves in the venv. It names
+// the version and the lock's own hash, so a runtime installed from any other
+// lock — an older pin, or the same pin with a different dependency set — is
+// not the one this build verified, and Ensure installs this lock over it.
+func mlxMarkerName() string {
+	sum := sha256.Sum256(mlxRequirements)
+	return ".dessau-mlx-" + mlxLMVersion + "-" + hex.EncodeToString(sum[:8])
+}
+
+// removeMLXMarkers removes every install marker in the venv, from any lock.
+func removeMLXMarkers(venv string) error {
+	old, err := filepath.Glob(filepath.Join(venv, ".dessau-mlx-*"))
+	if err != nil {
+		return err
+	}
+	for _, m := range old {
+		if err := os.Remove(m); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// childEnviron is this process's environment for a Python child, without
+// any OpenTelemetry configuration. The runtime carries opentelemetry-api,
+// which exports nothing on its own; an exporter or endpoint set in the
+// environment Dessau was started from is the one way it could, and no
+// telemetry leaves this Mac (adr-2609201008476813).
+func childEnviron() []string {
+	env := os.Environ()
+	out := env[:0:0]
+	for _, kv := range env {
+		if strings.HasPrefix(strings.ToUpper(kv), "OTEL_") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
 // uvEnv keeps uv's Python downloads inside the app directory.
 func (p *Provisioner) uvEnv() []string {
-	return append(os.Environ(),
+	return append(childEnviron(),
 		"UV_PYTHON_INSTALL_DIR="+p.Paths.Python,
 		"UV_NO_MODIFY_PATH=1",
 	)

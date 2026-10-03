@@ -45,14 +45,17 @@ default.
 | Top-p | between 0 and 1 |
 | Top-k | a whole number, 0 to 1024 |
 | Min-p | between 0 and 1 |
-| Maximum completion tokens | a whole number, 0 to 1048576 |
+| Maximum completion tokens | a whole number, 1 to 1048576 |
 
 A value outside its range is refused when it is saved, with the field named
 and nothing else changed.
 
-Every range but two is the model server's own: temperature is at least 0,
-top-p and min-p are between 0 and 1, and top-k and the token budget are whole
-numbers of at least 0. Two ceilings are Dessau's own. Top-k has an upper limit
+Every range but three is the model server's own: temperature is at least 0,
+top-p and min-p are between 0 and 1, and top-k is a whole number of at least
+0. The token budget's floor of 1 and two ceilings are Dessau's own. The model
+server accepts a budget of 0 and then fails on it, and on a model serving
+batched requests the failure stops that model answering anyone until it is
+restarted, so no default may ask for an empty answer. Top-k has an upper limit
 of 1024, because the model server refuses a top-k as large as the model's
 vocabulary and Dessau cannot tell what that is at the moment you save; a
 top-k above a few hundred keeps every plausible token anyway. The maximum
@@ -60,8 +63,6 @@ completion tokens has an upper limit of 1048576, because a default larger than
 any real context window does not mean a generous budget, it means every
 request that omits the parameter runs until the model stops of its own accord.
 
-A maximum of 0 is accepted and means every request that omits the parameter
-gets an empty answer.
 
 ## Precedence
 

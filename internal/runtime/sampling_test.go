@@ -150,7 +150,7 @@ func TestLaunchDropsAnOutOfRangeSamplingValue(t *testing.T) {
 func TestNoRenderedSamplingValueLooksLikeAFlag(t *testing.T) {
 	negZero := math.Copysign(0, -1)
 	for _, s := range []config.Sampling{
-		{Temperature: fptr(0), TopP: fptr(1), TopK: iptr(0), MinP: fptr(0), MaxTokens: iptr(0)},
+		{Temperature: fptr(0), TopP: fptr(1), TopK: iptr(0), MinP: fptr(0), MaxTokens: iptr(1)},
 		{Temperature: fptr(negZero), TopP: fptr(negZero), MinP: fptr(negZero)},
 	} {
 		args := samplingArgs(s)
@@ -164,7 +164,7 @@ func TestNoRenderedSamplingValueLooksLikeAFlag(t *testing.T) {
 		}
 	}
 	if args := samplingArgs(config.Sampling{
-		Temperature: fptr(0), TopP: fptr(1), TopK: iptr(0), MinP: fptr(0), MaxTokens: iptr(0),
+		Temperature: fptr(0), TopP: fptr(1), TopK: iptr(0), MinP: fptr(0), MaxTokens: iptr(1),
 	}); len(args) != 10 {
 		t.Errorf("samplingArgs = %v, want five flags and five values", args)
 	}
@@ -343,7 +343,10 @@ func TestAnOmittedCompletionBudgetIsTheServedWindow(t *testing.T) {
 		{"no default of the operator's: the served window", nil, 40960, "40960"},
 		{"the operator's default wins over the window", iptr(8192), 40960, "8192"},
 		{"the operator's default wins even above the window", iptr(65536), 40960, "65536"},
-		{"an explicit zero stays the operator's", iptr(0), 40960, "0"},
+		// Out of range since mlx-lm 0.32.0 fails on an empty budget: dropped,
+		// so the window fills in as for a blank.
+		{"an explicit zero is dropped for the window", iptr(0), 40960, "40960"},
+		{"an explicit one stays the operator's", iptr(1), 40960, "1"},
 		{"a window above Dessau's ceiling is held to it", nil, 2 << 20, strconv.Itoa(config.MaxCompletionTokens)},
 		{"a window exactly at the ceiling", nil, config.MaxCompletionTokens, strconv.Itoa(config.MaxCompletionTokens)},
 		{"an unknown window passes nothing, as before", nil, 0, ""},

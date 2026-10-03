@@ -149,7 +149,7 @@ func writeInterpreter(t *testing.T, paths config.Paths, mode os.FileMode) {
 	if err := os.Chmod(paths.VenvPython(), mode); err != nil {
 		t.Fatal(err)
 	}
-	marker := filepath.Join(paths.Venv, ".dessau-mlx-"+mlxLMVersion)
+	marker := filepath.Join(paths.Venv, mlxMarkerName())
 	if err := os.WriteFile(marker, []byte("ok"), 0o644); err != nil {
 		t.Fatal(err)
 	}
