@@ -956,27 +956,46 @@ const maxManifestJSON = 8 << 20
 // wedging the startup rescan for every account; the downloader only ever
 // writes manifests as regular files. config.ReadRegular refuses both.
 func readManifest(dir, name string, v any) error {
-	b, err := config.ReadRegular(filepath.Join(dir, name), maxManifestJSON)
+	_, err := readManifestInfo(dir, name, v)
+	return err
+}
+
+// readManifestInfo is readManifest, and also returns the FileInfo of the
+// handle the bytes were read from (config.ReadRegularInfo), for a caller that
+// decides something from the file's owner: decided from this, the owner and
+// the content are of the same open file, not of two looks at a path.
+func readManifestInfo(dir, name string, v any) (os.FileInfo, error) {
+	b, info, err := config.ReadRegularInfo(filepath.Join(dir, name), maxManifestJSON)
 	if err != nil {
-		return fmt.Errorf("%s is missing, unreadable, or oversized: %w", name, err)
+		return nil, fmt.Errorf("%s is missing, unreadable, or oversized: %w", name, err)
 	}
 	if err := json.Unmarshal(b, v); err != nil {
-		return fmt.Errorf("%s is not valid JSON: %w", name, err)
+		return nil, fmt.Errorf("%s is not valid JSON: %w", name, err)
 	}
-	return nil
+	return info, nil
 }
 
 // readModelConfig decodes dir's config.json. This is the only decoder of a
 // model's configuration in Dessau; every question asked of that file —
-// whether the directory is a model, what positional range it declares, and
-// whether a finished download is worth advertising — is answered from the map
-// it returns.
+// whether the directory is a model, what positional range it declares,
+// whether a finished download is worth advertising, and whether it names code
+// the model server would run (CheckModelCode) — is answered from the map it
+// returns (CheckModelCode reads it through readModelConfigInfo, which is this
+// and the open handle's FileInfo).
 func readModelConfig(dir string) (map[string]any, error) {
+	cfg, _, err := readModelConfigInfo(dir)
+	return cfg, err
+}
+
+// readModelConfigInfo is readModelConfig, and also returns the FileInfo of
+// the handle config.json was read through (see readManifestInfo).
+func readModelConfigInfo(dir string) (map[string]any, os.FileInfo, error) {
 	var cfg map[string]any
-	if err := readManifest(dir, "config.json", &cfg); err != nil {
-		return nil, err
+	info, err := readManifestInfo(dir, "config.json", &cfg)
+	if err != nil {
+		return nil, nil, err
 	}
-	return cfg, nil
+	return cfg, info, nil
 }
 
 // plausibleConfig reports whether a decoded config.json can be a model

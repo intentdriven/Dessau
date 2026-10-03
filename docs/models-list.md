@@ -126,8 +126,8 @@ the rule has no words to test and is not consulted. The model's own files
 decide instead: `chat` is `true` when `chat_template` is, and `false` when it
 is not. A chat template is what the model's server renders a conversation
 through, so a model without one cannot hold a conversation whatever a rule
-might say, and a model with one can. This is what makes a model another
-account downloaded into the shared cache usable for chat on this account
+might say, and a model with one can. This is what gives a model found in the
+shared cache, rather than downloaded through this server, its `chat` flag
 before, or without, the Hub's words arriving.
 
 **The flag is this server's answer, not the last word.** A client is free to

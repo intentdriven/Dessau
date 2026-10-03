@@ -696,6 +696,13 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "request body is not valid JSON")
 		return
 	}
+	// Refused before anything else is asked of the request, so a model is
+	// never resolved, acquired, loaded or evicted for it (see loadField).
+	if msg := loadField(payload); msg != "" {
+		obs.failed(stats.ClassClientError)
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 
 	var requested string
 	if rawModel, ok := payload["model"]; ok {
@@ -1541,6 +1548,47 @@ func notServedText(err error, entitled bool) string {
 // short enough that an operator watching the log sees the next refusal within
 // a minute of asking themselves what is going on.
 const refusalLogEvery = time.Minute
+
+// loadFields are the request fields the model server reads as an instruction
+// to load something the client names, with the refusal each is given. The
+// pinned mlx-lm 0.31.3 server takes both from the top level of the body
+// without checking them (server.py, handle_completion's parameter reads):
+// draft_model is handed to load() as a second model, which runs whatever code
+// that model's config.json names in model_file, from any directory the
+// serving account can read; adapters loads adapter weights from a path the
+// client gives and reloads the served model to apply them, reading its
+// config.json again. Dessau loads only the model it chose, from files it
+// checked (iss-2610030752128514), so neither field is relayed, and neither is
+// stripped silently: a client that asked for speculative decoding or an
+// adapter is told it is not getting one.
+//
+// The order is the order a request carrying both is told about them.
+var loadFields = []struct{ name, refusal string }{
+	{"draft_model", `"draft_model" is not accepted: Dessau does not load a second model for a request`},
+	{"adapters", `"adapters" is not accepted: Dessau does not load adapter weights a request names`},
+}
+
+// loadField returns the refusal for the first of loadFields that payload
+// carries, or "" when it carries neither.
+//
+// The key's presence is the test, whatever its value — null, an empty string
+// and a value of the wrong type included — because what the model server does
+// with an odd value is its business, and a rule that depended on it would
+// have to be re-read at every runtime bump. payload is the decoded body, so a
+// key spelled with a JSON escape ("draft_model") is the key it decodes
+// to, and a key given twice is present whichever value comes last. The match
+// is exact, as the model server's dict lookup is: "Draft_Model" is not a key
+// it reads. What makes that set the whole of what the model server sees is
+// that both relay paths forward json.Marshal(payload), never the bytes the
+// client sent, so the model server parses exactly the keys checked here.
+func loadField(payload map[string]json.RawMessage) string {
+	for _, f := range loadFields {
+		if _, ok := payload[f.name]; ok {
+			return f.refusal
+		}
+	}
+	return ""
+}
 
 // writeError renders an OpenAI-shaped error, which is what clients parse.
 func writeError(w http.ResponseWriter, status int, msg string) {

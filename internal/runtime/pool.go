@@ -1275,7 +1275,7 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 	// own directory vanishing in a race with a concurrent delete — a healthy,
 	// unrelated resident model would be torn down for zero benefit.
 	if err := p.opts.Launcher.Precheck(Spec{RepoID: repoID, ModelPath: path}); err != nil {
-		return nil, fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
+		return nil, p.launchFailedLocked(repoID, err)
 	}
 	for _, v := range plan.victims {
 		p.stopEntryLocked(v, StopEvicted)
@@ -1351,7 +1351,7 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 		DebugLog:          debugLog,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
+		return nil, p.launchFailedLocked(repoID, err)
 	}
 	delete(p.debugArmed, key)
 	e.proc = proc
@@ -1362,6 +1362,27 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 
 	go p.waitReady(e)
 	return e, nil
+}
+
+// launchFailedLocked classes what Precheck or Launch returned. Callers must
+// hold p.mu.
+//
+// A NotReadyError is the launcher refusing the model itself — one that ships
+// its own code, whose files belong to another account, or whose config.json
+// is missing or unreadable (refuseModelCode) — before any process exists. It is the
+// model's own load failure, so it goes the way one that started and never
+// answered goes: returned as it is, for the gateway to class as not ready and
+// relay to a client entitled to the reason, and reported to the observer,
+// which records it on the model so idle work leaves it alone and the card
+// says why. Anything else is a LaunchError: a broken installation or a
+// vanished directory, whose text can carry this account's paths.
+func (p *Pool) launchFailedLocked(repoID string, err error) error {
+	var notReady *NotReadyError
+	if errors.As(err, &notReady) {
+		p.notify(func(o PoolObserver) { o.LoadFinished(repoID, 0, notReady, config.Sampling{}) })
+		return notReady
+	}
+	return fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
 }
 
 // waitReady probes until the model actually answers a completion, then unblocks

@@ -38,7 +38,9 @@ Cross-machine LAN use works. The ordinary port is plain HTTP; only the paired-cl
   in full to reach a model published under another account; download with live
   progress, resume interrupted transfers.
 - **OpenAI-compatible server** — `/v1/chat/completions`, `/v1/completions`,
-  `/v1/models`, streaming included. Drop-in for any OpenAI SDK.
+  `/v1/models`, streaming included. Drop-in for any OpenAI SDK; the two
+  fields that would load files a request names, `draft_model` and `adapters`,
+  are refused ([reference](docs/request-fields.md)).
 - **Context window published** — the models list gives each model's maximum
   context, so a client can size its prompts instead of discovering the limit
   by failure ([reference](docs/models-list.md)).
@@ -138,6 +140,8 @@ Cross-machine LAN use works. The ordinary port is plain HTTP; only the paired-cl
 - **Multi-account** — other user accounts on the same Mac share one copy of each
   model on disk and on the GPU. The models are shared; each account keeps its
   own settings and its own model list, so no key or token crosses accounts.
+  One account runs the server, and it loads only the models whose files
+  belong to it ([how to](docs/getting-started.md#9-sharing-across-user-accounts-optional)).
 
 ## Install
 
