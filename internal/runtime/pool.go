@@ -271,6 +271,10 @@ type Pool struct {
 	// not the statistics switch, not log_level. Guarded by mu, the lock the
 	// launch path that consumes it already holds.
 	debugArmed map[string]string
+	// draining marks the models being handed over to a newer version: no new
+	// request is admitted for one, so the requests already in flight can
+	// finish and the swap can stop it (Drain).
+	draining map[string]bool
 	// grace and maxWait are the eviction-grace intervals in force. They live
 	// here rather than in opts for the reason maxResident does: the operator
 	// changes them while the pool is running, and every path that reads them
@@ -875,6 +879,14 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 			p.leaveQueueLocked(w)
 			p.mu.Unlock()
 			return nil, nil, err
+		}
+		// A model being drained for an update admits nobody new, resident or
+		// not: under steady traffic the old version would never fall idle
+		// otherwise, and the update would never land (iss-2610031317470004).
+		if p.draining[key] {
+			p.leaveQueueLocked(w)
+			p.mu.Unlock()
+			return nil, nil, fmt.Errorf("%s is being updated to a newer version; try again in a moment: %w", repoID, ErrUpdating)
 		}
 		if held, ok := p.entries[key]; ok {
 			e = held
@@ -2358,6 +2370,36 @@ var ErrNotResident = errors.New("model is not resident")
 // be freed to make room. Callers can test for it with errors.Is rather than
 // matching on message text.
 var ErrBusy = errors.New("model is busy")
+
+// ErrUpdating is the refusal of a request for a model being drained for an
+// update: brief, and worth retrying.
+var ErrUpdating = errors.New("model is being updated")
+
+// Drain stops the pool admitting new requests for a model, so the requests
+// already in flight finish and the model can be stopped for an update
+// (iss-2610031317470004, at the maintainer's answer). Idle work holding it is
+// asked to let go, as for a load that needs its memory. The returned function
+// lifts the mark; call it once the model is stopped or the update is given up.
+func (p *Pool) Drain(repoID string) (undo func()) {
+	key := config.FoldRepoID(repoID)
+	p.mu.Lock()
+	if p.draining == nil {
+		p.draining = map[string]bool{}
+	}
+	p.draining[key] = true
+	if e, ok := p.entries[key]; ok {
+		p.preemptLocked([]*entry{e}, "an update")
+	}
+	p.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			p.mu.Lock()
+			delete(p.draining, key)
+			p.mu.Unlock()
+		})
+	}
+}
 
 // DecodeConcurrency and IdleTimeout are what the pool is actually running
 // with, which is not always what is saved: both are taken from the settings

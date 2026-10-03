@@ -83,6 +83,21 @@ GitHub release notes.
   did not is undone and the update abandoned. A start keeps an old version
   left aside that it cannot put back, rather than removing it with the rest
   of the staging folder (iss-2610031324593822).
+- **An update lands on a model in steady use.** `impact: fix`. The swap
+  waited up to two minutes for the model to fall idle, and under overlapping
+  requests it never did, so the update was abandoned and its download thrown
+  away. While the swap waits, a new request for that model is now refused
+  with `503`, saying it is being updated, so the requests in flight finish and
+  the swap goes ahead ([model updates](docs/model-updates.md);
+  iss-2610031317470004).
+- **An update no longer fails while the runtime is still being installed.**
+  `impact: fix`. A newer version was held to the whole check a model has
+  before it starts, which needs the runtime, so on a fresh install every
+  update failed until provisioning finished. Without the runtime, the new
+  version's own files are checked — a version that ships its own code is
+  still refused — and the full check runs when the model starts
+  ([model updates](docs/model-updates.md); iss-2610031317475284).
+
 - **The panel's memory line says what is reserved, in the units it
   measures.** `impact: fix`. The line at the head of **My Models** called the
   sum of each loaded model's charge "resident", and the default window is
