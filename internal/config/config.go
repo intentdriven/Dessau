@@ -401,6 +401,19 @@ type Config struct {
 	// EffectiveIdleThresholdSec.
 	IdleThresholdSec int `json:"idle_threshold_sec,omitempty"`
 
+	// UpdateCheck lets Dessau ask HuggingFace, at start when the last check
+	// is older than the interval and at each interval, whether each model it
+	// downloaded has a newer version, and mark the ones that have
+	// (itd-2610030857275099). Off until the operator turns it on, and while it
+	// is off no check leaves the Mac (adr-2610030857208746). A check sends
+	// the repository's name and no token unless the repository refuses an
+	// anonymous request.
+	UpdateCheck bool `json:"update_check_enabled,omitempty"`
+	// UpdateCheckIntervalHours is how often the check runs, from one hour to
+	// thirty days. Zero means daily; read it through
+	// EffectiveUpdateCheckInterval.
+	UpdateCheckIntervalHours int `json:"update_check_interval_hours,omitempty"`
+
 	// LogLevel decides how much Dessau writes about itself, in its own log and
 	// on standard error. "sparse" — the default, and what every configuration
 	// written before this field carries — is one line per event that mattered:
@@ -1161,6 +1174,40 @@ func (c *Config) sanitizeIdleThreshold() []string {
 	return repaired
 }
 
+// The update check's interval: an hour is often enough to see a fix the day
+// it lands, and thirty days is the longest a check can be put off and still
+// be one. Daily is what an operator who turns checks on gets unless they say.
+const (
+	DefaultUpdateCheckIntervalHours = 24
+	MinUpdateCheckIntervalHours     = 1
+	MaxUpdateCheckIntervalHours     = 720
+)
+
+// EffectiveUpdateCheckInterval is the update check's interval in force.
+func (c Config) EffectiveUpdateCheckInterval() time.Duration {
+	h := c.UpdateCheckIntervalHours
+	if h == 0 {
+		h = DefaultUpdateCheckIntervalHours
+	}
+	return time.Duration(h) * time.Hour
+}
+
+func usableUpdateCheckInterval(h int) bool {
+	return h == 0 || (h >= MinUpdateCheckIntervalHours && h <= MaxUpdateCheckIntervalHours)
+}
+
+// sanitizeUpdateCheck repairs an interval this build cannot use and returns
+// what it repaired, for the reason sanitizeStats gives. The switch is kept:
+// an operator who turned checks on with a figure out of range wants checks.
+func (c *Config) sanitizeUpdateCheck() []string {
+	if usableUpdateCheckInterval(c.UpdateCheckIntervalHours) {
+		return nil
+	}
+	repaired := []string{"update_check_interval_hours=" + strconv.Itoa(c.UpdateCheckIntervalHours)}
+	c.UpdateCheckIntervalHours = 0
+	return repaired
+}
+
 // sanitizeStats repairs a retention figure this build cannot use and returns
 // what it repaired, so a hand-edited file, a backup or another build's
 // settings still load.
@@ -1217,6 +1264,10 @@ func (c Config) Validate() error {
 	if !usableIdleThreshold(c.IdleThresholdSec) {
 		return fmt.Errorf("idle_threshold_sec must be between %d and %d, or 0 for the default, got %d",
 			MinIdleThresholdSec, MaxIdleThresholdSec, c.IdleThresholdSec)
+	}
+	if !usableUpdateCheckInterval(c.UpdateCheckIntervalHours) {
+		return fmt.Errorf("update_check_interval_hours must be between %d and %d, or 0 for daily, got %d",
+			MinUpdateCheckIntervalHours, MaxUpdateCheckIntervalHours, c.UpdateCheckIntervalHours)
 	}
 	// Named fields, both of them: this is the settings path, where a person is
 	// waiting to be told which of a form's worth of settings was refused.
@@ -1613,6 +1664,7 @@ func Load(path string) (Config, Notices, error) {
 	// trimmed key is the one their clients must now send.
 	n.Repaired = append(n.Repaired, cfg.sanitizeStats()...)
 	n.Repaired = append(n.Repaired, cfg.sanitizeIdleThreshold()...)
+	n.Repaired = append(n.Repaired, cfg.sanitizeUpdateCheck()...)
 	n.Repaired = append(n.Repaired, cfg.sanitizeBudget()...)
 	n.Repaired = append(n.Repaired, cfg.sanitizeGrace()...)
 	n.Repaired = append(n.Repaired, cfg.sanitizeAPIKey()...)

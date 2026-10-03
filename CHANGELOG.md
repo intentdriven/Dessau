@@ -13,6 +13,16 @@ GitHub release notes.
 
 ### Added
 
+- **Dessau can check the models you downloaded for newer versions.**
+  `impact: additive`. Off until you turn it on under **Settings → Model
+  updates** (`update_check_enabled`), daily or every 1 to 720 hours
+  (`update_check_interval_hours`). A check sends HuggingFace each model's
+  name and no access token unless the repository refuses a request without
+  one, compares only the files a model server reads — a README edit is not a
+  newer version — and records whether a newer version exists or ships its
+  own code. Turning checks off stops a check already running. When HuggingFace cannot
+  be reached, what was recorded stays as it was and one line is logged
+  ([how to](docs/model-updates.md); itd-2610030857275099).
 - **A program can ask Dessau to unload a model it has finished with.**
   `impact: additive`. `POST /v1/dessau/unload` with `{"model": "<id>"}`
   unloads a loaded model that is not pinned, not in use or loading, and not
@@ -24,6 +34,14 @@ GitHub release notes.
 
 ### Fixed
 
+- **A repository HuggingFace refuses is no longer always called gated.**
+  `impact: fix`. HuggingFace answers a request without a token for a
+  repository that does not exist exactly as it answers one for a gated
+  repository, and Dessau said every such refusal "may be gated; add an
+  access token", sending Alice to add a token that could not help when her
+  model had been deleted or renamed. A refusal without a token now says the
+  repository is missing, private or gated; one with a token says the token
+  was refused (iss-2610030913177383).
 - **A hybrid model that lists its layer kinds by name now leaves room for
   others beside it.** `impact: fix`. Dessau charges a model's memory per
   token of its window from the layers its configuration says keep a cache,

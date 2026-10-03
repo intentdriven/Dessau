@@ -94,6 +94,11 @@ Cross-machine LAN use works. The ordinary port is plain HTTP; only the paired-cl
   declares and the one it serves. A figure one of Dessau's own limits stopped
   is published as a floor, and nothing changes until you adopt it
   ([how to switch it on, and what it costs](docs/context-probe.md)).
+- **Model update checks, opt-in** — off until you turn it on: daily, or at
+  an interval you choose, Dessau asks HuggingFace whether each model you
+  downloaded has a newer version of a file it uses, sending each model's name
+  and no token unless the repository refuses a request without one
+  ([how to switch it on, and what it sends](docs/model-updates.md)).
 - **A log that says why** — Dessau keeps its own log in your account's data
   folder, so the reason behind a refusal a client saw is somewhere you can read
   it even when the app was launched from the Finder and has no terminal to
