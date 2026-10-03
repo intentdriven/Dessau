@@ -249,3 +249,36 @@ func TestTheNewestAsideCopyIsTheOnePutBack(t *testing.T) {
 		t.Errorf("asideLeft = %q, %v; want %q", left, ok, want)
 	}
 }
+
+// At start, of several copies left aside for a model whose folder is
+// missing, the newest is put back; the older ones, beside a folder that now
+// checks out, go. An aside whose name gives no model can never go back, and
+// goes too.
+func TestAStartPutsBackTheNewestAsideCopy(t *testing.T) {
+	models := t.TempDir()
+	write := func(attempt, weights string) {
+		dir := filepath.Join(models, stagingDirName, "org", "repo"+asideSuffix+attempt)
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"model_type":"qwen3"}`), 0o644)
+		os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte(weights), 0o644)
+	}
+	write("a", "oldest")
+	write("zz", "newest")
+	write("1b", "older")
+	os.MkdirAll(filepath.Join(models, "org"), 0o755)
+	junk := filepath.Join(models, stagingDirName, "org", asideSuffix+"x")
+	os.MkdirAll(junk, 0o755)
+
+	recoverStaging(models, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	if b, _ := os.ReadFile(filepath.Join(models, "org", "repo", "model.safetensors")); string(b) != "newest" {
+		t.Errorf("put back %q, want the newest", b)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(models, stagingDirName, "org")); len(entries) != 0 {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("left in the staging folder: %v", names)
+	}
+}

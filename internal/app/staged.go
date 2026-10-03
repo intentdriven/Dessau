@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -559,11 +560,7 @@ func asideLeft(sorg *stagingOrg, repoID string) (string, bool) {
 		if !ok || !e.IsDir() || e.Type()&fs.ModeSymlink != 0 {
 			continue
 		}
-		at, err := strconv.ParseInt(attempt, 36, 64)
-		if err != nil {
-			at = 0
-		}
-		if at > bestAt {
+		if at := asideAttempt(attempt); at > bestAt {
 			best, bestAt = e.Name(), at
 		}
 	}
@@ -571,6 +568,17 @@ func asideLeft(sorg *stagingOrg, repoID string) (string, bool) {
 		return "", false
 	}
 	return filepath.Join(stagingDirName, org, best), true
+}
+
+// asideAttempt is when the attempt an aside copy's name ends in started, so
+// copies can be ordered newest first; a name that is not one reads as the
+// oldest.
+func asideAttempt(attempt string) int64 {
+	at, err := strconv.ParseInt(attempt, 36, 64)
+	if err != nil || at < 0 {
+		return 0
+	}
+	return at
 }
 
 // removeAside removes the old version this attempt's swap left aside. Called
@@ -726,7 +734,8 @@ func clearStagingKeepingAside(root *os.Root, models string, log interface{ Warn(
 		for _, e := range entries {
 			if name, _, isAside := strings.Cut(e.Name(), asideSuffix); isAside && e.IsDir() && e.Type()&fs.ModeSymlink == 0 {
 				repoID := org.Name() + "/" + name
-				if !config.ValidRepoID(repoID) || validateModelDir(filepath.Join(models, filepath.FromSlash(repoID))) != nil {
+				// One whose name gives no model can never go back, and goes.
+				if config.ValidRepoID(repoID) && validateModelDir(filepath.Join(models, filepath.FromSlash(repoID))) != nil {
 					log.Warn("an old version an interrupted update left aside could not be put back, because something else stands in its model's folder; it is kept",
 						"path", filepath.ToSlash(filepath.Join(orgRel, e.Name())))
 					continue
@@ -758,6 +767,13 @@ func putBackAside(root *os.Root, log interface{ Warn(string, ...any) }) {
 		if err != nil {
 			continue
 		}
+		// Newest first: the first copy of a model put back is the one served
+		// last, and the rest then find its folder taken.
+		slices.SortStableFunc(entries, func(x, y os.DirEntry) int {
+			_, ax, _ := strings.Cut(x.Name(), asideSuffix)
+			_, ay, _ := strings.Cut(y.Name(), asideSuffix)
+			return cmp.Compare(asideAttempt(ay), asideAttempt(ax))
+		})
 		for _, e := range entries {
 			name, _, ok := strings.Cut(e.Name(), asideSuffix)
 			repoID := org.Name() + "/" + name
