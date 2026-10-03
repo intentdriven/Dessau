@@ -1,10 +1,10 @@
 ---
 id: adr-2609201008476813
 slug: local-telemetry-may-record-prompt-text-and-completions-only
-status: accepted
+status: superseded in part by adr-2610030906462776, on "refused outright under the shared-cache install" in the first exception; everything else stands
 date: 2026-09-20
 supersedes: adr-2609061503319212
-superseded_by: null
+superseded_by: adr-2610030906462776
 related_intents: [itd-2609091707499248, itd-2609062346072707, itd-2609091715089488]
 related_rfcs: []
 related_adrs: [adr-2609061503319212, adr-2609201008470380, adr-2609201008477513, adr-2609061610102325, adr-2609111126115848, adr-2609181004167097]

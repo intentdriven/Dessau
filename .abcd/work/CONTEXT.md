@@ -20,10 +20,10 @@ empirically verified design constraints live in
 - **Child processes get `HF_HUB_OFFLINE=1` and an existing `HF_HUB_CACHE`.**
   A missing cache directory makes `mlx_lm.server` raise `CacheNotFound` and
   return an empty model list.
-- **Shared-cache mode** (`make install-shared`) uses `/Users/Shared/Dessau`
-  with directory mode `3775` (setgid + sticky) and file modes left to the app
-  (secrets and logs written `0600`). Several deferred security findings only
-  bite in this mode — check the ledger before changing anything here.
+- **One account serves.** Dessau keeps everything in the serving account's own
+  data root (`~/Library/Application Support/Dessau`, or `DESSAU_ROOT`); other
+  accounts use it over the network. There is no machine-wide root
+  (adr-2610030906462776, 2026-10-03).
 - **Firewall:** a locally built, ad-hoc-signed binary run from a new path is
   silently blocked for LAN traffic (loopback still works) — re-run
   `make allow-firewall`. The Makefile pins a stable codesign identifier for

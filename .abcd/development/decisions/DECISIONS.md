@@ -64,6 +64,9 @@ items 7-9 read from the pinned mlx-lm 0.31.3 source on 2026-09-06 (see
   on `EADDRINUSE` it becomes a client of the already-running instance. One server,
   one GPU, N user accounts. The shared model cache lives in `/Users/Shared/Gropius`
   (setgid, group-writable) so a second account does not re-download gigabytes.
+  *Reversed 2026-10-03 by adr-2610030906462776: Dessau serves from one account and
+  keeps everything in that account's own data root; other accounts use the
+  server over the network.*
 
 ## Open security note
 
