@@ -559,6 +559,26 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 		default:
 			entry["tool_calling"] = "no"
 		}
+		// And which model this one is a build of, with the facts that tell
+		// builds apart (itd-2610030932551549): the origin HuggingFace's own
+		// label names, folded, absent when the label is not there exactly
+		// once; the precision the model's own configuration declares,
+		// absent when it declares none; and its size on disk. Facts about
+		// what a model IS, so every client gets them. Builds with one
+		// build_of and one kind are one group — a rule for clients, which
+		// docs/models-list.md states. Nothing here makes build_of a name a
+		// request may use: resolveModel matches served models only.
+		if origin := m.BuildOf(); origin != "" {
+			entry["build_of"] = origin
+		}
+		// Both bounded again here, where they leave the machine, as the
+		// context length is: the index can be edited by hand.
+		if registry.PlausibleQuantizationBits(m.QuantizationBits) {
+			entry["quantization_bits"] = m.QuantizationBits
+		}
+		if m.Bytes > 0 && m.Bytes <= maxPublishedSize {
+			entry["size_bytes"] = m.Bytes
+		}
 		if residency != nil {
 			addResidency(entry, residency[config.FoldRepoID(m.RepoID)], pinned[config.FoldRepoID(m.RepoID)])
 		}
@@ -566,6 +586,11 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
 }
+
+// maxPublishedSize bounds the size_bytes the models list publishes: a
+// petabyte, far past any model a Mac holds and inside the range a JSON
+// number keeps exactly in every client.
+const maxPublishedSize = 1 << 50
 
 // addResidency writes the residency fields onto one models-list entry, from
 // the pool's record for that model.
