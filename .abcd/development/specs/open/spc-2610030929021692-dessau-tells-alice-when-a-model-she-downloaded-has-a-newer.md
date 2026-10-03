@@ -120,6 +120,7 @@ as text through the panel's escaping helper, with a test.
 4. The panel
    - packages: internal/ui, internal/gateway
    - tests: the mark, "version unknown", "will be offered once reviewed", "ships code Dessau will not run", the Update button where allowed; names from HuggingFace rendered as text
+   - landed: #165
 
 ## Footprint
 

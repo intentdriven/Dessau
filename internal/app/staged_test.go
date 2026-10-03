@@ -471,6 +471,30 @@ func TestADecisionModelIsUpdatedOnlyToAReviewedVersion(t *testing.T) {
 	}
 }
 
+// While a newer version is fetched beside a ready model, how far it has come
+// is told on its own, for the card; the registry's figure stays the served
+// version's.
+func TestAnUpdatesProgressIsToldForTheCard(t *testing.T) {
+	a, h := newStagedApp(t)
+	if _, ok := a.UpdateProgress("org/repo"); ok {
+		t.Error("a model with no update under way reports one")
+	}
+	block := make(chan struct{})
+	h.set(func(h *versionedHub) { h.current = commitV2; h.block = block })
+	if err := a.Download("org/repo"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the update to start", func() bool { _, ok := a.UpdateProgress("org/repo"); return ok })
+	if m, _ := a.Registry.Get("org/repo"); m.Progress != 100 {
+		t.Errorf("the served version's progress moved to %v", m.Progress)
+	}
+	close(block)
+	waitSettled(t, a)
+	if _, ok := a.UpdateProgress("org/repo"); ok {
+		t.Error("a finished update still reports progress")
+	}
+}
+
 // A link planted in the staging folder is never followed: not by the
 // removal that clears the folder before a download, not by the swap, and not
 // by the recovery at start. Whatever it names, inside the models folder or

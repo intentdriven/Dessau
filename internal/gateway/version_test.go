@@ -76,3 +76,30 @@ func TestAnUnrelatedSaveLeavesTheUpdateCheckAsItWas(t *testing.T) {
 		t.Errorf("an interval past thirty days: status %d, %s", resp.StatusCode, body)
 	}
 }
+
+// The panel's Update is a route of its own: refused for a model with nothing
+// Dessau would run to update to, and for one that is not there.
+func TestTheUpdateRouteRefusesWhereNoneIsOffered(t *testing.T) {
+	srv, a := newTestControlApp(t, config.Default())
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	const newer = "fedcba9876543210fedcba9876543210fedcba98"
+	if err := a.Registry.Put(registry.Model{
+		RepoID: "org/m", Path: a.Paths.ModelDir("org/m"), State: registry.StateReady, Commit: commit,
+		Update: &registry.UpdateCheck{Status: registry.UpdateRunsOwnCode, Commit: newer},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp := postJSON(t, srv, "/api/models/update", `{"model":"org/m"}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("an update to a version Dessau will not run: status %d, want 409", resp.StatusCode)
+	}
+	resp = postJSON(t, srv, "/api/models/update", `{"model":"org/absent"}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("an update of a model that is not there: status %d, want 404", resp.StatusCode)
+	}
+	if len(a.Downloading()) != 0 {
+		t.Error("a refused update started a download")
+	}
+}
