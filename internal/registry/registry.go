@@ -41,7 +41,11 @@ type Model struct {
 	// RepoID is the HuggingFace repo, e.g. "mlx-community/Qwen3-8B-4bit".
 	// It doubles as the model's public name on the OpenAI API.
 	RepoID string `json:"repo_id"`
-	// Path is the directory passed to mlx_lm.server --model.
+	// Path is the model's directory, <models>/<org>/<name>, as last recorded.
+	// It is a record, never an instruction: everything that acts on a model's
+	// files — the launch, the delete — derives the directory from RepoID
+	// (config.ModelDirIn), and Rescan rewrites Path to that derived directory,
+	// so a stored value naming anywhere else steers nothing.
 	Path string `json:"path"`
 	// Bytes is the on-disk size of the model's files.
 	Bytes int64 `json:"bytes"`
@@ -412,7 +416,7 @@ func (r *Registry) Put(m Model) error {
 	r.mu.Lock()
 	// A re-cased Put updates the existing entry but never renames it: the
 	// first-seen spelling stays the model's public name. Path is taken from
-	// the caller as before — it must be able to move when the root does.
+	// the caller, which derives it from the repo id (config.ModelDirIn).
 	if existing, ok := r.models[key(m.RepoID)]; ok {
 		m.RepoID = existing.RepoID
 	}
@@ -699,12 +703,12 @@ func (r *Registry) Rescan(modelsDir string) error {
 			if !repo.IsDir() {
 				continue
 			}
-			dir := filepath.Join(modelsDir, org.Name(), repo.Name())
+			repoID := org.Name() + "/" + repo.Name()
+			dir := config.ModelDirIn(modelsDir, repoID)
 			complete, size, facts := inspectModelDir(dir)
 			if !complete {
 				continue
 			}
-			repoID := org.Name() + "/" + repo.Name()
 			// Adopt only well-formed repo ids. Every write path (Download/Delete)
 			// gates on ValidRepoID, so an id that fails it here — the name of a
 			// directory someone copied in by hand, say — would be served on
@@ -765,23 +769,30 @@ func (r *Registry) Rescan(modelsDir string) error {
 	// inspectModelDir transiently reports it
 	// incomplete. Dropping it then would wipe a healthy model from the index on a
 	// race. Distinguish "gone" from "incomplete" with an explicit stat.
+	//
+	// The directory stat'ed is the one derived from the repo id, never the
+	// stored Path, and the entry that survives carries the derived one: an
+	// index written by an earlier layout, or edited by hand, can name a folder
+	// outside modelsDir that still exists, and keeping the entry on the
+	// strength of that folder would list as served a model this account's
+	// models directory does not hold.
 	for k, m := range r.models {
 		if foundKeys[k] {
 			continue
 		}
-		if m.State == StateDownloading {
-			continue
-		}
-		if m.Path != "" {
-			if _, err := os.Stat(m.Path); err == nil || !errors.Is(err, fs.ErrNotExist) {
-				// Directory still exists, or the stat failed for some other reason
-				// (a permission hiccup, a transient I/O error) — that is not proof
-				// of deletion, so leave the entry alone rather than risk dropping a
-				// healthy model from the index.
+		dir := config.ModelDirIn(modelsDir, m.RepoID)
+		if m.State != StateDownloading {
+			// A stat that fails for a reason other than "does not exist" (a
+			// permission hiccup, a transient I/O error) is not proof of
+			// deletion, so the entry stays rather than risk dropping a healthy
+			// model from the index.
+			if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
+				delete(r.models, k)
 				continue
 			}
 		}
-		delete(r.models, k)
+		m.Path = dir
+		r.models[k] = m
 	}
 	snapshot := r.listLocked()
 	err = r.saveLocked()

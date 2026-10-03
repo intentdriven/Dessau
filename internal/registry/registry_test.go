@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -421,6 +422,68 @@ func TestRescanDropsModelsDeletedOutsideTheApp(t *testing.T) {
 	}
 }
 
+// A model's directory is <models>/<org>/<name>, derived from its repo id, and
+// the `path` stored beside it in registry.json is never what decides where it
+// is. An index written by an earlier layout — or edited by hand — can name a
+// folder outside this account's models directory that still exists, and an
+// entry the scan kept on the strength of that folder would be served from it.
+func TestRescanDropsAnEntryStoredOutsideTheModelsDir(t *testing.T) {
+	base := t.TempDir()
+	elsewhere := writeModelDir(t, filepath.Join(base, "elsewhere", "models"), "org", "name", 64)
+	root := filepath.Join(base, "account")
+	models := filepath.Join(root, "models")
+	if err := os.MkdirAll(models, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(root, "registry.json")
+	b, err := json.Marshal([]Model{{RepoID: "org/name", Path: elsewhere, State: StateReady}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(state, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := Open(state)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := r.Rescan(models); err != nil {
+		t.Fatalf("Rescan: %v", err)
+	}
+	if m, err := r.Get("org/name"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("an entry whose model is not in the models directory was kept: %+v", m)
+	}
+	if ready := r.Ready(); len(ready) != 0 {
+		t.Errorf("Ready() = %+v, want nothing served", ready)
+	}
+}
+
+// An entry the scan keeps without adopting — its directory is in the models
+// directory but not yet complete — carries the derived path afterwards, not
+// the stored one.
+func TestRescanRepairsAStoredPathToTheModelsDir(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	models := filepath.Join(dir, "models")
+	want := filepath.Join(models, "org", "name")
+	if err := os.MkdirAll(want, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := writeModelDir(t, filepath.Join(dir, "elsewhere"), "org", "name", 64)
+	r.Put(Model{RepoID: "org/name", Path: elsewhere, State: StateFailed})
+
+	if err := r.Rescan(models); err != nil {
+		t.Fatal(err)
+	}
+	m, err := r.Get("org/name")
+	if err != nil {
+		t.Fatalf("an entry whose directory is in the models directory was dropped: %v", err)
+	}
+	if m.Path != want {
+		t.Errorf("Path = %q, want the derived %q", m.Path, want)
+	}
+}
+
 // A stat failure that is not "the directory does not exist" — a permission
 // hiccup, a transient I/O error — is not proof a model was deleted, and must
 // not be treated as one: only a confirmed fs.ErrNotExist means "gone".
@@ -430,15 +493,16 @@ func TestRescanKeepsModelWhenStatFailsForReasonOtherThanNotExist(t *testing.T) {
 	if err := os.MkdirAll(models, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// A regular file standing in for a directory component makes any os.Stat of
-	// a path beneath it fail with ENOTDIR, not ENOENT — a stat failure that is
-	// unambiguously not "the directory was deleted".
-	blocker := filepath.Join(dir, "blocker")
+	// A regular file standing in for the org directory makes the os.Stat of
+	// the model's directory beneath it fail with ENOTDIR, not ENOENT — a stat
+	// failure that is unambiguously not "the directory was deleted". It sits
+	// inside the models directory because the directory stat'ed is the one
+	// derived from the repo id there.
+	blocker := filepath.Join(models, "org")
 	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	unstatable := filepath.Join(blocker, "org", "model")
-	r.Put(Model{RepoID: "org/model", Path: unstatable, State: StateReady})
+	r.Put(Model{RepoID: "org/model", Path: filepath.Join(blocker, "model"), State: StateReady})
 
 	if err := r.Rescan(models); err != nil {
 		t.Fatal(err)

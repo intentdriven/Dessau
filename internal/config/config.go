@@ -192,8 +192,20 @@ func (p Paths) VenvPython() string { return filepath.Join(p.Venv, "bin", "python
 // The repo id must be validated with ValidRepoID first: it becomes a filesystem
 // path, and an unvalidated value like "../../.." would escape p.Models and, once
 // stored in the registry, could be handed to os.RemoveAll on delete.
-func (p Paths) ModelDir(repoID string) string {
-	return filepath.Join(p.Models, filepath.FromSlash(repoID))
+func (p Paths) ModelDir(repoID string) string { return ModelDirIn(p.Models, repoID) }
+
+// ModelDirIn is ModelDir for a caller holding only the models directory — the
+// registry, which is handed that directory rather than the whole layout.
+//
+// This is the repository's one rule for where a model's files are, and every
+// part that needs a model's directory derives it here from the repo id: the
+// download's destination, the delete, the launch, and the registry's scan.
+// The `path` registry.json stores beside each model is never what decides it:
+// an index written by an earlier layout, or edited by hand, can name a folder
+// outside the models directory that still exists, and a model served from it
+// would be one this account's own folder does not hold.
+func ModelDirIn(models, repoID string) string {
+	return filepath.Join(models, filepath.FromSlash(repoID))
 }
 
 // EnsureDirs creates every directory in the layout, 0755, and widens nothing.

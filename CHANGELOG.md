@@ -57,8 +57,11 @@ GitHub release notes.
 ### Removed
 
 - **Shared-cache mode is gone: Dessau serves from one macOS account.**
-  `impact: breaking`. `make install-shared` and the machine-wide model folder
-  under `/Users/Shared` are no longer used, and Dessau keeps everything —
+  `impact: breaking`. `make install-shared` is removed, and Dessau neither reads
+  nor serves anything from the machine-wide folder under `/Users/Shared`: a
+  model is served only from the serving account's own models folder, and at
+  start-up any model the index still records elsewhere is dropped from the
+  list rather than served from there. Dessau keeps everything —
   models, settings, logs, statistics and its private runtime — in the serving
   account's own `~/Library/Application Support/Dessau` (or wherever
   `DESSAU_ROOT` points, as before). Other accounts on the same Mac use the
