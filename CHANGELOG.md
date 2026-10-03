@@ -84,11 +84,12 @@ GitHub release notes.
 ### Fixed
 
 - **Merge system messages applies whichever way the model's id is spelled.**
-  `impact: fix`. The gateway and the Discord bridge read the setting by the
-  request's exact model id, so a setting saved under another spelling, such
-  as `ORG/Model` against `org/model`, was missed and the messages were sent
-  unmerged. It is now read folded, like every other per-model setting
-  ([system-message merging](docs/system-message-merging.md);
+  `impact: fix`. The gateway, the Discord bridge and the panel's box read the
+  setting by the model's exact id, so a setting kept under another spelling,
+  such as `ORG/Model` against `org/model`, could be missed and the messages
+  sent unmerged. Dessau moves saved settings onto the registry's spelling, so
+  this was rare. The setting is now read folded, like every other per-model
+  setting ([system-message merging](docs/system-message-merging.md);
   iss-2609201015464436).
 - **A model server that can no longer generate is restarted.** `impact: fix`.
   The pinned mlx-lm answers every request from one generation thread, and a
