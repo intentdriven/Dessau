@@ -377,7 +377,7 @@ func classifyAcquireError(err error) stats.Class {
 		return stats.ClassLaunchFailed
 	case errors.As(err, &notReady):
 		return stats.ClassNotReady
-	case errors.Is(err, runtime.ErrBusy):
+	case errors.Is(err, runtime.ErrBusy), errors.Is(err, runtime.ErrUpdating):
 		return stats.ClassBusy
 	default:
 		return stats.ClassRefused

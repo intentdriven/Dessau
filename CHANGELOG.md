@@ -72,6 +72,14 @@ GitHub release notes.
 
 ### Fixed
 
+- **An update lands on a model in steady use.** `impact: fix`. The swap
+  waited up to two minutes for the model to fall idle, and under overlapping
+  requests it never did, so the update was abandoned and its download thrown
+  away. While the swap waits, a new request for that model is now refused
+  with `503`, saying it is being updated, so the requests in flight finish and
+  the swap goes ahead ([model updates](docs/model-updates.md);
+  iss-2610031317470004).
+
 - **The panel's memory line says what is reserved, in the units it
   measures.** `impact: fix`. The line at the head of **My Models** called the
   sum of each loaded model's charge "resident", and the default window is

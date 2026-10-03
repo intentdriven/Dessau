@@ -75,7 +75,10 @@ every file at one exact version, checks each against the hash HuggingFace
 lists for it, and checks the new version as it checks any model before it
 starts one. Only then does it swap the two: it waits for requests already
 being answered by the model to finish, moves the new version in, and removes
-the old one. If anything fails along the way — a file that is not what
+the old one. While it waits, a new request for that model is answered at once
+with `503` and the message that the model is being updated and to try again in
+a moment — otherwise a model in steady use would never fall idle, and the
+update would never land. If anything fails along the way — a file that is not what
 HuggingFace lists, a download that stops, a version that ships its own code,
 or a disk without room for both versions at once — the new version is
 removed and the old one keeps serving, unchanged. A file both versions share
