@@ -213,7 +213,14 @@ func strconvItoa(n int) string { return strconv.Itoa(n) }
 type childPool struct{ url string }
 
 func (p childPool) Acquire(context.Context, string) (*runtime.Upstream, func(), error) {
-	return &runtime.Upstream{RepoID: testChildRepo, BaseURL: p.url, ModelArg: childModelArg}, func() {}, nil
+	return &runtime.Upstream{
+		RepoID:  testChildRepo,
+		BaseURL: p.url,
+		// The fake child is on a loopback port; the pool hands over a
+		// transport that dials its server's private socket instead.
+		Transport: http.DefaultTransport,
+		ModelArg:  childModelArg,
+	}, func() {}, nil
 }
 func (childPool) Resident() []runtime.Resident { return nil }
 func (childPool) Pinned() []string             { return nil }
