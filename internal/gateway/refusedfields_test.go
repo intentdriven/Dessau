@@ -23,7 +23,9 @@ import (
 // adapters, which it loads adapter weights from and reloads the served model
 // for. The presence of the key is enough, whatever its value, and the key is
 // the one the model server reads: spelled with a JSON escape it is the same
-// key, and given twice it is still there.
+// key, and given twice it is still there. The escaped keys are built from
+// pieces so that no tool which writes or reads this file can decode them into
+// the plain key; the test asserts that their bytes carry a backslash.
 var refusedFieldBodies = []struct {
 	name  string
 	field string
@@ -34,7 +36,7 @@ var refusedFieldBodies = []struct {
 	{"draft_model, empty", "draft_model", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"draft_model":""}`},
 	{"draft_model, a number", "draft_model", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"draft_model":0}`},
 	{"draft_model, an object", "draft_model", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"draft_model":{}}`},
-	{"draft_model, spelled with an escape", "draft_model", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"draft_model":"/elsewhere/model"}`},
+	{"draft_model, spelled with an escape", "draft_model", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"draft` + "\\" + `u005fmodel":"/elsewhere/model"}`},
 	{"draft_model, given twice, the last null", "draft_model", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"draft_model":"/elsewhere/model","draft_model":null}`},
 	{"draft_model, given twice, the last a path", "draft_model", `{"draft_model":null,"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"draft_model":"/elsewhere/model"}`},
 	{"draft_model, streamed", "draft_model", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"stream":true,"draft_model":"/elsewhere/model"}`},
@@ -42,7 +44,7 @@ var refusedFieldBodies = []struct {
 	{"adapters, null", "adapters", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"adapters":null}`},
 	{"adapters, empty", "adapters", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"adapters":""}`},
 	{"adapters, a list", "adapters", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"adapters":[]}`},
-	{"adapters, spelled with an escape", "adapters", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"adapters":"/elsewhere/adapters"}`},
+	{"adapters, spelled with an escape", "adapters", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"` + "\\" + `u0061dapters":"/elsewhere/adapters"}`},
 	{"adapters, given twice", "adapters", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"adapters":"/elsewhere/adapters","adapters":null}`},
 	{"adapters, streamed", "adapters", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"stream":true,"adapters":"/elsewhere/adapters"}`},
 	{"both, draft_model named", "draft_model", `{"model":"mlx-community/Qwen3-8B-4bit","messages":[{"role":"user","content":"hi"}],"adapters":"a","draft_model":"b"}`},
@@ -56,6 +58,9 @@ func TestARequestNamingSomethingToLoadIsRefused(t *testing.T) {
 	for _, path := range []string{"/v1/chat/completions", "/v1/completions"} {
 		for _, c := range refusedFieldBodies {
 			t.Run(path+" "+c.name, func(t *testing.T) {
+				if strings.Contains(c.name, "escape") && !strings.Contains(c.body, `\`) {
+					t.Fatalf("the body %s carries no backslash, so it tests no escape", c.body)
+				}
 				srv, pool, fake := newTestGateway(t, config.Default())
 				req, err := http.NewRequest(http.MethodPost, srv.URL+path, strings.NewReader(c.body))
 				if err != nil {

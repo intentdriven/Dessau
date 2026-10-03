@@ -25,7 +25,7 @@ decoding and per-request adapters are therefore not available through Dessau.
 - Only a field at the top level of the body counts. The same name inside a
   message, or written in another case (`Draft_Model`), is not one the model
   server reads, and the request is passed on as usual.
-- A name written with JSON escapes (`"draft_model"`) is the name it
+- A name written with JSON escapes (`"draft\u005fmodel"`) is the name it
   decodes to, and is refused. So is a field given more than once.
 - A request carrying both is told about `draft_model`.
 

@@ -1575,8 +1575,9 @@ var loadFields = []struct{ name, refusal string }{
 // and a value of the wrong type included — because what the model server does
 // with an odd value is its business, and a rule that depended on it would
 // have to be re-read at every runtime bump. payload is the decoded body, so a
-// key spelled with a JSON escape ("draft_model") is the key it decodes
-// to, and a key given twice is present whichever value comes last. The match
+// key spelled with a JSON escape (draft_model with its underscore written as
+// the escape for U+005F, say) is the key it decodes to, and a key given twice
+// is present whichever value comes last. The match
 // is exact, as the model server's dict lookup is: "Draft_Model" is not a key
 // it reads. What makes that set the whole of what the model server sees is
 // that both relay paths forward json.Marshal(payload), never the bytes the

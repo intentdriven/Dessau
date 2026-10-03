@@ -39,7 +39,11 @@ func TestCheckModelCodeMirrorsTheModelServersOwnCondition(t *testing.T) {
 		{"a number", `{"model_type":"llama","model_file":0}`, true},
 		{"false", `{"model_type":"llama","model_file":false}`, true},
 		{"an object", `{"model_type":"llama","model_file":{}}`, true},
-		{"the key spelled with an escape", `{"model_type":"llama","model_file":"model.py"}`, true},
+		// The escape is built from pieces so that no tool which writes or
+		// reads this file can decode it into the plain key: the bytes the
+		// check reads carry a backslash, and Python's json module decodes the
+		// key to model_file all the same.
+		{"the key spelled with an escape", `{"model_type":"llama","model` + "\\" + `u005ffile":"model.py"}`, true},
 		{"null", `{"model_type":"llama","model_file":null}`, false},
 		{"absent", `{"model_type":"llama"}`, false},
 		{"nested, not top-level", `{"model_type":"llava","text_config":{"model_file":"model.py"}}`, false},
@@ -50,6 +54,9 @@ func TestCheckModelCodeMirrorsTheModelServersOwnCondition(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			if strings.Contains(c.name, "escape") && !strings.Contains(c.body, `\`) {
+				t.Fatalf("the body %s carries no backslash, so it tests no escape", c.body)
+			}
 			err := CheckModelCode(writeModelConfig(t, c.body), os.Geteuid())
 			if c.refuse && !errors.Is(err, ErrModelCode) {
 				t.Errorf("CheckModelCode = %v, want ErrModelCode", err)
@@ -125,13 +132,13 @@ func TestCheckModelCodeReportsWhatItCannotRead(t *testing.T) {
 	}
 }
 
-// In the shared cache a model's files belong to whichever account downloaded
-// them, and the owner of a file — or of the directory it sits in — can
-// replace it after the check has read it and before the model server does.
-// So a model is loaded only from files the account running Dessau owns: the
-// model's directory, and config.json as the handle the check read it through
-// saw it. Anything else is refused with the plain reason, whatever the file
-// says, since its content is not this account's to vouch for.
+// A model is loaded only from files the account running Dessau owns: the
+// model's directory (the link and what it leads to, when it is a link), and
+// config.json as the handle the check read it through saw it. Anything else is
+// refused with the plain reason, whatever the file says, since its content is
+// not this account's to vouch for. Dessau serves from one account and keeps
+// its models in that account's own data root, so this refuses nothing a
+// normal install holds; it is defence in depth.
 func TestCheckModelCodeRefusesFilesAnotherAccountOwns(t *testing.T) {
 	other := os.Geteuid() + 1
 	for name, body := range map[string]string{
@@ -146,12 +153,36 @@ func TestCheckModelCodeRefusesFilesAnotherAccountOwns(t *testing.T) {
 		})
 		// The directory is this account's and config.json is not: the owner
 		// is read off the handle the bytes came from, not off a second stat
-		// of the path, which a swap between the two could answer.
+		// of the path.
 		t.Run("config.json alone, "+name, func(t *testing.T) {
 			dirsOnly := func(fi fs.FileInfo) bool { return fi.IsDir() }
 			err := checkModelCode(writeModelConfig(t, body), dirsOnly)
 			if !errors.Is(err, ErrOtherAccount) {
 				t.Errorf("checkModelCode with config.json another account's = %v, want ErrOtherAccount", err)
+			}
+		})
+		// config.json is this account's and the directory holding it is
+		// not: owning the file is not enough, the directory is checked too.
+		t.Run("the directory alone, "+name, func(t *testing.T) {
+			filesOnly := func(fi fs.FileInfo) bool { return !fi.IsDir() }
+			err := checkModelCode(writeModelConfig(t, body), filesOnly)
+			if !errors.Is(err, ErrOtherAccount) {
+				t.Errorf("checkModelCode with the directory another account's = %v, want ErrOtherAccount", err)
+			}
+		})
+		// The link is this account's, and so is config.json, but the
+		// directory the link leads to is not: the target is checked as well
+		// as the link.
+		t.Run("a link's target alone, "+name, func(t *testing.T) {
+			real := writeModelConfig(t, body)
+			link := filepath.Join(t.TempDir(), "model")
+			if err := os.Symlink(real, link); err != nil {
+				t.Fatal(err)
+			}
+			allButTheTarget := func(fi fs.FileInfo) bool { return !fi.IsDir() }
+			err := checkModelCode(link, allButTheTarget)
+			if !errors.Is(err, ErrOtherAccount) {
+				t.Errorf("checkModelCode through a link to another account's directory = %v, want ErrOtherAccount", err)
 			}
 		})
 	}
