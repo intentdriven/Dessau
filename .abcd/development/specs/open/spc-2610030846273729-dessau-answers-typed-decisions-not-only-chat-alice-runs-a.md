@@ -67,9 +67,12 @@ manifest repository at its pinned commit (`resolve/<commit>/…`), never `main`,
 and records the commit in the registry. At load, every listed file is checked
 against the manifest; a mismatch refuses the load with a reason naming the
 build and saying it does not match the reviewed version. A newer upstream
-revision is ignored until a Dessau release ships its review. Initial builds:
-`mlx-community/clef-4bit` (commit d004817d…), and the flash build once
-reviewed; each has its own golden fixture.
+revision is ignored until a Dessau release ships its review. The first
+reviewed build is `mlx-community/clef-flash-4bit` (commit 140bf7e037f5…, about
+6.2 GB), whose golden fixtures the maintainer is producing on a Mac with mlx
+0.32.3, mlx-lm 0.32.0 and mlx-vlm 0.7.4; `mlx-community/clef-4bit` (commit
+d004817d…) follows once its own fixtures exist. Each build has its own golden
+fixture set.
 
 ### The decision server
 Dessau's own rewrite (adr-2610030929484599), embedded in the binary and launched

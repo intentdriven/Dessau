@@ -29,7 +29,7 @@ finish_reason · HTTP · elapsed s · served_context · other requests in flight
 | GLM-4.7-Flash-8bit | false | 25094 | 2550 | 8872 | stop | 200 | 181.0 | 29190 | none known |
 | Nemotron-3.5-Lightning-30B-A3B-4bit | false | 53288 | ~2.6k | n/a | n/a | 504 | not timed (≥600 by the gateway's floor) | 57384 | none known |
 | Qwen3.8-27B-8bit | false | 31781 | ~2.6k | n/a | n/a | 504 | not timed | 35877 | likely Nemotron's abandoned decode |
-| Nemotron-3.5-Lightning-30B-A3B-4bit | true | 53288 | ~2.6k | pending | pending | 200, stream open | >2,700 so far | 57384 | likely Qwen's abandoned decode at the start |
+| Nemotron-3.5-Lightning-30B-A3B-4bit | true | 53288 | ~2.6k | none reported (stopped) | none | 200, stream open | >3,000, stopped by the client | 57384 | likely Qwen's abandoned decode at the start |
 
 A request whose prompt the server counted at about 29,326 tokens against GLM's
 served 29,190 was refused with a 400 naming the served window, in under five
@@ -46,3 +46,7 @@ seconds: the served-window check behaving as documented.
 - A reasoning model given a context-sized limit can reason for a very long
   time (the streamed run); a bound on long reasoning runs, if any, is a product
   decision, not recorded here.
+
+Final note on the streamed run: it held past 3,000 s with no 504 and produced
+no verdict; when the client disconnected, the model's in-flight count fell to
+zero within about five seconds, so a disconnected stream stops generation.
