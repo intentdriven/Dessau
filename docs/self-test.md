@@ -102,8 +102,6 @@ at mode 0600, and it is bounded — when the next line would take it past
 4 MiB it is started again, which is thousands of runs away. The
 [reference page](self-test-reference.md) names every field.
 
->>>>
-
 ## Related
 
 - [Reference: the self-test results](self-test-reference.md) — every field of

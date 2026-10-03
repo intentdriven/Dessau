@@ -9,8 +9,6 @@ while the switch is off.
 In a `stats` folder inside your own Dessau data folder — normally
 `~/Library/Application Support/Dessau/stats`.
 
->>>>
-
 The folder is yours alone (mode `0700`), and so is every file in it (`0600`).
 Dessau refuses to write records into a folder any other account on this Mac
 could write to, or one that belongs to another account; if it has to refuse, it

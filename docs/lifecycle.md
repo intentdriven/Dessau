@@ -263,8 +263,6 @@ deletes nothing and names the flag that answers for you:
 dessau uninstall --purge --yes
 ```
 
->>>>
-
 ## Diagnose it
 
 ```sh
