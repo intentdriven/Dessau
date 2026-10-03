@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-2610030932551549, itd-2609170718430553, itd-2609200829199959]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
@@ -35,7 +35,18 @@ production_mode: hand-written
 
 ## Open Questions
 
-_None recorded yet._
+- Remembering a choice: today Dessau Chat remembers one model globally, and a
+  model change inside a chat changes that chat only ("Set as Default"
+  promotes it; itd-2609200829199959). The draft's "remembered for her next
+  conversation" is FLAGGED: as written it reverses that rule.
+- What happens when the remembered build has been deleted: the client never
+  switches model by itself today; offer the siblings and let the user pick?
+- A server without the new fields must show today's flat list unchanged.
+- Typed links: builds on itd-2610030932551549 (the server's fields) and
+  itd-2609170718430553 (the client offers the server's models); refines
+  itd-2609200829199959 (the picker and its Model-menu mirror).
+- Seeded 2026-10-03 from the maintainer's request; revised after two
+  adversarial reviews the same day.
 
 ## Audit Notes
 
