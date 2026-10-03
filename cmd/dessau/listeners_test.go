@@ -202,6 +202,16 @@ func TestBothListenersAreBuiltThroughListenerServer(t *testing.T) {
 func TestTheListenerBoundsAreTheOnesThisServerMeansToHave(t *testing.T) {
 	// One figure, not two that happen to agree: the listener's whole-request
 	// bound is the gateway's completions-body bound (iss-2609190254515481).
+	// Held in the source as well as by value, because a literal 30s typed
+	// back in here would agree today and drift tomorrow.
+	src, err := os.ReadFile("listeners.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "requestReadTimeout = gateway.BodyReadTimeout\n") {
+		t.Error("listeners.go no longer defines requestReadTimeout as gateway.BodyReadTimeout, so the " +
+			"two read bounds are two figures again")
+	}
 	if requestReadTimeout != gateway.BodyReadTimeout {
 		t.Errorf("the request read bound is %s, want gateway.BodyReadTimeout (%s) — the figure "+
 			"internal/gateway puts on the completions body", requestReadTimeout, gateway.BodyReadTimeout)
