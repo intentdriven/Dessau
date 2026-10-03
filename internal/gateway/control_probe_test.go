@@ -32,10 +32,10 @@ func TestModelsListCarriesTheMeasuredContext(t *testing.T) {
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: "/m"})
 	defer fake.Close()
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/plain", State: registry.StateReady, ContextLength: 131072},
-		{RepoID: "org/current", State: registry.StateReady, ContextLength: 131072,
+		{ChatTemplate: true, RepoID: "org/plain", State: registry.StateReady, ContextLength: 131072},
+		{ChatTemplate: true, RepoID: "org/current", State: registry.StateReady, ContextLength: 131072,
 			Measured: &registry.Measurement{Window: 91000, Bound: registry.BoundPrefillDeadline, Runtime: "0.31.3"}},
-		{RepoID: "org/stale", State: registry.StateReady, ContextLength: 131072,
+		{ChatTemplate: true, RepoID: "org/stale", State: registry.StateReady, ContextLength: 131072,
 			Measured: &registry.Measurement{Window: 91000, Bound: registry.BoundModel, Runtime: "0.31.3", Stale: registry.StaleRuntime}},
 	}}
 	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})

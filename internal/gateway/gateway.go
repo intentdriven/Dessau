@@ -196,7 +196,7 @@ func (g *Gateway) TLSHandler(reg *pairing.Registry) http.Handler {
 func (g *Gateway) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/models", g.handleListModels)
-	mux.HandleFunc("POST /v1/chat/completions", g.handleCompletions)
+	mux.HandleFunc("POST /v1/chat/completions", g.handleChatCompletions)
 	mux.HandleFunc("POST /v1/completions", g.handleCompletions)
 	mux.HandleFunc("GET /health", g.handleHealth)
 	// The one state-changing verb on /v1 (adr-2610031153127219). There is
@@ -671,8 +671,19 @@ const maxStreamLine = maxResponseBody
 // the read phase; it is cleared before the model request so generation is unbounded.
 const bodyReadTimeout = 30 * time.Second
 
+// handleChatCompletions is handleCompletions for the chat route, which holds
+// a conversation: the route itself says so, rather than a comparison of the
+// path a later alias route could slip past (iss-2610031010371709).
+func (g *Gateway) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	g.completions(w, r, true)
+}
+
 // handleCompletions proxies a chat/text completion to the right model server.
 func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
+	g.completions(w, r, false)
+}
+
+func (g *Gateway) completions(w http.ResponseWriter, r *http.Request, chat bool) {
 	// The clock starts before the body is read, so a slow upload counts
 	// against the client — which is what every comparable measurement does,
 	// and the only definition under which time to first token means what a
@@ -754,6 +765,17 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	obs.resolved(model)
 	obs.streaming(streamRequested(payload))
+
+	// A chat request to a model the chat rule says cannot hold a
+	// conversation is refused before anything is loaded: it would start the
+	// model as a chat server, answer nonsense, and could evict an idle model
+	// to make room (iss-2610031010371709). /v1/completions is not refused: a
+	// base text model the rule leaves out of chat still completes text.
+	if chat && !g.canChat(model) {
+		obs.failed(stats.ClassClientError)
+		writeError(w, http.StatusBadRequest, notChatText(model))
+		return
+	}
 
 	// Refused before the pool is asked for anything. A request larger than the
 	// window this model is served at cannot be served whatever happens next,
@@ -1766,6 +1788,24 @@ func loadField(payload map[string]json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+// canChat reports whether the model the request resolved to can hold a
+// conversation under the rule in force: Model.CanChat, the one answer the
+// models list publishes as "chat".
+func (g *Gateway) canChat(repoID string) bool {
+	m, err := g.models.Get(repoID)
+	if err != nil {
+		return false // resolved a moment ago and gone since: refuse, fail closed
+	}
+	return m.CanChat(g.cfg().EffectiveChatRule())
+}
+
+// notChatText is the refusal for a chat request, or a Load, of a model that
+// is not a chat model. The id is one the models list already shows.
+func notChatText(repoID string) string {
+	return fmt.Sprintf("model %q is not a chat model, so Dessau does not start it to answer a chat request "+
+		"(the models list marks it \"chat\": false)", repoID)
 }
 
 // emptyAnswerBudget is the refusal for a request that asks for no answer at

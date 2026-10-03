@@ -56,6 +56,17 @@ GitHub release notes.
 
 ### Changed
 
+- **A chat request to a model that cannot chat is refused, and the panel
+  no longer offers to load one.** `impact: breaking`. A model `/v1/models`
+  marks `"chat": false` — a speech, OCR or decision model, or a base model
+  the chat rule leaves out — was started as a chat server when a chat request
+  or the panel's **Load** named it: it answered nonsense, and its window could
+  evict a model someone was using. `/v1/chat/completions`, the Discord bridge
+  and the panel's load route now refuse it before anything is loaded, the
+  card shows no **Load** or **Measure now**, and the idle self-test leaves it
+  alone; `/v1/completions` still serves every model
+  ([models list](docs/models-list.md#the-chat-flag); iss-2610031010371709).
+
 - **The model runtime moves to mlx-lm 0.32.0.** `impact: breaking`. The
   private runtime is mlx-lm 0.32.0 on MLX 0.32.3, with mlx-vlm 0.7.4 and the
   packages it declares, every one hash-locked as before; the first start after

@@ -25,12 +25,12 @@ func TestModelsListCarriesTheToolCallVerdictOnEveryReadyEntry(t *testing.T) {
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: "/m"})
 	defer fake.Close()
 	models := &stubModels{models: []registry.Model{
-		{RepoID: "org/unprobed", State: registry.StateReady},
-		{RepoID: "org/stale", State: registry.StateReady,
+		{ChatTemplate: true, RepoID: "org/unprobed", State: registry.StateReady},
+		{ChatTemplate: true, RepoID: "org/stale", State: registry.StateReady,
 			ToolCalling: &registry.ToolCalling{Can: true, At: 1, Runtime: "0.30.0", Stale: registry.StaleRuntime}},
-		{RepoID: "org/yes", State: registry.StateReady,
+		{ChatTemplate: true, RepoID: "org/yes", State: registry.StateReady,
 			ToolCalling: &registry.ToolCalling{Can: true, At: 1, Runtime: "0.31.3"}},
-		{RepoID: "org/no", State: registry.StateReady,
+		{ChatTemplate: true, RepoID: "org/no", State: registry.StateReady,
 			ToolCalling: &registry.ToolCalling{Can: false, At: 1, Runtime: "0.31.3"}},
 		{RepoID: "org/downloading", State: registry.StateDownloading,
 			ToolCalling: &registry.ToolCalling{Can: true, At: 1, Runtime: "0.31.3"}},
@@ -68,7 +68,7 @@ func TestARequestWithToolsForAModelRecordedUnableIsRelayedUnchanged(t *testing.T
 	const modelPath = "/models/org/no"
 	fake := mlxtest.Start(mlxtest.Options{ModelArg: modelPath, Reply: "DESSAU OK"})
 	defer fake.Close()
-	models := &stubModels{models: []registry.Model{{
+	models := &stubModels{models: []registry.Model{{ChatTemplate: true,
 		RepoID: "org/no", Path: modelPath, State: registry.StateReady,
 		ToolCalling: &registry.ToolCalling{Can: false, At: 1, Runtime: "0.31.3"},
 	}}}

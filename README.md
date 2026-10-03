@@ -50,8 +50,9 @@ Cross-machine LAN use works. The ordinary port is plain HTTP; only the paired-cl
   by failure ([reference](docs/models-list.md)).
 - **Model kind published** — each model carries HuggingFace's own pipeline tag
   and tags, recorded when it was downloaded, plus a `chat` flag from a rule you
-  set: a chat client can offer only the models that can hold a conversation
-  while every model stays callable by name
+  set: a chat client can offer only the models that can hold a conversation,
+  and a chat request to any other is refused while plain completions still
+  reach every model by name
   ([how to](docs/chat-models.md), [reference](docs/models-list.md)).
 - **Residency published** — with an API key set, the models list also says which
   models are loaded, how busy each one is and when it was last used, so a client
