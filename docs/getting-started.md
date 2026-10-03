@@ -233,6 +233,12 @@ Mac too. Do not launch Dessau Server in the other accounts: a second copy
 finds the port held by a server that is not its own and stops with an error
 rather than route anything to it.
 
+The control panel asks for no key or password from this Mac, so every local
+account can administer the server through it: change its settings, delete
+models, start and cancel downloads, and load or unload models. The panel never
+shows the API key or the tokens Dessau holds, but anyone who can log into this
+Mac can do everything else there that the serving account can.
+
 Everything Dessau keeps lives in the serving account's own
 `~/Library/Application Support/Dessau`: the models and the download cache they
 arrive through, the settings (`config.json`, which holds the API key and the
