@@ -1,7 +1,7 @@
 ---
 id: adr-2609061610107154
 slug: statistics-store-format-json-lines-size-rotated-per-account
-status: superseded by adr-2609090716413337
+status: superseded by adr-2609090716413337, on the record kinds; and in part by adr-2610030906462776, on the shared-cache install sentence
 date: 2026-09-06
 supersedes: null
 superseded_by: adr-2609090716413337

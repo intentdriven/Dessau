@@ -278,7 +278,7 @@ func TestGatewayRewritesModelFieldToBackendPath(t *testing.T) {
 
 // The inverse of the rewrite above: mlx-lm echoes the request's model field —
 // post-rewrite, the backend's absolute --model path — into every response, and
-// in a per-user install that path contains the account's home directory. The
+// in a default install that path contains the account's home directory. The
 // gateway must map it back to the name the client asked for.
 func TestResponseModelFieldIsNotTheBackendPath(t *testing.T) {
 	srv, _, fake := newTestGateway(t, config.Default())
@@ -1457,7 +1457,7 @@ func TestListModelsCarriesNoResidencyWithoutAnAPIKey(t *testing.T) {
 // The residency projection is an allow-list of named fields, never the
 // runtime.Resident struct marshalled whole: that struct carries the model
 // server's loopback port, and the entry is built beside a model path that in a
-// per-user install names the serving account's home directory. Neither may
+// default install names the serving account's home directory. Neither may
 // reach the network, and this is the standing guard on that staying true as
 // fields are added to Resident.
 func TestListModelsPublishesNoPortOrPath(t *testing.T) {

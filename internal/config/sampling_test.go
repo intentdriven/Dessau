@@ -263,8 +263,8 @@ func TestBlankSamplingFieldStaysUnsetThroughJSON(t *testing.T) {
 	}
 }
 
-// The override map is written from a file another local account can edit in
-// shared-cache mode, and everything saved lands in config.json — which Load
+// The override map is read from a hand-editable file, and everything saved
+// lands in config.json — which Load
 // refuses above MaxConfigBytes, sending the next start into its fail-closed
 // loopback-only branch. The count is bounded so this field cannot be the
 // lever for that.

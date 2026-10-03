@@ -7,14 +7,14 @@ import (
 
 // categoryPause is the gap between two models' requests to the Hub in
 // CompleteCategories. The job runs at every start, for every model with no
-// word, and a Mac that adopted a whole shared cache at once has several; one
+// word, and a Mac whose models directory was filled by hand can have several; one
 // request a second is a courtesy to the Hub and costs nobody anything, since
 // nothing waits on the job.
 const categoryPause = time.Second
 
 // CompleteCategories asks the Hub what each ready model with no word is — a
-// model adopted from the shared cache by an account that never downloaded
-// it, or downloaded while the Hub was unreachable — and records the answer,
+// model directory the rescan adopted rather than one this server downloaded,
+// or one downloaded while the Hub was unreachable — and records the answer,
 // so that a model judged by its chat template until now is judged by the
 // operator's rule from then on (iss-2609202237468921).
 //

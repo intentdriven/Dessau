@@ -9,7 +9,7 @@ BUNDLE  := dist/$(APP).app
 BIN     := bin/dessau
 PKG     := ./cmd/dessau
 
-.PHONY: all test build app icon install run clean fmt vet lint allow-firewall install-shared site
+.PHONY: all test build app icon install run clean fmt vet lint allow-firewall site
 
 ## Every goal in this file runs serially, even under `make -j`.
 ##
@@ -147,36 +147,6 @@ allow-firewall:
 	sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add "$(APP_BIN)"
 	sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$(APP_BIN)"
 	@echo "Done. Other machines on your network can now reach $(NAME)."
-
-## install-shared: let every macOS account on this Mac share one model cache.
-##
-## Without this, each user account keeps its own copy of every model — a 70B at
-## 4-bit costs 40 GB twice. Dessau Server uses /Users/Shared/Dessau
-## automatically once it exists and is writable.
-##
-## The directory mode is 3775, and both special bits matter:
-##   • setgid (the 2) makes new files inherit the `staff` group, so a model one
-##     account downloads is writable by the next.
-##   • sticky (the 1) means a file can only be deleted or renamed by its owner —
-##     without it, any account in `staff` could replace or remove another user's
-##     models or partial downloads in this group-writable directory.
-##     Only those live here. Settings, the model registry, the server logs and
-##     the pid ledger are each account's own, kept in its own Application
-##     Support folder: they are written under fixed names that only their
-##     creator can write, so sharing them stopped the second account serving,
-##     and no account's API key or HuggingFace token belongs here at all.
-##
-## Crucially, 3775 is applied to DIRECTORIES ONLY. A recursive `chmod -R 3775`
-## also rewrites every file to 0775 (group-writable, world-readable) — which,
-## re-run after first use, would expose config.json's api_key/hf_token (the app
-## writes it 0600) and make model weights modifiable by any staff account. File
-## modes are left to the app, which writes secrets 0600 and logs 0600.
-install-shared:
-	sudo mkdir -p /Users/Shared/Dessau
-	sudo chgrp -R staff /Users/Shared/Dessau
-	sudo find /Users/Shared/Dessau -type d -exec chmod 3775 {} +
-	@echo "Shared model cache ready at /Users/Shared/Dessau."
-	@echo "Restart $(NAME); every account on this Mac will now share one set of models."
 
 ## run: run headless in the foreground (for development)
 run: build

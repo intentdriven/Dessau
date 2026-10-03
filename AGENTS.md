@@ -96,9 +96,9 @@ CI (`.github/workflows/ci.yml`) gates on: `gofmt -l .` (must be empty),
   routing or the runtime: it records empirically verified constraints (the
   request's `model` field is a load instruction the gateway must rewrite;
   `HF_HUB_CACHE` must exist; `HF_HUB_OFFLINE=1` on child processes).
-- The shared-cache mode (`make install-shared`) has deliberate permission
-  semantics — directory mode `3775`, file modes left to the app — explained in
-  the Makefile; do not "simplify" them.
+- Dessau serves from one macOS account and keeps everything in that account's
+  own data root; other accounts, on this Mac or elsewhere, reach it over the
+  network and never need the model files — do not add a machine-wide root.
 
 ## Definition of done
 
@@ -141,8 +141,7 @@ CI (`.github/workflows/ci.yml`) gates on: `gofmt -l .` (must be empty),
   user-facing content. Use the current name, or a generic term.
 - **Privacy:** no absolute local paths, real hostnames, usernames, emails,
   tokens, IPs, or private repository names in anything committed —
-  repo-relative paths only. (`/Users/Shared/…` is a macOS system path, not a
-  username, and is part of this product's design.)
+  repo-relative paths only.
 - **Examples and user stories** use the personas Alice, Bob, and Carol — never
   other names. Refer to the maintainer as they/them in every artefact.
 - **Git:** never commit or push without being asked. Substantive work goes on

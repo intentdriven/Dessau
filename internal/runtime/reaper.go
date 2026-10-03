@@ -38,11 +38,11 @@ const pidFileName = "running-servers.pids"
 type pidLedger struct {
 	path string
 	// uid is the effective uid a ledger must be owned by to be trusted. The
-	// ledger now lives in this account's own directory, but the check stays:
+	// ledger lives in this account's own data root, but the check stays:
 	// every identity check below it (boot time, start time) is readable
 	// cross-uid, so only provenance stops a ledger this account did not write —
-	// left by an older install in a shared root, or planted anywhere the file
-	// can be created — from turning the next launch into a kill of arbitrary
+	// planted anywhere the file can be created, or under a DESSAU_ROOT another
+	// account can write — from turning the next launch into a kill of arbitrary
 	// process groups.
 	uid int
 	mu  sync.Mutex
@@ -304,8 +304,8 @@ func bootSessionUUID() string {
 // answers with: 36 characters of upper-case hex in the 8-4-4-4-12 grouping.
 //
 // The shape is checked rather than assumed because this value is written into
-// the ledger as a whitespace-delimited field and read back out of a file that,
-// in shared-cache mode, another local account can write. Anything else is
+// the ledger as a whitespace-delimited field and read back out of a file
+// Dessau may not have been the last to write. Anything else is
 // treated as no session at all, which reaps nothing.
 func isBootSessionUUID(s string) bool {
 	if len(s) != 36 {

@@ -46,16 +46,34 @@ GitHub release notes.
   loaded or evicted, and the model server never receives it. No sampling
   parameter is affected. See
   [Fields a completion request may not carry](docs/request-fields.md).
-- **With the shared cache, a server loads only the models its own account
-  downloaded.** `impact: breaking`. Security. In `/Users/Shared/Dessau` a
-  model's files belong to the account that downloaded them, and that account
-  can change them while another account's server is loading them. A model
-  whose folder or `config.json` belongs to another account is now refused
-  before any process starts, and its card says why: "this model's files
-  belong to another account, which Dessau does not load". Dessau serves from
-  one account, and the others reach it over the network; a model downloaded
-  through that server's control panel, by whoever asked, belongs to it. The
-  shared cache itself, and its permissions, are unchanged.
+- **A server loads only a model whose folder and `config.json` belong to the
+  account running it.** `impact: breaking`. Security. Any other model is
+  refused before any process starts, and its card says why: "this model's
+  files belong to another account, which Dessau does not load". A model
+  downloaded through the control panel, by whoever asked, belongs to the
+  serving account. A model folder copied in from another account does not;
+  download it again from the serving account.
+
+### Removed
+
+- **Shared-cache mode is gone: Dessau serves from one macOS account.**
+  `impact: breaking`. `make install-shared` is removed, and Dessau neither reads
+  nor serves anything from the machine-wide folder under `/Users/Shared`: a
+  model is served only from the serving account's own models folder, and at
+  start-up any model the index still records elsewhere is dropped from the
+  list when the serving account's models folder is there and holds no copy of
+  it, and is otherwise re-pointed at its place in that folder — never served
+  from where the index recorded it. Dessau keeps everything —
+  models, settings, logs, statistics and its private runtime — in the serving
+  account's own `~/Library/Application Support/Dessau` (or wherever
+  `DESSAU_ROOT` points, as before). Other accounts on the same Mac use the
+  server the way any client does, at `http://localhost:11535/v1`, with no key
+  and no copy of the models; they do not launch Dessau Server themselves.
+  Nothing is migrated. If you used the shared cache: choose the account that
+  serves, start Dessau there, download your models again from its control
+  panel (settings saved in another account's folder are not read), and remove
+  the old folder under `/Users/Shared` once nobody needs it. `dessau
+  uninstall` acts on this account's own folder only.
 
 ### Fixed
 
@@ -73,10 +91,7 @@ GitHub release notes.
   nothing in them is run. A `config.json` that is present but cannot be
   read as JSON is refused too, since the model server's parser accepts some
   of what Dessau's does not, and so is a model with no `config.json`, which
-  the model server cannot load anyway. One case is not closed: with the
-  shared cache, an account that owns a folder above a model's own folder can
-  swap the model's folder in the seconds between Dessau's check and the
-  model server's start.
+  the model server cannot load anyway.
 
 ## [0.9.3] - 2026-09-21
 

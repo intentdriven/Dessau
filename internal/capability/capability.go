@@ -54,8 +54,8 @@ const (
 // whatever the weights are quantized to.
 const kvElementBytes = 2
 
-// Bounds on what a configuration may claim. A model directory is, in
-// shared-cache mode, written by another local account, and these figures
+// Bounds on what a configuration may claim. A model directory holds whatever
+// the repository it was downloaded from says, and these figures
 // multiply: an absurd claim must yield no figure at all rather than a charge
 // that overflows or refuses every load. Every real model is far inside them.
 const (

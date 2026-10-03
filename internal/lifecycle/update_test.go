@@ -333,7 +333,7 @@ func TestTheRefusalSaysWhichOfTheTwoThingsItFound(t *testing.T) {
 }
 
 // Something that holds the port and answers no challenge at all is NOT that
-// case. Under a per-account data root that description fits another account's
+// case. Every account's Dessau keeps its own data root, so that description fits another account's
 // Dessau exactly, and refusing there would make a shared Mac unupdatable for
 // as long as a colleague stays logged in. So the bundle is replaced, and the
 // report says the version serving cannot be determined from here.
@@ -759,16 +759,14 @@ func TestTheControlPlaneReadFollowsNoRedirect(t *testing.T) {
 // The version the control plane hands back is UNTRUSTED TEXT, and it is
 // checked before it becomes a line of the report.
 //
-// Where it comes from: the challenge in internal/instance proves a shared DATA
-// ROOT, not an identity — deliberately, at mode 0640, so that under the
-// shared-cache mode a peer account in the same group can answer it. That mode
-// is a documented way to run this product. So any process of such an account
-// that holds the loopback port is classified as ours and gets to put a string
-// into this report.
+// Where it comes from: the challenge in internal/instance proves access to
+// this account's DATA ROOT, not an identity. So any process that can read the
+// root and holds the loopback port is classified as ours and gets to put a
+// string into this report.
 //
 // A newline in that string forges lines that read as the report's own — the
 // grant sentence is four bytes of JSON away — and an escape sequence reaches
-// the terminal. What cannot be fixed here is a peer that answers with a
+// the terminal. What cannot be fixed here is a holder that answers with a
 // PLAUSIBLE version: the report's provenance is the control plane, and a
 // report that asked is a report that can be told something false. What can be
 // fixed is that the answer has to look like a version at all.

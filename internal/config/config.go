@@ -25,7 +25,10 @@ import (
 	"unicode/utf8"
 )
 
-// Paths is the on-disk layout. All fields are absolute.
+// Paths is the on-disk layout. All fields are absolute, and every one of them
+// is under Root: Dessau serves from one macOS account, and everything it keeps
+// — models, executables, settings, state, logs and records — is that
+// account's own, in one folder that can be deleted whole.
 type Paths struct {
 	Root    string // ~/Library/Application Support/Dessau
 	Bin     string // uv lives here
@@ -33,45 +36,23 @@ type Paths struct {
 	Python  string // uv-managed CPython installs (UV_PYTHON_INSTALL_DIR)
 	Models  string // downloaded model directories: Models/<org>/<name>
 	HFCache string // HF_HUB_CACHE; must exist or mlx_lm.server's /v1/models panics
-	// Account is the directory holding everything that belongs to THIS macOS
-	// account rather than to the installation. Under the shared root that is
-	// the account's own Application Support directory; everywhere else it is
-	// the root itself. See accountDir.
-	Account string
-	// Logs, Config (config.json) and State (registry.json) are this account's
-	// own and live under Account. A log is one account's record of what its own
-	// subprocess printed, and the settings hold its API key and HuggingFace
-	// token; neither belongs in a directory shared with every other account.
+	// Logs, Config (config.json) and State (registry.json). The settings hold
+	// the API key and the HuggingFace token, so config.json is written 0600.
 	Logs   string
 	Config string
 	State  string
-	// Stats is where the request statistics store keeps its files: under
-	// Account, in a "stats" directory. See StatsDir.
+	// Stats is where the request statistics store keeps its files: a "stats"
+	// directory under the root.
 	Stats string
 	// SelfTest is where the model self-test keeps its results file: beside
-	// Stats, under the same rule, for the same reason — one account's own
-	// record, at 0600, never in the group-writable shared root.
+	// Stats, at 0600, for the same reason.
 	SelfTest string
 }
 
-// SharedRoot is the machine-wide location, used when it exists.
-//
-// Models are large. If two macOS accounts each keep their own copy, a 70B model
-// costs 40 GB twice. When an administrator has created this directory (see
-// `make install-shared`), every account shares one set of models.
-const SharedRoot = "/Users/Shared/Dessau"
-
-// sharedRoot is the shared root everything actually compares against, so a
-// test can stand a temporary directory in its place and exercise the real
-// derivation rather than a hand-copied one. It is unexported and never written
-// outside this package's own tests: the shipped binary holds one value, the
-// constant above.
-var sharedRoot = SharedRoot
-
 // userSupportDir is this account's own Dessau directory in Application
-// Support — the one place a per-user install lives, and the one place a shared
-// install keeps what an account does not share. It is derived once here so the
-// default root and accountDir cannot come to disagree about where it is.
+// Support — where an installation lives unless DESSAU_ROOT says otherwise.
+// It is derived once here so the default root and AccountHome cannot come to
+// disagree about where it is.
 func userSupportDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -80,11 +61,12 @@ func userSupportDir() (string, error) {
 	return filepath.Join(home, "Library", "Application Support", "Dessau"), nil
 }
 
-// DefaultRoot returns where Dessau keeps its data.
+// DefaultRoot returns where Dessau keeps its data: $DESSAU_ROOT when it is
+// set, and this account's own Application Support directory otherwise.
 //
-// Order: $DESSAU_ROOT, then the shared directory if an administrator created
-// it (see sharedRootShape) and this account can write to it, then the per-user
-// Application Support directory.
+// There is no machine-wide root. Dessau serves from one account; every other
+// account, on this Mac or elsewhere, reaches it over the network and never
+// needs the model files.
 func DefaultRoot() (string, error) {
 	if env := os.Getenv("DESSAU_ROOT"); env != "" {
 		return env, nil
@@ -92,26 +74,17 @@ func DefaultRoot() (string, error) {
 	return InstalledRoot()
 }
 
-// InstalledRoot is DefaultRoot without the environment: the shared directory
-// when an administrator created one this account can write, and this account's
-// own Application Support directory otherwise.
+// InstalledRoot is DefaultRoot without the environment: this account's own
+// Application Support directory.
 //
 // It exists for the one caller that must not honour DESSAU_ROOT — `dessau
-// uninstall`, which derives every deletion path from the fixed locations this
-// account's install actually uses. A directory that any local account can
-// pre-create, and name through an environment variable, would otherwise choose
-// what is deleted.
-func InstalledRoot() (string, error) {
-	if sharedRootShape(sharedRoot) == nil && writableDir(sharedRoot) {
-		return sharedRoot, nil
-	}
-	return userSupportDir()
-}
+// uninstall`, which derives every deletion path from the fixed location this
+// account's install actually uses. A directory named through an environment
+// variable would otherwise choose what is deleted.
+func InstalledRoot() (string, error) { return userSupportDir() }
 
 // AccountHome is this account's own directory, asked for without a data root
-// in hand: ~/Library/Application Support/Dessau, which is what accountDir
-// answers under a shared root and what the root itself IS under a per-user
-// install.
+// in hand: ~/Library/Application Support/Dessau.
 //
 // It exists for the swap (internal/lifecycle), which needs somewhere only this
 // account can unlink an entry from while a retired application bundle waits to
@@ -119,184 +92,24 @@ func InstalledRoot() (string, error) {
 // not honour DESSAU_ROOT: the property wanted here is the one macOS gives
 // ~/Library and no environment variable can, so a root named from the
 // environment would silently answer with a directory that may not have it.
-//
-// It stays here rather than being spelled out again at the caller for the
-// reason accountDir gives: one rule for where this account's own directory is,
-// so no caller can come to disagree with the rest of the layout about it.
 func AccountHome() (string, error) { return userSupportDir() }
 
-// IsSharedRoot reports whether a root is the machine-wide shared directory,
-// where the models belong to every account on the Mac and this account's own
-// state lives somewhere else entirely (see accountDir).
-func IsSharedRoot(root string) bool { return sameDir(root, sharedRoot) }
-
-// sharedRootShape reports whether dir is a shared root an administrator
-// created, i.e. what `make install-shared` produces: a real directory (not a
-// symlink), owned by root, and not writable by "other".
-//
-// Existence and writability are not enough. /Users/Shared itself is
-// world-writable on stock macOS, so any unprivileged account could pre-create
-// the shared root and become the owner of every other account's data —
-// config, tokens, registry, and the interpreter the model servers run under.
-// A root-owned directory can only have come from an administrator, and a
-// later `make install-shared` never changes ownership, so ownership is the
-// one property an attacker cannot forge. The exact mode is deliberately not
-// required (an administrator may tighten it); other-write is refused because
-// the design's protections all rest on the group boundary.
-func sharedRootShape(dir string) error {
-	fi, err := os.Lstat(dir)
-	if err != nil {
-		return err
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("%s is not a directory", dir)
-	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok || st.Uid != 0 {
-		return fmt.Errorf("%s is not owned by root — refusing to adopt a shared root an administrator did not create", dir)
-	}
-	if fi.Mode().Perm()&0o002 != 0 {
-		return fmt.Errorf("%s is world-writable — refusing to adopt it as the shared root", dir)
-	}
-	return nil
-}
-
-// writableDir reports whether dir exists and this process can create files in
-// it. A shared directory the current account cannot write to is worse than
-// useless: downloads would fail at the last moment, so fall back instead.
-func writableDir(dir string) bool {
-	fi, err := os.Stat(dir)
-	if err != nil || !fi.IsDir() {
-		return false
-	}
-	// A randomly-named temp (os.CreateTemp implies O_CREATE|O_EXCL) avoids the
-	// symlink race a fixed name invites in a shared, group-writable directory.
-	f, err := os.CreateTemp(dir, ".dessau-write-probe-*")
-	if err != nil {
-		return false
-	}
-	name := f.Name()
-	f.Close()
-	os.Remove(name)
-	return true
-}
-
-// ExecRoot is where this account's EXECUTABLES live for a data root: uv, the
-// virtualenv, and the uv-managed CPython tree.
-//
-// Everywhere but the shared root that is the root itself. The shared root is
-// the exception, and the executables go under this account's own Application
-// Support directory instead, for a reason the data does not share: models are
-// inert bytes every account may read, while these are programs every account
-// EXECUTES. One shared copy means whichever account provisioned it owns those
-// files and can rewrite them at any time, and every other account then runs
-// the result under its own uid — an owner-trust residue no mode check can
-// remove, because the owner is legitimately allowed to write their own files.
-// Per-account executables remove it by construction: no account ever executes
-// another account's binaries. Models stay shared, which is what the shared
-// root exists for; a 70 GB model is not duplicated to buy this.
-//
-// Follows StatsDir's rule and its fallback: a home directory that cannot be
-// resolved falls back to the root, where the provisioner's own refusal to run
-// an interpreter that is not owned by this account or root is what stops it.
-// This function decides where to look, never whether the place is safe.
-func ExecRoot(root string) string { return accountDir(root) }
-
-// accountDir is this repository's one rule for "the directory that belongs to
-// THIS macOS account" given a data root, and every part of the layout that is
-// not shared resolves through it: the executables (ExecRoot), the statistics
-// store (StatsDir), and this account's own state files — config.json and
-// registry.json.
-//
-// Everywhere but the shared root that is the root itself, so an installation
-// stays one folder to delete. The shared root is the exception: it is
-// group-writable and sticky by design (see the Makefile's install-shared), and
-// anything that belongs to one account has no business in a directory every
-// other account on the Mac can write to and this one cannot re-mode.
-//
-// It must stay one function rather than one rule copied into several. The three
-// callers ask the same question — where does this account keep what it does not
-// share — and an answer that differed between them would put one account's
-// secrets where another account's rule said it was safe to look.
-//
-// A home directory that cannot be resolved falls back to the root, where each
-// caller's own refusal is what stops the unsafe write: this function decides
-// where to look, never whether the place is safe.
-func accountDir(root string) string {
-	if !sameDir(root, sharedRoot) {
-		return root
-	}
-	dir, err := userSupportDir()
-	if err != nil {
-		return root
-	}
-	return dir
-}
-
-// NewPaths derives the layout from a root directory.
-//
-// What is shared and what is this account's own is the whole of the split: the
-// models and the HuggingFace cache they arrive through sit in the root, and
-// everything that belongs to one account — its executables, its settings, its
-// registry, its logs and its statistics — resolves through accountDir.
+// NewPaths derives the layout from a root directory. Everything is under the
+// root, so an installation stays one folder to delete.
 func NewPaths(root string) Paths {
-	acct := accountDir(root)
 	return Paths{
 		Root:     root,
-		Bin:      filepath.Join(acct, "bin"),
-		Venv:     filepath.Join(acct, "venv"),
-		Python:   filepath.Join(acct, "python"),
+		Bin:      filepath.Join(root, "bin"),
+		Venv:     filepath.Join(root, "venv"),
+		Python:   filepath.Join(root, "python"),
 		Models:   filepath.Join(root, "models"),
 		HFCache:  filepath.Join(root, "hf", "hub"),
-		Account:  acct,
-		Logs:     filepath.Join(acct, "logs"),
-		Config:   filepath.Join(acct, "config.json"),
-		State:    filepath.Join(acct, "registry.json"),
-		Stats:    StatsDir(root),
-		SelfTest: filepath.Join(acct, "selftest"),
+		Logs:     filepath.Join(root, "logs"),
+		Config:   filepath.Join(root, "config.json"),
+		State:    filepath.Join(root, "registry.json"),
+		Stats:    filepath.Join(root, "stats"),
+		SelfTest: filepath.Join(root, "selftest"),
 	}
-}
-
-// StatsDir is where the request statistics store keeps its files for a data
-// root.
-//
-// Everywhere but the shared root that is a "stats" directory under the root
-// itself, so an installation is still one folder to delete. The shared root is
-// the exception, and the store goes under this account's own Application
-// Support directory instead: the shared root is group-writable and sticky by
-// design (see the Makefile's install-shared), and a file holding one account's
-// own record of what it served has no business in a directory every other
-// account on the Mac can write to and this one cannot re-mode. Under an
-// explicit DESSAU_ROOT the store lives under that root, so the rule is total
-// and the store never appears somewhere the operator did not point Dessau at.
-//
-// A home directory that cannot be resolved falls back to the root, where the
-// store's own refusal to create itself in a group- or other-writable directory
-// is what stops the records being written: this function decides where to
-// look, never whether the place is safe.
-func StatsDir(root string) string { return filepath.Join(accountDir(root), "stats") }
-
-// sameDir reports whether two paths name the same directory.
-//
-// Cleaned, and then resolved through any symbolic links when both sides exist:
-// the root arrives from DESSAU_ROOT or the -root flag exactly as it was
-// typed, so a trailing slash, a dot segment or a link would otherwise let a
-// root that IS the shared root compare unequal to it — and the whole point of
-// the comparison is to keep a per-account record file out of a directory every
-// account on the Mac can write to.
-func sameDir(a, b string) bool {
-	if filepath.Clean(a) == filepath.Clean(b) {
-		return true
-	}
-	ra, err := filepath.EvalSymlinks(a)
-	if err != nil {
-		return false
-	}
-	rb, err := filepath.EvalSymlinks(b)
-	if err != nil {
-		return false
-	}
-	return ra == rb
 }
 
 // UV is the path to the uv binary Dessau manages.
@@ -379,144 +192,31 @@ func (p Paths) VenvPython() string { return filepath.Join(p.Venv, "bin", "python
 // The repo id must be validated with ValidRepoID first: it becomes a filesystem
 // path, and an unvalidated value like "../../.." would escape p.Models and, once
 // stored in the registry, could be handed to os.RemoveAll on delete.
-func (p Paths) ModelDir(repoID string) string {
-	return filepath.Join(p.Models, filepath.FromSlash(repoID))
+func (p Paths) ModelDir(repoID string) string { return ModelDirIn(p.Models, repoID) }
+
+// ModelDirIn is ModelDir for a caller holding only the models directory — the
+// registry, which is handed that directory rather than the whole layout.
+//
+// This is the repository's one rule for where a model's files are, and every
+// part that needs a model's directory derives it here from the repo id: the
+// download's destination, the delete, the launch, and the registry's scan.
+// The `path` registry.json stores beside each model is never what decides it:
+// an index written by an earlier layout, or edited by hand, can name a folder
+// outside the models directory that still exists, and a model served from it
+// would be one this account's own folder does not hold.
+func ModelDirIn(models, repoID string) string {
+	return filepath.Join(models, filepath.FromSlash(repoID))
 }
 
-// EnsureDirs creates every directory in the layout.
+// EnsureDirs creates every directory in the layout, 0755, and widens nothing.
 //
-// Every entry that is UNDER the data root is created and inspected relative to
-// an os.Root opened there. Under a shared cache the layout straddles two
-// directories — accountDir holds this account's executables and state files
-// outside the root — and those entries are created plainly: they sit in a
-// directory no other account can write to, so the co-tenant this walk defends
-// against cannot reach them. A shared data directory (one marked widen below)
-// that resolves outside the root is still refused, since widening one to
-// group-writable elsewhere is the very thing being prevented.
-//
-// Under a setgid (shared) root each entry under the root must be a real
-// directory: that
-// root is group-writable, so another local account can plant a symlink under
-// a layout name before it exists (and the account that launched first owns
-// the real ones and can swap them later). A path-based MkdirAll and Chmod
-// would follow that link and widen an arbitrary directory the victim owns to
-// 3775 — group-writable by every account on the machine. Startup fails
-// instead: the sticky bit means this account cannot remove the plant, and
-// serving from a redirected layout is never right. A per-user root has no
-// such adversary, so a layout directory the user symlinked elsewhere (models
-// on an external disk, say) is followed as before.
-//
-// venv and python are created here too, closed (0755, never widened) like bin:
-// they hold the interpreter every model server runs under, and an absent name
-// in the shared root is one any account could otherwise claim first.
-//
-// Under a setgid root — the shared cache, which the installer marks setgid
-// group-writable and sticky (mode 3775) so a model one account downloads is
-// writable by the next, and only its owner can delete or rename it — the data
-// directories are widened to match: MkdirAll can never produce a
-// group-writable or sticky directory (0o755 carries neither bit), so without
-// the chmod the first account to launch would own the layout 0755 and every
-// later account's downloads would fail with a permission error. The sticky bit
-// must carry over too — dropping it would let any account in the group delete
-// or replace another account's model directories, exactly what the installer's
-// mode is chosen to prevent (see the Makefile's install-shared target). bin is
-// deliberately left 0755: it holds executables, and a group-writable bin would
-// let one account replace the uv binary another account runs. Chmod errors are
-// ignored — a directory created by another account cannot be re-moded by this
-// one, and startup must not fail over it.
+// A layout directory the operator replaced with a symbolic link (models on an
+// external disk, say) is followed: the root is this account's own, and so is
+// the choice of where its parts live.
 func (p Paths) EnsureDirs() error {
-	if err := os.MkdirAll(p.Root, 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", p.Root, err)
-	}
-	// This account's own state directory, created closed and closed if it is
-	// already there. Under the shared root it is the one directory holding
-	// things no other account may have — config.json's API key and HuggingFace
-	// token, and the registry that decides what this account's gateway serves.
-	// The chmod is not belt and braces: an account that ran a per-user install
-	// before joining a shared cache already has this directory at 0755, and
-	// MkdirAll would leave it there. Everywhere else it IS the root, created
-	// just above, and nothing changes.
-	//
-	// A chmod that fails is not fatal, as for every other mode in this
-	// function: the files inside are written 0600 whatever the directory says,
-	// and a directory this account cannot re-mode is one it does not own.
-	if acct := p.accountStateDir(); acct != filepath.Clean(p.Root) {
-		if err := os.MkdirAll(acct, 0o700); err != nil {
-			return fmt.Errorf("create %s: %w", acct, err)
-		}
-		_ = os.Chmod(acct, 0o700)
-	}
-	layout := []struct {
-		abs   string
-		widen bool // SHARED data directory: group-writable setgid sticky under a setgid root
-	}{
-		{p.Bin, false}, {p.Venv, false}, {p.Python, false}, {p.Logs, false},
-		{p.Models, true}, {filepath.Dir(p.HFCache), true}, {p.HFCache, true},
-	}
-	fi, err := os.Stat(p.Root)
-	if err != nil {
-		return fmt.Errorf("inspect %s: %w", p.Root, err)
-	}
-	if fi.Mode()&os.ModeSetgid == 0 {
-		// Per-user root: no co-tenant, so follow whatever the user set up.
-		for _, d := range layout {
-			if err := os.MkdirAll(d.abs, 0o755); err != nil {
-				return fmt.Errorf("create %s: %w", d.abs, err)
-			}
-		}
-		return nil
-	}
-	root, err := os.OpenRoot(p.Root)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", p.Root, err)
-	}
-	defer root.Close()
-	for _, d := range layout {
-		rel, err := filepath.Rel(p.Root, d.abs)
-		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-			// Outside the data root. Under a shared cache the layout straddles
-			// two directories by design: accountDir puts this account's
-			// executables and its own files in its Application Support
-			// directory, so no account ever executes another's binaries or
-			// writes into another's files. Those entries are created plainly,
-			// like the per-user branch above and for the same reason — the
-			// adversary the os.Root walk defends against is a co-tenant of the
-			// group-writable root, and a path outside that root is one they
-			// cannot reach.
-			//
-			// What makes the plain MkdirAll safe is that the path is inside this
-			// account's home directory, which macOS creates at 0700: no other
-			// account can create a component of it, so there is nothing to
-			// re-check between the creation and the use. The account's own state
-			// directory is held to 0700 above for the same reason. A path
-			// outside the root that is NOT in this account's home would need the
-			// same re-check the in-root branch does; nothing in the layout puts
-			// one there.
-			//
-			// A SHARED data directory outside the root is a different matter and
-			// is still refused: the models and the HuggingFace cache are
-			// what the root exists to hold, and widening one to group-writable
-			// somewhere else is what the refusal was written to stop.
-			if d.widen {
-				return fmt.Errorf("%s is shared with every account but is outside the data root %s", d.abs, p.Root)
-			}
-			if err := os.MkdirAll(d.abs, 0o755); err != nil {
-				return fmt.Errorf("create %s: %w", d.abs, err)
-			}
-			continue
-		}
-		if err := root.Mkdir(rel, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
-			return fmt.Errorf("create %s: %w", d.abs, err)
-		}
-		fi, err := root.Lstat(rel)
-		if err != nil {
-			return fmt.Errorf("inspect %s: %w", d.abs, err)
-		}
-		if !fi.IsDir() {
-			return fmt.Errorf("%s is not a directory (something else was planted under that name) — refusing to start", d.abs)
-		}
-		if d.widen {
-			_ = root.Chmod(rel, 0o775|os.ModeSetgid|os.ModeSticky)
+	for _, d := range []string{p.Root, p.Bin, p.Venv, p.Python, p.Logs, p.Models, filepath.Dir(p.HFCache), p.HFCache} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", d, err)
 		}
 	}
 	return nil
@@ -823,8 +523,8 @@ type ModelSettings struct {
 }
 
 // MaxContextLength bounds every context window Dessau will believe, declared
-// or served. A model directory's config.json is, in shared-cache mode, a file
-// another local account can write, and so is config.json itself; the figure is
+// or served. A model directory's config.json is whatever the repository it
+// was downloaded from says, and config.json itself is edited by hand; the figure is
 // served to the LAN and decides how much memory a model is charged, so a
 // hostile or corrupt one must not be able to hand a client an absurd number to
 // size buffers from or fill this Mac's memory with. 8,388,608 tokens is far
@@ -946,8 +646,7 @@ func ValidateModelKeys(m map[string]ModelSettings) error {
 // cannot be read sends the next start into its fail-closed loopback-only
 // branch, taking the LAN endpoint with it. A bounded map keeps this field from
 // being the lever for that, whether it is filled from the control plane or by
-// another local account editing the file in shared-cache mode. Nobody has
-// hundreds of models on one Mac.
+// hand in the file. Nobody has hundreds of models on one Mac.
 //
 // The memory budget bounds how many models can usefully be pinned, but
 // Validate is machine-independent, so the count is what is bounded here.
@@ -1881,10 +1580,10 @@ func (c Config) ExposedToLAN() bool {
 // sampling field holding a string, or a number too large for a float64, fails
 // in the unmarshal above and is an error like any other malformed config.json
 // — sampling is not special enough to warrant a second decoding path through
-// json.RawMessage in a file another local account can write.
+// json.RawMessage in a file edited by hand.
 //
 // The read is hardened (see OpenRegular): Load runs before the port is
-// claimed, so a FIFO planted under this name in a shared root would otherwise
+// claimed, so a FIFO under this name would otherwise
 // hang startup before the fail-closed branch in main could ever run, and a
 // symlinked or oversized file is refused rather than applied. Any such refusal
 // is an error, which main treats as "lock down to loopback".
@@ -2056,18 +1755,18 @@ func Save(path string, c Config) error {
 }
 
 // writeSettingsFile writes a settings file atomically and closed (0600). It is
-// the one writer of config.json — Save and the shared-root adoption below both
-// go through it — so the hardening below is stated once and cannot drift.
+// the one writer of config.json and of the server's TLS private key
+// (WriteSecretFile), so the hardening below is stated once and cannot drift.
 func writeSettingsFile(path string, b []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	// config.json holds the API key and HuggingFace token. Never write it through
-	// a predictable temp name: in a shared, group-writable root another local
-	// account could pre-create "config.json.tmp" as a symlink (redirecting the
-	// write) or with loose permissions the rename would then preserve. os.CreateTemp
-	// uses a random name with O_EXCL and mode 0600, closing both holes.
+	// a predictable temp name: a "config.json.tmp" created ahead of the write as
+	// a symlink would redirect it, and one with loose permissions would keep
+	// them through the rename. os.CreateTemp uses a random name with O_EXCL and
+	// mode 0600, closing both holes.
 	tmp, err := os.CreateTemp(dir, "config-*.json.tmp")
 	if err != nil {
 		return err
@@ -2097,138 +1796,21 @@ func writeSettingsFile(path string, b []byte) error {
 	return os.Rename(tmpName, path)
 }
 
-// accountStateDir is Account, cleaned so it can be compared with the root. It
-// falls back to the directory holding config.json for a Paths built by hand
-// without the field.
-func (p Paths) accountStateDir() string {
-	if p.Account != "" {
-		return filepath.Clean(p.Account)
-	}
-	return filepath.Dir(p.Config)
-}
-
-// AdoptSharedConfig copies the settings this account left in the shared root
-// into its own state directory, once, and reports whether it did.
+// privateToThisAccount reports whether a secret file is one only this
+// account could have written, and says why not when it is not. It takes three
+// facts from the fstat of the handle the bytes came from — never a second stat
+// of the path, which could be raced.
 //
-// Before per-account state, every account under a shared cache wrote its
-// settings to one config.json beside the models — which worked for exactly one
-// account and left every later one unable to read or write anything. Those
-// settings are not derivable from anything else (an API key, a HuggingFace
-// token, a port, a memory budget), so the first start after the change carries
-// them over rather than silently resetting the account to the shipping
-// defaults. A registry needs no such rescue: it is derived from the model
-// directories, and the startup rescan rebuilds it.
+// Ownership alone is not the boundary:
 //
-// Three rules make this safe to run against a directory every account on the
-// Mac can write to:
-//
-//   - Only the account that OWNS the file adopts it. The shared config.json is
-//     0600 and belongs to whichever account wrote it; a file this account does
-//     not own is either another account's settings — whose API key and token
-//     must never cross the boundary, however readable the mode has been made —
-//     or something planted under that name. Neither is adopted.
-//   - The read is the hardened one (ReadRegular): a symlink, a FIFO, or an
-//     oversized file is refused rather than followed or blocked on.
-//   - The original is REMOVED once the copy is in place. The sticky bit stops
-//     other accounts unlinking it, not its owner, and its owner is the only
-//     account that ever gets here — so leaving it would leave a copy of an API
-//     key and a HuggingFace token in a group-writable directory for as long as
-//     the install lasts, still live for anything that reads that path. An
-//     operator who rotates the key and later runs an older build would put the
-//     superseded key back into service; starting that build from the shipping
-//     defaults, which generates a fresh key for an exposed bind, is the safer
-//     of the two failures.
-//
-// Adoption happens only when this account has no settings of its own yet, so it
-// can never overwrite what the operator has saved since.
-func (p Paths) AdoptSharedConfig() (bool, error) {
-	acct := p.accountStateDir()
-	if acct == filepath.Clean(p.Root) {
-		return false, nil // per-user layout: the settings are already here
-	}
-	if _, err := os.Lstat(p.Config); err == nil {
-		return false, nil // this account has its own settings
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return false, err
-	}
-	legacy := filepath.Join(p.Root, "config.json")
-	b, info, err := ReadRegularInfo(legacy, MaxConfigBytes)
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		// A file another account owns is unreadable to this one, which is the
-		// expected case and not a fault: this account simply has no settings to
-		// carry over. Anything else is worth saying out loud.
-		if errors.Is(err, fs.ErrPermission) {
-			return false, nil
-		}
-		return false, fmt.Errorf("read %s: %w", legacy, err)
-	}
-	if err := privateToThisAccount(info); err != nil {
-		// Not "no settings to carry over" but "settings that are not this
-		// account's alone", which is worth naming: the operator is left on the
-		// shipping defaults and the file is still sitting there.
-		return false, fmt.Errorf("refusing to adopt %s: %w", legacy, err)
-	}
-	if err := os.MkdirAll(acct, 0o700); err != nil {
-		return false, err
-	}
-	if err := writeSettingsFile(p.Config, b); err != nil {
-		return false, err
-	}
-	// Make the copy durable before unlinking the original. writeSettingsFile
-	// fsyncs the file's contents, but the rename that gives it its name lives in
-	// the directory, and a power loss can make the unlink durable while that
-	// rename is still only in the page cache — leaving neither copy, and with it
-	// the API key and the HuggingFace token gone for good. Fsyncing the
-	// directory orders the two.
-	if err := syncDir(acct); err != nil {
-		return false, fmt.Errorf("flush %s: %w", acct, err)
-	}
-	if err := os.Remove(legacy); err != nil {
-		// The copy is in place, so the settings are not lost; what is left is a
-		// stale secret in a directory shared with every account, which the
-		// operator should hear about.
-		return true, fmt.Errorf("remove %s once copied: %w", legacy, err)
-	}
-	return true, nil
-}
-
-// syncDir flushes a directory's own entries to disk, which is what makes a
-// rename or an unlink inside it durable. Opening a directory read-only and
-// calling Sync is the portable spelling on this platform.
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	if err := d.Sync(); err != nil {
-		d.Close()
-		return err
-	}
-	return d.Close()
-}
-
-// privateToThisAccount reports whether a file read out of a group-writable
-// directory is one only this account could have written, and says why not when
-// it is not. It is the account boundary for the settings adoption, and takes
-// three facts from the fstat of the handle the bytes came from — never a second
-// stat of the path, which could be raced.
-//
-// Ownership alone is not the boundary, which an earlier version of this comment
-// claimed. Two things a co-tenant can do defeat it:
-//
-//   - A hard link. Any account that can write the shared root can link a file
-//     THIS account owns — a log, a model's config.json — under the name being
-//     adopted. The uid then reads as ours while the content is whatever the
-//     linked file holds. A file this account wrote through writeSettingsFile
-//     has exactly one link, so more than one means someone else made it.
-//   - A loose mode. A settings file left group- or world-writable (what a
-//     recursive chmod of the shared root produces, which the installer's
-//     comment warns against) is one another account could have written an
-//     api_key or a host into before this start read it. Anything outside 0600
-//     is refused rather than adopted.
+//   - A hard link. A file this account owns can be linked under the name being
+//     read by anything that can write the directory, and the uid then reads as
+//     ours while the content is whatever the linked file holds. A file written
+//     through writeSettingsFile has exactly one link, so more than one means
+//     something else made it.
+//   - A loose mode. A secret file left group- or world-writable is one another
+//     account could have written before this start read it. Anything outside
+//     0600 is refused.
 func privateToThisAccount(info os.FileInfo) error {
 	st, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {

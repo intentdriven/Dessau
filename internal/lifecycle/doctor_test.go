@@ -398,7 +398,7 @@ func TestRedactReplacesEveryOccurrenceOfTheHomeDirectory(t *testing.T) {
 		{"open " + filepath.Join(home, "Library") + ": permission denied", "open ~/Library: permission denied"},
 		{"Incoming connection to " + home + "/a is permitted.", "Incoming connection to ~/a is permitted."},
 		{home + " and " + home, "~ and ~"},
-		{filepath.Join(string(filepath.Separator), "Users", "Shared", "Dessau"), "/Users/Shared/Dessau"},
+		{filepath.Join(string(filepath.Separator), "Volumes", "Models", "Dessau"), "/Volumes/Models/Dessau"},
 		{"", ""},
 	} {
 		if got := redact(tc.in, home); got != tc.want {

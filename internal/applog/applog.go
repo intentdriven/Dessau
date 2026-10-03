@@ -57,9 +57,8 @@ const (
 
 // Options build a Log.
 type Options struct {
-	// Dir is the directory the log file lives in: config.Paths.Logs, which
-	// resolves through the account directory, so one account's log is never
-	// written into the shared root.
+	// Dir is the directory the log file lives in: config.Paths.Logs, under
+	// this account's own data root.
 	Dir string
 	// Name is the current log's file name. Empty means DefaultName.
 	Name string

@@ -70,8 +70,8 @@ func TestAnUntaggedModelCarriesNoCategory(t *testing.T) {
 	}
 }
 
-// registry.json lives in a group-writable directory in shared-cache mode, and
-// what it says about a model is republished to the LAN. A planted or corrupt
+// registry.json can be edited by hand or left corrupt, and what it says about
+// a model is republished to the LAN. A planted or corrupt
 // category is bounded on the way in and on the way back out, the way the
 // context length is.
 func TestTheCategoryIsBounded(t *testing.T) {

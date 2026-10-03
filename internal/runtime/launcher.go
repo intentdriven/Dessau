@@ -268,21 +268,10 @@ type ExecLauncher struct {
 }
 
 func (l *ExecLauncher) pidLedger() *pidLedger {
-	// This account's own directory, not the data root: the ledger records
-	// process groups only the uid that started them can signal, so it is no use
-	// to another account — and in a shared root the second account's write over
-	// the first account's ledger is refused by the sticky bit and swallowed,
-	// which ends orphan reaping for it without a word.
-	// Account, falling back to Root for a Paths built by hand without it — the
-	// same fallback config.Paths applies to the state directory. With neither,
-	// newPIDLedger returns an inert ledger rather than a relative path in
-	// whatever directory the process was started from.
+	// The data root. With none, newPIDLedger returns an inert ledger rather
+	// than a relative path in whatever directory the process was started from.
 	l.ledgerOnce.Do(func() {
-		dir := l.Paths.Account
-		if dir == "" {
-			dir = l.Paths.Root
-		}
-		l.ledger = newPIDLedger(dir)
+		l.ledger = newPIDLedger(l.Paths.Root)
 	})
 	return l.ledger
 }
@@ -330,15 +319,11 @@ const (
 //
 //   - one whose config.json names a model_file, which the model server would
 //     import and run under this account at load time;
-//   - one whose directory or config.json belongs to another account, which
-//     could put a model_file there after this check has read the file and
-//     before the model server reads it — in the shared cache a model's files
-//     belong to whichever account downloaded them, and an owner can rename
-//     over its own file, or over any file in a directory it owns;
-//   - one with no config.json, which the model server cannot load anyway,
-//     and which in the shared cache — where a model directory is writable by
-//     every account in the group — another account could create in that same
-//     window;
+//   - one whose directory or config.json belongs to another account: Dessau
+//     serves from one account and keeps its models in that account's own
+//     data root, so this refuses nothing a normal install holds, and it is
+//     defence in depth;
+//   - one with no config.json, which the model server cannot load anyway;
 //   - one whose config.json is there but that this reader will not take: the
 //     model server's parser accepts some of what Go's refuses (NaN and
 //     Infinity, a number past float range), and a link is followed by the
@@ -349,13 +334,7 @@ const (
 // It is the last check before the interpreter starts — Launch makes it again
 // itself — so a client's request, the context probe, the tool-call probe, the
 // self-test and a preload all meet it. What it reads is the model directory
-// and config.json; what it cannot see is the directories above the model
-// directory. Where another account owns one of those — in the shared cache,
-// the models root and an organisation's directory belong to whichever account
-// created them first — that account can move the whole model directory aside
-// in the seconds between this check and the model server's read, and put its
-// own in its place. That race is not closed here; the 2026-10-03 decision in
-// the ledger records it as open.
+// and config.json.
 //
 // The refusal is the model's own load failure, not a broken installation, so
 // it is a NotReadyError: the pool relays it rather than hiding it behind "the
@@ -459,15 +438,11 @@ func (l *ExecLauncher) Launch(ctx context.Context, spec Spec) (Process, error) {
 	// log from growing without bound across restarts; the previous run's file
 	// was renamed aside just above, so the truncation destroys nothing.
 	//
-	// LogDir is this account's own directory (config.Paths.Logs resolves through
-	// accountDir), which is what makes the open reachable at all: while the logs
-	// sat in the shared root, one account's 0600 log under a name derived from
-	// the repo id meant the NEXT account's O_CREATE|O_TRUNC returned EACCES and
-	// the model would not start for it.
+	// LogDir is the logs directory under this account's own data root
+	// (config.Paths.Logs).
 	//
-	// The hardening stays. The name is predictable, and a link or a FIFO left
-	// under it — by anything that can write this directory, or by an older
-	// install that kept logs elsewhere — would let a truncating open empty, then
+	// The name is predictable, and a link or a FIFO left under it — by anything
+	// that can write this directory — would let a truncating open empty, then
 	// stream logs into, any file this account can write. O_NOFOLLOW refuses the
 	// link; O_NONBLOCK keeps a planted FIFO from blocking the open forever (and
 	// is inert on the regular file the fstat below guarantees); the fstat on the
@@ -559,8 +534,8 @@ func logFileName(repoID string) string {
 //
 // The rename goes through an os.Root on the logs directory, the discipline the
 // rest of the tree applies to these files (internal/applog's OpenIn): both
-// names are in the one directory, so the rename cannot cross a filesystem or
-// the account boundary the shared-cache install creates, and a name that
+// names are in the one directory, so the rename cannot cross a filesystem,
+// and a name that
 // leaves the directory is refused rather than followed. A link or a FIFO left
 // under the log's name is refused here, before the open would refuse it, so
 // that renaming it aside never turns a planted name into a kept one. No

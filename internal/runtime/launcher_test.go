@@ -23,26 +23,18 @@ func TestLogFileNamesDoNotCollideAcrossDistinctRepoIDs(t *testing.T) {
 	}
 }
 
-// A second account must be able to launch a model the first account has
-// already served. The per-model log is opened O_CREATE|O_TRUNC at 0600 under a
-// name derived from the repo id, so while the two accounts shared one logs
-// directory the second account's open of the first account's log returned
-// EACCES and the model would not start at all — for every model the first
-// account had ever launched.
+// The launcher writes the per-model log into the logs directory it is given
+// and nowhere else. The log is opened O_CREATE|O_TRUNC at 0600 under a name
+// derived from the repo id, so a same-named log in another installation's
+// logs directory — one this process cannot even write — must neither stop the
+// launch nor be touched by it.
 //
-// The model directory is the second account's own here, as it has to be for
-// the launcher to load it at all (refuseModelCode): the case is a repository
-// the first account served, deleted, and the second downloaded again under
-// the same id, and so the same log name.
-//
-// A single-uid test cannot own a file as another account, so the first
-// account's log is made unwritable instead, which fails an open the same way.
-// Where the two logs directories come from under a shared cache is pinned in
-// internal/config; what is pinned here is that the launcher writes into the one
-// it is given and is unaffected by what is in the other.
-func TestASecondAccountLaunchesAModelTheFirstAlreadyLogged(t *testing.T) {
-	shared := t.TempDir() // the models, which both accounts read
-	model := filepath.Join(shared, "models", "org", "name")
+// A single-uid test cannot own a file as another account, so the other
+// installation's log is made unwritable instead, which fails an open the same
+// way. Where the logs directory comes from is pinned in internal/config.
+func TestTheLauncherWritesOnlyIntoItsOwnLogDirectory(t *testing.T) {
+	elsewhere := t.TempDir()
+	model := filepath.Join(elsewhere, "models", "org", "name")
 	if err := os.MkdirAll(model, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -66,8 +58,8 @@ func TestASecondAccountLaunchesAModelTheFirstAlreadyLogged(t *testing.T) {
 	}
 	first, second := account(t), account(t)
 
-	// The first account has served this model: its log exists and no other
-	// account could write it.
+	// The other installation has served this model: its log exists and this
+	// process cannot write it.
 	firstLog := filepath.Join(first.Logs, logFileName("org/name"))
 	if err := os.WriteFile(firstLog, []byte("the first account's log\n"), 0o400); err != nil {
 		t.Fatal(err)
@@ -82,20 +74,19 @@ func TestASecondAccountLaunchesAModelTheFirstAlreadyLogged(t *testing.T) {
 		<-p.Done()
 	}
 	if err != nil {
-		t.Fatalf("the second account could not launch a model the first had served: %v", err)
+		t.Fatalf("the launch failed over another installation's log: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(second.Logs, logFileName("org/name"))); err != nil {
-		t.Errorf("the second account's own log was not written: %v", err)
+		t.Errorf("the launcher's own log was not written: %v", err)
 	}
 	if b, _ := os.ReadFile(firstLog); string(b) != "the first account's log\n" {
-		t.Errorf("the first account's log was touched: %q", b)
+		t.Errorf("the other installation's log was touched: %q", b)
 	}
 }
 
-// The per-model log has a predictable name in the logs directory, which in
-// shared-cache mode is group-writable: another local account can plant a
-// symlink there and the truncating open would land on any file this account
-// can write. Launch must refuse to open anything but a regular file — and must
+// The per-model log has a predictable name in the logs directory, so a
+// symlink planted there would make the truncating open land on any file this
+// account can write. Launch must refuse to open anything but a regular file — and must
 // not block on a planted FIFO either.
 func TestLaunchRefusesSymlinkedLogFile(t *testing.T) {
 	root := t.TempDir()

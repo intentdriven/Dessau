@@ -15,9 +15,8 @@ import (
 	"github.com/intentdriven/Dessau/internal/config"
 )
 
-// A challenge file sits in the data root, which in shared mode is
-// group-writable and where a peer can plant a FIFO under a name the prober is
-// about to use. The read runs inside the holder probe; a blocking open would
+// A challenge file sits in the data root, where a FIFO can sit under a name
+// the prober is about to use. The read runs inside the holder probe; a blocking open would
 // turn a fast, logged "foreign holder" refusal into a silent hang past the
 // probe's deadline.
 func TestChallengeReadDoesNotBlockOnFIFO(t *testing.T) {
@@ -84,6 +83,25 @@ func TestChallengeRoundTripAndCleanup(t *testing.T) {
 	removeChallenge(paths, name)
 	if _, err := os.Lstat(config.ChallengePath(paths.Root, name)); !os.IsNotExist(err) {
 		t.Error("a spent challenge must not survive the probe")
+	}
+}
+
+// The answer is this account's alone: the server that can echo it back is one
+// running as this account, and no other account needs to read it. 0600,
+// whatever directory DESSAU_ROOT names.
+func TestTheChallengeIsReadableOnlyByThisAccount(t *testing.T) {
+	paths := config.NewPaths(t.TempDir())
+	name, _, err := writeChallenge(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer removeChallenge(paths, name)
+	fi, err := os.Lstat(config.ChallengePath(paths.Root, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := fi.Mode().Perm(); perm != 0o600 {
+		t.Errorf("the challenge is mode %#o, want 0600", perm)
 	}
 }
 
