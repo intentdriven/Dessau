@@ -73,7 +73,7 @@ func userSupportDir() (string, error) {
 	if testing.Testing() && home == startHome {
 		return "", fmt.Errorf("refusing to resolve this account's own Dessau directory inside a test: HOME is " +
 			"still the one the test binary started with, so it is the real one. Point HOME at a directory of " +
-			"the test's own (t.Setenv(\"HOME\", t.TempDir())) or set DESSAU_ROOT")
+			"the test's own first (t.Setenv(\"HOME\", t.TempDir())); DESSAU_ROOT moves DefaultRoot alone")
 	}
 	return filepath.Join(home, "Library", "Application Support", "Dessau"), nil
 }

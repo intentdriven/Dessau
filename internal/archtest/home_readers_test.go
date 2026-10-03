@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -24,6 +25,14 @@ var homeReaders = map[string]string{
 	"internal/lifecycle/swap.go":      "redacting the home path out of a log line; reads nothing under it",
 }
 
+// homeRead matches the ways Go code here would reach the home directory:
+// os.UserHomeDir, the two library directories macOS derives from HOME, HOME
+// read from the environment however it is spelled, the environment expanded
+// into a string, and the
+// account database. It catches the obvious spellings, not every possible one,
+// and a mention in a comment counts.
+var homeRead = regexp.MustCompile(`os\.(UserHomeDir|UserConfigDir|UserCacheDir)\(|(Getenv|LookupEnv)\(\s*"HOME"\s*\)|os\.ExpandEnv\(|os\.Expand\(|"os/user"`)
+
 func TestOnlyTheKnownReadersResolveTheHomeDirectory(t *testing.T) {
 	root := repoRootDir(t)
 	found := map[string]bool{}
@@ -35,8 +44,7 @@ func TestOnlyTheKnownReadersResolveTheHomeDirectory(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		src := string(b)
-		if strings.Contains(src, "os.UserHomeDir(") || strings.Contains(src, `Getenv("HOME")`) {
+		if homeRead.Match(b) {
 			rel, _ := filepath.Rel(root, path)
 			found[filepath.ToSlash(rel)] = true
 		}
