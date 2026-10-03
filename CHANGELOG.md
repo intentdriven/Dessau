@@ -77,10 +77,9 @@ GitHub release notes.
   same account that replaced the staging folder's org folder with a link to
   the model's own org folder, while a new version downloaded, made the failed
   update's clean-up remove the served model's whole folder. Every removal
-  under the staging folder now goes through the folder Dessau checked and
-  opened, not through its name, and each swap rename is checked before and
-  after: a rename that a link sent elsewhere is undone and the update
-  abandoned, so another org's model is never moved in as this one
+  under the staging folder, and both of the swap's renames, now go through
+  the folders Dessau checked and opened rather than through their names, so a
+  link planted at either name mid-update is never followed
   (iss-2610031324593822).
 - **The panel's memory line says what is reserved, in the units it
   measures.** `impact: fix`. The line at the head of **My Models** called the
