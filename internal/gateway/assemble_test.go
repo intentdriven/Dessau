@@ -45,9 +45,17 @@ type mlxChild struct {
 	// raises in its token loop — or crashes — does: no "[DONE]". Unstreamed,
 	// half the body goes out before the close.
 	cutAfter int
+	// endAfter, when positive, ends the answer after that many streamed
+	// events by returning from the handler: the response ends cleanly, with
+	// no "[DONE]". The pinned server speaks HTTP/1.0, so its stream ends at
+	// the connection's close and a client reads a plain end of file, not the
+	// unexpected one cutAfter gives.
+	endAfter int
 	// errorEvent, when set, is written as one streamed event after the first
-	// chunk, and the stream then ends without "[DONE]".
-	errorEvent string
+	// chunk, and the stream then ends without "[DONE]" — or, with
+	// doneAfterError, with it.
+	errorEvent     string
+	doneAfterError bool
 	// holdHeaders, when set, never sends a status line at all until the
 	// request goes away.
 	holdHeaders bool
@@ -169,12 +177,18 @@ func (c *mlxChild) stream(w http.ResponseWriter, r *http.Request, events []strin
 			c.closeConn(w)
 			return
 		}
+		if c.endAfter > 0 && i == c.endAfter {
+			return
+		}
 		if !write("data: " + ev + "\n\n") {
 			gone()
 			return
 		}
 		if c.errorEvent != "" && i == 0 {
 			write("data: " + c.errorEvent + "\n\n")
+			if c.doneAfterError {
+				break
+			}
 			c.closeConn(w)
 			return
 		}
@@ -469,8 +483,15 @@ func TestAClientThatHangsUpStopsTheGeneration(t *testing.T) {
 // error status rather than handed half an object under a 200.
 func TestAnAnswerCutShortIsAnErrorNotHalfAnObject(t *testing.T) {
 	for name, set := range map[string]func(*mlxChild){
-		"the connection closes": func(c *mlxChild) { c.cutAfter = 2 },
-		"an error event":        func(c *mlxChild) { c.errorEvent = `{"error": "RuntimeError: [metal] out of memory"}` },
+		"the connection closes":                  func(c *mlxChild) { c.cutAfter = 2 },
+		"the stream ends cleanly without [DONE]": func(c *mlxChild) { c.endAfter = 2 },
+		"an error event":                         func(c *mlxChild) { c.errorEvent = `{"error": "RuntimeError: [metal] out of memory"}` },
+		// Shaped like a completion event, so that only its error field tells
+		// it apart, and followed by a "[DONE]" as if nothing had happened.
+		"an error event, then [DONE]": func(c *mlxChild) {
+			c.errorEvent = `{"choices": [], "error": {"message": "RuntimeError: [metal] out of memory"}}`
+			c.doneAfterError = true
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			q := baseRequest()
