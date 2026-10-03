@@ -380,6 +380,11 @@ function renderDefaults(defaults) {
   $('setGraceWait').placeholder = d.eviction_max_wait_sec ? String(d.eviction_max_wait_sec) : '';
   $('setIdleThreshold').placeholder = d.idle_threshold_sec ? String(d.idle_threshold_sec) : '';
   $('idleThresholdDefault').textContent = blankIsSentence(d.idle_threshold_sec);
+  $('setUpdateCheckInterval').placeholder = d.update_check_interval_hours ? String(d.update_check_interval_hours) : '';
+  // In hours, which is how the field is typed; blankIsSentence speaks in
+  // seconds and minutes.
+  $('updateCheckIntervalDefault').textContent = d.update_check_interval_hours
+    ? ` Blank is every ${d.update_check_interval_hours} hours.` : '';
 }
 
 function updateGraceHint() {
@@ -1355,6 +1360,8 @@ function renderSettings() {
   $('setChatTags').value = (rule.required_tags || []).join(', ');
   $('setContextProbe').checked = !!c.context_probe;
   $('setIdleThreshold').value = c.idle_threshold_sec || '';
+  $('setUpdateCheck').checked = !!c.update_check_enabled;
+  $('setUpdateCheckInterval').value = c.update_check_interval_hours || '';
   $('setSelfTest').checked = !!c.self_test;
   $('setStats').checked = !!c.statistics;
   $('setStatsMonths').value = c.stats_months;
@@ -1947,6 +1954,8 @@ $('ovApply').addEventListener('click', () => {
 });
 
 $('setContextProbe').addEventListener('change', () => { settingsTouched = true; });
+$('setUpdateCheck').addEventListener('change', () => { settingsTouched = true; });
+$('setUpdateCheckInterval').addEventListener('input', () => { settingsTouched = true; });
 $('setIdleThreshold').addEventListener('input', () => { settingsTouched = true; });
 $('setSelfTest').addEventListener('change', () => { settingsTouched = true; });
 $('setStats').addEventListener('change', () => { settingsTouched = true; });
@@ -2078,6 +2087,9 @@ $('settingsForm').addEventListener('submit', async (e) => {
     context_probe:      $('setContextProbe').checked,
     // Blank posts zero, which the server reads as the default.
     idle_threshold_sec: parseInt($('setIdleThreshold').value, 10) || 0,
+    update_check_enabled: $('setUpdateCheck').checked,
+    // Blank posts zero, which the server reads as daily.
+    update_check_interval_hours: parseInt($('setUpdateCheckInterval').value, 10) || 0,
     self_test:          $('setSelfTest').checked,
     statistics:         $('setStats').checked,
     stats_months:       parseInt($('setStatsMonths').value, 10) || 6,

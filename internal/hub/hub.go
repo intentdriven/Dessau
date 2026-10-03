@@ -38,6 +38,13 @@ type Client struct {
 	// package takes a lock, so it orders against nothing.
 	mu    sync.RWMutex
 	token string
+
+	// rateMu guards the remaining request budget the Hub last stated, read
+	// off every answer that came through do, so that a round of update
+	// checks can stop before it spends what is left.
+	rateMu        sync.Mutex
+	rateRemaining int
+	rateKnown     bool
 }
 
 // SetToken sets the access token sent with every subsequent request. It is
@@ -273,7 +280,130 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("%s was answered by %s://%s — refusing to read it: %w",
 			req.URL.Path, final.URL.Scheme, final.URL.Host, ErrCrossOrigin)
 	}
+	if n, ok := parseRateRemaining(resp.Header); ok {
+		c.rateMu.Lock()
+		c.rateRemaining, c.rateKnown = n, true
+		c.rateMu.Unlock()
+	}
 	return resp, nil
+}
+
+// RateRemaining is how many requests the Hub last said this client may still
+// make in its current window, and whether it has said.
+func (c *Client) RateRemaining() (int, bool) {
+	c.rateMu.Lock()
+	defer c.rateMu.Unlock()
+	return c.rateRemaining, c.rateKnown
+}
+
+// ForgetRateLimit drops the remaining budget the Hub last stated, so that
+// what a caller reads next comes from answers it has itself been given.
+func (c *Client) ForgetRateLimit() {
+	c.rateMu.Lock()
+	defer c.rateMu.Unlock()
+	c.rateRemaining, c.rateKnown = 0, false
+}
+
+// parseRateRemaining reads the remaining request budget off an answer: the
+// IETF RateLimit header in either of its drafts' shapes ("…;r=42;t=10" and
+// "limit=…, remaining=42, reset=…"), or the older X-RateLimit-Remaining. A
+// header with no figure it can read is no answer.
+func parseRateRemaining(h http.Header) (int, bool) {
+	if v := h.Get("RateLimit"); v != "" {
+		for _, part := range strings.FieldsFunc(v, func(r rune) bool { return r == ';' || r == ',' }) {
+			k, val, ok := strings.Cut(strings.TrimSpace(part), "=")
+			if !ok || (k != "r" && k != "remaining") {
+				continue
+			}
+			if n, err := strconv.Atoi(strings.TrimSpace(val)); err == nil && n >= 0 {
+				return n, true
+			}
+		}
+	}
+	for _, name := range []string{"RateLimit-Remaining", "X-RateLimit-Remaining"} {
+		if v := h.Get(name); v != "" {
+			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 0 {
+				return n, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// Upstream is a repository's current version as an update check found it,
+// with the choice the check made about the token: a check asks anonymously
+// first and sends the token only when the repository refuses that
+// (adr-2610030857208746), and everything it then asks about the repository
+// is asked under the same choice.
+type Upstream struct {
+	RepoID string
+	Commit string
+	// Authed says the token was needed.
+	Authed bool
+	token  string
+}
+
+// String and GoString name the version and never the token it carries, so an
+// Upstream formatted into a log line or an error cannot spell the token out.
+func (u Upstream) String() string   { return u.RepoID + "@" + u.Commit }
+func (u Upstream) GoString() string { return "hub.Upstream{" + u.String() + "}" }
+
+// Latest asks the Hub for a repository's current commit the way an update
+// check must: without the token, and once more with it only if the
+// repository refuses the anonymous request and a token is set. A refusal of
+// both is returned as the Hub's refusal.
+func (c *Client) Latest(ctx context.Context, repoID string) (Upstream, error) {
+	commit, err := c.commit(ctx, repoID, "")
+	if err == nil {
+		return Upstream{RepoID: repoID, Commit: commit}, nil
+	}
+	token := c.Token()
+	if !IsAuthRequired(err) || token == "" {
+		return Upstream{}, err
+	}
+	commit, err = c.commit(ctx, repoID, token)
+	if err != nil {
+		return Upstream{}, err
+	}
+	return Upstream{RepoID: repoID, Commit: commit, Authed: true, token: token}, nil
+}
+
+// FilesAt lists the repository's files at the commit Latest found, under the
+// token choice it made.
+func (c *Client) FilesAt(ctx context.Context, up Upstream) ([]File, error) {
+	return c.files(ctx, up.RepoID, up.Commit, up.token)
+}
+
+// SmallFileAt reads one small file of the repository at the commit Latest
+// found, under the token choice it made, refusing a body past max with
+// ErrOversizedBody. It goes through do, so the answer comes from the Hub's
+// own origin or not at all: it is for a file the repository keeps in git,
+// such as config.json, never for weights the Hub hands to its content CDN.
+func (c *Client) SmallFileAt(ctx context.Context, up Upstream, file string, max int64) ([]byte, error) {
+	u, err := c.ResolveURL(up.RepoID, up.Commit, file)
+	if err != nil {
+		return nil, err
+	}
+	req, err := c.newTokenRequest(ctx, http.MethodGet, u, up.token)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, fmt.Errorf("read %s of %s: %w", file, up.RepoID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, apiError(resp, u)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
+	if err != nil {
+		return nil, fmt.Errorf("read %s of %s: %w", file, up.RepoID, err)
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("%s of %s is longer than %d bytes: %w", file, up.RepoID, max, ErrOversizedBody)
+	}
+	return b, nil
 }
 
 // APIError is a non-2xx response from the Hub.
@@ -281,12 +411,20 @@ type APIError struct {
 	StatusCode int
 	URL        string
 	Body       string
+	// TokenSent says the refused request carried the access token. The Hub
+	// answers an anonymous request for a repository that does not exist with
+	// 401, exactly as it answers one for a gated repository, so what a 401
+	// means depends on it (iss-2610030913177383).
+	TokenSent bool
 }
 
 func (e *APIError) Error() string {
 	switch e.StatusCode {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return fmt.Sprintf("huggingface denied access to %s (HTTP %d) — the repo may be gated; add an access token in Settings", e.URL, e.StatusCode)
+		if e.TokenSent {
+			return fmt.Sprintf("huggingface refused access to %s with the access token in Settings (HTTP %d) — the token may not have access to it, or it may no longer exist", e.URL, e.StatusCode)
+		}
+		return fmt.Sprintf("huggingface has no public repository at %s (HTTP %d) — it is missing, private or gated; a private or gated one needs an access token in Settings", e.URL, e.StatusCode)
 	case http.StatusNotFound:
 		return fmt.Sprintf("huggingface has no such repo or file: %s", e.URL)
 	case http.StatusTooManyRequests:
@@ -913,5 +1051,6 @@ func apiError(resp *http.Response, u string) error {
 	// record boundaries), which would otherwise truncate the captured error
 	// message well before the intended 512-byte budget.
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	return &APIError{StatusCode: resp.StatusCode, URL: u, Body: strings.TrimSpace(string(body))}
+	sent := resp.Request != nil && resp.Request.Header.Get("Authorization") != ""
+	return &APIError{StatusCode: resp.StatusCode, URL: u, Body: strings.TrimSpace(string(body)), TokenSent: sent}
 }

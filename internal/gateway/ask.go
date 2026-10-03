@@ -59,6 +59,13 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 		obs.failed(stats.ClassGatewayError)
 		return &AskError{detail: "the request is not valid JSON", public: genericRefusal}
 	}
+	// A JSON null decodes into a nil map without an error, and the request
+	// is written into below; anything but an object is refused here, before
+	// it is touched (iss-2610030822065191).
+	if payload == nil {
+		obs.failed(stats.ClassGatewayError)
+		return &AskError{detail: "the request is not a JSON object", public: genericRefusal}
+	}
 	// The rule handleCompletions applies, at the same point: before a model
 	// is resolved or acquired. The bridge's own body carries neither field,
 	// so this is the rule held on the second path, not a refusal a bridged

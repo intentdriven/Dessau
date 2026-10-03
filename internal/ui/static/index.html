@@ -402,6 +402,26 @@
     </label>
 
     <fieldset class="group">
+      <legend>Model updates</legend>
+      <label class="switch">
+        <input id="setUpdateCheck" type="checkbox">
+        <span>Check the models you downloaded for newer versions</span>
+      </label>
+      <p class="hint">Off unless you turn it on. While it is on, at each start once the last
+        check is older than the interval, and at each interval, Dessau sends HuggingFace the name
+        of each model you downloaded and asks for its latest version, with no access token unless
+        that model&rsquo;s repository refuses a request without one. A model with a newer version
+        of a file it uses is recorded as having one. Nothing else is sent, and nothing is sent to anyone
+        else. The <a href="https://github.com/intentdriven/Dessau/blob/main/docs/model-updates.md">model
+        updates page</a> says what is checked and what the marks mean.</p>
+      <label>
+        <span>Check every (hours)</span>
+        <input id="setUpdateCheckInterval" type="number" step="1" min="0" max="720">
+      </label>
+      <p class="hint">From 1 hour to 720 (thirty days); 0 or blank is daily.<span id="updateCheckIntervalDefault"></span></p>
+    </fieldset>
+
+    <fieldset class="group">
       <legend>Which models can chat</legend>
       <p class="hint">Each model carries the words HuggingFace puts on it — a pipeline
         tag such as <code>text-generation</code>, and tags such as
