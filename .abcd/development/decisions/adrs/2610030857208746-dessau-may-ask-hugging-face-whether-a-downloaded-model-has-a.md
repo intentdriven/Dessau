@@ -1,7 +1,7 @@
 ---
 id: adr-2610030857208746
 slug: dessau-may-ask-hugging-face-whether-a-downloaded-model-has-a
-status: proposed
+status: accepted
 date: 2026-10-03
 supersedes: null
 superseded_by: null
@@ -61,9 +61,21 @@ are untouched.
 
 ## Decision
 
-_Open. Decided by the maintainer at the planning interview of
-itd-2610030857275099; until then this record is `proposed` and
-adr-2609201008476813 stands unchanged._
+Decided by the maintainer at the planning interview of itd-2610030857275099,
+2026-10-03.
+
+1. **We will check for newer model versions only when the operator has turned
+   checks on** (alternative 1), at startup when the last check is older than
+   the interval and at each interval, daily by default, from 1 hour to 30 days.
+   A Mac whose operator never turns it on sends nothing. Under the 2026-09-08
+   precedent this is not an amendment to adr-2609201008476813, which stands
+   unchanged.
+2. **We will send no HuggingFace token with a check** unless the repository
+   refuses an anonymous request.
+3. **The existing startup category lookup is part of fetching models**: it
+   completes what a download should have carried, so it is within "needed to
+   fetch models" and stays always on. Recorded here so it is named, not
+   inferred.
 
 ## Alternatives Considered
 
@@ -96,4 +108,12 @@ named.
 
 ## Consequences
 
-_Written with the decision._
+- adr-2609201008476813 is unchanged; its outbound-connections sentence now
+  reads with two named readings (the category lookup as part of fetching; an
+  opt-in check under the 2026-09-08 precedent).
+- A test must prove a Mac with checks off sends no check request, and the
+  panel states, beside the switch, what a check sends and to whom.
+- Checking requires the downloaded revision and per-file hashes to be recorded
+  at download (shared with spc-2610030846273729's revision field).
+- A future default-on check reverses this record and the 2026-09-08 line, and
+  needs its own ADR.
