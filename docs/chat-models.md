@@ -9,7 +9,7 @@ Dessau records what HuggingFace says each model is when you download it, and
 publishes those words on the models list. A rule decides which of them count as
 able to chat. There are two places to change it: the server, which is what every
 client is told, and Dessau Chat, which applies its own. A model the Hub has
-said nothing about — one this account found in the shared cache rather than
+said nothing about — one the server found in its models folder rather than
 downloaded — is judged by its own files instead, as [described
 below](#a-model-with-no-words).
 
@@ -69,11 +69,9 @@ model and is exempt from the rule: it is offered whenever the Mac can run it.
 ## A model with no words
 
 A model carries no pipeline tag and no tags when the Hub was never heard for
-it: this account did not download it but found it in the
-[shared cache](getting-started.md#9-sharing-across-user-accounts-optional),
-put there by another account on this Mac; or HuggingFace could not be reached
-when the download finished; or a Dessau that predates these words recorded
-it. The rule has nothing to test, so it is not consulted. The model's own
+it: the server did not download it but found it in its models folder, copied
+there by hand; or HuggingFace could not be reached when the download
+finished; or a Dessau that predates these words recorded it. The rule has nothing to test, so it is not consulted. The model's own
 files decide instead: a model whose `tokenizer_config.json` carries a
 `chat_template`, or that has a `chat_template.jinja` file beside it, counts
 as able to chat, and a model with neither does not. The chat template is

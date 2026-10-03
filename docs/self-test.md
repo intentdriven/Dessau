@@ -102,9 +102,7 @@ at mode 0600, and it is bounded — when the next line would take it past
 4 MiB it is started again, which is thousands of runs away. The
 [reference page](self-test-reference.md) names every field.
 
-On a Mac several people log into, the models are one set, so the self-test
-measures every account's models, and the switch and the file are the serving
-account's own.
+>>>>
 
 ## Related
 

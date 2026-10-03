@@ -4,11 +4,10 @@ What the [self-test](self-test.md) writes, where, and field by field.
 
 ## The file
 
-`selftest/results.jsonl` under this account's Dessau data folder: the
-data root for a per-user install or a root set with `DESSAU_ROOT`, and this
-account's own Application Support directory under a shared install, beside
-the statistics store and under the same rule. Its directory is created, at
-mode 0700, on the first write, and the file is mode 0600.
+`selftest/results.jsonl` under the Dessau data folder — normally
+`~/Library/Application Support/Dessau`, or the root set with `DESSAU_ROOT` —
+beside the statistics store. Its directory is created, at mode 0700, on the
+first write, and the file is mode 0600.
 
 The format is JSON Lines: one object per line, one run per object, appended
 in the order the runs happened. The file is bounded at 4 MiB. When the next

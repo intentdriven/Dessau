@@ -83,7 +83,7 @@ just installed.
 | a version, and the port | This account's Dessau answered the identity challenge and published its version on the state snapshot. |
 | the running server does not publish its version | It answered the challenge and is a build older than the version field, so it has none to give. |
 | the server did not answer the control plane | It answered the challenge and then did not answer the snapshot read. |
-| something holds the port and answered no identity challenge | Something is accepting connections and would not identify itself. Under per-account data roots that is what another account's Dessau looks like from here. |
+| something holds the port and answered no identity challenge | Something is accepting connections and would not identify itself. Every account's Dessau keeps its own data root, so that is what another account's Dessau looks like from here. |
 | nothing is serving on this Mac | Nothing is accepting connections on the port. |
 
 Where the version serving is not the version installed — or where the holder
