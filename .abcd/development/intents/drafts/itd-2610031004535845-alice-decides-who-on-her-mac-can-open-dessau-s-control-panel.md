@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-2609081259493890, itd-2609100519003748]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
@@ -35,7 +35,35 @@ production_mode: hand-written
 
 ## Open Questions
 
-_None recorded yet._
+- FLAGGED: "this account only" needs a way to tell which account a request on
+  this Mac comes from. adr-2609091123526871 (section 7) records that no check can
+  tell other accounts apart ("from the socket they are the same connection"),
+  and adr-2610030906462776 (Alternative 3) counts other accounts opening the
+  panel as part of its design. The design review measured a way that works:
+  asking the kernel which account owns the connecting socket (libproc), about
+  1.3 ms per scan, failing closed because another account's processes are not
+  visible. Adopting it means a new ADR refining the first and superseding the
+  second in part. Precondition: a spike proving Safari, Chrome and Firefox
+  connections can be attributed, or Alice locks herself out.
+- Rejected by the review: a cookie set by the menu-bar link (cookies are not
+  scoped to a port, so another account listening on another localhost port can
+  receive and replay it); a Unix socket (browsers cannot reach it); a macOS
+  password prompt (the server cannot tell whose screen to prompt).
+- The default: "this account only" (safer; breaking for anyone administering
+  from a second account) or "anyone on this Mac" (today's behaviour).
+- Lock-out: switching to "this account only" is accepted only from a
+  connection already identified as the serving account's; recovery is the menu
+  bar or a hand edit of `config.json`, never the panel.
+- Who it protects: a standard account; an administrator can act as Alice.
+- The model API is unchanged under either choice.
+- The network option was declined by the maintainer at routing (2026-10-03),
+  the third time it has been set aside (adr-2609091123526871,
+  adr-2609081118587999).
+- Typed links: builds on itd-2609081259493890 (three surfaces); refines
+  itd-2609100519003748 (its condition cond-2609201007364804: "reachable by every
+  account" is not a property that intent changes; this one does).
+- Seeded 2026-10-03 from the maintainer's request; revised after two
+  adversarial reviews the same day.
 
 ## Audit Notes
 
