@@ -24,17 +24,17 @@ func TestModelCardInfoLineShowsTheMaximumContext(t *testing.T) {
 		model string
 		want  string
 	}{
-		{"ready, with a figure", `{"state":"ready","bytes":1024,"context_length":262144}`, "1.0 KB · max context 256K"},
-		{"ready, no figure", `{"state":"ready","bytes":1024}`, "1.0 KB"},
-		{"ready, figure not a number", `{"state":"ready","bytes":1024,"context_length":"262144"}`, "1.0 KB"},
+		{"ready, with a figure", `{"state":"ready","bytes":1024,"context_length":262144}`, "1.0 KiB · max context 256K"},
+		{"ready, no figure", `{"state":"ready","bytes":1024}`, "1.0 KiB"},
+		{"ready, figure not a number", `{"state":"ready","bytes":1024,"context_length":"262144"}`, "1.0 KiB"},
 		// The abbreviation must never round up: a card reading 256K for a
 		// model that declares 262,143 shows one token more than it has.
-		{"ready, an inexact figure", `{"state":"ready","bytes":1024,"context_length":262143}`, "1.0 KB · max context 255K"},
-		{"ready, under a kibitoken", `{"state":"ready","bytes":1024,"context_length":512}`, "1.0 KB · max context 512"},
+		{"ready, an inexact figure", `{"state":"ready","bytes":1024,"context_length":262143}`, "1.0 KiB · max context 255K"},
+		{"ready, under a kibitoken", `{"state":"ready","bytes":1024,"context_length":512}`, "1.0 KiB · max context 512"},
 		// The other two branches keep their own shape: no figure appears on a
 		// download in flight or on a failure, and a failure's text is escaped
 		// (the harness's escapeHtml marks what it was given).
-		{"downloading", `{"state":"downloading","progress":42.4,"size_bytes":2048}`, "downloading… 42% of 2.0 KB"},
+		{"downloading", `{"state":"downloading","progress":42.4,"size_bytes":2048}`, "downloading… 42% of 2.0 KiB"},
 		{"failed", `{"state":"failed","err":"boom","context_length":262144}`, "esc(boom)"},
 	}
 	for _, c := range cases {
