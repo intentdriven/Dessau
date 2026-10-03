@@ -52,8 +52,12 @@ func (p Progress) ETA() time.Duration {
 
 // DownloadRequest describes a repo download.
 type DownloadRequest struct {
-	RepoID   string
-	Revision string // defaults to "main"
+	RepoID string
+	// Revision is the commit to fetch. Empty means the repository's current
+	// commit, resolved once before anything is listed; a download never
+	// fetches at a branch name, so a commit landing on the Hub part-way
+	// through cannot mix two versions' files.
+	Revision string
 	// Dest is the directory the files land in. It is created if absent.
 	Dest string
 	// ModelsDir is the models root Dest lives under. Dest is created and
@@ -75,17 +79,31 @@ type DownloadRequest struct {
 // truncated file that later looks valid.
 const partSuffix = ".dessau-part"
 
+// Snapshot is the version a download fetched: the commit every file came
+// from, and each file's hash as the Hub's tree listing stated it at that
+// commit — the LFS sha256 for a large file, the git blob id for one the
+// repository stores in git — keyed by its repo-relative path. It is what the
+// registry records as the version on disk, and what a later check compares
+// the Hub's current listing with.
+type Snapshot struct {
+	Commit string
+	Files  map[string]string
+}
+
 // Download fetches every needed file in a repo into req.Dest, resuming any
-// partial transfers from a previous run.
+// partial transfers from a previous run, and reports the version it fetched.
+//
+// The commit is resolved first, unless the caller named one, and the listing
+// and every file are fetched at it, never at a branch name.
 //
 // It is safe to call again after a failure: complete files are skipped and
 // partial ones resume with a Range request.
-func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
+func (c *Client) Download(ctx context.Context, req DownloadRequest) (Snapshot, error) {
 	if req.RepoID == "" {
-		return errors.New("download: RepoID is required")
+		return Snapshot{}, errors.New("download: RepoID is required")
 	}
 	if req.Dest == "" {
-		return errors.New("download: Dest is required")
+		return Snapshot{}, errors.New("download: Dest is required")
 	}
 	if req.Concurrency <= 0 {
 		req.Concurrency = 4
@@ -99,19 +117,29 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
 	// asked for.
 	token := c.Token()
 
+	if req.Revision == "" {
+		commit, err := c.commit(ctx, req.RepoID, token)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		req.Revision = commit
+	} else if !ValidCommit(req.Revision) {
+		return Snapshot{}, fmt.Errorf("download %s at %q: %w", req.RepoID, req.Revision, ErrBadCommit)
+	}
+
 	all, err := c.files(ctx, req.RepoID, req.Revision, token)
 	if err != nil {
-		return err
+		return Snapshot{}, err
 	}
 	files := WantedFiles(all)
 	if len(files) == 0 {
-		return fmt.Errorf("%s has no downloadable files", req.RepoID)
+		return Snapshot{}, fmt.Errorf("%s has no downloadable files", req.RepoID)
 	}
 	if a, b, collide := caseCollision(files); collide {
-		return fmt.Errorf("%s contains files whose names differ only by case (%q and %q), which cannot coexist on a case-insensitive filesystem — refusing to download it", req.RepoID, a, b)
+		return Snapshot{}, fmt.Errorf("%s contains files whose names differ only by case (%q and %q), which cannot coexist on a case-insensitive filesystem — refusing to download it", req.RepoID, a, b)
 	}
 	if !HasWeights(files) {
-		return fmt.Errorf("%s contains no .safetensors weights — it is not an MLX-loadable model", req.RepoID)
+		return Snapshot{}, fmt.Errorf("%s contains no .safetensors weights — it is not an MLX-loadable model", req.RepoID)
 	}
 
 	// Every filesystem operation below happens inside this root. os.Root
@@ -121,7 +149,7 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
 	// component alone cannot give.
 	root, err := openDest(req)
 	if err != nil {
-		return err
+		return Snapshot{}, err
 	}
 	defer root.Close()
 
@@ -185,15 +213,19 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
 	wg.Wait()
 
 	if firstErr != nil {
-		return firstErr
+		return Snapshot{}, firstErr
 	}
 	// A cancelled download is INCOMPLETE, not successful. Returning nil here would
 	// let the caller mark a half-downloaded model as ready. Surface the
 	// cancellation (and any other context error) as the error it is.
 	if err := ctx.Err(); err != nil {
-		return err
+		return Snapshot{}, err
 	}
-	return nil
+	snap := Snapshot{Commit: req.Revision, Files: make(map[string]string, len(files))}
+	for _, f := range files {
+		snap.Files[f.Path] = f.OID
+	}
+	return snap, nil
 }
 
 // openDest creates the destination directory and opens an os.Root at it.

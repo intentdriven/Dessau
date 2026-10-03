@@ -394,6 +394,73 @@ func (c *Client) RepoInfo(ctx context.Context, repoID string) (Model, error) {
 	return m, nil
 }
 
+// Commit is the repository's current commit: the one revision every file of a
+// download is fetched at, so that a commit landing on the Hub part-way through
+// cannot leave a model that is half one version and half the next.
+//
+// One small request (`?expand[]=sha` asks for that field alone), answered by
+// the Hub's own origin or not at all, because it goes through do. What comes
+// back is held to the shape of a git commit id before anything uses it: it is
+// spliced into every URL of the download that follows, and the registry
+// records it as the version the files on disk are.
+func (c *Client) Commit(ctx context.Context, repoID string) (string, error) {
+	return c.commit(ctx, repoID, c.Token())
+}
+
+// commit is Commit under a token the caller has already read, so that a
+// download resolves its commit, lists its files and fetches them under one
+// token.
+func (c *Client) commit(ctx context.Context, repoID, token string) (string, error) {
+	base, err := c.hubURL(segment("api"), segment("models"), repoPath(repoID))
+	if err != nil {
+		return "", fmt.Errorf("resolve the commit of %q: %w", repoID, err)
+	}
+	u := base + "?" + url.Values{"expand[]": {"sha"}}.Encode()
+	req, err := c.newTokenRequest(ctx, http.MethodGet, u, token)
+	if err != nil {
+		return "", err
+	}
+	resp, err := c.do(req)
+	if err != nil {
+		return "", fmt.Errorf("resolve the commit of %s: %w", repoID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", apiError(resp, u)
+	}
+	var body struct {
+		SHA string `json:"sha"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxJSONBody)).Decode(&body); err != nil {
+		return "", fmt.Errorf("decode the commit of %s: %w", repoID, err)
+	}
+	if !ValidCommit(body.SHA) {
+		return "", fmt.Errorf("the hub named %q as the commit of %s, which is not a commit id: %w", body.SHA, repoID, ErrBadCommit)
+	}
+	return body.SHA, nil
+}
+
+// ErrBadCommit is what a commit lookup refuses with when the Hub's answer is
+// not a commit id.
+var ErrBadCommit = errors.New("not a commit id")
+
+// ValidCommit reports whether s is a full git commit id: forty lowercase hex
+// digits, the form the Hub reports. Nothing shorter is accepted, because a
+// prefix is ambiguous, and nothing else, because the value becomes a path
+// element of every file request a download makes.
+func ValidCommit(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if (b < '0' || b > '9') && (b < 'a' || b > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // maxJSONBody caps how large a Hub JSON response we will buffer/decode. Search
 // results and a single tree page are at most a few MB; a body near this limit is
 // a broken or hostile endpoint, not a real repo listing.

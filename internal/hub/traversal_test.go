@@ -36,7 +36,7 @@ func TestDownloadRejectsPathTraversal(t *testing.T) {
 	mux.HandleFunc("/org/evil/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "PWNED")
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	defer srv.Close()
 
 	victims := []string{"/tmp/dessau-pwned", "/tmp/dessau-pwned2"}
@@ -48,7 +48,7 @@ func TestDownloadRejectsPathTraversal(t *testing.T) {
 	dest := t.TempDir()
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
 	// The download may error (that's fine) — what matters is nothing escaped.
-	_ = c.Download(context.Background(), DownloadRequest{RepoID: "org/evil", Dest: dest})
+	_, _ = c.Download(context.Background(), DownloadRequest{RepoID: "org/evil", Dest: dest})
 
 	for _, v := range victims {
 		if _, err := os.Stat(v); err == nil {
@@ -81,12 +81,12 @@ func TestDownloadRefusesSymlinkedParentDir(t *testing.T) {
 	mux.HandleFunc("/org/evil/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "PWNED")
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	defer srv.Close()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
 	// The download must error rather than write through the symlink.
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: "org/evil", Dest: dest}); err == nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/evil", Dest: dest}); err == nil {
 		t.Fatal("download through a symlinked parent dir succeeded; it must be refused")
 	}
 
@@ -138,7 +138,7 @@ func TestDownloadRefusesSymlinkedOrgDir(t *testing.T) {
 		"model.safetensors": []byte("weights"),
 	}).server(t)
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{
+	_, err := c.Download(context.Background(), DownloadRequest{
 		RepoID:    "org/repo",
 		ModelsDir: models,
 		Dest:      filepath.Join(models, "org", "repo"),
@@ -168,11 +168,11 @@ func TestDownloadRefusesCaseCollidingFiles(t *testing.T) {
 	mux.HandleFunc("/org/twins/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "12345")
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	defer srv.Close()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	err := c.Download(context.Background(), DownloadRequest{RepoID: "org/twins", Dest: dest})
+	_, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/twins", Dest: dest})
 	if err == nil {
 		t.Fatal("a repo with case-colliding file names was accepted")
 	}

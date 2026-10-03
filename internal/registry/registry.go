@@ -116,6 +116,15 @@ type Model struct {
 	// about these files: a re-download's Put carries none
 	// (itd-2609201445423499).
 	ToolCalling *ToolCalling `json:"tool_calling,omitempty"`
+	// Commit is the upstream commit the files on disk were downloaded at,
+	// and FileHashes each downloaded file's hash as the Hub's tree stated it
+	// at that commit (the LFS sha256 of a large file, the git blob id of a
+	// small one), keyed by repo-relative path. Empty means version unknown:
+	// a model downloaded before versions were recorded, or a directory the
+	// rescan adopted. Neither is on the disk, so a rescan keeps them as they
+	// are; a re-download records its own (itd-2610030857275099).
+	Commit     string            `json:"commit,omitempty"`
+	FileHashes map[string]string `json:"file_hashes,omitempty"`
 	// LoadFailure says the model's server started and never became ready
 	// under the provenance it carries, and stands until that moves or a
 	// person retries the model by hand: while it does, no idle job picks the
@@ -123,6 +132,84 @@ type Model struct {
 	// (iss-2609211334570516). Like Measured it is a fact about these files:
 	// a re-download's Put carries none.
 	LoadFailure *LoadFailure `json:"load_failure,omitempty"`
+}
+
+// VersionKnown reports whether Dessau recorded which upstream version these
+// files are. A model that says no is "version unknown".
+func (m Model) VersionKnown() bool { return m.Commit != "" }
+
+// MaxVersionFiles and MaxVersionPathBytes bound a recorded version. The index
+// is read whole under a size limit, so one repository listing tens of
+// thousands of files must not be able to fill it: past MaxVersionFiles the
+// version is kept as its commit alone. Real models carry tens of files.
+const (
+	MaxVersionFiles     = 1024
+	MaxVersionPathBytes = 512
+)
+
+// sanitizeVersion holds a recorded version to the shapes a download writes.
+// It is applied wherever a record enters the index — Put, and Open, where a
+// hand-edited or planted file arrives — and returns a fresh map, so what the
+// registry holds is never the caller's.
+//
+// A commit that is not a full commit id clears the version whole, hashes
+// included: hashes without the commit they were listed at describe nothing.
+// A hash entry that is not a plain relative path to a lowercase hex digest of
+// a git blob id's or a sha256's length is dropped on its own.
+func sanitizeVersion(m Model) Model {
+	if !validCommit(m.Commit) {
+		m.Commit, m.FileHashes = "", nil
+		return m
+	}
+	if len(m.FileHashes) == 0 || len(m.FileHashes) > MaxVersionFiles {
+		m.FileHashes = nil
+		return m
+	}
+	out := make(map[string]string, len(m.FileHashes))
+	for p, h := range m.FileHashes {
+		if !plainRelPath(p) || !(len(h) == 40 || len(h) == 64) || !lowerHex(h) {
+			continue
+		}
+		out[p] = h
+	}
+	if len(out) == 0 {
+		out = nil
+	}
+	m.FileHashes = out
+	return m
+}
+
+// validCommit reports whether s is a full git commit id: forty lowercase hex
+// digits, the form the Hub reports.
+func validCommit(s string) bool { return len(s) == 40 && lowerHex(s) }
+
+func lowerHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if b := s[i]; (b < '0' || b > '9') && (b < 'a' || b > 'f') {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// plainRelPath reports whether p is a repo-relative file path as the Hub's
+// tree names one: non-empty, bounded, '/'-separated, with no empty, "." or
+// ".." element and nothing outside printable ASCII.
+func plainRelPath(p string) bool {
+	if p == "" || len(p) > MaxVersionPathBytes {
+		return false
+	}
+	for i := 0; i < len(p); i++ {
+		if p[i] < 0x20 || p[i] >= 0x7f || p[i] == '\\' {
+			return false
+		}
+	}
+	for _, elem := range strings.Split(p, "/") {
+		if elem == "" || elem == "." || elem == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // MaxTags and MaxTagBytes bound the category. A repo's tags are typed by its
@@ -338,6 +425,9 @@ func Open(path string) (*Registry, error) {
 		// carry an unbounded tag list straight to the LAN with no download in
 		// between. Bound words read back exactly as words from the Hub are.
 		m = sanitizeCategory(m)
+		// And the recorded version, compared with the Hub's answer and shown
+		// on the panel: held to the shapes a download writes.
+		m = sanitizeVersion(m)
 		// And the measurement, which is published on the models list and
 		// offered for adoption as the served window: cleared, not repaired,
 		// when any part of it is outside what the probe could have written.
@@ -413,6 +503,9 @@ func (r *Registry) Put(m Model) error {
 	// The Hub's words arrive here from a download, bounded once for every path
 	// that publishes them afterwards.
 	m = sanitizeCategory(m)
+	// And the version, which is compared with the Hub's answer and shown on
+	// the panel.
+	m = sanitizeVersion(m)
 	r.mu.Lock()
 	// A re-cased Put updates the existing entry but never renames it: the
 	// first-seen spelling stays the model's public name. Path is taken from

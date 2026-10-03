@@ -432,6 +432,9 @@ type fakeHub struct {
 	// always416 makes every resolve request fail with 416, even a plain GET
 	// without a Range header, simulating a broken proxy or CDN edge.
 	always416 bool
+	// extra are files the tree lists and serves beside files, for the tests
+	// about which of a repository's files a download keeps.
+	extra map[string][]byte
 
 	mu sync.Mutex
 	// ranges records the Range header seen per file path.
@@ -457,13 +460,25 @@ func (f *fakeHub) hitsFor(path string) int {
 	return f.hits[path]
 }
 
+// all is the repository the fake describes: its files and its extras.
+func (f *fakeHub) all() map[string][]byte {
+	out := make(map[string][]byte, len(f.files)+len(f.extra))
+	for p, b := range f.files {
+		out[p] = b
+	}
+	for p, b := range f.extra {
+		out[p] = b
+	}
+	return out
+}
+
 func (f *fakeHub) server(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/models/org/repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
 		var entries []File
-		for p, b := range f.files {
-			e := File{Path: p, Size: int64(len(b))}
+		for p, b := range f.all() {
+			e := File{Path: p, Size: int64(len(b)), OID: gitBlobID(b)}
 			if oid, ok := f.lfs[p]; ok {
 				e.LFS = &struct {
 					OID  string `json:"oid"`
@@ -476,7 +491,7 @@ func (f *fakeHub) server(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("/org/repo/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Path[len("/org/repo/resolve/main/"):]
-		body, ok := f.files[name]
+		body, ok := f.all()[name]
 		if !ok {
 			http.Error(w, "no such file", http.StatusNotFound)
 			return
@@ -517,7 +532,7 @@ func (f *fakeHub) server(t *testing.T) *httptest.Server {
 		w.WriteHeader(http.StatusOK)
 		w.Write(body)
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -685,7 +700,7 @@ func TestRepoInfoFollowsARedirectOnTheHubsOwnOrigin(t *testing.T) {
 	mux.HandleFunc("/api/models/ORG/Canonical", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/api/models/org/canonical", http.StatusMovedPermanently)
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	defer srv.Close()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
@@ -883,7 +898,7 @@ func TestEveryPathEscapesTheRepoIDTheSameWay(t *testing.T) {
 		sawResolve = r.URL.Path
 		w.Write([]byte("abcd"))
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	defer srv.Close()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
@@ -893,7 +908,7 @@ func TestEveryPathEscapesTheRepoIDTheSameWay(t *testing.T) {
 	if _, err := c.Files(context.Background(), repoID, ""); err != nil {
 		t.Fatalf("Files: %v", err)
 	}
-	if err := c.Download(context.Background(), DownloadRequest{RepoID: repoID, Dest: t.TempDir()}); err != nil {
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: repoID, Dest: t.TempDir()}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 
@@ -955,7 +970,7 @@ func TestARelativeNextPageResolvesAgainstThePageThatCarriedIt(t *testing.T) {
 		}
 		fmt.Fprint(w, `[{"type":"file","path":"b.safetensors","size":2,"oid":"b"}]`)
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	defer srv.Close()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
