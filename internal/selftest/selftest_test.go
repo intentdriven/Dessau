@@ -45,7 +45,10 @@ type fakeServer struct {
 	// notNow names a model the next acquisition refuses with ErrNotNow, as
 	// the pool refuses one being updated.
 	notNow string
-	now    func() time.Time
+	// notNowAt is the acquisition, counted from 1, that is refused with
+	// ErrNotNow whatever its model; calls counts them.
+	notNowAt, calls int
+	now             func() time.Time
 	// acquireDelay is how long a load takes, outside the lock and cancellable,
 	// as the pool's is.
 	acquireDelay time.Duration
@@ -103,6 +106,11 @@ func (s *fakeServer) Acquire(ctx context.Context, id string) (Upstream, func(), 
 	// parallel test takes further holds on a model already resident.
 	if !s.resident[id] {
 		s.acquired = append(s.acquired, id)
+	}
+	s.calls++
+	if s.calls == s.notNowAt {
+		s.mu.Unlock()
+		return Upstream{}, nil, fmt.Errorf("simulated update: %w", ErrNotNow)
 	}
 	if id == s.notNow {
 		s.notNow = ""
@@ -683,6 +691,22 @@ func TestAModelRefusedForNowIsNotRecordedAsFailed(t *testing.T) {
 	runs := runsIn(t, r)
 	if runs[0].Outcome != OutcomeOK {
 		t.Errorf("runs = %+v, want the model measured once it could be served, and no failed run", runs)
+	}
+}
+
+// An update that starts while the parallel test takes its further places
+// is no more a failure than one that starts before the load.
+func TestAModelRefusedForNowMidRunIsNotRecordedAsFailed(t *testing.T) {
+	srv := newFakeServer(t, "org/a")
+	srv.notNowAt = 2 // the load is the first; the parallel test's extra place the second
+	r := fastRunner(t, srv, t.TempDir())
+	r.SetEnabled(true)
+	waitFor(t, "a run", func() bool { return len(runsIn(t, r)) >= 1 })
+	if runs := runsIn(t, r); runs[0].Outcome != OutcomeOK {
+		t.Errorf("runs = %+v, want the model measured once it could be served, and no failed run", runs)
+	}
+	if _, _, inFlight := srv.snapshot(); inFlight["org/a"] != 0 {
+		t.Error("the model is still held after the refused run")
 	}
 }
 

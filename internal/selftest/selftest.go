@@ -782,6 +782,11 @@ func (r *Runner) run(ctx context.Context, model string, wasResident bool) {
 		if err != nil {
 			releaseExtra()
 			claim(1, false)
+			if errors.Is(err, ErrNotNow) {
+				w.stop()
+				notNow = true
+				return
+			}
 			res.Outcome, res.Reason = OutcomeFailed, ReasonLoad
 			ended()
 			return
