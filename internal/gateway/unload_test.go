@@ -146,6 +146,10 @@ func TestAWebPageOnThisMacCannotUnload(t *testing.T) {
 				map[string]string{"Sec-Fetch-Site": "same-site"}),
 			"form post": unloadRequest(thisMac, `model=org/warm`,
 				map[string]string{"Content-Type": "application/x-www-form-urlencoded"}),
+			// What a no-cors fetch or a text/plain form can send: valid
+			// JSON, under a content type that needs no preflight.
+			"JSON as text/plain": unloadRequest(thisMac, `{"model":"org/warm"}`,
+				map[string]string{"Content-Type": "text/plain"}),
 			"rebound host": func() *http.Request {
 				r := unloadRequest(thisMac, `{"model":"org/warm"}`, nil)
 				r.Host = "evil.example"
@@ -178,15 +182,16 @@ func TestAProtectedModelIsRefusedAtOnce(t *testing.T) {
 }
 
 // A body that names no model, or a model this server does not serve, is a
-// client error, and a malformed one says so.
+// client error, and a malformed one says so; a body past the bound is refused
+// before it is decoded whole.
 func TestAnUnloadNamesAServedModel(t *testing.T) {
 	g, _ := unloadGateway(t, "")
 	for body, want := range map[string]int{
-		`{}`:                       http.StatusBadRequest,
-		`not json`:                 http.StatusBadRequest,
-		`{"model":"org/absent"}`:   http.StatusNotFound,
-		`{"model":"warm"}`:         http.StatusOK, // the short name, as a chat request may use
-		strings.Repeat("x", 1<<20): http.StatusBadRequest,
+		`{}`:                     http.StatusBadRequest,
+		`not json`:               http.StatusBadRequest,
+		`{"model":"org/absent"}`: http.StatusNotFound,
+		`{"model":"warm"}`:       http.StatusOK, // the short name, as a chat request may use
+		`{"model":"` + strings.Repeat("a", 70<<10) + `"}`: http.StatusBadRequest,
 	} {
 		code, out := serveUnload(g.Handler(), unloadRequest(thisMac, body, nil))
 		if code != want {

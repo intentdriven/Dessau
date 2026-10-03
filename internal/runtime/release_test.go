@@ -62,8 +62,8 @@ func TestReleaseRefusesAModelStillLoading(t *testing.T) {
 	}
 	start := time.Now()
 	err := p.Release("org/m")
-	if !errors.Is(err, ErrLoading) && !errors.Is(err, ErrBusy) {
-		t.Errorf("a model still loading: err = %v, want ErrLoading or ErrBusy", err)
+	if !errors.Is(err, ErrLoading) {
+		t.Errorf("a model still loading: err = %v, want ErrLoading", err)
 	}
 	if time.Since(start) > 500*time.Millisecond {
 		t.Errorf("the refusal waited %v; it must come at once", time.Since(start))
