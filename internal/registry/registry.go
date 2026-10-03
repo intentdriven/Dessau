@@ -1154,6 +1154,14 @@ func inspectModelDir(dir string) (complete bool, size int64, facts ModelFacts) {
 	return true, size, factsFrom(dir, cfg)
 }
 
+// ModelDirComplete reports whether dir holds a model the rescan would adopt
+// as ready: the one check of a model folder's completeness, for any caller
+// that must agree with the rescan (iss-2610031807030740).
+func ModelDirComplete(dir string) bool {
+	complete, _, _ := inspectModelDir(dir)
+	return complete
+}
+
 // ModelFacts is what a model directory says about the model beyond whether it
 // is one: the window its config.json declares, what a token of prompt costs
 // its attention cache, and whether its tokenizer carries a chat template.
