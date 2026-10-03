@@ -44,6 +44,11 @@ GitHub release notes.
 
 ### Fixed
 
+- **A hybrid model whose layer pattern is written as a list is charged
+  for its attention layers alone.** `impact: fix`. Dessau read
+  `hybrid_override_pattern` only as a string, so a configuration writing it
+  as a list, as mlx-lm types it, was charged for every layer
+  (iss-2610031018231170).
 - **A repository HuggingFace refuses is no longer always called gated.**
   `impact: fix`. HuggingFace answers a request without a token for a
   repository that does not exist exactly as it answers one for a gated

@@ -18,8 +18,16 @@ import (
 // download stays in flight long enough for another goroutine to change the
 // settings underneath it — and keeps building requests (and so keeps reading
 // the access token) for the whole of that time.
+//
+// The last weight file is held until the test ends or the client gives up, so
+// the download is still running whatever the test does in the meantime, while
+// every other file keeps it building requests: the slow answers alone let a
+// fast runner finish before the test cancelled, which then found nothing to
+// cancel.
 func manyFileHub(t *testing.T, files int) *httptest.Server {
 	t.Helper()
+	hold := make(chan struct{})
+	last := fmt.Sprintf("w-%03d.safetensors", files-1)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/models/org/repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
 		type file struct {
@@ -37,7 +45,15 @@ func manyFileHub(t *testing.T, files int) *httptest.Server {
 	})
 	mux.HandleFunc("/org/repo/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Path[len("/org/repo/resolve/main/"):]
-		time.Sleep(15 * time.Millisecond)
+		if name == last {
+			select {
+			case <-hold:
+			case <-r.Context().Done():
+				return
+			}
+		} else {
+			time.Sleep(15 * time.Millisecond)
+		}
 		switch name {
 		case "config.json":
 			_, _ = w.Write([]byte(`{"model_type":"qwen3","max_position_embeddings":40960}`))
@@ -48,7 +64,9 @@ func manyFileHub(t *testing.T, files int) *httptest.Server {
 		}
 	})
 	srv := httptest.NewServer(atCommit(mux))
+	// Release before closing: Close waits for the handlers it is holding.
 	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(hold) })
 	return srv
 }
 
