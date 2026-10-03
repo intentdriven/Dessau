@@ -403,6 +403,8 @@ func refusalClass(err error) string {
 		return "not ready"
 	case errors.Is(err, runtime.ErrBusy):
 		return "overloaded"
+	case errors.Is(err, runtime.ErrUpdating):
+		return "updating"
 	default:
 		return "refused"
 	}

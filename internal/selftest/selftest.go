@@ -38,6 +38,11 @@ import (
 	"github.com/intentdriven/Dessau/internal/config"
 )
 
+// ErrNotNow is a Server's refusal of a model it cannot serve just now — one
+// being updated. A run refused with it records nothing and does not use up the
+// model's day: the model is measured once it can be served.
+var ErrNotNow = errors.New("the model cannot be served just now")
+
 // Server is what the self-test needs from the app: the models it may test,
 // the pool's ordinary way of loading one, the pool's view of what is going on,
 // and a way to unload what the self-test itself loaded.
@@ -53,6 +58,8 @@ type Server interface {
 	// hold is a soft one: ctx carries the run's way of being told to let go
 	// (YieldFrom), which the implementation hands to the pool, so a client
 	// that needs the memory takes the model instead of being refused.
+	// An error that is ErrNotNow says the model cannot be served just now
+	// — it is being updated — rather than that it failed to load.
 	Acquire(ctx context.Context, repoID string) (Upstream, func(), error)
 	// Activity is what the pool is doing right now.
 	Activity() Activity
@@ -679,7 +686,14 @@ func (r *Runner) run(ctx context.Context, model string, wasResident bool) {
 	now := r.opts.Now()
 	key := config.FoldRepoID(model)
 	res := Run{Kind: KindRun, Model: model, At: now.Unix(), ColdLoad: !wasResident}
+	// notNow is a run the server refused for now (ErrNotNow): nothing is
+	// recorded and the model's day is not used up.
+	notNow := false
 	defer func() {
+		if notNow {
+			r.opts.Log.Debug("self-test run skipped: the model cannot be served just now", "model", model)
+			return
+		}
 		// A stopped run does not use up the model's day; see seedLocked.
 		if res.Outcome != OutcomeStopped {
 			r.mu.Lock()
@@ -721,6 +735,12 @@ func (r *Runner) run(ctx context.Context, model string, wasResident bool) {
 	// The place is claimed before it is asked for; see watch.claim.
 	claim(1, true)
 	up, release, err := r.opts.Server.Acquire(loadCtx, model)
+	if errors.Is(err, ErrNotNow) {
+		claim(0, false)
+		w.stop()
+		notNow = true
+		return
+	}
 	if err != nil {
 		claim(0, false)
 		res.Outcome, res.Reason = OutcomeFailed, ReasonLoad
