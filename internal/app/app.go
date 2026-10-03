@@ -1778,6 +1778,10 @@ func (a *App) startDownload(repoID, commit string) error {
 				a.Log.Info("update cancelled; the version being served is untouched", "model", repoID)
 			} else {
 				a.Log.Warn("update failed; the version being served is untouched", "model", repoID, "err", err)
+				// Said on the model too, so the card is not silent about it.
+				if serr := a.Registry.SetUpdateFailure(repoID, updateFailureClass(err)); serr != nil {
+					a.Log.Warn("could not record why an update failed", "model", repoID, "err", serr)
+				}
 			}
 
 		case errors.Is(err, context.Canceled):

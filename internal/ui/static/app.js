@@ -547,18 +547,35 @@ function renderModels() {
 // way, a version Dessau never recorded, or what the last check found. Plain
 // text, which the card escapes like every other line; the commit is the
 // Hub's, shortened. A pure function a test holds (itd-2610030857275099).
+//
+// A failed update leads the line, in words of the panel's own for the class
+// the record carries — never the error's text — until an update succeeds
+// (iss-2610031320392078).
 function updateText(m) {
   if (m.state !== 'ready') return '';
   if (m.updating != null) return `Updating to the newer version: ${Math.floor(Number(m.updating) || 0)}%`;
-  if (!m.commit) return 'Version unknown: Dessau did not record which version it downloaded. Update fetches the current one.';
-  const u = m.update || {};
-  const short = String(u.commit || '').slice(0, 12);
-  switch (u.status) {
-    case 'available': return `A newer version is available (${short}).`;
-    case 'runs_own_code': return `A newer version (${short}) ships its own code, which Dessau will not run, so it is not offered.`;
-    case 'awaiting_review': return `A newer version (${short}) exists and will be offered once a Dessau release has reviewed it.`;
-    default: return '';
-  }
+  const failed = (() => {
+    switch (m.update_failed) {
+      case 'download': return 'The last update failed: a file did not download or did not match the hash HuggingFace lists. This version keeps serving.';
+      case 'no_space': return 'The last update failed: the disk has no room for the new version beside this one. This version keeps serving.';
+      case 'refused': return 'The last update failed: the new version did not pass the checks Dessau makes before it starts a model. This version keeps serving.';
+      case 'busy': return 'The last update failed: this model was still answering requests when the wait ran out, so it kept serving. Try again when it is quiet.';
+      case 'not_offered': return 'The last update failed: the newer version is not one Dessau runs. This version keeps serving.';
+      default: return '';
+    }
+  })();
+  const found = (() => {
+    if (!m.commit) return 'Version unknown: Dessau did not record which version it downloaded. Update fetches the current one.';
+    const u = m.update || {};
+    const short = String(u.commit || '').slice(0, 12);
+    switch (u.status) {
+      case 'available': return `A newer version is available (${short}).`;
+      case 'runs_own_code': return `A newer version (${short}) ships its own code, which Dessau will not run, so it is not offered.`;
+      case 'awaiting_review': return `A newer version (${short}) exists and will be offered once a Dessau release has reviewed it.`;
+      default: return '';
+    }
+  })();
+  return [failed, found].filter(Boolean).join(' ');
 }
 
 // updateMark is the pill beside the name for a model a check marked.

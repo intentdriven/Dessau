@@ -99,6 +99,32 @@ func realStagingDirs(root *os.Root, repoID string) error {
 	return nil
 }
 
+// refusedError marks a new version that the checks a launch makes refused,
+// so a failed update can say so (updateFailureClass) without the error's
+// text changing.
+type refusedError struct{ err error }
+
+func (e refusedError) Error() string { return e.err.Error() }
+func (e refusedError) Unwrap() error { return e.err }
+
+// updateFailureClass is why an update failed, as the class the model's
+// record carries and the card has words for.
+func updateFailureClass(err error) string {
+	var refused refusedError
+	switch {
+	case errors.Is(err, ErrNoSpace):
+		return registry.UpdateFailedNoSpace
+	case errors.Is(err, ErrUpdateNotOffered):
+		return registry.UpdateFailedNotOffered
+	case errors.Is(err, runtime.ErrBusy):
+		return registry.UpdateFailedBusy
+	case errors.As(err, &refused):
+		return registry.UpdateFailedRefused
+	default:
+		return registry.UpdateFailedDownload
+	}
+}
+
 // realModelOrg refuses unless repoID's org folder in the models folder is a
 // real directory: a swap renames the model's folder within it.
 func realModelOrg(root *os.Root, repoID string) error {
@@ -227,10 +253,10 @@ func (a *App) stagedDownload(ctx context.Context, repoID, commit string, prior r
 		return fail(err)
 	}
 	if err := validateModelDir(staging); err != nil {
-		return fail(fmt.Errorf("the new version is not a usable MLX model: %w", err))
+		return fail(refusedError{fmt.Errorf("the new version is not a usable MLX model: %w", err)})
 	}
 	if err := a.prechecked(runtime.Spec{RepoID: repoID, ModelPath: staging}); err != nil {
-		return fail(fmt.Errorf("the new version would not be started: %w", err))
+		return fail(refusedError{fmt.Errorf("the new version would not be started: %w", err)})
 	}
 	// Read before the swap, so the moment the new files are in place is the
 	// moment their record can be written.
@@ -359,7 +385,7 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, repoID string) (aside s
 		} else {
 			putBack()
 		}
-		return "", fmt.Errorf("the new version did not check out in place: %w", err)
+		return "", refusedError{fmt.Errorf("the new version did not check out in place: %w", err)}
 	}
 	return aside, nil
 }

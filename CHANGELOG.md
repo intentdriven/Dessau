@@ -72,6 +72,15 @@ GitHub release notes.
 
 ### Fixed
 
+- **A failed update says why on the model's card.** `impact: fix`. An update
+  that failed was only logged: the progress bar went and the card offered
+  **Update** again with no word of why. The card's version line now says
+  which of five things stopped it — a file that did not download or match its
+  hash, no room on the disk, a version that did not pass the checks made
+  before a model starts, a model still answering requests when the wait ran
+  out, or a version Dessau does not run — until an update succeeds. The
+  registry records the class (`update_failed`), never the error's text
+  ([how-to](docs/model-updates.md); iss-2610031320392078).
 - **An update no longer fails while the runtime is still being installed.**
   `impact: fix`. A newer version was held to the whole check a model has
   before it starts, which needs the runtime, so on a fresh install every
