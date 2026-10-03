@@ -56,6 +56,12 @@ GitHub release notes.
 
 ### Changed
 
+- **Unload cancels a context-probe measurement it interrupts.** `impact: fix`.
+  An operator's **Unload** of a model the context probe was measuring paused
+  the run, and the probe loaded the model straight back at the next idle
+  minute. It now cancels that measurement: the model stays unloaded, the card
+  says the probe was incomplete, and **Measure now** runs it again
+  ([context probe](docs/context-probe.md); iss-2610031818057157).
 - **A chat request to a model that cannot chat is refused, and the panel
   no longer offers to load one.** `impact: breaking`. A model `/v1/models`
   marks `"chat": false` — a speech, OCR or decision model, or a base model

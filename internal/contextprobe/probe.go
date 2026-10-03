@@ -219,6 +219,21 @@ func (p *Probe) MeasureNow(repoID string) {
 	p.queueGen++
 }
 
+// Cancel forgets the model's measurement: it leaves the queue, its bisection
+// is dropped, and it is marked incomplete, so nothing but Measure now starts
+// it again. It is what the operator's Unload of a model the probe is
+// measuring does (maintainer's decision, 2026-10-03; iss-2610031818057157):
+// a run it interrupts would otherwise yield, keep its bounds and load the
+// model straight back at the next idle tick.
+func (p *Probe) Cancel(repoID string) {
+	key := config.FoldRepoID(repoID)
+	p.mu.Lock()
+	delete(p.bounds, key)
+	p.mu.Unlock()
+	p.dequeue(repoID)
+	_ = p.opts.Sources.MarkIncomplete(repoID, true)
+}
+
 // Queued lists the models waiting for "Measure now".
 func (p *Probe) Queued() []string {
 	p.mu.Lock()
