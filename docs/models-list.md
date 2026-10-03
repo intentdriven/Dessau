@@ -55,7 +55,7 @@ curl http://localhost:11535/v1/models
 | `served_context_default` | Whether `served_context` is the derived default rather than a figure the operator set. Present with `served_context`. See below. |
 | `measured_context` | The largest prompt, in tokens, that the model's server on this Mac verifiably accepted when Dessau measured it. Absent until a measurement exists and while it is stale. See below. |
 | `measured_bound` | What stopped the measurement's step above `measured_context`: `model`, `prefill_deadline`, `served_window` or `memory_guard`. Only `model` makes the figure the model's limit; the others make it a floor. Present with `measured_context`. |
-| `build_of` | The model HuggingFace names as this one's origin, when the repository's own tags say exactly once that it is a quantised build of it (`base_model:quantized:<origin>`), written in lowercase. Absent otherwise. Not a model name: a request naming it is refused. See below. |
+| `build_of` | The model HuggingFace names as this one's origin, when the repository's own tags say exactly once that it is a quantised build of it (`base_model:quantized:<origin>`), written in lowercase. Absent otherwise. Not itself a model name: a request naming it is refused unless that model is one this server serves. See below. |
 | `quantization_bits` | The precision the model's own configuration declares, in bits per weight. Absent for a model that declares none. |
 | `size_bytes` | The model's size on this Mac's disk, in bytes. |
 | `state` | Whether the model is loaded, still loading, or not loaded. Only for a client connecting over loopback, or on an install with an API key. See below. |
@@ -68,7 +68,7 @@ curl http://localhost:11535/v1/models
 When you have downloaded two builds of one model — a 4-bit and an 8-bit
 conversion, say — each keeps its own entry and its own `id`, and each
 carries the same `build_of`: the model HuggingFace names as their origin.
-Builds with the same `build_of` and the same kind of model are one group;
+Builds with the same `build_of` are one group;
 `quantization_bits`, `size_bytes` and `served_context` are the facts that tell
 them apart, read from each model's own files and from this Mac.
 
@@ -76,8 +76,9 @@ them apart, read from each model's own files and from this Mac.
   repository's name. A repository with no `base_model:quantized:` tag, or with
   two that name different models, carries no `build_of` and stands on its own.
 - **A group is not a model.** `build_of` names a model you may not have
-  downloaded at all; a request with it in `model` is refused as not served.
-  Call a build by its own `id`.
+  downloaded at all; a request with it in `model` is refused as not served,
+  unless that model is itself one this server serves, when the request goes
+  to that model. Call a build by its own `id`.
 - **A client that ignores the fields sees nothing new.**
 
 ## What kind of model it is

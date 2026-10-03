@@ -562,10 +562,12 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 		if origin := m.BuildOf(); origin != "" {
 			entry["build_of"] = origin
 		}
-		if m.QuantizationBits > 0 {
+		// Both bounded again here, where they leave the machine, as the
+		// context length is: the index can be edited by hand.
+		if registry.PlausibleQuantizationBits(m.QuantizationBits) {
 			entry["quantization_bits"] = m.QuantizationBits
 		}
-		if m.Bytes > 0 {
+		if m.Bytes > 0 && m.Bytes <= maxPublishedSize {
 			entry["size_bytes"] = m.Bytes
 		}
 		if residency != nil {
@@ -575,6 +577,11 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
 }
+
+// maxPublishedSize bounds the size_bytes the models list publishes: a
+// petabyte, far past any model a Mac holds and inside the range a JSON
+// number keeps exactly in every client.
+const maxPublishedSize = 1 << 50
 
 // addResidency writes the residency fields onto one models-list entry, from
 // the pool's record for that model.

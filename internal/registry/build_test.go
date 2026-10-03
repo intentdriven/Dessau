@@ -66,3 +66,52 @@ func TestQuantizationBitsComeFromTheConfig(t *testing.T) {
 		t.Errorf("the rescan read %d bits", m.QuantizationBits)
 	}
 }
+
+// A precision read back from the index is held to what a precision can be,
+// as every other published figure is: a planted or hand-edited value outside
+// 1 to 16 bits is cleared, not published (review of spc-2610030950480763
+// step 1).
+func TestAPlantedPrecisionIsNotBelieved(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	planted := `[{"repo_id":"org/a","state":"ready","quantization_bits":9223372036854775807},
+	  {"repo_id":"org/b","state":"ready","quantization_bits":-4},
+	  {"repo_id":"org/c","state":"ready","quantization_bits":8}]`
+	if err := os.WriteFile(path, []byte(planted), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]int{"org/a": 0, "org/b": 0, "org/c": 8} {
+		if m, _ := r.Get(id); m.QuantizationBits != want {
+			t.Errorf("%s: bits = %d, want %d", id, m.QuantizationBits, want)
+		}
+	}
+	if err := r.Put(Model{RepoID: "org/d", State: StateReady, QuantizationBits: 99}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := r.Get("org/d"); m.QuantizationBits != 0 {
+		t.Errorf("Put kept %d bits", m.QuantizationBits)
+	}
+}
+
+// A rescan re-derives the precision of a model it already lists from the
+// model's own configuration, over whatever the index held.
+func TestARescanRederivesThePrecisionOfAKnownModel(t *testing.T) {
+	models := t.TempDir()
+	writeModelDirWithConfig(t, models, "org", "m", `{"model_type":"qwen3","quantization":{"bits":4}}`, 64)
+	r, err := Open(filepath.Join(t.TempDir(), "registry.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Put(Model{RepoID: "org/m", State: StateReady, QuantizationBits: 8}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Rescan(models); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := r.Get("org/m"); m.QuantizationBits != 4 {
+		t.Errorf("the rescan left %d bits, want the configuration's 4", m.QuantizationBits)
+	}
+}

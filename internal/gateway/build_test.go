@@ -82,3 +82,19 @@ func TestAGroupNameIsNotAModelName(t *testing.T) {
 		t.Errorf("a build called by its own name: status %d", resp.StatusCode)
 	}
 }
+
+// The size the list publishes is bounded where it leaves the machine, as the
+// context length is: a figure past any real model's size is not published.
+func TestAnAbsurdSizeIsNotPublished(t *testing.T) {
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: "/m", Reply: "OK"})
+	defer fake.Close()
+	models := &stubModels{models: []registry.Model{
+		{RepoID: "org/huge", State: registry.StateReady, Bytes: 9007199254740993},
+	}}
+	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})
+	srv := httptest.NewServer(g.Handler())
+	defer srv.Close()
+	if e := firstModelEntry(t, srv); e["size_bytes"] != nil {
+		t.Errorf("size_bytes = %v, want it withheld", e["size_bytes"])
+	}
+}

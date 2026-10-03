@@ -19,7 +19,8 @@ GitHub release notes.
   the model HuggingFace's own `base_model:quantized:` label names as their
   origin, beside `quantization_bits` (read from the model's own
   configuration) and `size_bytes`. Nothing is read from a repository's name,
-  and a `build_of` value is not a model name a request may use
+  and a `build_of` value is not itself a name a request may use unless it
+  names a model the server serves
   ([reference](docs/models-list.md#builds-of-one-model);
   itd-2610030932551549).
 

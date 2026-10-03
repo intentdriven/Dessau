@@ -242,6 +242,12 @@ func hubTagRune(b byte) bool {
 // how a served window comes to be accepted that a declared one is not.
 const MaxContextLength = config.MaxContextLength
 
+// PlausibleQuantizationBits reports whether n is a precision a model can
+// declare: a whole number of bits from 1 to 16. The one rule, applied where
+// the figure is read from a configuration, where a record enters the index
+// (Put, Open) and where the models list publishes it.
+func PlausibleQuantizationBits(n int) bool { return n >= 1 && n <= 16 }
+
 // buildOfTag is the prefix of the Hub tag that says a repository is a
 // quantised build of another: "base_model:quantized:<origin>".
 const buildOfTag = "base_model:quantized:"
@@ -371,6 +377,11 @@ func Open(path string) (*Registry, error) {
 		// carry an unbounded tag list straight to the LAN with no download in
 		// between. Bound words read back exactly as words from the Hub are.
 		m = sanitizeCategory(m)
+		// And the declared precision, published on the models list: a
+		// figure no configuration could declare is cleared, not repaired.
+		if !PlausibleQuantizationBits(m.QuantizationBits) {
+			m.QuantizationBits = 0
+		}
 		// And the measurement, which is published on the models list and
 		// offered for adoption as the served window: cleared, not repaired,
 		// when any part of it is outside what the probe could have written.
@@ -446,6 +457,10 @@ func (r *Registry) Put(m Model) error {
 	// The Hub's words arrive here from a download, bounded once for every path
 	// that publishes them afterwards.
 	m = sanitizeCategory(m)
+	// And the declared precision, under the rule Open applies.
+	if !PlausibleQuantizationBits(m.QuantizationBits) {
+		m.QuantizationBits = 0
+	}
 	r.mu.Lock()
 	// A re-cased Put updates the existing entry but never renames it: the
 	// first-seen spelling stays the model's public name. Path is taken from
@@ -973,7 +988,7 @@ func quantizationBitsFrom(cfg map[string]any) int {
 			continue
 		}
 		bits, ok := q["bits"].(float64)
-		if !ok || bits != float64(int(bits)) || bits < 1 || bits > 16 {
+		if !ok || bits != float64(int(bits)) || !PlausibleQuantizationBits(int(bits)) {
 			return 0
 		}
 		return int(bits)
