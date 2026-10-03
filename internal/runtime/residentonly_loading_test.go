@@ -25,9 +25,15 @@ func TestAResidentOnlyAcquireDoesNotWaitOnAnotherCallersLoad(t *testing.T) {
 	for len(p.Residency().Models) == 0 && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
+	if m := p.Residency().Models; len(m) != 1 || m[0].State != ResidencyLoading {
+		t.Fatalf("residency = %+v, want org/a loading before the resident-only acquire", m)
+	}
 
 	start := time.Now()
-	_, _, err := p.Acquire(WithResidentOnly(context.Background()), "org/a")
+	_, release, err := p.Acquire(WithResidentOnly(context.Background()), "org/a")
+	if release != nil {
+		defer release()
+	}
 	if took := time.Since(start); took > 500*time.Millisecond {
 		t.Errorf("the resident-only acquire waited %v on another caller's load", took)
 	}
