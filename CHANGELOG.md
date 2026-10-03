@@ -13,6 +13,11 @@ GitHub release notes.
 
 ### Fixed
 
+- **A hybrid model whose layer pattern is written as a list is charged
+  for its attention layers alone.** `impact: fix`. Dessau read
+  `hybrid_override_pattern` only as a string, so a configuration writing it
+  as a list, as mlx-lm types it, was charged for every layer
+  (iss-2610031018231170).
 - **A hybrid model that lists its layer kinds by name now leaves room for
   others beside it.** `impact: fix`. Dessau charges a model's memory per
   token of its window from the layers its configuration says keep a cache,
