@@ -1,8 +1,8 @@
 ---
 id: itd-2610030857275099
 slug: dessau-tells-alice-when-a-model-she-downloaded-has-a-newer
-spec_id: null
-kind: null
+spec_id: spc-2610030929021692
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2610030656210408, itd-2609081259493890, itd-2609100519003748]
@@ -47,13 +47,13 @@ maintainer's request.
 
 ## Scope Conditions
 
-- Only when Alice has turned checks on; a Mac whose operator never does sends
+- Only when Alice has turned checks on; a Mac whose operator never does sends <!-- cond: cond-2610030929026824 -->
   nothing.
-- A model is marked only if Dessau recorded which version it downloaded; older
+- A model is marked only if Dessau recorded which version it downloaded; older <!-- cond: cond-2610030929020636 -->
   downloads show "version unknown" until updated once.
-- Models from HuggingFace; public ones are checked without the token, private
+- Models from HuggingFace; public ones are checked without the token, private <!-- cond: cond-2610030929022838 -->
   ones with it only when an anonymous request is refused.
-- The Mac is online (offline, marks stay as they were); a decision model is
+- The Mac is online (offline, marks stay as they were); a decision model is <!-- cond: cond-2610030929025733 -->
   checked, but offered an update only once a Dessau release has reviewed that
   version.
 
