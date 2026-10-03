@@ -58,8 +58,11 @@ var ErrOtherAccount = errors.New("this model's files belong to another account, 
 //   - a model folder reached through a link: the models folder, an org folder
 //     or the model folder itself can be a symbolic link — EnsureDirs keeps a
 //     linked models folder, so models can live on another disk, and the
-//     launch follows any of them by path — and the link can lead to a
-//     directory another account can write;
+//     launch follows any of them by path — and the link can lead to a model
+//     folder, or a config.json, that another account owns. Only those two
+//     owners are checked: not the folders above the model folder, not who
+//     else can write to any of them, and not the other files in the model
+//     folder;
 //   - any path handed in that did not come from that derivation, a `path`
 //     stored in registry.json among them.
 //
