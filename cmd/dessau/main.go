@@ -358,6 +358,9 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 	// waited on the network. Once per process; a.Close cancels it and waits
 	// for it (iss-2609202237468921).
 	a.StartCompletingCategories()
+	// And the update check's schedule beside it, which sends nothing while
+	// update_check_enabled is off (itd-2610030857275099).
+	a.StartCheckingForUpdates()
 
 	mux := http.NewServeMux()
 	var tlsSrv *http.Server
