@@ -1785,6 +1785,15 @@ func (c *Control) applySettings(raw []byte) (map[string]any, error) {
 	if err := c.App.SetConfig(incoming); err != nil {
 		return nil, refusalNamingWhatChanged(err, current, incoming, raw)
 	}
+	// A model the save marks as keeping no transcript comes off the
+	// debug-logging list: an arming made before the box was ticked would
+	// otherwise launch it at debug, writing every prompt and answer to its
+	// log (iss-2610032212269524; the 2026-09-20 decision).
+	for _, id := range c.App.Pool.DebugArmed() {
+		if incoming.NoTranscript(id) {
+			_ = c.App.Pool.DisarmDebugLog(id)
+		}
+	}
 	// The file has just been written from the settings in force, repairs and
 	// all, so there is nothing left in it to repair.
 	c.clearNotices()
