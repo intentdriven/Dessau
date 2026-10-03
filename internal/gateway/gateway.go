@@ -932,7 +932,7 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 			obs.failed(stats.ClassUnreachable)
 			g.log.Error("the model server did not start answering within the header wait",
 				"model", model, "wait", budget, "request_bytes", len(body))
-			writeError(w, http.StatusGatewayTimeout, headerWaitText(budget, streamRequested(payload)))
+			writeError(w, http.StatusGatewayTimeout, headerWaitText(budget, answeredWhole(payload)))
 			return
 		case r.Context().Err() != nil:
 			obs.failed(stats.ClassCancelled)
@@ -1028,10 +1028,13 @@ func (g *Gateway) answerAssembled(w http.ResponseWriter, r *http.Request, resp *
 // headerWaitText is the 504's message: what the wait measured, and where it
 // is set. A streamed request has its headers as soon as the model server
 // takes it up, so for one the wait ran out before the server started
-// answering; an unstreamed one has none until its whole answer is generated.
-func headerWaitText(wait time.Duration, streamed bool) string {
+// answering; one asked of it in one piece — a request for logprobs — has none
+// until its whole answer is generated. Any other request, a "stream" the
+// model server will refuse among them, is told the first: that is all the
+// wait can say of it.
+func headerWaitText(wait time.Duration, whole bool) string {
 	wait = wait.Round(time.Second)
-	if streamed {
+	if !whole {
 		return fmt.Sprintf("the model server did not start answering within %s; it may be busy with other requests. "+
 			"If it legitimately needs longer, raise upstream_header_timeout_sec in config.json.", wait)
 	}

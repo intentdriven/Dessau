@@ -52,23 +52,47 @@ import (
 
 // assembles reports whether a request is one whose answer the gateway
 // assembles: the client asked for no stream — "stream" absent or false — and
-// for nothing a stream cannot carry. Any other value of "stream" is relayed as
-// it came: true is a stream already, and anything else is a value the model
-// server refuses whatever the gateway does with it.
+// for nothing a stream cannot carry.
+//
+// Any other value of "stream" is relayed as it came, and that includes the
+// values Python calls false. The pinned server reads the field without
+// testing its truth — it validates it first, with
+// _validate("stream", bool), and a 0, null, "", [] or {} fails that check
+// and is refused before anything is generated. Asking for a stream in its
+// place would answer a request the model server refuses; true is a stream
+// already.
 func assembles(payload map[string]json.RawMessage) bool {
-	if raw, ok := payload["stream"]; ok && string(bytes.TrimSpace(raw)) != "false" {
-		return false
-	}
+	return streamOff(payload) && !asksForLogprobs(payload)
+}
+
+// streamOff reports whether the client asked for no stream in a form the
+// model server accepts: "stream" absent, or false.
+func streamOff(payload map[string]json.RawMessage) bool {
+	raw, ok := payload["stream"]
+	return !ok || string(bytes.TrimSpace(raw)) == "false"
+}
+
+// asksForLogprobs reports whether the request asks for logprobs, which the
+// pinned server writes only into an unstreamed answer.
+func asksForLogprobs(payload map[string]json.RawMessage) bool {
 	if raw, ok := payload["logprobs"]; ok && truthy(raw) {
-		return false
+		return true
 	}
 	if raw, ok := payload["top_logprobs"]; ok {
 		var n float64
 		if json.Unmarshal(raw, &n) == nil && n > 0 {
-			return false
+			return true
 		}
 	}
-	return true
+	return false
+}
+
+// answeredWhole reports whether the model server is asked for its answer in
+// one piece: a request the client did not ask to stream, kept unstreamed
+// because it asked for logprobs. Read after askForStream, it is false for a
+// request being assembled, whose "stream" is then true.
+func answeredWhole(payload map[string]json.RawMessage) bool {
+	return streamOff(payload) && asksForLogprobs(payload)
 }
 
 // askForStream turns a request assembles accepted into the one sent to the

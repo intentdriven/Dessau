@@ -574,6 +574,13 @@ func TestWhatTheModelServerIsAskedFor(t *testing.T) {
 		{"stream false with malformed options", `{"stream":false,"stream_options":"yes","messages":[]}`,
 			true, map[string]any{"include_usage": true}},
 		{"stream true", `{"stream":true,"messages":[]}`, true, nil},
+		// The pinned server refuses a stream that is not a bool
+		// (validate_model_parameters: _validate("stream", bool)), so a falsy
+		// one is not an unstreamed request the gateway may answer: it goes as
+		// it came, to be refused there.
+		{"stream 0", `{"stream":0,"messages":[]}`, 0, nil},
+		{"stream empty string", `{"stream":"","messages":[]}`, "", nil},
+		{"stream empty list", `{"stream":[],"messages":[]}`, []any{}, nil},
 		{"logprobs", `{"logprobs":true,"messages":[]}`, nil, nil},
 		{"top_logprobs", `{"top_logprobs":3,"messages":[]}`, nil, nil},
 	}
@@ -635,35 +642,55 @@ func TestAStreamedRequestIsRelayedUnchanged(t *testing.T) {
 
 // The header wait now fires only when the model server has not started
 // answering, and the 504 says that, and names the setting where it is: in
-// config.json, which is the only place it is.
+// config.json, which is the only place it is. Only a request that asked for
+// logprobs, which is answered in one piece, is told the wait covered the whole
+// answer.
 func TestTheHeaderWaitSaysWhatItMeasured(t *testing.T) {
-	child := newMLXChild(baseRequest())
-	child.holdHeaders = true
-	cfg := config.Default()
-	cfg.UpstreamHeaderTimeoutSec = 1
-	srv, rec := childGateway(t, child, cfg, true)
+	for _, c := range []struct {
+		name, fields string
+		want, wrong  []string
+	}{
+		{"unstreamed", ``,
+			[]string{"did not start answering within 1s"}, []string{"logprobs", "finish"}},
+		{"streamed", `"stream":true,`,
+			[]string{"did not start answering within 1s"}, []string{"logprobs", "finish"}},
+		{"a stream that is not a bool", `"stream":0,`,
+			[]string{"did not start answering within 1s"}, []string{"logprobs", "finish"}},
+		{"logprobs", `"logprobs":true,`,
+			[]string{"did not finish answering within 1s", "logprobs"}, nil},
+		{"top_logprobs", `"top_logprobs":2,`,
+			[]string{"did not finish answering within 1s", "logprobs"}, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			child := newMLXChild(baseRequest())
+			child.holdHeaders = true
+			cfg := config.Default()
+			cfg.UpstreamHeaderTimeoutSec = 1
+			srv, rec := childGateway(t, child, cfg, true)
 
-	resp, got, err := send(t, context.Background(), srv, chatCompletionsPath,
-		`{"model":"`+testChildRepo+`","messages":[{"role":"user","content":"hi"}]}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusGatewayTimeout {
-		t.Fatalf("status = %d, want 504", resp.StatusCode)
-	}
-	msg := string(got)
-	for _, want := range []string{"did not start answering within 1s", "upstream_header_timeout_sec", "config.json"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("the 504 does not say %q: %s", want, msg)
-		}
-	}
-	for _, wrong := range []string{"Settings", "reading the prompt"} {
-		if strings.Contains(msg, wrong) {
-			t.Errorf("the 504 still says %q: %s", wrong, msg)
-		}
-	}
-	if r := onlyRecord(t, rec); r.Class != stats.ClassUnreachable {
-		t.Errorf("recorded as %q, want %q", r.Class, stats.ClassUnreachable)
+			resp, got, err := send(t, context.Background(), srv, chatCompletionsPath,
+				`{"model":"`+testChildRepo+`",`+c.fields+`"messages":[{"role":"user","content":"hi"}]}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.StatusCode != http.StatusGatewayTimeout {
+				t.Fatalf("status = %d, want 504", resp.StatusCode)
+			}
+			msg := string(got)
+			for _, want := range append(c.want, "upstream_header_timeout_sec", "config.json") {
+				if !strings.Contains(msg, want) {
+					t.Errorf("the 504 does not say %q: %s", want, msg)
+				}
+			}
+			for _, wrong := range append(c.wrong, "Settings", "reading the prompt") {
+				if strings.Contains(msg, wrong) {
+					t.Errorf("the 504 says %q: %s", wrong, msg)
+				}
+			}
+			if r := onlyRecord(t, rec); r.Class != stats.ClassUnreachable {
+				t.Errorf("recorded as %q, want %q", r.Class, stats.ClassUnreachable)
+			}
+		})
 	}
 }
 
