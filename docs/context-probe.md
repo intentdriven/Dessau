@@ -77,6 +77,12 @@ is Dessau's own bound rather than the model server's verdict — the ten
 minutes ran out, or the server was ended by a signal — also goes when
 Dessau restarts: a slow load on a busy Mac says nothing about the next one.
 
+Nor is a [pinned](pinning-models.md) model. The probe stops the model before every
+step, and a pin promises that nothing stops it, so the pin wins: a pinned
+model is never picked, **Measure now** on its card says so, and a model
+pinned while it is being measured stops at its next step, keeping the sizes
+it has already verified. Unpin it, and the next run goes on from there.
+
 To measure one model without switching the probe on, open the **My Models** tab
 and press **Measure now** on its card. The run starts at the next idle
 minute.

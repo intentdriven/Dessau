@@ -83,6 +83,13 @@ GitHub release notes.
 
 ### Fixed
 
+- **The context probe no longer unloads a pinned model.** `impact: fix`.
+  The probe unloads the model it measures before every step, and that unload
+  ignored pins, so measuring a pinned model took it out of memory. A pinned
+  model is now never picked, **Measure now** on its card says why, and a model
+  pinned mid-measurement stops at its next step, keeping what it has verified
+  ([context probe](docs/context-probe.md#which-models-it-measures);
+  iss-2609211754251373).
 - **A model server that can no longer generate is restarted.** `impact: fix`.
   The pinned mlx-lm answers every request from one generation thread, and a
   request value that raises there kills it for every client while the process

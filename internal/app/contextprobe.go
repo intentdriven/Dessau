@@ -48,6 +48,7 @@ func (s probeSources) Candidates() []contextprobe.Candidate {
 			KVChargePerToken: m.KVChargePerToken,
 			Measured:         m.Measured,
 			Incomplete:       m.ProbeIncomplete,
+			Pinned:           s.a.isPinned(m.RepoID),
 		})
 	}
 	return out
@@ -89,7 +90,28 @@ func (s probeSources) Available() int64 {
 	return s.a.Pool.MemoryBudget() - used
 }
 
-func (s probeSources) Unload(repoID string) error { return s.a.Pool.Unload(repoID) }
+// Unload stops a model server for the probe, and never a pinned one: the
+// pool's Unload is the operator's and stops whatever it is given, so the pin
+// is the probe's to honour (iss-2609211754251373). A pin saved between this
+// check and the stop is met at the next step's unload.
+func (s probeSources) Unload(repoID string) error {
+	if s.a.isPinned(repoID) {
+		return fmt.Errorf("%s: %w", repoID, contextprobe.ErrPinned)
+	}
+	return s.a.Pool.Unload(repoID)
+}
+
+// isPinned reports whether the pool holds the model pinned, whichever way
+// either spelling folds.
+func (a *App) isPinned(repoID string) bool {
+	key := config.FoldRepoID(repoID)
+	for _, id := range a.Pool.Pinned() {
+		if config.FoldRepoID(id) == key {
+			return true
+		}
+	}
+	return false
+}
 
 func (s probeSources) Save(repoID string, m *registry.Measurement) error {
 	return s.a.Registry.SetMeasurement(repoID, m)
@@ -142,6 +164,9 @@ func (a *App) MeasureNow(repoID string) error {
 	}
 	if !m.CanChat(a.Config().EffectiveChatRule()) {
 		return fmt.Errorf("%s is not offered to chat, and the probe measures through chat completions", repoID)
+	}
+	if a.isPinned(m.RepoID) {
+		return fmt.Errorf("%s is pinned, and the probe stops the model before every step; unpin it to measure it", repoID)
 	}
 	// A hand retry: a load failure on the model is lifted, so the probe
 	// may load it again.
