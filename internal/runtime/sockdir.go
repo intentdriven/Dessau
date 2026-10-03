@@ -131,23 +131,30 @@ func removeSocket(path string) error {
 // socketRefreshEvery is how often a running server's socket and its directory
 // are touched. macOS clears what has gone untouched for three days from a
 // temporary directory (dirhelper, nightly), and a pinned model's server runs
-// for longer than that; an hour is far inside the three days and costs two
+// for longer than that; an hour is far inside the three days and costs a few
 // system calls.
 const socketRefreshEvery = time.Hour
 
 // keepSocketFresh touches the socket at path, and the directory it is in,
 // every interval until done is closed. Touching is all it does: a socket that
-// has gone is not made again, since only the server can make it.
+// has gone is not made again, since only the server can make it. The
+// directory is checked before each touch, since os.Chtimes follows a link: a
+// directory that is no longer this account's alone is left to age, and the
+// pool replaces it at the next load.
 func keepSocketFresh(path string, interval time.Duration, done <-chan struct{}) {
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
+	dir := filepath.Dir(path)
 	for {
 		select {
 		case <-done:
 			return
 		case <-tick.C:
+			if checkSocketDir(dir, os.Geteuid()) != nil {
+				continue
+			}
 			now := time.Now()
-			_ = os.Chtimes(filepath.Dir(path), now, now)
+			_ = os.Chtimes(dir, now, now)
 			if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSocket != 0 {
 				_ = os.Chtimes(path, now, now)
 			}

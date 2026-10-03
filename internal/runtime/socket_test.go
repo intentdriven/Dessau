@@ -336,6 +336,72 @@ func TestARunningServersSocketIsKeptFresh(t *testing.T) {
 	}
 }
 
+// The hourly touch is made only of a directory that is still this account's
+// alone. Where the socket directory's name has become a link, the touch would
+// follow it to whatever it points at; where it has been opened to others, it
+// is no longer the directory the pool made private, and the pool replaces it
+// at the next load rather than keeping it alive.
+func TestTheSocketRefreshTouchesOnlyAPrivateDirectory(t *testing.T) {
+	old := time.Now().Add(-4 * 24 * time.Hour)
+	refresh := func(sock string) {
+		t.Helper()
+		done := make(chan struct{})
+		finished := make(chan struct{})
+		go func() {
+			keepSocketFresh(sock, 10*time.Millisecond, done)
+			close(finished)
+		}()
+		time.Sleep(200 * time.Millisecond)
+		close(done)
+		<-finished
+	}
+	stillOld := func(what, path string) {
+		t.Helper()
+		fi, err := os.Lstat(path)
+		if err != nil {
+			t.Fatalf("%s: %v", what, err)
+		}
+		if age := time.Since(fi.ModTime()); age < time.Hour {
+			t.Errorf("%s was touched (%s old)", what, age.Round(time.Millisecond))
+		}
+	}
+
+	t.Run("a link", func(t *testing.T) {
+		sock := privateSocket(t)
+		dir := filepath.Dir(sock)
+		decoy := filepath.Join(shortTempDir(t), "decoy")
+		if err := os.Mkdir(decoy, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(decoy, old, old); err != nil {
+			t.Fatal(err)
+		}
+		moved := dir + ".moved"
+		if err := os.Rename(dir, moved); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(moved) })
+		if err := os.Symlink(decoy, dir); err != nil {
+			t.Fatal(err)
+		}
+		refresh(sock)
+		stillOld("the directory the link points at", decoy)
+	})
+
+	t.Run("open to others", func(t *testing.T) {
+		sock := privateSocket(t)
+		dir := filepath.Dir(sock)
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(dir, old, old); err != nil {
+			t.Fatal(err)
+		}
+		refresh(sock)
+		stillOld("the open directory", dir)
+	})
+}
+
 // A connection is used only when the process listening on the other end runs
 // as this account. Where the socket's name has been taken over — its
 // directory gone and made again by somebody else, a temporary directory
