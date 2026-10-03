@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/Dessau/internal/config"
 	"github.com/intentdriven/Dessau/internal/pairing"
 	"github.com/intentdriven/Dessau/internal/runtime"
+	"github.com/intentdriven/Dessau/internal/stats"
 )
 
 // maxPairBodyBytes caps the pairing request. A name and a P-256 public key in
@@ -392,6 +393,7 @@ func pairedOnly(reg *pairing.Registry, next http.Handler, log *slog.Logger, refu
 		// itself, so it is told what a keyed client is told, and it gets its
 		// own place in the pool's queue rather than sharing the anonymous one.
 		r = withAdmittedKeyed(r, true)
+		r = withCaller(r, runtime.Caller{Kind: stats.CallerPairedClient, Client: client.Name, Fingerprint: shortFingerprint(spki)})
 		next.ServeHTTP(w, r.WithContext(runtime.WithSource(r.Context(), "client:"+spki)))
 	})
 }

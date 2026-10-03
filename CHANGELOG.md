@@ -41,6 +41,17 @@ GitHub release notes.
   server does not trust learns nothing about what is loaded. Nothing under
   `/v1` deletes a model ([reference](docs/unload-reference.md);
   itd-2610031024247803, adr-2610031153127219).
+- **The operator can turn off unloading from a program, and an unload says
+  who asked.** `impact: additive`. **Settings → Unloading from a program**
+  (`api_unload_off`; absent means on) refuses `POST /v1/dessau/unload` for
+  every caller and leaves the panel's **Unload** as it was. An unload through
+  the route is recorded in the statistics and the log as `released`, with the
+  kind of caller — a program on this Mac, a program elsewhere with the API
+  key, or a paired client — and never the key; the log alone names a paired
+  client, by its paired name and key fingerprint. The
+  unloading page also documents the control panel's own load and unload
+  routes for a script on this Mac ([reference](docs/unload-reference.md);
+  itd-2610031024247803).
 
 ### Fixed
 

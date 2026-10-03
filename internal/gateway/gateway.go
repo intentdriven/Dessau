@@ -54,7 +54,7 @@ type Pool interface {
 	// Release is the unload a program asks for (POST /v1/dessau/unload),
 	// which keeps every protection Unload overrides: pinned, busy, loading
 	// and in-grace models are refused (runtime.Pool.Release).
-	Release(repoID string) error
+	Release(repoID string, by runtime.Caller) error
 	// Footprint is the model server's newest sampled memory, or 0.
 	Footprint(repoID string) int64
 }
@@ -260,6 +260,7 @@ func (g *Gateway) withAuth(next http.Handler) http.Handler {
 		// key rather than first-come. Only a verified key reaches here, so the
 		// tag cannot be spoofed by an unauthenticated caller; everyone else
 		// falls through untagged and shares one bucket.
+		r = withCaller(r, runtime.Caller{Kind: stats.CallerAPIKey})
 		next.ServeHTTP(w, r.WithContext(runtime.WithSource(r.Context(), token)))
 	})
 }
@@ -1638,6 +1639,16 @@ func (g *Gateway) handleUnload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "unloading a model is not available to this client")
 		return
 	}
+	// The operator's switch, read after the caller is known to be entitled so
+	// that a caller who is not learns nothing about it either. Off leaves the
+	// control panel's own Unload as it was. It is read live rather than from
+	// withAuth's one reading: that reading decides who is admitted, and this
+	// is not an admission — a save that turns the route off between the two
+	// refuses a request that was admitted, which is the safe way round.
+	if g.cfg().APIUnloadOff {
+		writeError(w, http.StatusForbidden, "unloading a model through the API is turned off on this server")
+		return
+	}
 	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
 		writeError(w, http.StatusUnsupportedMediaType, `the body must be JSON, sent as "Content-Type: application/json"`)
 		return
@@ -1654,7 +1665,7 @@ func (g *Gateway) handleUnload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, notServedText(err, true))
 		return
 	}
-	if err := g.pool.Release(id); err != nil {
+	if err := g.pool.Release(id, callerOf(r)); err != nil {
 		switch {
 		case errors.Is(err, runtime.ErrNotLoaded), errors.Is(err, runtime.ErrPinned), errors.Is(err, runtime.ErrBusy),
 			errors.Is(err, runtime.ErrLoading), errors.Is(err, runtime.ErrInGrace):

@@ -222,7 +222,7 @@ func TestRollupsBucketByMinuteAndSpanADay(t *testing.T) {
 	}
 }
 
-// The pool removes an entry by seven paths and only one of them is an
+// The pool removes an entry by eight paths and only one of them is an
 // eviction. A crash, an idle reap or an operator's unload are counted apart,
 // or the load and eviction figures would not reconcile.
 func TestOnlyAnEvictionCountsAsOne(t *testing.T) {

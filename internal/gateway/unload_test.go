@@ -22,17 +22,25 @@ type releasePool struct {
 	stubPool
 	mu       sync.Mutex
 	released []string
+	callers  []runtime.Caller
 	refuse   error
 }
 
-func (p *releasePool) Release(repoID string) error {
+func (p *releasePool) Release(repoID string, by runtime.Caller) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.refuse != nil {
 		return p.refuse
 	}
 	p.released = append(p.released, repoID)
+	p.callers = append(p.callers, by)
 	return nil
+}
+
+func (p *releasePool) releasedBy() []runtime.Caller {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]runtime.Caller(nil), p.callers...)
 }
 
 func (p *releasePool) releasedIDs() []string {
@@ -43,10 +51,15 @@ func (p *releasePool) releasedIDs() []string {
 
 func unloadGateway(t *testing.T, key string) (*Gateway, *releasePool) {
 	t.Helper()
-	fake := mlxtest.Start(mlxtest.Options{ModelArg: "/m"})
-	t.Cleanup(fake.Close)
 	cfg := config.Default()
 	cfg.APIKey = key
+	return unloadGatewayWith(t, cfg)
+}
+
+func unloadGatewayWith(t *testing.T, cfg config.Config) (*Gateway, *releasePool) {
+	t.Helper()
+	fake := mlxtest.Start(mlxtest.Options{ModelArg: "/m"})
+	t.Cleanup(fake.Close)
 	models := &stubModels{models: []registry.Model{
 		{RepoID: "org/warm", State: registry.StateReady, Path: "/models/org/warm"},
 	}}
