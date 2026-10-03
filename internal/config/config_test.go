@@ -295,7 +295,7 @@ func TestEnsureDirsFollowsSymlinkedLayoutDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := NewPaths(root).EnsureDirs(); err != nil {
-		t.Fatalf("EnsureDirs refused a symlinked models directory on a per-user root: %v", err)
+		t.Fatalf("EnsureDirs refused a symlinked models directory: %v", err)
 	}
 }
 

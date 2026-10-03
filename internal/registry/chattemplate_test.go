@@ -102,8 +102,8 @@ func TestInspectModelDirReportsTheChatTemplate(t *testing.T) {
 	}
 }
 
-// tokenizer_config.json is, in the shared cache, a file another account can
-// write, so it is read under the same cap every other manifest is and an
+// tokenizer_config.json is whatever a third party's repository shipped, so it
+// is read under the same cap every other manifest is and an
 // oversized one says "no template" rather than being read whole.
 func TestAnOversizedTokenizerConfigCarriesNoTemplate(t *testing.T) {
 	root := t.TempDir()

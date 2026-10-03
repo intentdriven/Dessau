@@ -20,8 +20,7 @@ func unwedgeFIFO(t *testing.T, path string) {
 	})
 }
 
-// In shared-cache mode config.json sits in a group-writable root and is created
-// lazily, so another local account can plant a FIFO under that name before the
+// config.json is created lazily, so a FIFO can sit under that name before the
 // first save. Load runs before the port is claimed; a blocking open would hang
 // startup with no error and no way to recover from the app.
 func TestLoadDoesNotBlockOnFIFO(t *testing.T) {

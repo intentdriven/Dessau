@@ -12,8 +12,7 @@ import (
 )
 
 // serverKeyFile is where this server's own TLS private key lives: beside
-// config.json, under this account's own state directory, never under the
-// shared root where a co-tenant could pre-plant one.
+// config.json, in this account's own data root.
 func serverKeyFile(paths config.Paths) string {
 	return filepath.Join(filepath.Dir(paths.Config), "server-key.pem")
 }

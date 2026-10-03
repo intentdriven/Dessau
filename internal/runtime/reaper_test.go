@@ -139,9 +139,8 @@ func TestReapOrphansIgnoresDeadPIDs(t *testing.T) {
 	}
 }
 
-// The ledger lives in the data root, which in shared mode is group-writable
-// and where the file is created lazily — so another local account can plant a
-// FIFO under its name. readLocked runs at startup (after the port is claimed)
+// The ledger lives in the data root, where the file is created lazily — so a
+// FIFO can sit under its name before the first write. readLocked runs at startup (after the port is claimed)
 // and on every model launch, holding the ledger mutex; a blocking open would
 // wedge both with no way to recover from the app.
 func TestReadLockedDoesNotBlockOnFIFOLedger(t *testing.T) {
@@ -208,10 +207,10 @@ func TestReadLockedDropsUnkillableProcessGroupIDs(t *testing.T) {
 	}
 }
 
-// In shared-cache mode another local account can plant a regular ledger in the
-// group-writable root, permanently (the sticky bit blocks our os.Remove), and
-// kern.boottime and kern.proc start times are readable cross-uid — so only
-// provenance protects the reaper. A ledger not owned by our euid is ignored.
+// A ledger can be planted wherever the file can be created — under a
+// DESSAU_ROOT another account can write, say — and kern.boottime and
+// kern.proc start times are readable cross-uid, so only provenance protects
+// the reaper. A ledger not owned by our euid is ignored.
 func TestReapOrphansIgnoresLedgerNotOwnedByUs(t *testing.T) {
 	dir := t.TempDir()
 	cmd := exec.Command("sleep", "30")

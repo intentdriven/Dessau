@@ -47,16 +47,14 @@ var ErrOtherAccount = errors.New("this model's files belong to another account, 
 // struct field would match "Model_File" too, and not as the model server
 // reads it.
 //
-// The model server reads config.json again, by path, seconds after this
-// check, so the check is worth only as much as the guarantee that nobody
-// else can change the file in between. In the shared cache a model's files
-// belong to whichever account downloaded them, and the owner of a file can
-// rename another over it, as can the owner of the directory it sits in,
-// whatever the sticky bit says. So the files are this account's own or they
-// are not loaded: the model directory (the link and what it leads to, when it
-// is a link) and config.json — the latter's owner read off the very handle
-// its bytes came from, so the owner and the content are of one open file.
-// Dessau serves from one account; other accounts reach it over the network
+// The model server reads config.json again, by path, after this check, so
+// the check is worth only as much as the guarantee that nobody else can
+// change the file in between. Dessau serves from one account and keeps its
+// models in that account's own data root; as defence in depth, the files are
+// this account's own or they are not loaded: the model directory (the link
+// and what it leads to, when it is a link) and config.json — the latter's
+// owner read off the very handle its bytes came from, so the owner and the
+// content are of one open file. Other accounts reach Dessau over the network
 // and have no need to load another account's copy of a model.
 //
 // It goes through readModelConfigInfo, the one decoder of a model's

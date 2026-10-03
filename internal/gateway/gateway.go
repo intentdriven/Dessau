@@ -1007,7 +1007,7 @@ func setWaitHeaders(h http.Header, keyed bool, waited time.Duration) {
 // backend's "model" value — the absolute --model path the request rewrite put
 // there — back to the name the client asked for. mlx-lm echoes the request's
 // model field into every response and SSE chunk, and the path is a
-// backend-internal load instruction that, in a per-user install, contains the
+// backend-internal load instruction that, in a default install, contains the
 // account's home directory; it must not reach network clients.
 func relayRewritingModel(w http.ResponseWriter, resp *http.Response, modelArg, requested string, opts relayOptions) relayOutcome {
 	ct := resp.Header.Get("Content-Type")
@@ -1054,7 +1054,7 @@ func relayRewritingModel(w http.ResponseWriter, resp *http.Response, modelArg, r
 
 // rewriteModelField returns b with a top-level "model" field equal to modelArg
 // replaced by requested. modelArg is the backend's absolute --model path,
-// which in a per-user install contains the account's home directory and must
+// which in a default install contains the account's home directory and must
 // never reach a client; that invariant has to hold even when b cannot be
 // parsed as the expected shape (a truncated body — see maxResponseBody in the
 // caller — or one cut short by a genuine mid-read transport failure), so

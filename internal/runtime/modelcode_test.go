@@ -119,12 +119,10 @@ func TestTheLauncherStartsAModelThatShipsNoCode(t *testing.T) {
 }
 
 // A model whose files belong to another account is refused before any
-// process starts. In the shared cache the owner of a model's directory or of
-// its config.json can replace that file after the check has read it and
-// before the model server does, so only this account's own files are loaded:
-// Dessau serves from one account, and other accounts reach it over the
-// network. The refusal is the model's own load failure, with the plain reason,
-// standing until a person retries, and it names no path.
+// process starts: Dessau serves from one account, other accounts reach it
+// over the network, and only this account's own files are loaded. The
+// refusal is the model's own load failure, with the plain reason, standing
+// until a person retries, and it names no path.
 func TestTheLauncherRefusesAModelAnotherAccountOwns(t *testing.T) {
 	l, marker := markerLauncher(t)
 	l.modelOwner = os.Geteuid() + 1
@@ -163,10 +161,9 @@ func TestTheLauncherRefusesAModelAnotherAccountOwns(t *testing.T) {
 }
 
 // A model directory with no config.json is refused, not launched. The model
-// server cannot load a model without one, so nothing is lost; and in the
-// shared cache a model directory is writable by every account in the group,
-// so a config.json that is missing when the check looks is one another
-// account can create before the model server looks — with a model_file in it.
+// server cannot load a model without one, so nothing is lost, and a
+// config.json that is missing when the check looks is not one the check has
+// vouched for when the model server looks.
 func TestTheLauncherRefusesAModelWithNoConfig(t *testing.T) {
 	l, marker := markerLauncher(t)
 	dir := t.TempDir()

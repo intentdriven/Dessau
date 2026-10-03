@@ -212,7 +212,7 @@ func TestRemoveDeletesFilesFromDisk(t *testing.T) {
 }
 
 // Remove already deleted the in-memory entry by the time saveLocked can fail
-// (a disk-full, EPERM, or — in shared-cache mode — sticky-bit-blocked write),
+// (a disk-full or EPERM write),
 // so subscribers must still hear about the change; every other mutator in this
 // file broadcasts unconditionally for the same reason.
 func TestRemoveBroadcastsEvenWhenSaveFails(t *testing.T) {
@@ -271,8 +271,8 @@ func writeModelDir(t *testing.T, root, org, name string, weightBytes int) string
 	return dir
 }
 
-// Rescan is what lets a second macOS user account pick up models the first
-// account downloaded into the shared cache.
+// Rescan is what picks up a model directory the registry does not list — one
+// copied in by hand, or left by an earlier install.
 func TestRescanAdoptsExistingModelDirectories(t *testing.T) {
 	r, dir := newTestRegistry(t)
 	models := filepath.Join(dir, "models")
@@ -628,8 +628,8 @@ func TestRescanDoesNotPromoteJunkConfigModel(t *testing.T) {
 	}
 }
 
-// The flip side, pinning the shared-cache promise: once the directory really is
-// complete (another account finished the download), a failed record must be
+// The flip side: once the directory really is complete (the files were
+// finished by hand, or a later copy completed them), a failed record must be
 // promoted to ready.
 func TestRescanPromotesFailedModelOnceDirComplete(t *testing.T) {
 	r, dir := newTestRegistry(t)
@@ -653,10 +653,10 @@ func TestRescanPromotesFailedModelOnceDirComplete(t *testing.T) {
 	}
 }
 
-// In the shared cache another account can plant a FIFO (or a symlink to one)
-// under a manifest name. Opening it for the completeness check would block
-// until a writer appears — never, for a hostile plant — wedging the startup
-// rescan for every account. Rescan must skip it and finish.
+// A FIFO (or a symlink to one) can sit under a manifest name in a model
+// directory. Opening it for the completeness check would block until a writer
+// appears — never, for a hostile plant — wedging the startup rescan. Rescan
+// must skip it and finish.
 func TestRescanDoesNotBlockOnFIFOManifest(t *testing.T) {
 	r, dir := newTestRegistry(t)
 	models := filepath.Join(dir, "models")
@@ -782,10 +782,10 @@ func timeoutAfterSeconds(n int) <-chan time.Time {
 	return time.After(time.Duration(n) * time.Second)
 }
 
-// registry.json sits in the data root, which in shared mode is group-writable
-// and where the file is created lazily; another local account can plant a
-// FIFO under its name and a blocking open would wedge startup after the port
-// is claimed. Open must not block, and must not silently adopt the plant.
+// registry.json is created lazily in the data root, so a FIFO can sit under
+// its name before the first write, and a blocking open would wedge startup
+// after the port is claimed. Open must not block, and must not silently adopt
+// the plant.
 func TestOpenDoesNotBlockOnFIFOState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "registry.json")
 	if err := syscall.Mkfifo(path, 0o644); err != nil {
@@ -830,8 +830,8 @@ func TestOpenDoesNotFollowSymlinkedState(t *testing.T) {
 }
 
 // Open must apply the same ValidRepoID gate Rescan does: every write path
-// gates on it, so an invalid id in registry.json was planted (a shared root)
-// or hand-edited, and loading it would advertise an entry Delete refuses.
+// gates on it, so an invalid id in registry.json was planted or hand-edited,
+// and loading it would advertise an entry Delete refuses.
 func TestOpenSkipsEntriesWithInvalidRepoIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "registry.json")
 	body := `[{"repo_id":"","state":"ready"},{"repo_id":"../../../../etc","path":"/","state":"ready"},{"repo_id":"noslash","state":"ready"},{"repo_id":"org/m","state":"ready"}]`
@@ -908,8 +908,8 @@ func TestRemoveByCaseVariantRemovesThatOneEntry(t *testing.T) {
 }
 
 // Remove recomputes the directory from the id, but os.RemoveAll by path still
-// follows a symlinked ancestor: an org symlink planted in the shared models
-// tree plus a planted "ready" entry would make the victim's Remove click
+// follows a symlinked ancestor: an org symlink planted in the models tree
+// plus a planted "ready" entry would make the victim's Remove click
 // delete an arbitrary subdirectory of the link's target. The removal must go
 // through the models root and refuse a non-directory org.
 func TestRemoveRefusesSymlinkedOrgDir(t *testing.T) {
@@ -1039,8 +1039,8 @@ func TestRescanOmitsContextLengthWhenConfigDeclaresNone(t *testing.T) {
 	}
 }
 
-// config.json sits in a model directory another local account can write in
-// shared-cache mode, and the figure is served to the LAN. Anything that is
+// config.json is whatever a third party's repository shipped, and the figure
+// is served to the LAN. Anything that is
 // not a plausible positive integer is dropped, and dropping it must never
 // affect whether the model is served.
 func TestRescanRejectsImplausibleContextLengths(t *testing.T) {

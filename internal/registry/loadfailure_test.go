@@ -103,8 +103,8 @@ func TestALoadFailureStandsUntilItsProvenanceMoves(t *testing.T) {
 	}
 }
 
-// registry.json is, in shared-cache mode, a file another local account can
-// write, and the reason is shown on the card and told to an entitled client.
+// registry.json can be edited by hand or left corrupt, and the reason is shown
+// on the card and told to an entitled client.
 // A failure read back is bounded exactly as one the pool wrote, and an
 // implausible one is cleared rather than repaired.
 func TestAPlantedLoadFailureIsClearedOnLoad(t *testing.T) {

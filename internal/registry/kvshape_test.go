@@ -155,8 +155,8 @@ func TestRescanRecordsTheCacheCost(t *testing.T) {
 	}
 }
 
-// A model directory is, in shared-cache mode, a file another local account can
-// write, and the cache figure decides how much of this Mac's memory a model is
+// A model directory holds what a third party's repository says, and the cache
+// figure decides how much of this Mac's memory a model is
 // charged. A claim past what any model could mean yields nothing at the one
 // place the figure is worked out — not at the one place it is read back —
 // because a figure the scan accepts is charged for the whole of this session

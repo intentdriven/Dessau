@@ -412,7 +412,6 @@ func TestSetConfigRejectsInvalid(t *testing.T) {
 }
 
 // A restart must pick up models already on disk rather than re-downloading them.
-// This is also what lets a second macOS account use a shared cache.
 func TestNewAdoptsModelsAlreadyOnDisk(t *testing.T) {
 	root := t.TempDir()
 	paths := config.NewPaths(root)
@@ -511,9 +510,9 @@ func TestHumanReadableErrorForMissingModel(t *testing.T) {
 	}
 }
 
-// In shared-cache mode registry.json is created lazily in a group-writable
-// root, so another local account can plant one whose `path` names a directory
-// this account owns. Delete must never hand a stored path to os.RemoveAll; the
+// registry.json is created lazily, so one can sit under that name before the
+// first write — hand-edited, restored from elsewhere, or planted — whose `path`
+// names a directory this account owns. Delete must never hand a stored path to os.RemoveAll; the
 // directory to remove is recomputed from the validated repo id.
 func TestDeleteNeverRemovesPathTakenFromPlantedRegistry(t *testing.T) {
 	paths := config.NewPaths(t.TempDir())

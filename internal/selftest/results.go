@@ -245,10 +245,9 @@ func ReadResults(path string) ([]Run, error) {
 
 // ensureDir creates the results directory, closed, or checks the one that is
 // there: a directory this account owns, that nobody else can write, reached
-// without following a link. Its parent is the account's own directory —
-// created 0700 under a shared install, and the account-owned root elsewhere
-// — so a single Mkdir is enough and nothing above it is walked: what keeps
-// the parent honest is its ownership, not its mode.
+// without following a link. Its parent is the account-owned data root, so a
+// single Mkdir is enough and nothing above it is walked: what keeps the
+// parent honest is its ownership, not its mode.
 func ensureDir(dir string) error {
 	err := os.Mkdir(dir, 0o700)
 	if err != nil && !errors.Is(err, os.ErrExist) {

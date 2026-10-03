@@ -467,8 +467,8 @@ func (r *Recorder) Add(rec Record) {
 }
 
 // bound holds a record's persisted numerics and names to what the recorder
-// will believe: registry.json is a file another account can write in
-// shared-cache mode and the windows come from it, and the override names
+// will believe: registry.json is a file Dessau may not have been the last to
+// write and the windows come from it, and the override names
 // are the one thing derived from a client's body.
 func bound(rec Record) Record {
 	// The one class a caller outside the gateway now sets. A source this

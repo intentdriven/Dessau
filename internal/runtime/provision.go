@@ -145,15 +145,14 @@ func (p *Provisioner) setStatus(stage SetupStage, detail, errMsg string) {
 // trustedExecutable refuses an executable this account should not run: one
 // that is not a regular file (after following the venv's interpreter symlink
 // to its uv-managed target), that is writable by group or other, or that is
-// not owned by owner (the account about to execute it) or by root. In
-// shared-cache mode the runtime sits under a setgid staff root: a
-// group-writable file is one any local account can rewrite in place, and an
-// absent name there is one any account can claim first with a file of its
-// own — mode bits are not provenance, only ownership is. uv has been
+// not owned by owner (the account about to execute it) or by root. The
+// runtime is executed under this account's uid, so a group-writable file is
+// one another local account could rewrite in place, and a file another
+// account owns is one it can — mode bits are not provenance, only ownership
+// is. Defence in depth: the runtime lives under this account's own data root,
+// and the check holds whatever a DESSAU_ROOT points at. uv has been
 // observed to write parts of its CPython tree group-writable; lockdown strips
 // that before this check runs, so a runtime this account provisioned passes.
-// A runtime another account provisioned does not: reusing it is the design
-// decision the ledger records, and until it is made the refusal is loud.
 func trustedExecutable(path string, owner int) error {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -185,8 +184,8 @@ func ownerOrSelf(owner int) int {
 
 // lockdown strips group and other write permission from every regular file
 // and directory under dir, following no symlinks. uv installs CPython
-// group-writable; under a setgid shared root that would hand every local
-// account write access to the interpreter each of them runs. Errors are
+// group-writable, which would hand every account in the group write access
+// to the interpreter this account runs. Errors are
 // ignored — a file another account owns cannot be re-moded by this one, and
 // trustedExecutable is what decides whether the result is runnable.
 func lockdown(dir string) {
@@ -348,8 +347,7 @@ func (p *Provisioner) ensureUV(ctx context.Context) error {
 	}
 
 	// Random temp name + rename: never leave a half-written binary at the final
-	// path, and never write through a name another account could pre-plant in a
-	// shared root.
+	// path, and never write through a name planted ahead of the write.
 	tmp, err := os.CreateTemp(p.Paths.Bin, ".uv-*")
 	if err != nil {
 		return err

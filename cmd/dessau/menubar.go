@@ -92,7 +92,7 @@ func runClientMenuBar(cfg config.Config) {
 		systray.SetTemplateIcon(menuIcon, menuIcon)
 		systray.SetTooltip("Dessau Server — connected to the server on this Mac")
 
-		status := systray.AddMenuItem("Server running in another account", "")
+		status := systray.AddMenuItem("Server already running on this Mac", "")
 		status.Disable()
 		systray.AddSeparator()
 		open := systray.AddMenuItem("Open Control Panel", "")

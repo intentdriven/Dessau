@@ -1371,9 +1371,7 @@ func TestAWriteThatFailedOnceRecoversWhenItCan(t *testing.T) {
 	}
 }
 
-// In shared-cache mode the layout is created under the shared root, and this
-// store is the one thing that stays under the account's own — which for an
-// account that has never run Dessau per-user does not exist yet. It is
+// The account's own data folder may not exist yet when the store opens. It is
 // created, owner-only, rather than the store refusing to open.
 func TestTheAccountsOwnFolderIsCreatedWhenItIsNotThereYet(t *testing.T) {
 	base := t.TempDir()

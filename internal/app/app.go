@@ -660,10 +660,9 @@ func (a *App) effectiveBudget(stored int64) int64 {
 // The stored figure is not rewritten and the save path judges the operator's
 // own number — this bounds what gets *enforced*. A budget above physical memory
 // is not satisfiable anyway, so nothing legitimate is lost, and without the
-// bound a figure planted in a settings file another local account can write
-// (the shared install) would have the pool admitting every model a client names
-// until the machine swaps, across restarts, and a panel whose own save cannot
-// replace that account's file could not clear it.
+// bound a figure written into the hand-editable settings file would have the
+// pool admitting every model a client names until the machine swaps, across
+// restarts.
 //
 // A Mac whose memory could not be read has nothing to hold the figure down to;
 // that residual is what the conservative unmeasured default and the panel
@@ -1497,8 +1496,8 @@ func (a *App) Download(repoID string) error {
 	// parked on dl.done. Every way out of this function that does not reach the
 	// goroutine has to release it, or that Delete waits for a goroutine nobody
 	// ever started — one control-plane handler stuck for the life of the
-	// process. A registry write failing is not hypothetical here: in
-	// shared-cache mode another account owns the index file.
+	// process. A registry write failing is not hypothetical here: a full disk
+	// or an unwritable index file fails it.
 	handedOff := false
 	defer func() {
 		if handedOff {

@@ -194,7 +194,7 @@ func isUnder(path, dir string) bool {
 // entry is derived from the resolved layout; none of them is a path a caller
 // named.
 //
-// The data root itself is NOT on the list even on a per-user install, because
+// The data root itself is NOT on the list, because
 // the models live inside it: what goes is each thing this installation put
 // there, by name.
 func removalTargets(ue UninstallEnv) []string {

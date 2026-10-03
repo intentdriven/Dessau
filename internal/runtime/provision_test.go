@@ -155,10 +155,10 @@ func writeInterpreter(t *testing.T, paths config.Paths, mode os.FileMode) {
 	}
 }
 
-// The interpreter is executed under this account's uid, and in shared-cache
-// mode it sits under a setgid staff root where a group-writable file is one
-// any local account can rewrite in place. A group- or other-writable
-// interpreter must be treated as not installed, and refused before launch.
+// The interpreter is executed under this account's uid, and a group-writable
+// file is one another local account could rewrite in place. A group- or
+// other-writable interpreter must be treated as not installed, and refused
+// before launch.
 func TestInstalledRejectsGroupWritableInterpreter(t *testing.T) {
 	paths := config.NewPaths(t.TempDir())
 	writeInterpreter(t, paths, 0o775)
