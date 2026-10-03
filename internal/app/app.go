@@ -162,6 +162,9 @@ type App struct {
 	// freeSpace says how much room the models folder's volume has; a seam
 	// so a test can be the full disk it cannot make.
 	freeSpace func(dir string) (int64, bool)
+	// beforeSwapRename is a test seam, nil in production: called with
+	// "aside" and "in" just before the swap's two renames.
+	beforeSwapRename func(step string)
 
 	// bridge is the Discord bridge, wired after the gateway exists and nil in
 	// every build and every test that carries none. See bridge.go.

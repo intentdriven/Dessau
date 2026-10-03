@@ -92,6 +92,17 @@ GitHub release notes.
   out, or a version Dessau does not run — until an update succeeds. The
   registry records the class (`update_failed`), never the error's text
   ([how-to](docs/model-updates.md); iss-2610031320392078).
+- **A link re-planted in the staging folder during an update no longer
+  reaches the served model.** `impact: fix`. A program running under the
+  same account that replaced the staging folder's org folder with a link to
+  the model's own org folder, while a new version downloaded, made the failed
+  update's clean-up remove the served model's whole folder. Every removal
+  under the staging folder, and both of the swap's renames, now go through
+  the folders Dessau checked and opened rather than through their names, and
+  each rename is checked to have moved the directory it meant to; one that
+  did not is undone and the update abandoned. A start keeps an old version
+  left aside that it cannot put back, rather than removing it with the rest
+  of the staging folder (iss-2610031324593822).
 - **An update lands on a model in steady use.** `impact: fix`. The swap
   waited up to two minutes for the model to fall idle, and under overlapping
   requests it never did, so the update was abandoned and its download thrown
