@@ -53,14 +53,24 @@ func Assess(modelsDir string, totalRAM, budget int64) Machine {
 // freeDisk returns the bytes available to an unprivileged user on the volume
 // containing dir, falling back to the root volume if dir does not exist yet.
 func freeDisk(dir string) int64 {
-	var st syscall.Statfs_t
 	if dir == "" {
 		dir = "/"
 	}
-	if err := syscall.Statfs(dir, &st); err != nil {
-		if err := syscall.Statfs("/", &st); err != nil {
-			return 0
-		}
+	n, ok := FreeDisk(dir)
+	if !ok {
+		n, _ = FreeDisk("/")
 	}
-	return int64(st.Bavail) * int64(st.Bsize)
+	return n
+}
+
+// FreeDisk is the bytes available to an unprivileged user on the volume
+// holding dir, and whether the system said: the one reader of free disk, for
+// the budget above and for a staged update's room check (internal/app), which
+// must tell a full disk from one it could not ask about.
+func FreeDisk(dir string) (int64, bool) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err != nil {
+		return 0, false
+	}
+	return int64(st.Bavail) * int64(st.Bsize), true
 }

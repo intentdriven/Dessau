@@ -116,6 +116,7 @@ as text through the panel's escaping helper, with a test.
 3. The staged update
    - packages: internal/hub, internal/app, internal/runtime
    - tests: staging at the target commit, disk-space check, every file hash-checked, Precheck on the staged directory, drain and atomic swap, failure leaves the old version serving; the ordinary re-download moved onto the same path (resolves iss-2610030913179523)
+   - landed: #162
 4. The panel
    - packages: internal/ui, internal/gateway
    - tests: the mark, "version unknown", "will be offered once reviewed", "ships code Dessau will not run", the Update button where allowed; names from HuggingFace rendered as text

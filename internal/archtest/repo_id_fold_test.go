@@ -32,15 +32,19 @@ var repoIDKeyedPackages = []string{
 // later were exempted by the first check and watched by nothing, so the
 // staleness check had itself gone stale (iss-2609081441311030).
 var repoIDFoldAllowList = map[string]string{
-	`if len(header) > len(prefix) && strings.EqualFold(header[:len(prefix)], prefix) {`: "the Bearer scheme name, which HTTP defines as case-insensitive",
-	`if hopByHopHeaders[strings.ToLower(k)] {`:                                          "an HTTP header name, likewise",
-	`if dessauHeaders[strings.ToLower(k)] {`:                                            "an HTTP header name too — the two headers Dessau writes itself, which an upstream may not add a second value to",
-	`if strings.EqualFold(m.Name(), requested) {`:                                       "resolveModel's short-name convenience match, which is a lookup and not a key: the identity path is registry.Get, and this only decides whether a bare model name is unambiguous",
-	`if strings.EqualFold(k, "models") {`:                                               "a settings JSON field name (models) matched the way encoding/json matches struct fields; not a repo id",
-	`if !strings.EqualFold(key, field) {`:                                               "a settings JSON field name (api_key, hf_token) matched the same way, so a refused save can say whether the body asked to change a secret without comparing it with the stored one; not a repo id",
-	`if err != nil || !strings.EqualFold(mediaType, "application/json") {`:              "the pairing request's media type, which RFC 9110 makes case-insensitive; not a repo id",
-	`listed[f.Path] = strings.ToLower(h)`:                                               "a file's hex hash from the Hub's listing, lowercased as the registry records it; not a repo id",
-	`base := strings.ToLower(path.Base(p))`:                                             "a repository file's name, folded to tell a README or licence from a model file; not a repo id",
+	`if len(header) > len(prefix) && strings.EqualFold(header[:len(prefix)], prefix) {`:       "the Bearer scheme name, which HTTP defines as case-insensitive",
+	`if hopByHopHeaders[strings.ToLower(k)] {`:                                                "an HTTP header name, likewise",
+	`if dessauHeaders[strings.ToLower(k)] {`:                                                  "an HTTP header name too — the two headers Dessau writes itself, which an upstream may not add a second value to",
+	`if strings.EqualFold(m.Name(), requested) {`:                                             "resolveModel's short-name convenience match, which is a lookup and not a key: the identity path is registry.Get, and this only decides whether a bare model name is unambiguous",
+	`if strings.EqualFold(k, "models") {`:                                                     "a settings JSON field name (models) matched the way encoding/json matches struct fields; not a repo id",
+	`if !strings.EqualFold(key, field) {`:                                                     "a settings JSON field name (api_key, hf_token) matched the same way, so a refused save can say whether the body asked to change a secret without comparing it with the stored one; not a repo id",
+	`if err != nil || !strings.EqualFold(mediaType, "application/json") {`:                    "the pairing request's media type, which RFC 9110 makes case-insensitive; not a repo id",
+	`listed[f.Path] = strings.ToLower(h)`:                                                     "a file's hex hash from the Hub's listing, lowercased as the registry records it; not a repo id",
+	`want := strings.ToLower(f.OID)`:                                                          "a file's hex hash from the Hub's listing, lowercased to compare with the recorded one; not a repo id",
+	`want = strings.ToLower(f.LFS.OID)`:                                                       "an LFS object's hex sha256 from the Hub's listing, likewise; not a repo id",
+	`wanted[strings.ToLower(filepath.ToSlash(filepath.Clean(filepath.FromSlash(p))))] = true`: "a file name inside a model's folder, folded because a Mac's default volume treats names in two cases as one file; not a repo id",
+	`if !wanted[strings.ToLower(rel)] {`:                                                      "the same file-name comparison; not a repo id",
+	`base := strings.ToLower(path.Base(p))`:                                                   "a repository file's name, folded to tell a README or licence from a model file; not a repo id",
 }
 
 // Every part that keys anything by a repo id must fold it through

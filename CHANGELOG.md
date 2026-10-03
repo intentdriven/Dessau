@@ -125,6 +125,16 @@ GitHub release notes.
   (iss-2610030919536329).
 ### Changed
 
+- **Downloading a model you already have no longer takes it out of service,
+  and can no longer leave it half one version and half the next.**
+  `impact: fix`. The newer version is fetched beside the one being served,
+  every file checked against HuggingFace's hash for it, and swapped in only
+  once it has checked out and the requests the model was answering have
+  finished; any failure leaves the old version serving, unchanged. Before,
+  the model was marked as downloading for the whole re-download, and a file
+  of the same size from the old version was kept unchecked while a file the
+  new version dropped was never removed (iss-2610030913179523;
+  [how it works](docs/model-updates.md)).
 - **A download fetches every file at one commit, and Dessau records which.**
   `impact: additive`. A download first asks HuggingFace for the
   repository's current commit, then lists and fetches every file at that
