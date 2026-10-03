@@ -36,10 +36,11 @@ func fakeHub(t *testing.T) *httptest.Server {
 		type file struct {
 			Path string `json:"path"`
 			Size int64  `json:"size"`
+			OID  string `json:"oid"`
 		}
 		var out []file
 		for p, b := range files {
-			out = append(out, file{Path: p, Size: int64(len(b))})
+			out = append(out, file{Path: p, Size: int64(len(b)), OID: gitBlobID(b)})
 		}
 		json.NewEncoder(w).Encode(out)
 	})
@@ -52,7 +53,7 @@ func fakeHub(t *testing.T) *httptest.Server {
 		}
 		w.Write(b)
 	})
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(atCommit(mux))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -333,7 +334,7 @@ func TestDeleteDuringDownloadLeavesNothingBehind(t *testing.T) {
 
 	// A hub that dribbles bytes out, so the download is still running when we
 	// delete it.
-	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	slow := httptest.NewServer(atCommit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/models/org/repo/tree/main" {
 			fmt.Fprint(w, `[{"path":"config.json","size":2},{"path":"model.safetensors","size":1048576}]`)
 			return
@@ -346,7 +347,7 @@ func TestDeleteDuringDownloadLeavesNothingBehind(t *testing.T) {
 			}
 			time.Sleep(30 * time.Millisecond)
 		}
-	}))
+	})))
 	defer slow.Close()
 	a.Hub.BaseURL = slow.URL
 
@@ -1487,7 +1488,7 @@ func categoryHub(t *testing.T, body string) *httptest.Server {
 		w.WriteHeader(resp.StatusCode)
 		io.Copy(w, resp.Body)
 	})
-	proxy := httptest.NewServer(mux)
+	proxy := httptest.NewServer(atCommit(mux))
 	t.Cleanup(proxy.Close)
 	return proxy
 }

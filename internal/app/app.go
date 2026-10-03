@@ -1547,7 +1547,7 @@ func (a *App) Download(repoID string) error {
 		// every later attempt at that model.
 		defer a.finishDownload(dl, nil)
 
-		err := a.Hub.Download(ctx, hub.DownloadRequest{
+		snap, err := a.Hub.Download(ctx, hub.DownloadRequest{
 			RepoID:      repoID,
 			ModelsDir:   a.Paths.Models,
 			Dest:        dest,
@@ -1618,6 +1618,8 @@ func (a *App) Download(repoID string) error {
 					PipelineTag:      pipelineTag,
 					Tags:             tags,
 					HubSilent:        answered,
+					Commit:           snap.Commit,
+					FileHashes:       snap.Files,
 					State:            registry.StateReady,
 					Progress:         100,
 					AddedAt:          addedAt,
@@ -1758,6 +1760,8 @@ func (a *App) restoreReady(repoID, dest string, prior registry.Model) bool {
 		HubSilent:        prior.HubSilent,
 		ChatTemplate:     prior.ChatTemplate,
 		QuantizationBits: prior.QuantizationBits,
+		Commit:           prior.Commit,
+		FileHashes:       prior.FileHashes,
 		State:            registry.StateReady,
 		Progress:         100,
 		AddedAt:          prior.AddedAt,

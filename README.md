@@ -41,6 +41,10 @@ Cross-machine LAN use works. The ordinary port is plain HTTP; only the paired-cl
   `/v1/models`, streaming included. Drop-in for any OpenAI SDK; the two
   fields that would load files a request names, `draft_model` and `adapters`,
   are refused ([reference](docs/request-fields.md)).
+- **A program can unload a model it has finished with** — `POST
+  /v1/dessau/unload`, for a program on this Mac, a key holder or a paired
+  client; a pinned model, or one in use, is refused
+  ([reference](docs/unload-reference.md)).
 - **Context window published** — the models list gives each model's maximum
   context, so a client can size its prompts instead of discovering the limit
   by failure ([reference](docs/models-list.md)).

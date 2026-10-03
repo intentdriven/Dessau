@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -52,8 +53,12 @@ func (p Progress) ETA() time.Duration {
 
 // DownloadRequest describes a repo download.
 type DownloadRequest struct {
-	RepoID   string
-	Revision string // defaults to "main"
+	RepoID string
+	// Revision is the commit to fetch. Empty means the repository's current
+	// commit, resolved once before anything is listed; a download never
+	// fetches at a branch name, so a commit landing on the Hub part-way
+	// through cannot mix two versions' files.
+	Revision string
 	// Dest is the directory the files land in. It is created if absent.
 	Dest string
 	// ModelsDir is the models root Dest lives under. Dest is created and
@@ -75,17 +80,31 @@ type DownloadRequest struct {
 // truncated file that later looks valid.
 const partSuffix = ".dessau-part"
 
+// Snapshot is the version a download fetched: the commit every file came
+// from, and each file's hash as the Hub's tree listing stated it at that
+// commit — the LFS sha256 for a large file, the git blob id for one the
+// repository stores in git — keyed by its repo-relative path. It is what the
+// registry records as the version on disk, and what a later check compares
+// the Hub's current listing with.
+type Snapshot struct {
+	Commit string
+	Files  map[string]string
+}
+
 // Download fetches every needed file in a repo into req.Dest, resuming any
-// partial transfers from a previous run.
+// partial transfers from a previous run, and reports the version it fetched.
+//
+// The commit is resolved first, unless the caller named one, and the listing
+// and every file are fetched at it, never at a branch name.
 //
 // It is safe to call again after a failure: complete files are skipped and
 // partial ones resume with a Range request.
-func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
+func (c *Client) Download(ctx context.Context, req DownloadRequest) (Snapshot, error) {
 	if req.RepoID == "" {
-		return errors.New("download: RepoID is required")
+		return Snapshot{}, errors.New("download: RepoID is required")
 	}
 	if req.Dest == "" {
-		return errors.New("download: Dest is required")
+		return Snapshot{}, errors.New("download: Dest is required")
 	}
 	if req.Concurrency <= 0 {
 		req.Concurrency = 4
@@ -99,19 +118,29 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
 	// asked for.
 	token := c.Token()
 
+	if req.Revision == "" {
+		commit, err := c.commit(ctx, req.RepoID, token)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		req.Revision = commit
+	} else if !ValidCommit(req.Revision) {
+		return Snapshot{}, fmt.Errorf("download %s at %q: %w", req.RepoID, req.Revision, ErrBadCommit)
+	}
+
 	all, err := c.files(ctx, req.RepoID, req.Revision, token)
 	if err != nil {
-		return err
+		return Snapshot{}, err
 	}
 	files := WantedFiles(all)
 	if len(files) == 0 {
-		return fmt.Errorf("%s has no downloadable files", req.RepoID)
+		return Snapshot{}, fmt.Errorf("%s has no downloadable files", req.RepoID)
 	}
 	if a, b, collide := caseCollision(files); collide {
-		return fmt.Errorf("%s contains files whose names differ only by case (%q and %q), which cannot coexist on a case-insensitive filesystem — refusing to download it", req.RepoID, a, b)
+		return Snapshot{}, fmt.Errorf("%s contains files whose names differ only by case (%q and %q), which cannot coexist on a case-insensitive filesystem — refusing to download it", req.RepoID, a, b)
 	}
 	if !HasWeights(files) {
-		return fmt.Errorf("%s contains no .safetensors weights — it is not an MLX-loadable model", req.RepoID)
+		return Snapshot{}, fmt.Errorf("%s contains no .safetensors weights — it is not an MLX-loadable model", req.RepoID)
 	}
 
 	// Every filesystem operation below happens inside this root. os.Root
@@ -121,7 +150,7 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
 	// component alone cannot give.
 	root, err := openDest(req)
 	if err != nil {
-		return err
+		return Snapshot{}, err
 	}
 	defer root.Close()
 
@@ -155,6 +184,10 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
 	var wg sync.WaitGroup
 	var firstErr error
 	var errOnce sync.Once
+	// verified holds the files whose bytes on disk were checked against the
+	// hash the listing gave, which are the only ones the snapshot records.
+	var verifiedMu sync.Mutex
+	verified := make(map[string]bool, len(files))
 
 	// A failure in one file should stop the others rather than let the rest of
 	// a multi-gigabyte download grind on pointlessly.
@@ -172,12 +205,18 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
 			}
 			defer func() { <-sem }()
 
-			if err := c.downloadFile(ctx, req, token, root, f, tracker); err != nil {
+			ok, err := c.downloadFile(ctx, req, token, root, f, tracker)
+			if err != nil {
 				errOnce.Do(func() {
 					firstErr = err
 					cancel()
 				})
 				return
+			}
+			if ok {
+				verifiedMu.Lock()
+				verified[f.Path] = true
+				verifiedMu.Unlock()
 			}
 			tracker.fileDone(f.Path)
 		}(f)
@@ -185,15 +224,24 @@ func (c *Client) Download(ctx context.Context, req DownloadRequest) error {
 	wg.Wait()
 
 	if firstErr != nil {
-		return firstErr
+		return Snapshot{}, firstErr
 	}
 	// A cancelled download is INCOMPLETE, not successful. Returning nil here would
 	// let the caller mark a half-downloaded model as ready. Surface the
 	// cancellation (and any other context error) as the error it is.
 	if err := ctx.Err(); err != nil {
-		return err
+		return Snapshot{}, err
 	}
-	return nil
+	// Only what was verified is recorded. A file the listing gave no usable
+	// hash for is on disk all the same, but recording the listing's word for
+	// it would claim a version nobody checked; absent, it reads as unknown.
+	snap := Snapshot{Commit: req.Revision, Files: make(map[string]string, len(files))}
+	for _, f := range files {
+		if verified[f.Path] {
+			snap.Files[f.Path] = expectedHash(f)
+		}
+	}
+	return snap, nil
 }
 
 // openDest creates the destination directory and opens an os.Root at it.
@@ -290,14 +338,16 @@ func existingBytes(root *os.Root, rel string) int64 {
 	return n
 }
 
-// downloadFile fetches one file, resuming if a partial exists. All filesystem
-// access goes through root, which confines it to the model directory.
-func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token string, root *os.Root, f File, tr *progressTracker) error {
+// downloadFile fetches one file, resuming if a partial exists, and reports
+// whether the bytes it leaves on disk were checked against the hash the
+// listing gave for them. All filesystem access goes through root, which
+// confines it to the model directory.
+func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token string, root *os.Root, f File, tr *progressTracker) (bool, error) {
 	final, err := relPath(f.Path)
 	if err != nil {
 		// A repo whose file tree contains "../" escapes is either malicious or
 		// broken; either way we refuse rather than write outside the model dir.
-		return err
+		return false, err
 	}
 	part := final + partSuffix
 
@@ -305,8 +355,24 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 	// require an exact match; when it does not (size 0 = unknown), accept only a
 	// non-empty file — a zero-byte "complete" file is never a real weight/config.
 	if fi, err := root.Stat(final); err == nil {
-		complete := (f.Size > 0 && fi.Size() == f.Size) || (f.Size == 0 && fi.Size() > 0)
+		complete := fi.Mode().IsRegular() &&
+			((f.Size > 0 && fi.Size() == f.Size) || (f.Size == 0 && fi.Size() > 0))
+		// The right size is not the right version: a file left by an attempt
+		// at another commit can be exactly as long as this one. Where the
+		// listing gives a hash, the file is held to it, and one that fails is
+		// fetched again rather than recorded as this commit's. Only a regular
+		// file of the right size is read: anything else is removed unread.
+		var ok bool
+		var verr error
 		if complete {
+			ok, verr = verifyFile(ctx, root, final, f)
+			// A hash cut short by the download ending says nothing about the
+			// file, which stays for the next attempt.
+			if err := ctx.Err(); err != nil {
+				return false, err
+			}
+		}
+		if complete && verr == nil {
 			// Drop any leftover .part orphaned beside a completed file, so it does
 			// not linger across every future run. Its bytes were added to the
 			// pre-download tally (existingBytes sums final + .part), so uncount them
@@ -315,18 +381,18 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 				tr.addCompleted(-pfi.Size())
 			}
 			_ = root.Remove(part)
-			return nil
+			return ok, nil
 		}
-		// Wrong size or empty: refetch.
+		// Wrong size, empty, or not these bytes: refetch.
 		if err := root.Remove(final); err != nil {
-			return fmt.Errorf("remove corrupt %s: %w", f.Path, err)
+			return false, fmt.Errorf("remove corrupt %s: %w", f.Path, err)
 		}
 		tr.addCompleted(-fi.Size())
 	}
 
 	if dir := filepath.Dir(final); dir != "." {
 		if err := root.MkdirAll(dir, 0o755); err != nil {
-			return err
+			return false, err
 		}
 	}
 
@@ -336,7 +402,7 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		// A .part at or beyond the expected size is not trustworthy; start over.
 		if f.Size > 0 && resumeAt >= f.Size {
 			if err := root.Remove(part); err != nil {
-				return err
+				return false, err
 			}
 			tr.addCompleted(-resumeAt)
 			resumeAt = 0
@@ -345,11 +411,11 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 
 	u, err := c.ResolveURL(req.RepoID, req.Revision, f.Path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	httpReq, err := c.newTokenRequest(ctx, http.MethodGet, u, token)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if resumeAt > 0 {
 		httpReq.Header.Set("Range", fmt.Sprintf("bytes=%d-", resumeAt))
@@ -359,14 +425,15 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 	// origin, and the Hub answers a /resolve/ GET for an LFS object with a
 	// redirect to its content CDN, on another host by design. What anchors an LFS
 	// object is not where it came from but the sha256 the Hub's own API stated
-	// for it, verified below. A file the repo stores in git rather than LFS
-	// carries no such hash and is checked on length alone, so for those this hole
-	// is wider than the reason it exists — iss-2609190151179403.
+	// for it, verified below. A file the repo stores in git rather than LFS is
+	// held to the git blob id the listing gives, a hash of its content too; one
+	// the listing gives no usable hash for is checked on length alone, so for
+	// those this hole is wider than the reason it exists — iss-2609190151179403.
 	// TestDownloadFollowsTheHubsRedirectToItsContentCDN holds the hole open for
 	// the case that needs it.
 	resp, err := c.httpClient().Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("download %s: %w", f.Path, err)
+		return false, fmt.Errorf("download %s: %w", f.Path, err)
 	}
 	defer resp.Body.Close()
 
@@ -385,7 +452,7 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		// partial and restart from scratch.
 		if resumeAt > 0 && !validContentRange(resp.Header.Get("Content-Range"), resumeAt, f.Size) {
 			if err := root.Remove(part); err != nil && !os.IsNotExist(err) {
-				return err
+				return false, err
 			}
 			tr.addCompleted(-resumeAt)
 			return c.downloadFile(ctx, req, token, root, f, tr)
@@ -397,15 +464,15 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		// that sent a Range can mean that: a 416 to a plain GET is a server
 		// error, and retrying it would recurse forever.
 		if resumeAt == 0 {
-			return apiError(resp, u)
+			return false, apiError(resp, u)
 		}
 		if err := root.Remove(part); err != nil && !os.IsNotExist(err) {
-			return err
+			return false, err
 		}
 		tr.addCompleted(-resumeAt)
 		return c.downloadFile(ctx, req, token, root, f, tr)
 	default:
-		return apiError(resp, u)
+		return false, apiError(resp, u)
 	}
 
 	// O_NOFOLLOW: refuse to write through a symlink planted at the .part path,
@@ -421,7 +488,7 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 	}
 	out, err := root.OpenFile(part, flags, 0o644)
 	if err != nil {
-		return fmt.Errorf("open %s: %w", part, err)
+		return false, fmt.Errorf("open %s: %w", part, err)
 	}
 
 	bound, declared := bodyBound(resp.ContentLength, f.Size, resumeAt)
@@ -437,15 +504,15 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 			// resume point for the file it claimed to be: keeping it would
 			// hand the next run a .part it cannot make sense of.
 			if err := discardPart(root, part, f.Path, tr); err != nil {
-				return err
+				return false, err
 			}
-			return fmt.Errorf("download %s: %w (%d bytes)", f.Path, ErrOversizedBody, bound)
+			return false, fmt.Errorf("download %s: %w (%d bytes)", f.Path, ErrOversizedBody, bound)
 		}
 		// Leave the .part in place — the next run resumes from here.
-		return fmt.Errorf("download %s: %w", f.Path, copyErr)
+		return false, fmt.Errorf("download %s: %w", f.Path, copyErr)
 	}
 	if closeErr != nil {
-		return closeErr
+		return false, closeErr
 	}
 	if declared && written < bound {
 		// A body that ended cleanly short of what it declared is a server that
@@ -453,44 +520,44 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		// this prefix is not a repair, so the .part goes, as it does for any
 		// other wrong length below.
 		if err := discardPart(root, part, f.Path, tr); err != nil {
-			return err
+			return false, err
 		}
-		return fmt.Errorf("download %s: %w (%d of %d bytes)", f.Path, ErrShortBody, written, bound)
+		return false, fmt.Errorf("download %s: %w (%d of %d bytes)", f.Path, ErrShortBody, written, bound)
 	}
 
 	fi, err := root.Stat(part)
 	if err != nil {
-		return err
+		return false, err
 	}
 	switch {
 	case f.Size > 0 && fi.Size() != f.Size:
 		root.Remove(part)
-		return fmt.Errorf("download %s: got %d bytes, expected %d", f.Path, fi.Size(), f.Size)
+		return false, fmt.Errorf("download %s: got %d bytes, expected %d", f.Path, fi.Size(), f.Size)
 	case f.Size == 0 && fi.Size() == 0:
 		// Size was unknown and the server returned nothing: a truncated/empty file
 		// is never a valid download, and with no size to check it would otherwise
 		// be renamed into place and pass as complete.
 		root.Remove(part)
-		return fmt.Errorf("download %s: server returned an empty file", f.Path)
+		return false, fmt.Errorf("download %s: server returned an empty file", f.Path)
 	}
 
-	// Content-integrity check for LFS files (the weights): LFS.OID is the sha256
-	// of the file's content, so verifying it turns "right size" into "exact
-	// bytes". Size alone cannot catch a corrupt-but-right-length body, nor
-	// corruption that predates a resume (the appended tail is size-checked, the
-	// resumed prefix is not). Non-LFS files carry a git-blob sha1, not a content
-	// hash, so they are size-checked only.
-	if f.LFS != nil && f.LFS.OID != "" {
-		if err := verifySHA256(root, part, f.LFS.OID); err != nil {
-			root.Remove(part)
-			return fmt.Errorf("download %s: %w", f.Path, err)
-		}
+	// Content-integrity check: an LFS file (the weights) is held to the sha256
+	// the listing stated for it, and a file the repository stores in git to
+	// its git blob id, which is a hash of the content too. Either turns "right
+	// size" into "exact bytes": size alone cannot catch a corrupt-but-right-
+	// length body, nor corruption that predates a resume (the appended tail is
+	// size-checked, the resumed prefix is not). A file the listing gave no
+	// usable hash for is size-checked only, and reported unverified.
+	ok, err := verifyFile(ctx, root, part, f)
+	if err != nil {
+		root.Remove(part)
+		return false, fmt.Errorf("download %s: %w", f.Path, err)
 	}
 
 	if err := root.Rename(part, final); err != nil {
-		return fmt.Errorf("finalize %s: %w", f.Path, err)
+		return false, fmt.Errorf("finalize %s: %w", f.Path, err)
 	}
-	return nil
+	return ok, nil
 }
 
 // validContentRange reports whether a 206 response's Content-Range header
@@ -631,16 +698,94 @@ func discardPart(root *os.Root, part, path string, tr *progressTracker) error {
 	return nil
 }
 
+// expectedHash is the hash the listing gave for a file's content: the LFS
+// sha256 for a file stored in LFS, otherwise the git blob id.
+func expectedHash(f File) string {
+	if f.LFS != nil && f.LFS.OID != "" {
+		return strings.ToLower(f.LFS.OID)
+	}
+	return strings.ToLower(f.OID)
+}
+
+// verifyFile checks the file at name against the hash the listing gave for f,
+// and reports whether there was one to check it against. An error means the
+// bytes are not the ones the listing described.
+func verifyFile(ctx context.Context, root *os.Root, name string, f File) (bool, error) {
+	if f.LFS != nil && f.LFS.OID != "" {
+		if err := verifySHA256(ctx, root, name, f.LFS.OID); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	if f.LFS == nil && isHex(f.OID, 40) {
+		if err := verifyGitBlob(ctx, root, name, f.OID); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func isHex(s string, n int) bool {
+	if len(s) != n {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if b := s[i]; (b < '0' || b > '9') && (b < 'a' || b > 'f') && (b < 'A' || b > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+// verifyGitBlob streams the file at name through git's blob hash — SHA-1 over
+// "blob <length>\x00" and the content — and compares it to the expected id.
+func verifyGitBlob(ctx context.Context, root *os.Root, name, wantHex string) error {
+	f, err := root.Open(name)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	h := sha1.New()
+	fmt.Fprintf(h, "blob %d\x00", fi.Size())
+	if _, err := io.Copy(h, ctxReader{ctx, f}); err != nil {
+		return err
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); !strings.EqualFold(got, wantHex) {
+		return fmt.Errorf("content hash mismatch: got git blob %s, expected %s", got, wantHex)
+	}
+	return nil
+}
+
+// ctxReader stops a read the moment its context ends. Hashing a weight shard
+// takes seconds, and a download being cancelled, deleted or shut down must
+// not wait for every shard already on disk to be hashed first.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
 // verifySHA256 streams the file at name through SHA-256 and compares it to the
 // expected hex digest.
-func verifySHA256(root *os.Root, name, wantHex string) error {
+func verifySHA256(ctx context.Context, root *os.Root, name, wantHex string) error {
 	f, err := root.Open(name)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	if _, err := io.Copy(h, ctxReader{ctx, f}); err != nil {
 		return err
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); !strings.EqualFold(got, wantHex) {

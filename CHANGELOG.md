@@ -23,6 +23,14 @@ GitHub release notes.
   names a model the server serves
   ([reference](docs/models-list.md#builds-of-one-model);
   itd-2610030932551549).
+- **A program can ask Dessau to unload a model it has finished with.**
+  `impact: additive`. `POST /v1/dessau/unload` with `{"model": "<id>"}`
+  unloads a loaded model that is not pinned, not in use or loading, and not
+  inside its eviction grace, for a program on this Mac, a key holder or a
+  paired client; everything else is refused at once, and a caller the
+  server does not trust learns nothing about what is loaded. Nothing under
+  `/v1` deletes a model ([reference](docs/unload-reference.md);
+  itd-2610031024247803, adr-2610031153127219).
 
 ### Fixed
 
@@ -73,6 +81,17 @@ GitHub release notes.
   `upstream_header_timeout_sec` in `config.json`, where the wait is set
   (iss-2610030919536329).
 ### Changed
+
+- **A download fetches every file at one commit, and Dessau records which.**
+  `impact: additive`. A download first asks HuggingFace for the
+  repository's current commit, then lists and fetches every file at that
+  commit rather than at `main`, so a commit that lands on the Hub while
+  Alice's download is running can no longer leave her with a model that is
+  half one version and half the next. The registry records the commit and
+  each downloaded file's hash as the Hub listed it; a model downloaded
+  before this, or found on disk by a rescan, is "version unknown". This is
+  the groundwork for checking downloaded models for newer versions
+  (itd-2610030857275099).
 
 - **A request carrying `draft_model` or `adapters` is refused.**
   `impact: breaking`. Security. The model server reads both as an

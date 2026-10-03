@@ -508,6 +508,10 @@ func (c *Control) modelViews() []ModelView {
 	models := c.App.Registry.List()
 	out := make([]ModelView, 0, len(models))
 	for _, m := range models {
+		// The per-file hashes are what a check compares, not what the panel
+		// shows, and this view is re-encoded on every event: a model's commit
+		// is enough to say which version is on disk.
+		m.FileHashes = nil
 		window, isDefault := c.App.ServedWindow(m)
 		out = append(out, ModelView{Model: m, ServedContext: window, ServedContextDefault: isDefault && window > 0})
 	}
