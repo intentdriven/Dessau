@@ -316,7 +316,10 @@ answer as a stream — one a client asked for unstreamed is put back together
 into a single object before it is returned — so the wait ends the moment the
 model server takes the request up. Reading the prompt and writing the answer
 come after that and are not counted against it: a long answer is never cut
-off by this wait. Zero — the default — means Dessau works the figure out from
+off by this wait. Nor is a stuck one: a model server that stops part-way
+through an answer without closing the connection holds the request, streamed
+or not, until the client hangs up, so give a client that must not wait for
+ever a timeout of its own. Zero — the default — means Dessau works the figure out from
 the size of the request: ten minutes, or more for a very large prompt, which
 is the right answer almost always.
 

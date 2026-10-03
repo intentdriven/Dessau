@@ -74,7 +74,10 @@ What follows from it:
 
 - The [wait for the model server](getting-started.md#upstream_header_timeout_sec--how-long-a-model-may-take-to-start-answering)
   ends when the model server starts answering, so a long answer is not cut
-  off by it.
+  off by it. Nothing in Dessau bounds the answer after that: a model server
+  that stops sending part-way without closing the connection holds the
+  request until the client hangs up, as it holds a streamed one. A client
+  with no timeout of its own waits for as long as that lasts.
 - A client that hangs up stops the answer being generated.
 - An answer the model server stops part-way through is a **502** with an
   error message, never part of an object.
