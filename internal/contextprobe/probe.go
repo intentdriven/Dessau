@@ -140,6 +140,10 @@ type Probe struct {
 	queueGen uint64
 	// bounds holds a model's bisection so far, so a yielded run resumes.
 	bounds map[string]*bounds
+	// forgotten marks a model whose measurement Cancel forgot, until
+	// Measure now queues it again: a run it interrupted before that run had
+	// made its bounds would otherwise keep the ones it made for a resume.
+	forgotten map[string]bool
 }
 
 // bounds is where a model's bisection stands.
@@ -179,7 +183,7 @@ func New(opts Options) *Probe {
 	if opts.UnloadWait <= 0 {
 		opts.UnloadWait = DefaultUnloadWait
 	}
-	return &Probe{opts: opts, bounds: map[string]*bounds{}}
+	return &Probe{opts: opts, bounds: map[string]*bounds{}, forgotten: map[string]bool{}}
 }
 
 // defaultStepTimeout is the gateway's header wait for a body of this size —
@@ -210,6 +214,7 @@ func (p *Probe) MeasureNow(repoID string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	key := config.FoldRepoID(repoID)
+	delete(p.forgotten, key)
 	for _, q := range p.queue {
 		if config.FoldRepoID(q) == key {
 			return
@@ -229,6 +234,7 @@ func (p *Probe) Cancel(repoID string) {
 	key := config.FoldRepoID(repoID)
 	p.mu.Lock()
 	delete(p.bounds, key)
+	p.forgotten[key] = true
 	p.mu.Unlock()
 	p.dequeue(repoID)
 	_ = p.opts.Sources.MarkIncomplete(repoID, true)
@@ -348,7 +354,13 @@ func (p *Probe) Run(s *selftest.Session, model string) {
 		switch out {
 		case stepYielded, stepHeld:
 			// Bounds kept; the loop will bring the model back when the Mac
-			// is idle again.
+			// is idle again — unless the measurement was cancelled, in which
+			// case there is nothing to come back to.
+			p.mu.Lock()
+			if p.forgotten[key] {
+				delete(p.bounds, key)
+			}
+			p.mu.Unlock()
 			p.opts.Log.Info("context probe paused", "model", model, "why", map[stepOutcome]string{stepYielded: "a request arrived", stepHeld: "no room without evicting"}[out])
 		case stepStopped:
 			// No partial figure: the next start says the probe is incomplete.
