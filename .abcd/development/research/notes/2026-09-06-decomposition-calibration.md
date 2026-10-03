@@ -737,3 +737,30 @@ loading idle-held model; the pin wins) and each was chosen, not assumed. Two
 captures landed at the interview, not late. Grade: routing survived; the
 reviewers' "candidate ADR" is carried as a decision line pending the design
 review, which is a deferral of the ADR, not a disagreement with the routing.
+
+## 2026-10-03 — itd-2610030656210408, Dessau answers typed questions with odds
+
+Filed as a draft from a peer session's request to serve a Clef decision model;
+two adversarial reviews (design/feasibility, record discipline) before the
+interview. The record reviewer proposed SPLIT; the design reviewer found three
+blockers (the runtime cannot hold mlx-vlm as pinned, every idle job drives
+chat, downloaded Python can run) that reshaped the questions.
+
+| part | type | home |
+|---|---|---|
+| Typed questions answered with a probability per option at `/v1/systemone`; decision models marked and refused on chat | capability | itd-2610030656210408 (planned, spc-2610030846273729) |
+| Dessau never runs code that comes with a download | trust-boundary rule | the fix for iss-2610030709283687 and its decision line; the refused request fields (iss-2610030752128514) and the private socket (iss-2610030846581757) complete it |
+| Adopting a trimmed copy of the reference implementation, and its licence | architecture | an ADR, a prerequisite in the spec |
+| mlx-vlm and the runtime upgrade | dependency | a sign-off decision line, a prerequisite in the spec |
+| Images in requests | capability | a later intent (not yet filed) |
+| The hand-run reference server meanwhile | already decided | the 2026-10-03 decision line, struck from the press release |
+| The 512-token reply cap | bug, not this intent | iss-2610030652514762 |
+
+Verdict proposed: SPLIT. Verdict adopted: SPLIT, confirmed by the maintainer
+as the first question of the interview. Reversal flagged and chosen, not
+assumed: refusing chat models on the decision endpoint and decision models on
+chat reverses cond-2609091236502214 of itd-2609091129451578, so the impact is
+breaking. Three security captures landed during the interview from the
+reviews of the fixes it prompted, not late. Grade: routing survived; the ADR
+and the dependency sign-off are carried as prerequisites in the spec rather
+than written at the interview.
