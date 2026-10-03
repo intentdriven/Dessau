@@ -13,6 +13,17 @@ GitHub release notes.
 
 ### Fixed
 
+- **A hybrid model that lists its layer kinds by name now leaves room for
+  others beside it.** `impact: fix`. Dessau charges a model's memory per
+  token of its window from the layers its configuration says keep a cache,
+  and it did not read the `layers_block_type` list Nemotron-3.5-Lightning
+  uses to name them, so it charged all 52 of that model's layers rather than
+  its 6 attention layers — almost nine times what it costs. On a 128 GB Mac
+  at the default budget and four batched requests, Alice's Nemotron was
+  served at 57,384 tokens and its charge filled the whole budget, so nothing
+  else would load beside it. It is now served at its whole 262,144-token
+  window with about 27 GB of the budget left over, and at the default single
+  batched request with about 49 GB left (iss-2610031010368266).
 - **A reply to a request that names no maximum is no longer cut off at 512
   tokens.** `impact: fix`. The model server answers a request with no
   `max_tokens` (or `max_completion_tokens`) at the length it was started
