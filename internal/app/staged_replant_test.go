@@ -100,3 +100,62 @@ func TestALinkPlantedJustBeforeASwapRenameMovesNoOtherModel(t *testing.T) {
 		})
 	}
 }
+
+// A link planted at the staged version's own name, or at the served model's,
+// just before the rename that moves it, is never moved in or aside as though
+// it were the folder: no other model is served as this one, and the old
+// version is not removed.
+func TestALinkAtTheMovedNameIsNeverMovedAsTheFolder(t *testing.T) {
+	for _, tc := range []struct{ step, at string }{
+		{"in", stagingDirName + "/org/repo"},
+		{"aside", "org/repo"},
+	} {
+		t.Run(tc.step, func(t *testing.T) {
+			a, h := newStagedApp(t)
+			other := filepath.Join(a.Paths.Models, "org2", "repo")
+			if err := os.MkdirAll(other, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			os.WriteFile(filepath.Join(other, "config.json"), []byte(`{"model_type":"other"}`), 0o644)
+			os.WriteFile(filepath.Join(other, "model.safetensors"), []byte("other-weights"), 0o644)
+			at := filepath.Join(a.Paths.Models, filepath.FromSlash(tc.at))
+			a.beforeSwapRename = func(s string) {
+				if s != tc.step {
+					return
+				}
+				if err := os.Rename(at, at+".moved"); err != nil {
+					t.Error(err)
+				}
+				if err := os.Symlink(other, at); err != nil {
+					t.Error(err)
+				}
+			}
+			h.set(func(h *versionedHub) { h.current = commitV2 })
+			if err := a.Download("org/repo"); err != nil {
+				t.Fatal(err)
+			}
+			waitSettled(t, a)
+
+			if got := filesIn(t, other); got["config.json"] != `{"model_type":"other"}` {
+				t.Errorf("the other org's model changed: %v", got)
+			}
+			if fi, err := os.Lstat(a.Paths.ModelDir("org/repo")); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+				if m, _ := a.Registry.Get("org/repo"); m.Commit == commitV2 {
+					t.Error("a link was moved in as the new version and the update recorded as landed")
+				}
+			}
+			// The real old version is never removed: it is served, moved
+			// aside by the test, or left aside.
+			found := false
+			filepath.WalkDir(a.Paths.Models, func(p string, d os.DirEntry, err error) error {
+				if err == nil && !d.IsDir() && filepath.Base(p) == "model-00002-of-00002.safetensors" {
+					found = true
+				}
+				return nil
+			})
+			if !found {
+				t.Error("the old version was removed")
+			}
+		})
+	}
+}

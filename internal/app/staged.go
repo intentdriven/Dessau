@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -196,10 +197,20 @@ func openModelOrg(root *os.Root, repoID string) (*modelOrg, error) {
 	return &modelOrg{Root: r, dir: dir}, nil
 }
 
+// sameDir reports whether name in the folder r holds is a directory, not a
+// link, and the directory want describes.
+func sameDir(r *os.Root, name string, want fs.FileInfo) bool {
+	got, err := r.Lstat(name)
+	return err == nil && got.IsDir() && os.SameFile(got, want)
+}
+
 // renameAt renames one entry of an open directory to one of another, by the
 // directories themselves rather than by any path to them.
 func renameAt(from *os.File, fromName string, to *os.File, toName string) error {
-	return unix.Renameat(int(from.Fd()), fromName, int(to.Fd()), toName)
+	err := unix.Renameat(int(from.Fd()), fromName, int(to.Fd()), toName)
+	goruntime.KeepAlive(from)
+	goruntime.KeepAlive(to)
+	return err
 }
 
 // Update fetches the newer version a check found for a model, beside the one
@@ -430,13 +441,17 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoI
 	defer stagingDir.Close()
 	// Every rename below names one component in a directory held open: the
 	// model's org folder and the staging org folder, each opened once it was
-	// checked real. A link planted at either folder's name afterwards is never
-	// followed, and a rename does not follow a link at the name it moves.
+	// checked real, so a link planted at either folder's name afterwards is
+	// never followed. A rename moves whatever stands at the one name it
+	// moves, a link included, so each is checked after it runs, through the
+	// held folders, to have moved the directory it was meant to; one that
+	// did not is undone and the update abandoned, before anything is removed.
 	_, name, _ := strings.Cut(repoID, "/")
 	attempt := strconv.FormatInt(time.Now().UnixNano(), 36)
 	asideName := name + asideSuffix + attempt
 	aside = asideRel(repoID, attempt)
-	if _, err := org.Lstat(name); err != nil {
+	old, err := org.Lstat(name)
+	if err != nil {
 		// The model's folder is not there to move aside. If an earlier swap
 		// left the only copy aside, it goes back rather than being cleared
 		// to make way: an update never removes the last copy of a model.
@@ -448,11 +463,23 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoI
 		}
 		return "", fmt.Errorf("the model's folder is missing: %w", err)
 	}
+	if !old.IsDir() {
+		return "", errors.New("the model's folder is not a directory, so it is not moved aside")
+	}
+	undo := func(from *os.File, fromName string, to *os.File, toName string) {
+		if rerr := renameAt(from, fromName, to, toName); rerr != nil {
+			a.Log.Error("could not undo a swap's rename", "model", repoID, "err", rerr)
+		}
+	}
 	if a.beforeSwapRename != nil {
 		a.beforeSwapRename("aside")
 	}
 	if err := renameAt(org.dir, name, stagingDir, asideName); err != nil {
 		return "", fmt.Errorf("move the old version aside: %w", err)
+	}
+	if !sameDir(sorg.Root, asideName, old) {
+		undo(stagingDir, asideName, org.dir, name)
+		return "", errors.New("the model's folder changed as it was moved aside; the update is abandoned")
 	}
 	putBack := func() {
 		if rerr := renameAt(stagingDir, asideName, org.dir, name); rerr != nil {
@@ -460,12 +487,24 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoI
 				"model", repoID, "err", rerr)
 		}
 	}
+	staged, err := sorg.Lstat(name)
+	if err != nil || !staged.IsDir() {
+		putBack()
+		return "", errors.New("the staged version is not a directory, so it is not moved in")
+	}
 	if a.beforeSwapRename != nil {
 		a.beforeSwapRename("in")
 	}
 	if err := renameAt(stagingDir, name, org.dir, name); err != nil {
 		putBack()
 		return "", fmt.Errorf("move the new version in: %w", err)
+	}
+	// The check below reads the model's folder by its path, so the path must
+	// name the folder just moved in, as well as the held folder holding it.
+	if fi, err := os.Stat(a.Paths.ModelDir(repoID)); !sameDir(org.Root, name, staged) || err != nil || !os.SameFile(fi, staged) {
+		undo(org.dir, name, stagingDir, name)
+		putBack()
+		return "", errors.New("the model's folder changed as the new version was moved in; the update is abandoned")
 	}
 	if err := validateModelDir(a.Paths.ModelDir(repoID)); err != nil {
 		// Not expected — the staged copy was checked — but a check that
@@ -487,8 +526,8 @@ func (a *App) endSwap(repoID string) {
 	delete(a.swapping, dlKey(repoID))
 }
 
-// asideLeft finds a copy of repoID an earlier swap left aside, if one is,
-// and names it from the models root.
+// asideLeft finds a copy of repoID an earlier swap left aside, if one is.
+// The caller renames it by its base name in the staging org folder.
 func asideLeft(sorg *stagingOrg, repoID string) (string, bool) {
 	org, name, _ := strings.Cut(repoID, "/")
 	entries, err := readDirIn(sorg.Root, ".")
