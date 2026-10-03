@@ -261,7 +261,8 @@ func TestASaveDuringALoadDoesNotDeadlock(t *testing.T) {
 // the run yields, the probe's own request is released and its server
 // unloaded, and the panel answers 200 rather than the 409 a model with a
 // request in flight gets — the way out the refusal promises
-// (iss-2609211334576018). The probe resumes at the next idle tick.
+// (iss-2609211334576018). The Unload also cancels the measurement
+// (iss-2610031818057157), so the probe does not resume.
 func TestUnloadFromThePanelTakesTheModelBackFromTheProbe(t *testing.T) {
 	a, _ := probeStackWith(t, 20_000, 3*time.Second)
 	ctrl := &Control{App: a}

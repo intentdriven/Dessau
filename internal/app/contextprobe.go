@@ -127,6 +127,16 @@ func (a *App) refreshStaleness() {
 	}
 }
 
+// ProbeHolds reports whether the context probe is measuring the model now.
+func (a *App) ProbeHolds(repoID string) bool {
+	st := a.SelfTest.Status()
+	return st.Job == contextprobe.Name && config.FoldRepoID(st.Model) == config.FoldRepoID(repoID)
+}
+
+// CancelMeasurement forgets the model's measurement, queued or under way;
+// Measure now starts it again (contextprobe.Probe.Cancel).
+func (a *App) CancelMeasurement(repoID string) { a.Probe.Cancel(repoID) }
+
 // MeasureNow queues one probe of the model, whatever the switch says, and
 // makes sure the idle loop is running to pick it up.
 func (a *App) MeasureNow(repoID string) error {
