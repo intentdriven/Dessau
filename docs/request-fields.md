@@ -3,7 +3,8 @@
 `POST /v1/chat/completions` and `POST /v1/completions` pass a request's body on
 to the model server, changing only the fields listed under
 [What Dessau changes in a request it passes on](#what-dessau-changes-in-a-request-it-passes-on).
-Two fields are refused instead, and a request carrying either goes no further.
+Two fields are refused instead, and a request carrying either goes no further;
+so is a request that asks for an empty answer.
 
 ## The refused fields
 
@@ -48,6 +49,16 @@ The request is refused before a model is chosen: no model is loaded and none
 is evicted for it, the model server never receives it, and the answer carries
 none of the [response headers](response-headers.md). Every client receives
 the same message, with or without the API key.
+
+## An empty answer budget
+
+A request whose `max_tokens` or `max_completion_tokens` is below 1 — `0`, a
+negative number, a fraction under 1, or `false` — is refused in the same way,
+with **400** and the message `"max_tokens" must be at least 1` (or
+`"max_completion_tokens" must be at least 1`). The model server accepts such a
+budget and then fails on it, and on a model serving batched requests the
+failure stops that model answering anyone until it is restarted. A budget
+written as a string is passed on, and the model server refuses it itself.
 
 ## What Dessau changes in a request it passes on
 

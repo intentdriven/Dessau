@@ -1,0 +1,88 @@
+package runtime
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/intentdriven/Dessau/internal/config"
+)
+
+// A runtime installed from another lock is not this build's: the marker names
+// the lock's own hash, so the old pin's install — and the same pin installed
+// with another dependency set — is reprovisioned rather than trusted
+// (spc-2610030846273729 step 1).
+func TestARuntimeFromAnotherLockIsReprovisioned(t *testing.T) {
+	paths := config.NewPaths(t.TempDir())
+	writeInterpreter(t, paths, 0o755)
+	p := &Provisioner{Paths: paths}
+	if !p.Installed() {
+		t.Fatal("a runtime installed from this lock reads as not installed")
+	}
+	if err := os.Remove(filepath.Join(paths.Venv, mlxMarkerName())); err != nil {
+		t.Fatal(err)
+	}
+	for _, old := range []string{".dessau-mlx-0.31.3", ".dessau-mlx-" + mlxLMVersion, ".dessau-mlx-" + mlxLMVersion + "-0123456789abcdef"} {
+		if err := os.WriteFile(filepath.Join(paths.Venv, old), []byte("ok"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if p.Installed() {
+			t.Errorf("a runtime marked %s reads as this lock's", old)
+		}
+	}
+}
+
+// The lock carries the signed-off set and nothing else: the three pins, and
+// every line hash-locked (DECISIONS 2026-10-03, dependency sign-off).
+func TestTheLockIsTheSignedOffSet(t *testing.T) {
+	lock := string(mlxRequirements)
+	for _, pin := range []string{"mlx-lm==0.32.0", "mlx==0.32.3", "mlx-metal==0.32.3", "mlx-vlm==0.7.4"} {
+		if !strings.Contains(lock, "\n"+pin+" \\\n") {
+			t.Errorf("the lock does not pin %s", pin)
+		}
+	}
+	if mlxLMVersion != "0.32.0" {
+		t.Errorf("mlxLMVersion = %s, but the lock pins mlx-lm 0.32.0", mlxLMVersion)
+	}
+	n := 0
+	for _, line := range strings.Split(lock, "\n") {
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, " ") {
+			continue
+		}
+		n++
+		if !strings.Contains(line, "==") || !strings.HasSuffix(line, " \\") {
+			t.Errorf("a requirement that is not an exact, hashed pin: %q", line)
+		}
+	}
+	if n != 57 {
+		t.Errorf("the lock holds %d packages; the signed-off set is 57", n)
+	}
+}
+
+// No OpenTelemetry configuration reaches a child: the runtime carries
+// opentelemetry-api, and an exporter or endpoint set where Dessau was started
+// is the one way it could send anything (adr-2609201008476813).
+func TestNoOpenTelemetryConfigurationReachesAChild(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.example")
+	t.Setenv("OTEL_TRACES_EXPORTER", "otlp")
+	t.Setenv("otel_metrics_exporter", "otlp")
+	t.Setenv("DESSAU_TEST_KEEPS", "1")
+	paths := config.NewPaths(t.TempDir())
+	l := &ExecLauncher{Paths: paths, LogDir: paths.Logs}
+	p := &Provisioner{Paths: paths}
+	for name, env := range map[string][]string{
+		"model server": l.childEnv(), "install check": childEnviron(), "uv": p.uvEnv(),
+	} {
+		kept := false
+		for _, kv := range env {
+			if strings.HasPrefix(strings.ToUpper(kv), "OTEL_") {
+				t.Errorf("%s: %s reaches the child", name, kv)
+			}
+			kept = kept || kv == "DESSAU_TEST_KEEPS=1"
+		}
+		if !kept {
+			t.Errorf("%s: the rest of the environment was dropped too", name)
+		}
+	}
+}

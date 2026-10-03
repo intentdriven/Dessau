@@ -29,7 +29,7 @@ var ErrOtherAccount = errors.New("this model's files belong to another account, 
 // cannot be read as a JSON object (fs.ErrNotExist among them, for a file that
 // is not there). nil means none of those.
 //
-// The pinned model server (mlx-lm 0.31.3, mlx_lm/utils.py load_model) imports
+// The pinned model server (mlx-lm 0.31.3, re-verified at 0.32.0; mlx_lm/utils.py load_model) imports
 // and executes the file a model's configuration names there, inside the
 // model-server child, as this account, at load time:
 //

@@ -32,6 +32,22 @@ GitHub release notes.
   `/v1` deletes a model ([reference](docs/unload-reference.md);
   itd-2610031024247803, adr-2610031153127219).
 
+### Changed
+
+- **The model runtime moves to mlx-lm 0.32.0.** `impact: breaking`. The
+  private runtime is mlx-lm 0.32.0 on MLX 0.32.3, with mlx-vlm 0.7.4 and the
+  packages it declares, every one hash-locked as before; the first start after
+  the update installs it in place of the old one (about 80 MB more to
+  download). A model's measured window and tool-call check are taken again
+  under the new runtime. No OpenTelemetry setting in the environment Dessau
+  starts from reaches the runtime. A maximum completion tokens of 0 is no
+  longer a setting — the panel refuses it and a hand-edited `config.json`
+  drops it — and a request asking for an empty answer is refused with `400`:
+  the new model server fails on such a budget, and on a model serving batched
+  requests stops answering anyone until it is restarted
+  ([request fields](docs/request-fields.md#an-empty-answer-budget);
+  itd-2610030656210408).
+
 ### Fixed
 
 - **A repository HuggingFace refuses is no longer always called gated.**

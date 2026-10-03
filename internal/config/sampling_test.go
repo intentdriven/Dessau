@@ -14,9 +14,11 @@ import (
 func f64(v float64) *float64 { return &v }
 func intp(v int) *int        { return &v }
 
-// serverBounds is what mlx-lm 0.31.3 itself accepts, read off its own source
-// and recorded in
-// .abcd/development/research/notes/2026-09-06-mlx-lm-sampling-launch-flags.md:
+// serverBounds is what mlx-lm itself accepts, read off its own source and
+// recorded in
+// .abcd/development/research/notes/2026-09-06-mlx-lm-sampling-launch-flags.md
+// for 0.31.3 and re-verified for 0.32.0 in
+// .abcd/development/research/notes/2026-10-03-mlx-lm-0.32.0-reverification.md:
 // validate_model_parameters for the request check, and sample_utils for the
 // sampler's own limits.
 var serverBounds = []SamplingBound{
@@ -72,13 +74,16 @@ func TestGoRangesAreExactlyThese(t *testing.T) {
 		// smallest an MLX model ships.
 		{Field: "top_k", Min: 0, Max: 1024, HasMax: true, Integer: true, ServerDefault: 0},
 		{Field: "min_p", Min: 0, Max: 1, HasMax: true, ServerDefault: 0},
-		// The request check takes any non-negative budget. A default above any
+		// The request check takes any non-negative budget, but 0.32.0 fails on
+		// zero after accepting it — on the batched path the generation thread
+		// dies — so a default of zero would take the model away from every
+		// request that omits the parameter: the floor is 1. A default above any
 		// real context window means "generate until the model stops" on every
 		// request that omits the parameter, and it is also the value that put
 		// an integer conversion out of range. A blank budget is not the
 		// server's 512: the model is launched with its served window instead.
 		{
-			Field: "max_tokens", Min: 0, Max: MaxCompletionTokens, HasMax: true, Integer: true,
+			Field: "max_tokens", Min: 1, Max: MaxCompletionTokens, HasMax: true, Integer: true,
 			ServerDefault: 512, BlankMeans: BlankMaxTokens,
 		},
 	}
@@ -539,5 +544,23 @@ func TestMaxTokensAboveTheCeilingIsRefusedAndDropped(t *testing.T) {
 	}
 	if len(notices.All()) != 1 || !strings.Contains(notices.All()[0], "max_tokens") {
 		t.Errorf("dropped = %v, want max_tokens named", notices.All())
+	}
+}
+
+// A completion-token default of zero is refused on the settings path and
+// dropped from a hand-edited file: launched as the model server's default it
+// would ask every request that names no budget for an empty answer, which
+// mlx-lm 0.32.0 fails on (spc-2610030846273729 step 1).
+func TestAZeroCompletionBudgetIsNotADefault(t *testing.T) {
+	zero := Sampling{MaxTokens: intp(0)}
+	if err := zero.Validate(); err == nil {
+		t.Error("a max_tokens default of 0 was accepted on the settings path")
+	}
+	sane, dropped := zero.Sanitized()
+	if sane.MaxTokens != nil || len(dropped) != 1 || dropped[0] != "max_tokens" {
+		t.Errorf("Sanitized() = %+v, %v; want the zero dropped by name", sane, dropped)
+	}
+	if err := (Sampling{MaxTokens: intp(1)}).Validate(); err != nil {
+		t.Errorf("a max_tokens default of 1 was refused: %v", err)
 	}
 }

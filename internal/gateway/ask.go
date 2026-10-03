@@ -75,6 +75,10 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 		obs.failed(stats.ClassClientError)
 		return &AskError{detail: msg, public: genericRefusal}
 	}
+	if msg := emptyAnswerBudget(payload); msg != "" {
+		obs.failed(stats.ClassClientError)
+		return &AskError{detail: msg, public: genericRefusal}
+	}
 
 	model, err := g.resolveModel(req.Model)
 	if err != nil {

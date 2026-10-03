@@ -41,6 +41,7 @@ var repoIDFoldAllowList = map[string]string{
 	`if err != nil || !strings.EqualFold(mediaType, "application/json") {`:              "the pairing request's media type, which RFC 9110 makes case-insensitive; not a repo id",
 	`listed[f.Path] = strings.ToLower(h)`:                                               "a file's hex hash from the Hub's listing, lowercased as the registry records it; not a repo id",
 	`base := strings.ToLower(path.Base(p))`:                                             "a repository file's name, folded to tell a README or licence from a model file; not a repo id",
+	`if strings.HasPrefix(strings.ToUpper(kv), "OTEL_") {`:                              "an environment variable's name, matched in any case so no OpenTelemetry setting reaches a Python child; not a repo id",
 }
 
 // Every part that keys anything by a repo id must fold it through
