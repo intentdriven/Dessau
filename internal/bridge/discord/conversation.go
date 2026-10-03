@@ -3,6 +3,7 @@ package discord
 import (
 	"encoding/json"
 	"sync"
+	"unicode/utf8"
 )
 
 // maxChannels is how many conversations one bridge holds. Anyone who can
@@ -11,36 +12,35 @@ import (
 // grow the process one direct message at a time. The least recently used
 // conversation goes when the bound is reached, which for a channel nobody is
 // using means it starts afresh next time — exactly what `/reset` does.
-const maxChannels = 256
+const maxChannels = 64
 
 // maxTurns is how many turns one conversation keeps, before the window is
 // even considered. The window bound below is what actually decides what is
 // sent; this is what stops the slice itself growing without limit on a model
 // with a very large window.
-const maxTurns = 64
+const maxTurns = 32
 
-// maxMessageRunes bounds what is taken from one incoming message. Discord's
-// own ceiling is 2,000 characters for most accounts and 4,000 for some, and
-// the request is built from this text — so it is bounded here rather than
-// trusted to be whatever the platform currently allows.
-const maxMessageRunes = 8000
+// maxTurnBytes bounds one turn, in bytes: what is taken from an incoming
+// message and what is kept of an answer. Discord's own ceiling is 4,000
+// characters for the accounts allowed the most, which is 16,000 bytes at four
+// a rune, so no message Discord delivers is cut; a bound in runes would have
+// been four times this in the scripts where a rune is three or four bytes.
+const maxTurnBytes = 16 << 10
 
-// WHAT THE THREE BOUNDS ABOVE COST, SAID OUT LOUD (iss-2609190312188937).
-//
-// 256 channels × 64 turns × 8,000 runes is 131 million runes, and a rune is up
-// to four UTF-8 bytes: the ceiling is half a gibibyte of text, held for as
-// long as the bridge is on rather than until the next dropped socket, which is
-// what iss-2609190241509478 changed. It is a stranger's to drive — anyone who
-// can reach the bot may talk to it, a turn is stored before the completion is
-// asked for, so a refused request stores it too, and one guild with 256
-// channels and a mention in each reaches the bound without a model ever
-// answering. Ordinary text is one byte a rune, which puts the realistic
-// figure at 128 MiB.
-//
-// Held here as a figure rather than a change: lowering the channel count or
-// bounding the turn in bytes instead of runes are both product decisions
-// (the second falls hardest on scripts where a rune is three bytes), and the
-// record is the maintainer's to take.
+// maxStoreBytes is the one budget every channel's turns share. When a turn
+// would take the store past it, the oldest turns go first, whichever channel
+// holds them; a channel that loses every turn keeps its model.
+const maxStoreBytes = 8 << 20
+
+// WHAT THE BOUNDS ABOVE COST, SAID OUT LOUD (iss-2609190312188937, decided
+// 2026-09-20). Without the budget, 64 channels × 32 turns × 16 KiB would be
+// 32 MiB; the budget holds the turns' text to 8 MiB whatever a stranger
+// sends, a turn stored before its completion is asked for included. Each
+// conversation, map entry and turn header adds well under a kilobyte on top.
+// An ordinary channel — 32 turns of a few kilobytes — is around 100 KiB, so
+// the budget bites only when dozens of channels are busy at once, and then on
+// the oldest of what they said. The figure was 512 MiB before; the decision
+// took the tightest of the four shapes put to the maintainer.
 
 // turn is one side of a conversation.
 type turn struct {
@@ -66,16 +66,32 @@ const (
 type conversation struct {
 	answering sync.Mutex
 
+	// store is the set this conversation's bytes are counted in; nil for a
+	// conversation built on its own, and cleared when the store lets it go.
+	// Read and written under the store's lock.
+	store *conversations
+
 	mu    sync.Mutex
 	model string
 	turns []turn
+	// seqs[i] is when turns[i] was added, in the store's order, so the
+	// oldest turn across every channel can be found.
+	seqs []uint64
 }
 
 // conversations is every channel the bridge has seen while on, bounded.
+//
+// LOCK ORDER: the store's mu before any conversation's mu, never the other
+// way round. A conversation's own methods take only its mu unless they change
+// what the store counts, and then they take the store's first.
 type conversations struct {
 	mu    sync.Mutex
 	byID  map[string]*conversation
 	order []string
+	// total is the bytes of every counted turn; seq orders turns across
+	// channels.
+	total int
+	seq   uint64
 }
 
 func newConversations() *conversations {
@@ -95,9 +111,10 @@ func (c *conversations) get(channelID string) *conversation {
 	if len(c.order) >= maxChannels {
 		oldest := c.order[0]
 		c.order = c.order[1:]
+		c.releaseLocked(c.byID[oldest])
 		delete(c.byID, oldest)
 	}
-	conv := &conversation{}
+	conv := &conversation{store: c}
 	c.byID[channelID] = conv
 	c.order = append(c.order, channelID)
 	return conv
@@ -131,19 +148,146 @@ func (conv *conversation) setModel(model string) {
 // reset clears a channel's history. The model it is on is kept: `/reset` is
 // "start this conversation again", not "undo what I chose".
 func (conv *conversation) reset() {
-	conv.mu.Lock()
-	defer conv.mu.Unlock()
-	conv.turns = nil
+	unlock := conv.lockWithStore()
+	defer unlock()
+	conv.dropLocked(len(conv.turns))
 }
 
-// append adds a turn, holding the slice to maxTurns.
+// append adds a turn, cut to maxTurnBytes, holding the slice to maxTurns and
+// the store to maxStoreBytes.
 func (conv *conversation) append(t turn) {
+	t.Content = headBytes(t.Content, maxTurnBytes)
+	unlock := conv.lockWithStore()
+	defer unlock()
+	var seq uint64
+	if c := conv.store; c != nil {
+		c.seq++
+		seq = c.seq
+		c.total += len(t.Content)
+	}
+	conv.turns = append(conv.turns, t)
+	conv.seqs = append(conv.seqs, seq)
+	if over := len(conv.turns) - maxTurns; over > 0 {
+		conv.dropLocked(over)
+	}
+	if c := conv.store; c != nil {
+		c.trimLocked(conv)
+	}
+}
+
+// lockWithStore takes the store's lock, when the conversation is counted in
+// one, and then the conversation's own, in the order every path takes them.
+// The store is read under the store's lock, so a conversation the store lets
+// go meanwhile is seen as gone.
+func (conv *conversation) lockWithStore() (unlock func()) {
+	for {
+		c := conv.storeRef()
+		if c == nil {
+			conv.mu.Lock()
+			return conv.mu.Unlock
+		}
+		c.mu.Lock()
+		if conv.store != c {
+			c.mu.Unlock()
+			continue
+		}
+		conv.mu.Lock()
+		return func() { conv.mu.Unlock(); c.mu.Unlock() }
+	}
+}
+
+// storeRef reads the store pointer without the store's lock, as a hint
+// lockWithStore then confirms under it.
+func (conv *conversation) storeRef() *conversations {
 	conv.mu.Lock()
 	defer conv.mu.Unlock()
-	conv.turns = append(conv.turns, t)
-	if len(conv.turns) > maxTurns {
-		conv.turns = append([]turn(nil), conv.turns[len(conv.turns)-maxTurns:]...)
+	return conv.store
+}
+
+// dropLocked removes the oldest n turns and gives their bytes back. Both
+// locks are held, or only the conversation's when it has no store.
+func (conv *conversation) dropLocked(n int) {
+	if n <= 0 {
+		return
 	}
+	if c := conv.store; c != nil {
+		for _, t := range conv.turns[:n] {
+			c.total -= len(t.Content)
+		}
+	}
+	conv.turns = append([]turn(nil), conv.turns[n:]...)
+	conv.seqs = append([]uint64(nil), conv.seqs[n:]...)
+}
+
+// trimLocked drops the oldest turns across every channel until the store is
+// within its budget. mu is held, and so is the lock of held, the
+// conversation that just grew; every other conversation's is taken here, in
+// the store-first order. The newest turn is never dropped: it is at most
+// maxTurnBytes, which is far below the budget.
+func (c *conversations) trimLocked(held *conversation) {
+	for c.total > maxStoreBytes {
+		var oldest *conversation
+		var at uint64
+		for _, conv := range c.byID {
+			if conv != held {
+				conv.mu.Lock()
+			}
+			if len(conv.seqs) > 0 && (oldest == nil || conv.seqs[0] < at) {
+				oldest, at = conv, conv.seqs[0]
+			}
+			if conv != held {
+				conv.mu.Unlock()
+			}
+		}
+		if oldest == nil {
+			return
+		}
+		if oldest != held {
+			oldest.mu.Lock()
+		}
+		oldest.dropLocked(1)
+		if oldest != held {
+			oldest.mu.Unlock()
+		}
+	}
+}
+
+// releaseLocked lets a conversation go from the store: its bytes are no
+// longer counted, and an answer still holding it appends to it uncounted,
+// bounded by maxTurns and the answers in flight. mu is held.
+func (c *conversations) releaseLocked(conv *conversation) {
+	if conv == nil {
+		return
+	}
+	conv.mu.Lock()
+	for _, t := range conv.turns {
+		c.total -= len(t.Content)
+	}
+	conv.store = nil
+	conv.mu.Unlock()
+}
+
+// bytes is the store's running total of counted turn text.
+func (c *conversations) bytes() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.total
+}
+
+// counted adds up every counted turn afresh, for a test to hold the running
+// total to.
+func (c *conversations) counted() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, conv := range c.byID {
+		conv.mu.Lock()
+		for _, t := range conv.turns {
+			n += len(t.Content)
+		}
+		conv.mu.Unlock()
+	}
+	return n
 }
 
 // history is a copy of the turns, safe to build a request from while another
@@ -236,6 +380,22 @@ func tailRunes(s string, n int) string {
 		return s
 	}
 	return string(r[len(r)-n:])
+}
+
+// headBytes keeps as much of the start of s as fits in n bytes, cutting on a
+// rune boundary so the result is still text.
+func headBytes(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(s) <= n {
+		return s
+	}
+	cut := n
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }
 
 // headRunes keeps the first n runes of s.

@@ -83,6 +83,14 @@ GitHub release notes.
 
 ### Fixed
 
+- **The Discord bridge holds at most 8 MiB of conversation.**
+  `impact: fix`. Its limits were counted in characters and channels, so
+  anyone who could reach the bot could make it hold half a gigabyte of text
+  for as long as the bridge was on. A turn is now bounded in bytes (16 KiB,
+  which every message Discord delivers fits), the bridge keeps 64
+  conversations of 32 turns rather than 256 of 64, and all of them share one
+  8 MiB budget, with the oldest turns going first
+  ([Discord bridge](docs/discord-bridge.md); iss-2609190312188937).
 - **A start keeps an old version left aside whenever the rescan would refuse
   the model's folder.** `impact: fix`. The start judged the folder with a
   looser check than the rescan's, so a folder holding a part file from an
