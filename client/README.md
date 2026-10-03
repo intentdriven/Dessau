@@ -76,11 +76,11 @@ Apple Silicon `dist/DessauChat.app`.
    each model; the rule is yours to change under **Models to offer** in
    Settings. The Mac's own model is not a served model and is always offered.
 
-   The picker also shows which of a Dessau Server's models keep no transcript:
-   a pencil beside a model means a conversation with it is written down on the
-   Mac that runs the server, a struck-through pencil means it is not, and a
-   server that does not say gets no icon. The Mac's own model reaches no server
-   and carries none.
+   The picker also shows whether a conversation with each of a Dessau Server's
+   models is written down on the Mac that runs the server: a struck-through
+   pencil means it is not, which is every model, since Dessau keeps no
+   transcript; a server that does not say gets no icon. The Mac's own model
+   reaches no server and carries none.
 
 Settings also offers the appearance (Light, Dark or System), the text size
 — five steps, the system's own, and the whole window follows; Default sets

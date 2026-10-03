@@ -42,7 +42,7 @@ function debugArmedFor(m, debugArmed) {
   return (debugArmed || []).some((id) => foldRepoID(id) === want);
 }
 
-// noTranscriptFor says whether a model is excepted from the transcript
+// noTranscriptFor says whether a model is marked as keeping no transcript
 // (itd-2609091715089488): the per-model map read folded, the way every
 // other join on a repo id in this panel is, so an exception set under
 // another spelling than the registry's still bites. Any spelling that
@@ -1537,8 +1537,8 @@ function checkedPinModels() {
   return pinBoxes().filter((cb) => cb.checked).map((cb) => cb.dataset.model);
 }
 
-// renderTranscriptSwitches draws one box per model the exception can be
-// removed from: every model on this Mac, and every excepted model this Mac
+// renderTranscriptSwitches draws one box per model the mark can be set on
+// or cleared from: every model on this Mac, and every marked model this Mac
 // does not have (transcriptRows). Ticked means the model keeps no
 // transcript.
 function renderTranscriptSwitches() {

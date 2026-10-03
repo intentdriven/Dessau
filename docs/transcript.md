@@ -1,4 +1,4 @@
-# Keep some models out of the transcript
+# Mark a model as one that keeps no transcript
 
 Dessau keeps no transcript: nothing any model is asked and nothing it
 answers is written down on the Mac that runs the server, and every client is
