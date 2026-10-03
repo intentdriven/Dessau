@@ -52,7 +52,9 @@ func (s toolProbeSources) Resident(repoID string) (bool, int) {
 func (s toolProbeSources) Acquire(ctx context.Context, repoID string) (toolprobe.Upstream, func(), error) {
 	poolCtx := runtime.WithResidentOnly(runtime.WithSoftHold(runtime.WithSource(ctx, toolProbeSource), selftest.YieldFrom(ctx)))
 	up, release, err := s.a.Pool.Acquire(poolCtx, repoID)
-	if errors.Is(err, runtime.ErrNotResident) {
+	// A model being updated is as good as gone: the new version is probed
+	// at its own first serve.
+	if errors.Is(err, runtime.ErrNotResident) || errors.Is(err, runtime.ErrUpdating) {
 		return toolprobe.Upstream{}, nil, toolprobe.ErrGone
 	}
 	if err != nil {

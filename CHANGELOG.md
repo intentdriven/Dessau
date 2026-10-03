@@ -92,6 +92,13 @@ GitHub release notes.
   the model's vocabulary. A `max_tokens` too large to hold now counts against
   the served window instead of skipping it
   ([request fields](docs/request-fields.md#sampling-values-the-model-server-would-fail-on)).
+- **An update lands on a model in steady use.** `impact: fix`. The swap
+  waited up to two minutes for the model to fall idle, and under overlapping
+  requests it never did, so the update was abandoned and its download thrown
+  away. While the swap waits, a new request for that model is now refused
+  with `503`, saying it is being updated, so the requests in flight finish and
+  the swap goes ahead ([model updates](docs/model-updates.md);
+  iss-2610031317470004).
 - **An update no longer fails while the runtime is still being installed.**
   `impact: fix`. A newer version was held to the whole check a model has
   before it starts, which needs the runtime, so on a fresh install every
