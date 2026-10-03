@@ -83,6 +83,12 @@ GitHub release notes.
 
 ### Fixed
 
+- **The Discord bot shows as typing while a message waits its turn.**
+  `impact: fix`. The indicator went up only when one of the bridge's two
+  answering slots took the message, so a message sent while both were busy
+  showed nothing until one freed. It now goes up when the message is taken,
+  and stays up while it waits ([Discord bridge](docs/discord-bridge.md);
+  iss-2609190242078205).
 - **A start keeps an old version left aside whenever the rescan would refuse
   the model's folder.** `impact: fix`. The start judged the folder with a
   looser check than the rescan's, so a folder holding a part file from an

@@ -79,13 +79,23 @@ func (s *session) onMessage(ctx context.Context, data json.RawMessage) {
 		return
 	}
 	conv := s.convos.get(msg.ChannelID)
-	queued := s.submit(func() { s.answer(ctx, conv, msg, text) })
+	// Typing goes up when the message is admitted, not when a worker takes it,
+	// and is re-sent while it waits: a message queued behind busy workers is
+	// acknowledged within the two seconds itd-2609180959397172 promises (the
+	// 2026-09-20 decision on iss-2609190242078205). The answer stops it, on
+	// every path out. A dropped message shows nothing, because nothing is
+	// coming. Bounded by the queue: one indicator per admitted message.
+	typingCtx, stopTyping := context.WithCancel(ctx)
+	queued := s.submit(func() { s.answer(ctx, conv, msg, text, stopTyping) })
 	if !queued {
+		stopTyping()
 		// Said once, with nothing of the message in it. A channel busy enough
 		// to fill the queue is the one case an operator would want to see.
 		s.bridge.log.Info("dropped a bridged message: too many are already being answered",
 			"bridge", bridgeName, "channel", numericID(msg.ChannelID))
+		return
 	}
+	go showTyping(typingCtx, s.rest, msg.ChannelID)
 }
 
 // mentions reports whether Discord itself resolved a mention of this bot.
@@ -132,10 +142,14 @@ func numericID(id string) uint64 {
 	return n
 }
 
-// answer runs one bridged request end to end: the typing indicator, the
-// request through the gateway's own path, the placeholder filling in, and the
-// one log line that says it happened.
-func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, text string) {
+// answer runs one bridged request end to end: the request through the
+// gateway's own path, the placeholder filling in, and the one log line that
+// says it happened.
+//
+// stopTyping ends the typing indicator admission put up; it is called on
+// every way out, and at the first token.
+func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, text string, stopTyping context.CancelFunc) {
+	defer stopTyping()
 	// One answer at a time per channel, and a channel that is already being
 	// answered is recognised rather than waited on.
 	//
@@ -181,8 +195,6 @@ func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, 
 	}
 
 	ed := newEditor(s.rest, msg.ChannelID, msg.ID, s.bridge.now)
-	typingCtx, stopTyping := context.WithCancel(ctx)
-	go ed.showTyping(typingCtx, s.rest)
 
 	started := time.Now()
 	var answer string
