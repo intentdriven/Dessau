@@ -1134,8 +1134,11 @@ func TestModelsListReferenceDocumentsEveryFieldServed(t *testing.T) {
 		// are in the set the page is held to.
 		// Carrying a category and a current measurement, so the fields a
 		// model with each is served are in the set the page is held to.
+		// And labelled as a quantised build of another model, with a
+		// declared precision and a size, so the build fields are in it too.
 		{RepoID: "org/m", State: registry.StateReady, ContextLength: 131072,
-			PipelineTag: "text-generation", Tags: []string{"mlx", "conversational"},
+			PipelineTag: "text-generation", Tags: []string{"mlx", "conversational", "base_model:quantized:org/base"},
+			QuantizationBits: 4, Bytes: 1 << 30,
 			Measured: &registry.Measurement{Window: 91000, Bound: registry.BoundModel, Runtime: "0.31.3"}},
 	}}
 	g := New(Options{Config: config.Default(), Pool: &stubPool{srv: fake}, Models: models})

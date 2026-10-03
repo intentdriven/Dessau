@@ -102,6 +102,11 @@ type Model struct {
 	// context length, and never a value the Hub supplies
 	// (iss-2609202237468921).
 	ChatTemplate bool `json:"chat_template,omitempty"`
+	// QuantizationBits is the precision the model's own configuration
+	// declares, or zero for a model that declares none. A fact about the
+	// directory, re-derived at every rescan like the context length
+	// (itd-2610030932551549).
+	QuantizationBits int `json:"quantization_bits,omitempty"`
 	// Measured is what the context probe found for this model on this Mac,
 	// or nil while nothing has been measured. It is a fact about these files
 	// on this machine: a re-download's Put carries none, so the figure goes
@@ -236,6 +241,34 @@ func hubTagRune(b byte) bool {
 // served is bounded by the same figure and two ceilings for one quantity is
 // how a served window comes to be accepted that a declared one is not.
 const MaxContextLength = config.MaxContextLength
+
+// buildOfTag is the prefix of the Hub tag that says a repository is a
+// quantised build of another: "base_model:quantized:<origin>".
+const buildOfTag = "base_model:quantized:"
+
+// BuildOf is the model HuggingFace names as this one's origin, folded by
+// config.FoldRepoID, when the model's own tags say exactly once that it is a
+// quantised build of it; "" otherwise (itd-2610030932551549). Nothing is read
+// from the model's name: a repository the Hub does not label stands on its
+// own. Tags that name one origin in two spellings name one origin.
+func (m Model) BuildOf() string {
+	origin := ""
+	for _, tag := range m.Tags {
+		rest, ok := strings.CutPrefix(tag, buildOfTag)
+		if !ok {
+			continue
+		}
+		if !config.ValidRepoID(rest) {
+			return ""
+		}
+		folded := config.FoldRepoID(rest)
+		if origin != "" && origin != folded {
+			return ""
+		}
+		origin = folded
+	}
+	return origin
+}
 
 // Ready reports whether the model can be served.
 func (m Model) Ready() bool { return m.State == StateReady }
@@ -742,6 +775,7 @@ func (r *Registry) Rescan(modelsDir string) error {
 				ContextLength:    facts.ContextLength,
 				KVChargePerToken: facts.KVChargePerToken,
 				ChatTemplate:     facts.ChatTemplate,
+				QuantizationBits: facts.QuantizationBits,
 				State:            StateReady,
 				AddedAt:          time.Now(),
 			}
@@ -765,6 +799,7 @@ func (r *Registry) Rescan(modelsDir string) error {
 			existing.ContextLength = m.ContextLength
 			existing.KVChargePerToken = m.KVChargePerToken
 			existing.ChatTemplate = m.ChatTemplate
+			existing.QuantizationBits = m.QuantizationBits
 			// The category is deliberately NOT re-derived. It is the Hub's
 			// word, fetched when the model was downloaded, and nothing in the
 			// directory can tell us it again — so a rescan that assigned it,
@@ -897,6 +932,7 @@ type ModelFacts struct {
 	ContextLength    int64
 	KVChargePerToken int64
 	ChatTemplate     bool
+	QuantizationBits int
 }
 
 // ReadModelFacts reads both figures out of the model configuration in dir, in
@@ -919,7 +955,30 @@ func factsFrom(dir string, cfg map[string]any) ModelFacts {
 		ContextLength:    contextLengthFrom(cfg),
 		KVChargePerToken: kvChargePerTokenFrom(cfg),
 		ChatTemplate:     hasChatTemplate(dir),
+		QuantizationBits: quantizationBitsFrom(cfg),
 	}
+}
+
+// quantizationBitsFrom is the precision a quantised model's own configuration
+// declares: the top-level "bits" of the quantization block mlx-lm writes
+// ("quantization", or "quantization_config" in conversions that keep the
+// transformers spelling). Zero when there is none, or when it is not a whole
+// number from 1 to 16 — a figure published to clients is held to what a
+// precision can be, as the context length is. A per-layer override does not
+// change the model's declared precision and is not read.
+func quantizationBitsFrom(cfg map[string]any) int {
+	for _, key := range []string{"quantization", "quantization_config"} {
+		q, ok := cfg[key].(map[string]any)
+		if !ok {
+			continue
+		}
+		bits, ok := q["bits"].(float64)
+		if !ok || bits != float64(int(bits)) || bits < 1 || bits > 16 {
+			return 0
+		}
+		return int(bits)
+	}
+	return 0
 }
 
 // hasChatTemplate reports whether dir carries a chat template: a non-empty
