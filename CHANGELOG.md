@@ -89,6 +89,12 @@ GitHub release notes.
 
 ### Fixed
 
+- **Ticking a model's transcript box takes it off the debug-logging list.**
+  `impact: fix`. The panel and the transcript page said so, but a save left an
+  arming made before the box was ticked in place, so the model still launched
+  at debug and wrote every prompt and answer to its log. A save that marks a
+  model as keeping no transcript now disarms it ([transcript](docs/transcript.md);
+  iss-2610032212269524).
 - **A start keeps an old version left aside whenever the rescan would refuse
   the model's folder.** `impact: fix`. The start judged the folder with a
   looser check than the rescan's, so a folder holding a part file from an
