@@ -180,6 +180,13 @@ from the answer before relaying it when the client did not ask for it. A
 client that did ask keeps it. Either way, what the client receives is the
 stream it would have received anyway.
 
+A request that asks for no stream is streamed from the model server whether
+recording is on or not, with the counts asked for, and is answered as the one
+object it asked for — see
+[what Dessau changes in a request](request-fields.md#what-dessau-changes-in-a-request-it-passes-on).
+It is recorded as unstreamed, with no time to first token, because the client
+hears nothing until the whole answer is in.
+
 ## The three states, and why they are three
 
 Recording is one of three separate states, and no two of them share a switch:

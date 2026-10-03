@@ -1,8 +1,9 @@
 # Reference: fields a completion request may not carry
 
 `POST /v1/chat/completions` and `POST /v1/completions` pass a request's body on
-to the model server. Two fields are refused instead, and a request carrying
-either goes no further.
+to the model server, changing only the fields listed under
+[What Dessau changes in a request it passes on](#what-dessau-changes-in-a-request-it-passes-on).
+Two fields are refused instead, and a request carrying either goes no further.
 
 ## The refused fields
 
@@ -47,3 +48,39 @@ The request is refused before a model is chosen: no model is loaded and none
 is evicted for it, the model server never receives it, and the answer carries
 none of the [response headers](response-headers.md). Every client receives
 the same message, with or without the API key.
+
+## What Dessau changes in a request it passes on
+
+| Field | When | What the model server receives |
+| --- | --- | --- |
+| `model` | every request | the model server's own name for the model; the answer carries the name the request sent |
+| `stream`, `stream_options` | `stream` is absent or `false`, and the request asks for neither `logprobs` nor `top_logprobs` | `"stream": true` and `"stream_options": {"include_usage": true}`, in place of any `stream_options` the request carried; the answer is assembled, as below |
+| `stream_options` | `stream` is `true` and [request statistics](request-statistics.md#what-dessau-asks-the-model-server-for) are on | `include_usage` set inside it; the extra chunk is removed from the answer unless the request asked for it |
+| the system messages | a chat request to a model with [Merge system messages](system-message-merging.md) switched on | the system messages gathered into the first one |
+
+### A request that asks for no stream
+
+The model server sends nothing of an unstreamed answer, not even its status,
+until the whole answer is written, and while it writes one it does not notice
+a client that has gone. Dessau therefore asks it for a stream and returns the
+answer as the one JSON object the request asked for, built field for field as
+the model server builds its unstreamed answer: the same `id`, `object`
+(`chat.completion` or `text_completion`), `created`, `system_fingerprint` and
+`model`; each choice's `index`, `finish_reason`, and its `message` — `role`,
+`content`, `reasoning` and `tool_calls` — or its `text`; and the `usage`
+counts with their `prompt_tokens_details`.
+
+What follows from it:
+
+- The [wait for the model server](getting-started.md#upstream_header_timeout_sec--how-long-a-model-may-take-to-start-answering)
+  ends when the model server starts answering, so a long answer is not cut
+  off by it.
+- A client that hangs up stops the answer being generated.
+- An answer the model server stops part-way through is a **502** with an
+  error message, never part of an object.
+- An answer larger than 64 MiB is a **502** whose message says to ask for it
+  streamed.
+
+A request that asks for `logprobs` or `top_logprobs` is passed on unstreamed
+as it came, because the model server returns those only in an unstreamed
+answer. For it, the wait covers the whole answer.
