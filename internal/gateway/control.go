@@ -105,6 +105,10 @@ type Control struct {
 	// appear in the body. The reload_models list has the same staleness: it
 	// compares the incoming settings against that snapshot.
 	//
+	// It also orders the debug-logging arm against a save: handleDebugLog
+	// checks the transcript mark and arms under it, so an arm and a save that
+	// marks the same model cannot interleave (iss-2610032221548858).
+	//
 	// This handler is the only caller of SetConfig there is, so serialising it
 	// here serialises every settings write. It is held across SetConfig, which
 	// takes App's own save lock inside it; nothing taken under that lock
@@ -1593,9 +1597,10 @@ func decodeDebugLogRequest(w http.ResponseWriter, r *http.Request) (debugLogRequ
 // pool so that its NEXT launch runs at the model server's debug level, at
 // which the server's own log holds every request sent to it and every answer
 // it produced; it touches no running process, and it is spent by the launch
-// that carries it. It is an action and not a setting: nothing here reads or
-// writes the configuration, and the mark is derived from nothing but this
-// request.
+// that carries it. It is an action and not a setting: nothing here writes
+// the configuration, and the mark is derived from nothing but this request.
+// The configuration is read once, for the transcript mark below, under the
+// settings lock so a save that marks the model is ordered against the arm.
 //
 // A model carrying the transcript exception (itd-2609091715089488) — a model
 // promised that no prompt of its is ever written down — refuses the arm with
