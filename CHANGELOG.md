@@ -89,6 +89,11 @@ GitHub release notes.
 
 ### Fixed
 
+- **A failed update is on the model's card as soon as the update stops.**
+  `impact: fix`. The reason was written a moment after the update stopped
+  counting as a download, so the panel could draw the card in between with
+  nothing said about the failure until its next refresh
+  (iss-2610040756460648).
 - **The Discord bridge holds at most 8 MiB of conversation.**
   `impact: fix`. Its limits were counted in characters and channels, so
   anyone who could reach the bot could make it hold half a gigabyte of text
