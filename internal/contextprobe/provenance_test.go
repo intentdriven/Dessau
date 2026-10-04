@@ -24,8 +24,14 @@ func lowerServed(src *fakeSources, gw *fakeGateway, window int64) {
 // sweptPast reports whether the gateway has seen a step of at least size
 // tokens.
 func sweptPast(gw *fakeGateway, size int) func() bool {
+	return sweptPastSince(gw, 0, size)
+}
+
+// sweptPastSince is sweptPast counting only the steps from the from'th on.
+func sweptPastSince(gw *fakeGateway, from, size int) func() bool {
 	return func() bool {
-		for _, s := range gw.seen() {
+		seen := gw.seen()
+		for _, s := range seen[min(from, len(seen)):] {
 			if len(s) > size*4 {
 				return true
 			}
@@ -66,12 +72,24 @@ func TestAResumedProbeDropsBoundsMadeUnderAnotherProvenance(t *testing.T) {
 	if src.result("org/m") != nil {
 		t.Fatal("a yielded probe wrote a figure")
 	}
+	// The yielded step's handler may still be reading its prompt; the steps
+	// counted from here on are the resumed run's alone.
+	waitFor(t, "the gateway to finish the yielded step", func() bool { return gw.active() == 0 })
 	lowerServed(src, gw, 8192)
+	from := len(gw.seen())
 	pool.mu.Lock()
 	delete(pool.inFlight, "org/other")
 	pool.mu.Unlock()
 	waitFor(t, "a measurement after resuming", func() bool { return src.result("org/m") != nil })
 	assertHeldUnder(t, src.result("org/m"), 8192)
+	// The resume itself starts over: no step after the move is sized from
+	// the old bounds. Without the check on resume, the check before saving
+	// would still throw the figure away and a fresh run save a right one, so
+	// only the steps show that the resume did not bisect between bounds the
+	// settings in force do not serve.
+	if sweptPastSince(gw, from, 8192)() {
+		t.Error("the resumed run sent a step above the served window in force: it resumed from bounds made under the old one")
+	}
 }
 
 // The same move inside one run, with no yield between: the bounds were made

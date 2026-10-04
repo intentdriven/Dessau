@@ -34,6 +34,8 @@ type fakeGateway struct {
 	prompts  []string
 	requests int
 	auth     string
+	// inside counts the requests a handler is still serving.
+	inside int
 }
 
 func newFakeGateway(t *testing.T, accept int64, above int) *fakeGateway {
@@ -45,6 +47,14 @@ func newFakeGateway(t *testing.T, accept int64, above int) *fakeGateway {
 }
 
 func (g *fakeGateway) handle(w http.ResponseWriter, r *http.Request) {
+	g.mu.Lock()
+	g.inside++
+	g.mu.Unlock()
+	defer func() {
+		g.mu.Lock()
+		g.inside--
+		g.mu.Unlock()
+	}()
 	var body struct {
 		Messages []struct {
 			Content string `json:"content"`
@@ -76,6 +86,13 @@ func (g *fakeGateway) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"usage": map[string]any{"prompt_tokens": tokens}})
+}
+
+// active is how many requests a handler is still serving.
+func (g *fakeGateway) active() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.inside
 }
 
 func (g *fakeGateway) seen() []string {
