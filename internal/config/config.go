@@ -631,6 +631,25 @@ func (c Config) NoTranscript(repoID string) bool {
 	return false
 }
 
+// MergeSystemMessages reports whether the model's system messages are merged
+// into one, read the way every per-model setting is: folded, so a setting
+// stored under another spelling of the model's id than the registry's still
+// applies (iss-2609201015464436). Any spelling that carries it wins, as for
+// NoTranscript; two spellings of one id cannot both reach here from the
+// file or a save, which drop and refuse them, so the choice is moot.
+func (c Config) MergeSystemMessages(repoID string) bool {
+	if c.Models[repoID].MergeSystemMessages {
+		return true
+	}
+	folded := FoldRepoID(repoID)
+	for id, ms := range c.Models {
+		if ms.MergeSystemMessages && FoldRepoID(id) == folded {
+			return true
+		}
+	}
+	return false
+}
+
 // Clone returns a copy that shares no pointer with the original — the sampling
 // override's fields are pointers, because a blank field and a zero are
 // different answers.

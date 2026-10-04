@@ -57,7 +57,15 @@ type Candidate struct {
 	// Incomplete says an earlier probe was interrupted; the probe does not
 	// retry it on its own.
 	Incomplete bool
+	// Pinned says the model is pinned. The probe stops its model before
+	// every step, and a pin promises nothing does, so a pinned model is not
+	// measured (iss-2609211754251373).
+	Pinned bool
 }
+
+// ErrPinned is Sources.Unload's refusal for a pinned model: the probe never
+// stops one, whatever its own run needs.
+var ErrPinned = errors.New("the model is pinned, and the context probe never stops a pinned model")
 
 // Sources is what the probe needs from the app.
 type Sources interface {
@@ -68,7 +76,8 @@ type Sources interface {
 	// Available is how many bytes the memory budget has free right now.
 	Available() int64
 	// Unload stops a model server; runtime.ErrBusy when a request is in
-	// flight on it, runtime.ErrNotLoaded when it is not resident.
+	// flight on it, runtime.ErrNotLoaded when it is not resident, ErrPinned
+	// when it is pinned.
 	Unload(repoID string) error
 	// Save records a completed measurement on the model.
 	Save(repoID string, m *registry.Measurement) error
@@ -277,14 +286,17 @@ func (p *Probe) Due(ready []string, now time.Time) string {
 	if gen == p.queueGen {
 		kept := p.queue[:0]
 		for _, q := range p.queue {
-			if _, ok := byKey[config.FoldRepoID(q)]; ok {
+			// A pinned model is dropped too: the probe never stops one, so
+			// it cannot be measured until it is unpinned
+			// (iss-2609211754251373).
+			if c, ok := byKey[config.FoldRepoID(q)]; ok && !c.Pinned {
 				kept = append(kept, q)
 			}
 		}
 		p.queue = kept
 	}
 	for _, q := range p.queue {
-		if c, ok := byKey[config.FoldRepoID(q)]; ok && isReady[config.FoldRepoID(q)] && c.Declared > 0 {
+		if c, ok := byKey[config.FoldRepoID(q)]; ok && isReady[config.FoldRepoID(q)] && c.Declared > 0 && !c.Pinned {
 			return c.RepoID
 		}
 	}
@@ -293,7 +305,7 @@ func (p *Probe) Due(ready []string, now time.Time) string {
 	}
 	for _, id := range ready {
 		c, ok := byKey[config.FoldRepoID(id)]
-		if !ok || c.Declared <= 0 || c.Incomplete {
+		if !ok || c.Declared <= 0 || c.Incomplete || c.Pinned {
 			continue
 		}
 		if c.Measured != nil && c.Measured.Stale == "" {
@@ -317,6 +329,9 @@ const (
 	// gateway's size bounds — a key refused, a model not found — from which
 	// no figure can be drawn and no retry helps.
 	stepAborted
+	// stepPinned is a pin met at the unload before a step: the probe never
+	// stops a pinned model, so the run stops there.
+	stepPinned
 )
 
 // Run implements selftest.Job: one probe of the model, resumed from its
@@ -367,6 +382,12 @@ func (p *Probe) Run(s *selftest.Session, model string) {
 			p.unloadWaiting(context.Background(), model)
 			_ = p.opts.Sources.MarkIncomplete(model, true)
 			p.opts.Log.Info("context probe interrupted", "model", model)
+		case stepPinned:
+			// Bounds kept and not marked incomplete: once the model is
+			// unpinned the run resumes from them. Dequeued, so the idle loop
+			// is not held on a model it may not touch.
+			p.dequeue(model)
+			p.opts.Log.Info("context probe stopped: the model is pinned, and a pinned model is never stopped between steps; unpin it to measure it", "model", model)
 		case stepAborted:
 			// An answer no figure can be drawn from; not retried on its own.
 			p.mu.Lock()
@@ -481,21 +502,24 @@ func (p *Probe) dequeue(model string) {
 // cancel finds the probe's own request still in flight. It retries for
 // UnloadWait; an ErrBusy that outlasts that is a client's request, and the
 // model is left to it. It reports whether the model was stopped or was not
-// loaded, which is what a step's reading depends on.
-func (p *Probe) unloadWaiting(ctx context.Context, model string) bool {
+// loaded, which is what a step's reading depends on, and whether it was
+// refused because the model is pinned, which is never retried.
+func (p *Probe) unloadWaiting(ctx context.Context, model string) (stopped, pinned bool) {
 	deadline := time.Now().Add(p.opts.UnloadWait)
 	for {
 		err := p.opts.Sources.Unload(model)
 		switch {
 		case err == nil, errors.Is(err, runtime.ErrNotLoaded):
-			return true
+			return true, false
+		case errors.Is(err, ErrPinned):
+			return false, true
 		case !errors.Is(err, runtime.ErrBusy):
 			p.opts.Log.Debug("context probe: could not unload", "model", model, "err", err)
-			return false
+			return false, false
 		}
 		if time.Now().After(deadline) {
 			p.opts.Log.Debug("context probe: the model stayed busy; a client has it", "model", model)
-			return false
+			return false, false
 		}
 		select {
 		case <-time.After(50 * time.Millisecond):
@@ -525,8 +549,13 @@ func (p *Probe) step(s *selftest.Session, c Candidate, b *bounds, size int64) (s
 		return p.cancelled(s), stepResult{}
 	}
 	// Unload before every step. A model that stays busy is a client's: that
-	// is a yield, and there is no reading to discard yet.
-	if !p.unloadWaiting(s.Ctx, c.RepoID) {
+	// is a yield, and there is no reading to discard yet. A pinned one is
+	// never stopped, so the run ends here.
+	stopped, pinned := p.unloadWaiting(s.Ctx, c.RepoID)
+	if pinned {
+		return stepPinned, stepResult{}
+	}
+	if !stopped {
 		return stepYielded, stepResult{}
 	}
 	// The stopped server hands its memory back over the pool's stop bound,

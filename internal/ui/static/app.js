@@ -53,6 +53,15 @@ function noTranscriptFor(perModel, repoID) {
     foldRepoID(id) === want && !!(perModel[id] && perModel[id].no_transcript));
 }
 
+// mergeFor says whether a model's system messages are merged, read folded as
+// Config.MergeSystemMessages reads it on the server, so the box shows what the
+// gateway does whichever spelling the setting is stored under.
+function mergeFor(perModel, repoID) {
+  const want = foldRepoID(repoID);
+  return Object.keys(perModel || {}).some((id) =>
+    foldRepoID(id) === want && !!(perModel[id] && perModel[id].merge_system_messages));
+}
+
 // transcriptState is whether a conversation with a model is written to a
 // transcript, and the words for it. Dessau keeps no transcript, so no model
 // is recorded — the value /v1/models publishes per entry as `recording` —
@@ -1804,7 +1813,7 @@ function renderMergeSwitches() {
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.dataset.model = m.repo_id;
-    cb.checked = !!(per[m.repo_id] && per[m.repo_id].merge_system_messages);
+    cb.checked = mergeFor(per, m.repo_id);
     cb.addEventListener('change', () => { settingsTouched = true; });
     const name = document.createElement('span');
     name.textContent = m.repo_id;

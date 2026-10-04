@@ -9,6 +9,10 @@ found_during: "adversarial security review of the conversation-store change"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/bridge/discord/bridge.go"
+resolution: "Apply treats a closed run handle as not running, so saving the same settings restarts a bridge Discord stopped; TestSavingTheSameSettingsRestartsABridgeDiscordStopped watched to fail first."
+impact: fix
+resolved_by:
+  commit: "822e2e5"
 ---
 
 A Discord bridge that Discord stopped cannot be started again by saving the same settings. Apply in internal/bridge/discord/bridge.go returns early when the switch, the token and the session handle are unchanged — 'already running under exactly these settings' — but the handle is a closed channel rather than nil after the run loop exits on a fatal close code, so the bridge is stopped and the early return still fires. For a refused token that is the right outcome, since the same token will be refused again; for a READY over the read limit or a 4010-4013 the operator has nothing to change and must toggle the switch off and on to try at all. Pre-existing, and found while reviewing the conversation store's lifetime rather than by a report.

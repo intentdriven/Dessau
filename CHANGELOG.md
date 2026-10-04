@@ -89,6 +89,48 @@ GitHub release notes.
 
 ### Fixed
 
+- **The Discord bridge holds at most 8 MiB of conversation.**
+  `impact: fix`. Its limits were counted in characters and channels, so
+  anyone who could reach the bot could make it hold half a gigabyte of text
+  for as long as the bridge was on. A turn is now bounded in bytes (16 KiB,
+  which every message Discord delivers fits), the bridge keeps 64
+  conversations of 32 turns rather than 256 of 64, and all of them share one
+  8 MiB budget, with the oldest turns going first
+  ([Discord bridge](docs/discord-bridge.md); iss-2609190312188937).
+- **The Discord bot shows as typing while a message waits its turn.**
+  `impact: fix`. The indicator went up only when one of the bridge's two
+  answering slots took the message, so a message sent while both were busy
+  showed nothing until one freed. It now goes up when the message is taken,
+  and stays up while it waits ([Discord bridge](docs/discord-bridge.md);
+  iss-2609190242078205).
+- **Saving the settings restarts a Discord bridge that Discord stopped.**
+  `impact: fix`. After Discord closed the connection for good, saving the
+  same switch and token did nothing, because the bridge still counted as
+  running under them, and the only way to try again was to switch the bridge
+  off and on. The save is now the restart
+  ([Discord bridge](docs/discord-bridge.md); iss-2609190312326963).
+- **The context probe no longer unloads a pinned model.** `impact: fix`.
+  The probe unloads the model it measures before every step, and that unload
+  ignored pins, so measuring a pinned model took it out of memory. A pinned
+  model is now never picked, **Measure now** on its card says why, and a model
+  pinned mid-measurement has its measurement stopped at the next step, keeping
+  what it has verified
+  ([context probe](docs/context-probe.md#which-models-it-measures);
+  iss-2609211754251373).
+- **The tool-call probe no longer waits on a load somebody else started.**
+  `impact: fix`. The probe only ever uses a model that is already loaded;
+  when it arrived while another request was loading that model, it waited
+  out the whole load, up to the start-up timeout, instead of passing the
+  model by. It now passes it by at once, and the load goes on for the
+  request that started it (iss-2609202010357676).
+- **Merge system messages applies whichever way the model's id is spelled.**
+  `impact: fix`. The gateway, the Discord bridge and the panel's box read the
+  setting by the model's exact id, so a setting kept under another spelling,
+  such as `ORG/Model` against `org/model`, could be missed and the messages
+  sent unmerged. Dessau moves saved settings onto the registry's spelling, so
+  this was rare. The setting is now read folded, like every other per-model
+  setting ([system-message merging](docs/system-message-merging.md);
+  iss-2609201015464436).
 - **Ticking a model's transcript box takes it off the debug-logging list.**
   `impact: fix`. The panel and the transcript page said so, but a save left an
   arming made before the box was ticked in place, so the model still launched
