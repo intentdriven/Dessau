@@ -664,12 +664,19 @@ const maxResponseBody = 64 << 20
 // change. A real chunk is a few hundred bytes.
 const maxStreamLine = maxResponseBody
 
-// bodyReadTimeout bounds how long a client may take to send its request body.
+// BodyReadTimeout bounds how long a client may take to send its request body.
 // The server has no WriteTimeout (a generation legitimately streams for minutes),
 // which would otherwise leave a slow-uploading client holding a connection and a
 // goroutine open indefinitely — a slowloris on the body. The deadline covers only
 // the read phase; it is cleared before the model request so generation is unbounded.
-const bodyReadTimeout = 30 * time.Second
+//
+// Exported because it is one figure with the listener's own request read bound
+// in cmd/dessau, which is defined as this (iss-2609190254515481). Set here, at
+// the handler's start, it replaces the listener's deadline with one that runs
+// from after the headers arrived, so on this route the effective bound is this
+// one; with the two equal, that is the listener's figure plus the time the
+// headers took, never more.
+const BodyReadTimeout = 30 * time.Second
 
 // handleChatCompletions is handleCompletions for the chat route, which holds
 // a conversation: the route itself says so, rather than a comparison of the
@@ -694,7 +701,7 @@ func (g *Gateway) completions(w http.ResponseWriter, r *http.Request, chat bool)
 	defer obs.finish(r.Context())
 
 	rc := http.NewResponseController(w)
-	_ = rc.SetReadDeadline(time.Now().Add(bodyReadTimeout))
+	_ = rc.SetReadDeadline(time.Now().Add(BodyReadTimeout))
 
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
 	if err != nil {
@@ -906,7 +913,7 @@ func (g *Gateway) completions(w http.ResponseWriter, r *http.Request, chat bool)
 	// (adr-2609061610102325). It happens here, on the body already in hand, so
 	// a streamed request takes exactly this path too and the body limit above
 	// is the only one there is. Nothing read is logged, kept or counted.
-	if r.URL.Path == chatCompletionsPath && cfg.Models[model].MergeSystemMessages {
+	if r.URL.Path == chatCompletionsPath && cfg.MergeSystemMessages(model) {
 		if mergeSystemMessagesInto(payload) == mergeRefused {
 			// The operator switched merging on for this model and is not
 			// getting it, which is worth saying once, here, rather than
