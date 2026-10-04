@@ -184,6 +184,32 @@ func TestTheProvenanceIsWhatThePoolAndTheRuntimeSay(t *testing.T) {
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
+// The probe stamps a figure with the provenance its bounds were made under
+// and checks it is still in force before saving, but a settings save can
+// land between that check and the save, and its own re-judging has already
+// run by then. The probe's save re-judges, so the figure reads stale rather
+// than current under settings it was not taken under.
+func TestAProbeSaveIsJudgedAgainstTheSettingsInForce(t *testing.T) {
+	a := newTestApp(t)
+	readyModel(t, a, "org/m", 131072)
+	src := probeSources{a}
+	prov := src.Provenance("org/m")
+	if prov.ServedContext != 131072 {
+		t.Fatalf("the fixture is wrong: served window in force %d", prov.ServedContext)
+	}
+	// Stamped with the served window that was in force at the probe's
+	// check, before a save lowered it to the one now in force.
+	if err := src.Save("org/m", &registry.Measurement{
+		Window: 30000, Bound: registry.BoundServedWindow, At: 1,
+		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes, DecodeConcurrency: prov.DecodeConcurrency, ServedContext: 32768,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := a.Registry.Get("org/m"); m.Measured == nil || m.Measured.Stale != registry.StaleServedContext {
+		t.Errorf("a figure saved under another served window reads %+v, want stale for the served window", m.Measured)
+	}
+}
+
 // The probe measures through chat completions, so only a model the server
 // offers to chat is a candidate: the same verdict the models list publishes
 // as `chat`, read from its one home. A ready image-to-text model is not one,

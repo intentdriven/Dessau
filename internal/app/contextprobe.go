@@ -113,8 +113,18 @@ func (a *App) isPinned(repoID string) bool {
 	return false
 }
 
+// Save records a measurement and judges it at once against what is in force.
+// The probe stamps it with the provenance it found in force before saving,
+// but a settings save can move that provenance between the probe's check and
+// this write, and the settings save's own re-judging may already have run:
+// judging here, after the write, leaves no gap in which the figure reads
+// current under settings it was not taken under.
 func (s probeSources) Save(repoID string, m *registry.Measurement) error {
-	return s.a.Registry.SetMeasurement(repoID, m)
+	if err := s.a.Registry.SetMeasurement(repoID, m); err != nil {
+		return err
+	}
+	s.a.refreshStaleness()
+	return nil
 }
 
 func (s probeSources) MarkIncomplete(repoID string, on bool) error {

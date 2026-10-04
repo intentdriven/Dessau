@@ -79,7 +79,9 @@ type Sources interface {
 	// flight on it, runtime.ErrNotLoaded when it is not resident, ErrPinned
 	// when it is pinned.
 	Unload(repoID string) error
-	// Save records a completed measurement on the model.
+	// Save records a completed measurement on the model, and judges it
+	// against what is in force once it is written, so a figure whose
+	// provenance moved after the probe's last check reads stale.
 	Save(repoID string, m *registry.Measurement) error
 	// MarkIncomplete records that a probe of the model was interrupted.
 	MarkIncomplete(repoID string, on bool) error
@@ -491,8 +493,11 @@ func (p *Probe) Run(s *selftest.Session, model string) {
 		return
 	}
 	// Stamped with the provenance the bounds were made under, which is the
-	// one just found in force: a move after that check leaves the figure
-	// stamped truthfully, and the staleness refresh then marks it.
+	// one just found in force. A settings save can still land between that
+	// check and the save below, and its own re-judging may already have run;
+	// the stamp stays truthful, and Save judges the figure against what is in
+	// force once it is written, so such a move marks it stale rather than
+	// leaving it current.
 	m := &registry.Measurement{
 		Window: b.loTokens, Bound: b.bound, At: p.opts.Now().Unix(),
 		Runtime: b.prov.Runtime, BudgetBytes: b.prov.BudgetBytes, DecodeConcurrency: b.prov.DecodeConcurrency,
