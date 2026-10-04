@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-04
+
 ### Added
 
 - **The models list says which models are builds of one model.**
@@ -86,6 +88,70 @@ GitHub release notes.
   model serving batched requests stops answering anyone until it is restarted
   ([request fields](docs/request-fields.md#an-empty-answer-budget);
   itd-2610030656210408).
+
+- **Downloading a model you already have no longer takes it out of service,
+  and can no longer leave it half one version and half the next.**
+  `impact: fix`. The newer version is fetched beside the one being served,
+  every file checked against HuggingFace's hash for it, and swapped in only
+  once it has checked out and the requests the model was answering have
+  finished; any failure leaves the old version serving, unchanged. Before,
+  the model was marked as downloading for the whole re-download, and a file
+  of the same size from the old version was kept unchecked while a file the
+  new version dropped was never removed (iss-2610030913179523;
+  [how it works](docs/model-updates.md)).
+- **A download fetches every file at one commit, and Dessau records which.**
+  `impact: additive`. A download first asks HuggingFace for the
+  repository's current commit, then lists and fetches every file at that
+  commit rather than at `main`, so a commit that lands on the Hub while
+  Alice's download is running can no longer leave her with a model that is
+  half one version and half the next. The registry records the commit and
+  each downloaded file's hash as the Hub listed it; a model downloaded
+  before this, or found on disk by a rescan, is "version unknown". This is
+  the groundwork for checking downloaded models for newer versions
+  (itd-2610030857275099).
+
+- **A request carrying `draft_model` or `adapters` is refused.**
+  `impact: breaking`. Security. The model server reads both as an
+  instruction to load files from a path the request gives — a second model
+  for speculative decoding, or adapter weights, with the served model
+  reloaded to apply them — and a model it loads that way can name a Python
+  file of its own that loading runs. Dessau checks the model it loads before
+  the model server starts, and could not check one a request named. A
+  request on `/v1/chat/completions` or `/v1/completions` whose top level
+  carries either field, with any value, `null` included, is now answered
+  with a 400 naming the field — for example `"draft_model" is not accepted:
+  Dessau does not load a second model for a request` — before any model is
+  loaded or evicted, and the model server never receives it. No sampling
+  parameter is affected. See
+  [Fields a completion request may not carry](docs/request-fields.md).
+- **A server loads only a model whose folder and `config.json` belong to the
+  account running it.** `impact: breaking`. Security. Any other model is
+  refused before any process starts, and its card says why: "this model's
+  files belong to another account, which Dessau does not load". A model
+  downloaded through the control panel, by whoever asked, belongs to the
+  serving account. A model folder copied in from another account does not;
+  download it again from the serving account.
+
+### Removed
+
+- **Shared-cache mode is gone: Dessau serves from one macOS account.**
+  `impact: breaking`. `make install-shared` is removed, and Dessau neither reads
+  nor serves anything from the machine-wide folder under `/Users/Shared`: a
+  model is served only from the serving account's own models folder, and at
+  start-up any model the index still records elsewhere is dropped from the
+  list when the serving account's models folder is there and holds no copy of
+  it, and is otherwise re-pointed at its place in that folder — never served
+  from where the index recorded it. Dessau keeps everything —
+  models, settings, logs, statistics and its private runtime — in the serving
+  account's own `~/Library/Application Support/Dessau` (or wherever
+  `DESSAU_ROOT` points, as before). Other accounts on the same Mac use the
+  server the way any client does, at `http://localhost:11535/v1`, with no key
+  and no copy of the models; they do not launch Dessau Server themselves.
+  Nothing is migrated. If you used the shared cache: choose the account that
+  serves, start Dessau there, download your models again from its control
+  panel (settings saved in another account's folder are not read), and remove
+  the old folder under `/Users/Shared` once nobody needs it. `dessau
+  uninstall` acts on this account's own folder only.
 
 ### Fixed
 
@@ -353,73 +419,6 @@ GitHub release notes.
   model server did not start answering in time and names
   `upstream_header_timeout_sec` in `config.json`, where the wait is set
   (iss-2610030919536329).
-### Changed
-
-- **Downloading a model you already have no longer takes it out of service,
-  and can no longer leave it half one version and half the next.**
-  `impact: fix`. The newer version is fetched beside the one being served,
-  every file checked against HuggingFace's hash for it, and swapped in only
-  once it has checked out and the requests the model was answering have
-  finished; any failure leaves the old version serving, unchanged. Before,
-  the model was marked as downloading for the whole re-download, and a file
-  of the same size from the old version was kept unchecked while a file the
-  new version dropped was never removed (iss-2610030913179523;
-  [how it works](docs/model-updates.md)).
-- **A download fetches every file at one commit, and Dessau records which.**
-  `impact: additive`. A download first asks HuggingFace for the
-  repository's current commit, then lists and fetches every file at that
-  commit rather than at `main`, so a commit that lands on the Hub while
-  Alice's download is running can no longer leave her with a model that is
-  half one version and half the next. The registry records the commit and
-  each downloaded file's hash as the Hub listed it; a model downloaded
-  before this, or found on disk by a rescan, is "version unknown". This is
-  the groundwork for checking downloaded models for newer versions
-  (itd-2610030857275099).
-
-- **A request carrying `draft_model` or `adapters` is refused.**
-  `impact: breaking`. Security. The model server reads both as an
-  instruction to load files from a path the request gives — a second model
-  for speculative decoding, or adapter weights, with the served model
-  reloaded to apply them — and a model it loads that way can name a Python
-  file of its own that loading runs. Dessau checks the model it loads before
-  the model server starts, and could not check one a request named. A
-  request on `/v1/chat/completions` or `/v1/completions` whose top level
-  carries either field, with any value, `null` included, is now answered
-  with a 400 naming the field — for example `"draft_model" is not accepted:
-  Dessau does not load a second model for a request` — before any model is
-  loaded or evicted, and the model server never receives it. No sampling
-  parameter is affected. See
-  [Fields a completion request may not carry](docs/request-fields.md).
-- **A server loads only a model whose folder and `config.json` belong to the
-  account running it.** `impact: breaking`. Security. Any other model is
-  refused before any process starts, and its card says why: "this model's
-  files belong to another account, which Dessau does not load". A model
-  downloaded through the control panel, by whoever asked, belongs to the
-  serving account. A model folder copied in from another account does not;
-  download it again from the serving account.
-
-### Removed
-
-- **Shared-cache mode is gone: Dessau serves from one macOS account.**
-  `impact: breaking`. `make install-shared` is removed, and Dessau neither reads
-  nor serves anything from the machine-wide folder under `/Users/Shared`: a
-  model is served only from the serving account's own models folder, and at
-  start-up any model the index still records elsewhere is dropped from the
-  list when the serving account's models folder is there and holds no copy of
-  it, and is otherwise re-pointed at its place in that folder — never served
-  from where the index recorded it. Dessau keeps everything —
-  models, settings, logs, statistics and its private runtime — in the serving
-  account's own `~/Library/Application Support/Dessau` (or wherever
-  `DESSAU_ROOT` points, as before). Other accounts on the same Mac use the
-  server the way any client does, at `http://localhost:11535/v1`, with no key
-  and no copy of the models; they do not launch Dessau Server themselves.
-  Nothing is migrated. If you used the shared cache: choose the account that
-  serves, start Dessau there, download your models again from its control
-  panel (settings saved in another account's folder are not read), and remove
-  the old folder under `/Users/Shared` once nobody needs it. `dessau
-  uninstall` acts on this account's own folder only.
-
-### Fixed
 
 - **Dessau no longer loads a model whose `config.json` names code of its
   own.** `impact: fix`. Security. A repository can ship a Python file of its
