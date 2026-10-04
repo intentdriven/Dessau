@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"testing"
 	"time"
 	"unicode/utf8"
 )
@@ -49,14 +50,30 @@ type Paths struct {
 	SelfTest string
 }
 
+// startHome is HOME as this process started with it. In a test binary that is
+// the account's real home, and a test that has not pointed HOME somewhere of
+// its own is still looking at it.
+var startHome = os.Getenv("HOME")
+
 // userSupportDir is this account's own Dessau directory in Application
 // Support — where an installation lives unless DESSAU_ROOT says otherwise.
 // It is derived once here so the default root and AccountHome cannot come to
 // disagree about where it is.
+//
+// Inside a test binary it refuses while HOME is still the one the binary
+// started with: that is this account's real Application Support, and a test
+// that reached it would read or write the installation it is running beside
+// (iss-2609200823589977). A test that needs the directory points HOME at one
+// of its own first, which is what the lifecycle tests do since PR 83.
 func userSupportDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	if testing.Testing() && home == startHome {
+		return "", fmt.Errorf("refusing to resolve this account's own Dessau directory inside a test: HOME is " +
+			"still the one the test binary started with, so it is the real one. Point HOME at a directory of " +
+			"the test's own first (t.Setenv(\"HOME\", t.TempDir())); DESSAU_ROOT moves DefaultRoot alone")
 	}
 	return filepath.Join(home, "Library", "Application Support", "Dessau"), nil
 }
