@@ -1,0 +1,43 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "I forgot my password and the reset email never arrives.",
+  "questions": {
+   "topic": {
+    "type": "choice",
+    "instructions": "What is the message about?",
+    "criteria": {
+     "account": "Logins, passwords, profiles",
+     "billing": "Payments, invoices, refunds",
+     "shipping": "Delivery and tracking",
+     "product": "Features and how-to questions",
+     "other": "Anything else"
+    }
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.55,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "topic": {
+    "type": "choice",
+    "choice": "account",
+    "confidence": 0.9275,
+    "probabilities": {
+     "account": 0.9275,
+     "billing": 0.0118,
+     "shipping": 0.0101,
+     "product": 0.0241,
+     "other": 0.0265
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 200,
+   "output_tokens": 0,
+   "latency_ms": 552.3
+  }
+ }
+}

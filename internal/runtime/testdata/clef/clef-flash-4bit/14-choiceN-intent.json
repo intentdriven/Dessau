@@ -1,0 +1,43 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "Please cancel my subscription at the end of this month.",
+  "questions": {
+   "intent": {
+    "type": "choice",
+    "instructions": "What does the sender want?",
+    "criteria": {
+     "cancel": "End a subscription",
+     "upgrade": "Move to a higher plan",
+     "downgrade": "Move to a lower plan",
+     "pause": "Pause temporarily",
+     "info": "Just asking for information"
+    }
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.5,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "intent": {
+    "type": "choice",
+    "choice": "cancel",
+    "confidence": 0.9801,
+    "probabilities": {
+     "cancel": 0.9801,
+     "upgrade": 0.0038,
+     "downgrade": 0.0052,
+     "pause": 0.008,
+     "info": 0.0029
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 199,
+   "output_tokens": 0,
+   "latency_ms": 502.4
+  }
+ }
+}

@@ -1,0 +1,43 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "My parcel shows as delivered but it is not at my door.",
+  "questions": {
+   "topic": {
+    "type": "choice",
+    "instructions": "What is the message about?",
+    "criteria": {
+     "account": "Logins, passwords, profiles",
+     "billing": "Payments, invoices, refunds",
+     "shipping": "Delivery and tracking",
+     "product": "Features and how-to questions",
+     "other": "Anything else"
+    }
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.87,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "topic": {
+    "type": "choice",
+    "choice": "shipping",
+    "confidence": 0.9769,
+    "probabilities": {
+     "account": 0.0021,
+     "billing": 0.0028,
+     "shipping": 0.9769,
+     "product": 0.0038,
+     "other": 0.0144
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 202,
+   "output_tokens": 0,
+   "latency_ms": 869.6
+  }
+ }
+}

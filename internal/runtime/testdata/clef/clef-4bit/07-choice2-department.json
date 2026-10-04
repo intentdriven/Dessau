@@ -1,0 +1,37 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "Our checkout started returning errors and orders are blocked.",
+  "questions": {
+   "department": {
+    "type": "choice",
+    "instructions": "Which team should handle the message?",
+    "criteria": {
+     "billing": "Payments or invoices",
+     "technical": "Bugs or outages"
+    }
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.63,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "department": {
+    "type": "choice",
+    "choice": "technical",
+    "confidence": 0.941,
+    "probabilities": {
+     "billing": 0.059,
+     "technical": 0.941
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 142,
+   "output_tokens": 0,
+   "latency_ms": 627.9
+  }
+ }
+}

@@ -1,0 +1,37 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "The new update is fantastic, the app feels twice as fast.",
+  "questions": {
+   "sentiment": {
+    "type": "choice",
+    "instructions": "What is the overall sentiment?",
+    "criteria": {
+     "positive": "Pleased or satisfied",
+     "negative": "Unhappy or frustrated"
+    }
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.4,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "sentiment": {
+    "type": "choice",
+    "choice": "positive",
+    "confidence": 0.9852,
+    "probabilities": {
+     "positive": 0.9852,
+     "negative": 0.0148
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 144,
+   "output_tokens": 0,
+   "latency_ms": 394.0
+  }
+ }
+}

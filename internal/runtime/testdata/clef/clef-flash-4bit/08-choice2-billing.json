@@ -1,0 +1,37 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "The invoice for September lists the wrong VAT number.",
+  "questions": {
+   "department": {
+    "type": "choice",
+    "instructions": "Which team should handle the message?",
+    "criteria": {
+     "billing": "Payments or invoices",
+     "technical": "Bugs or outages"
+    }
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.43,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "department": {
+    "type": "choice",
+    "choice": "billing",
+    "confidence": 0.9873,
+    "probabilities": {
+     "billing": 0.9873,
+     "technical": 0.0127
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 142,
+   "output_tokens": 0,
+   "latency_ms": 426.7
+  }
+ }
+}

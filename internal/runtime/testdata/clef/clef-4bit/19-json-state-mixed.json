@@ -1,0 +1,73 @@
+{
+ "request": {
+  "model": "clef",
+  "state": {
+   "channel": "email",
+   "customer_tier": "premium",
+   "subject": "Payment failed",
+   "body": "My card was declined three times although it has funds."
+  },
+  "questions": {
+   "department": {
+    "type": "choice",
+    "instructions": "Which team should handle the message?",
+    "criteria": {
+     "billing": "Payments or invoices",
+     "technical": "Bugs or outages"
+    }
+   },
+   "urgency": {
+    "type": "score",
+    "criteria": [
+     "Can wait",
+     "This week",
+     "Today"
+    ]
+   },
+   "outage": {
+    "type": "noul",
+    "instructions": "Is a service down?"
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 1.24,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "department": {
+    "type": "choice",
+    "choice": "billing",
+    "confidence": 0.9697,
+    "probabilities": {
+     "billing": 0.9697,
+     "technical": 0.0303
+    }
+   },
+   "urgency": {
+    "type": "score",
+    "score": 1.8886,
+    "confidence": 0.9067,
+    "legend": {
+     "0": "Can wait",
+     "1": "This week",
+     "2": "Today"
+    },
+    "probabilities": {
+     "0": 0.0181,
+     "1": 0.0752,
+     "2": 0.9067
+    }
+   },
+   "outage": {
+    "type": "noul",
+    "noul": 0.0179
+   }
+  },
+  "usage": {
+   "input_tokens": 319,
+   "output_tokens": 0,
+   "latency_ms": 1242.5
+  }
+ }
+}

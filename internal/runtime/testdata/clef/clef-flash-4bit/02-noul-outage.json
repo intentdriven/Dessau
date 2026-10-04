@@ -1,0 +1,28 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "Our checkout started returning errors and orders are blocked.",
+  "questions": {
+   "outage": {
+    "type": "noul",
+    "instructions": "Is a service down?"
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.43,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "outage": {
+    "type": "noul",
+    "noul": 0.8056
+   }
+  },
+  "usage": {
+   "input_tokens": 151,
+   "output_tokens": 0,
+   "latency_ms": 430.9
+  }
+ }
+}

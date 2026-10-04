@@ -1,0 +1,28 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "Can I change the delivery address after the order has shipped?",
+  "questions": {
+   "question": {
+    "type": "noul",
+    "instructions": "Does the message ask a question?"
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.63,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "question": {
+    "type": "noul",
+    "noul": 0.9868
+   }
+  },
+  "usage": {
+   "input_tokens": 155,
+   "output_tokens": 0,
+   "latency_ms": 633.5
+  }
+ }
+}
