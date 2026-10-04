@@ -123,7 +123,9 @@ iss-2610030913179523.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-c60839654fc3 -->
+Fidelity review OWED (receipt rcp-c60839654fc3).
+<!-- abcd-review-end receipt=rcp-c60839654fc3 -->
 
 ## Grounds
 
