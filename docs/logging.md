@@ -80,7 +80,8 @@ unloads it, which any client's request can cause, so the logged run can end at
 a moment you did not choose. While a model is armed or running at its debug
 level its card says so, and the Posture tab names it. Nothing is sent
 anywhere, and clients are not told. A model that keeps no transcript refuses
-the arm.
+the arm, and marking a model that way takes it off the list; a run already at
+the debug level carries on until the model is unloaded.
 
 A run at the debug level writes bytes chosen by whoever is sending requests,
 so its log stops at 64 MB: what fits is written, one final line says the log
