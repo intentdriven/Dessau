@@ -168,6 +168,11 @@ type bounds struct {
 	// run bisects rather than starting the sweep over — or, when it did
 	// not, resumes the sweep from lo.
 	swept bool
+	// prov is the provenance the bounds were made under. Every step they
+	// hold was taken under it — hi from its served window, the guard from
+	// its budget — so they are kept only while it is still in force, and a
+	// figure drawn from them is stamped with it (iss-2610032241096901).
+	prov registry.Provenance
 }
 
 // New builds a Probe.
@@ -350,14 +355,25 @@ func (p *Probe) Run(s *selftest.Session, model string) {
 		return
 	}
 	key := config.FoldRepoID(model)
+	// Read before taking the probe's lock: the app answers it from the
+	// registry, the pool and the configuration.
+	inForce := p.opts.Sources.Provenance(model)
 	p.mu.Lock()
 	b, ok := p.bounds[key]
+	if ok && b.prov != inForce {
+		// Bounds made under another provenance measure that one: resuming
+		// from them would bisect to a window the settings in force may not
+		// serve, and save it stamped as current. The run starts over.
+		delete(p.bounds, key)
+		ok = false
+		p.opts.Log.Info("context probe: the settings changed since the run began; starting it over", "model", model)
+	}
 	if !ok {
 		// The gateway's served-window check is in force at the served
 		// window whether or not it is below the declared one, so a sweep
 		// that reaches the cap without a refusal was stopped by it; the
 		// model's own limit is recorded only from a step it actually refused.
-		b = &bounds{hi: min(cand.Declared, MaxProbeWindow), bound: registry.BoundServedWindow}
+		b = &bounds{hi: min(cand.Declared, MaxProbeWindow), bound: registry.BoundServedWindow, prov: inForce}
 		if cand.Served > 0 && cand.Served < b.hi {
 			b.hi = cand.Served
 		}
@@ -461,13 +477,27 @@ func (p *Probe) Run(s *selftest.Session, model string) {
 		}
 	}
 
-	prov := p.opts.Sources.Provenance(model)
+	p.unloadWaiting(s.Ctx, model)
+	if p.opts.Sources.Provenance(model) != b.prov {
+		// The settings moved during the run, with no yield between to catch
+		// it: the figure holds under the provenance the bounds were made
+		// under, not the one in force, so it is not saved. The bounds are
+		// dropped and the model left queued or due, so a fresh run measures
+		// it under what is in force now.
+		p.mu.Lock()
+		delete(p.bounds, key)
+		p.mu.Unlock()
+		p.opts.Log.Info("context probe: the settings changed during the run; its figure is not saved, and it starts over", "model", model)
+		return
+	}
+	// Stamped with the provenance the bounds were made under, which is the
+	// one just found in force: a move after that check leaves the figure
+	// stamped truthfully, and the staleness refresh then marks it.
 	m := &registry.Measurement{
 		Window: b.loTokens, Bound: b.bound, At: p.opts.Now().Unix(),
-		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes, DecodeConcurrency: prov.DecodeConcurrency,
-		ServedContext: prov.ServedContext, GuardBytes: b.guardBytes,
+		Runtime: b.prov.Runtime, BudgetBytes: b.prov.BudgetBytes, DecodeConcurrency: b.prov.DecodeConcurrency,
+		ServedContext: b.prov.ServedContext, GuardBytes: b.guardBytes,
 	}
-	p.unloadWaiting(s.Ctx, model)
 	if err := p.opts.Sources.Save(model, m); err != nil {
 		// Forty minutes of GPU are in the bounds; keep them for a retry and
 		// say what happened, rather than throwing the run away.
