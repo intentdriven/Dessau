@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/gateway/gateway.go"
 remedy: "Refuse a /v1/completions prompt that is empty or only whitespace, and a chat request whose messages are empty."
+resolution: "Refused at the gateway before a model is resolved: an empty or whitespace-only prompt, an empty prompt array, and empty messages (adr-2610040749545010)."
+impact: breaking
+resolved_by:
+  commit: "7399d35c19b5f3b5775af92438b96c5edbce63ff"
 ---
 
 An empty prompt on /v1/completions, with a tokenizer that adds no BOS, tokenizes to nothing, and insert_segments (generate.py:1669, from server.py:742) raises on an empty prompt on the generation thread (medium confidence, tokenizer dependent).
