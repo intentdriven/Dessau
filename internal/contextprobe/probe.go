@@ -48,7 +48,9 @@ type Candidate struct {
 	// means none, and there is nothing to bisect between.
 	Declared int64
 	// Served is the window Dessau serves the model at (the operator's
-	// setting, or Declared), which bounds the largest step.
+	// setting, or Declared). The probe's largest step is bounded by the
+	// served window in Sources.Provenance instead, the read its figure is
+	// stamped from, so the ceiling and the stamp cannot disagree.
 	Served int64
 	// Bytes and KVChargePerToken are what the memory guard projects from.
 	Bytes, KVChargePerToken int64
@@ -375,9 +377,12 @@ func (p *Probe) Run(s *selftest.Session, model string) {
 		// window whether or not it is below the declared one, so a sweep
 		// that reaches the cap without a refusal was stopped by it; the
 		// model's own limit is recorded only from a step it actually refused.
+		// The served window is the provenance's, not the candidate's: the two
+		// are separate reads, and a window moved between them would give a
+		// ceiling from one and a stamp from the other.
 		b = &bounds{hi: min(cand.Declared, MaxProbeWindow), bound: registry.BoundServedWindow, prov: inForce}
-		if cand.Served > 0 && cand.Served < b.hi {
-			b.hi = cand.Served
+		if inForce.ServedContext > 0 && inForce.ServedContext < b.hi {
+			b.hi = inForce.ServedContext
 		}
 		p.bounds[key] = b
 	}

@@ -92,6 +92,31 @@ func TestAResumedProbeDropsBoundsMadeUnderAnotherProvenance(t *testing.T) {
 	}
 }
 
+// The bounds' ceiling and their provenance come from one read. Here the
+// candidate still carries the served window from before a raise while the
+// provenance already has the raised one, which is what a raise landing
+// between the two reads looks like: a ceiling from the candidate would stop
+// the sweep at the old window and save that figure, bound by the served
+// window, stamped with the raised one.
+func TestAProbesCeilingComesFromTheProvenanceItIsStampedWith(t *testing.T) {
+	gw := newFakeGateway(t, 131072, http.StatusBadRequest)
+	cand := model
+	cand.Served = 8192
+	src := newFakeSources(gw.srv.URL, cand)
+	src.prov = registry.Provenance{Runtime: "0.31.3", BudgetBytes: 1, DecodeConcurrency: 4, ServedContext: 131072}
+	p := probeOf(src, true)
+	r := runner(t, newFakePool("org/m"), p)
+	r.SetEnabled(true)
+	waitFor(t, "a measurement", func() bool { return src.result("org/m") != nil })
+	m := src.result("org/m")
+	if m.ServedContext != 131072 {
+		t.Fatalf("measurement stamped with served window %d, want 131072", m.ServedContext)
+	}
+	if m.Bound == registry.BoundServedWindow && m.Window <= m.ServedContext/2 {
+		t.Errorf("saved window %d bound by the served window, stamped with a served window of %d: the ceiling came from another read", m.Window, m.ServedContext)
+	}
+}
+
 // The same move inside one run, with no yield between: the bounds were made
 // under the provenance in force when the run began, so the figure they give
 // is not saved as current under another.

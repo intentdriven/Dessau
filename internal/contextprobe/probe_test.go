@@ -130,13 +130,23 @@ func (f *fakeSources) Candidates() []Candidate {
 	}
 	return out
 }
-func (f *fakeSources) Provenance(string) registry.Provenance {
+
+// Provenance is prov when a test sets one, and otherwise the default with the
+// candidate's served window, which is how the app answers both from one
+// setting.
+func (f *fakeSources) Provenance(id string) registry.Provenance {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.prov != (registry.Provenance{}) {
 		return f.prov
 	}
-	return registry.Provenance{Runtime: "0.31.3", BudgetBytes: 1, DecodeConcurrency: 4, ServedContext: 131072}
+	served := int64(131072)
+	for _, c := range f.cands {
+		if c.RepoID == id {
+			served = c.Served
+		}
+	}
+	return registry.Provenance{Runtime: "0.31.3", BudgetBytes: 1, DecodeConcurrency: 4, ServedContext: served}
 }
 func (f *fakeSources) Available() int64 { f.mu.Lock(); defer f.mu.Unlock(); return f.available }
 func (f *fakeSources) Unload(id string) error {
