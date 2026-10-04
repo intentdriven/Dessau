@@ -122,7 +122,10 @@ and appears in no request statistic and no request log line.
 
 The line reads **not measured** while the model has not been asked under
 the runtime in force: a model downloaded again, or a Dessau update that
-changes the runtime, is asked again the next time it is served. It refuses
+changes the runtime, is asked again the next time it is loaded. A probe that
+gets no answer — the model server does not reply, or replies with an error —
+records nothing, and the model is asked again at its next load, not at its
+next request. It refuses
 nothing — a client may still send tools to a model marked **no**, and Dessau
 relays them as it does today. The same answer is published on the models
 list as `tool_calling`.
