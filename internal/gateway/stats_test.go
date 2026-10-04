@@ -295,7 +295,13 @@ func TestEveryOtherOutcomeIsRecordedWithItsClass(t *testing.T) {
 		},
 		{
 			name:      "a model this Mac does not have",
-			body:      `{"model":"org/nope","messages":[]}`,
+			body:      `{"model":"org/nope","messages":[{"role":"user","content":"hi"}]}`,
+			want:      stats.ClassClientError,
+			wantModel: "",
+		},
+		{
+			name:      "a request with nothing to answer",
+			body:      `{"model":"` + testModelID + `","messages":[]}`,
 			want:      stats.ClassClientError,
 			wantModel: "",
 		},

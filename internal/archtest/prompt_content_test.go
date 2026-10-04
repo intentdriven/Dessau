@@ -26,6 +26,7 @@ import (
 // makes the list of exceptions a thing that exists and has to be edited.
 var promptContentReaders = map[string]string{
 	"internal/gateway/systemmerge.go": "the merge itself — the one reader adr-2609061610102325 grants",
+	"internal/gateway/emptyprompt.go": "the emptiness check adr-2610040749545010 grants as a narrow exception: it reads whether a /v1/completions prompt is empty or only whitespace, or whether a chat request's messages are an empty array, and nothing else — never what a message says, never how many there are — and keeps nothing (iss-2610031758029994)",
 	"internal/gateway/assemble.go":    "names a message's role and content on the ANSWER side only: it joins the streamed deltas of an answer into the one message an unstreamed request is answered with (iss-2610030919536329); reads nothing of a request's messages",
 	"internal/runtime/pool.go":        "builds the readiness probe's own one-line conversation; reads nothing from a client",
 	"internal/mlxtest/fake.go":        "the fake mlx server tests relay to, which answers requests rather than making them",
@@ -38,6 +39,9 @@ var promptContentReaders = map[string]string{
 // chatMessageFields are the ways a chat message's fields get named in Go: the
 // JSON names themselves, and the constants the merge declares for them.
 //
+// "prompt" is the same boundary on the other endpoint: a /v1/completions
+// request carries its text there rather than in messages.
+//
 // The constants matter as much as the literals. They are package-level in
 // internal/gateway — the package that owns the relay, and so the likeliest
 // place a second prompt reader would appear — so a new file there could index
@@ -45,8 +49,8 @@ var promptContentReaders = map[string]string{
 // writing a single quoted field name. That is the cheapest way around this
 // scan and the one nearest to hand.
 var chatMessageFields = []string{
-	`"messages"`, `"role"`, `"content"`,
-	"messagesField", "roleField", "contentField",
+	`"messages"`, `"role"`, `"content"`, `"prompt"`,
+	"messagesField", "roleField", "contentField", "promptField",
 }
 
 // generatedContentReaders are the files allowed to name the fields of a
@@ -174,7 +178,7 @@ var conversationBoundaries = []contentBoundary{
 	{
 		fields:  chatMessageFields,
 		readers: promptContentReaders,
-		subject: "the content of a request's messages",
+		subject: "the content of a request's messages or prompt",
 		list:    "promptContentReaders",
 	},
 	{
