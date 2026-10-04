@@ -61,6 +61,29 @@ func TestAHistoryTrimmedByTheTurnCountOpensOnTheUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	opensOnTheUser(t, body, is("question "+strconv.Itoa(exchanges-1)))
+	// Exactly one turn lost to the order rule, never a whole exchange: the
+	// count held maxTurns turns, the oldest question went to it and its
+	// answer goes here, leaving questions 1 to 16 and answers 1 to 15.
+	sent := got[len(got)-1].Messages
+	if want := 2*(exchanges-1) - 1; len(sent) != want {
+		t.Errorf("the history sent holds %d turns, want %d", len(sent), want)
+	}
+	if len(sent) > 0 && sent[0].Content != "question 1" {
+		t.Errorf("the history sent opens on %q, want %q", sent[0].Content, "question 1")
+	}
+}
+
+// keeps fails unless a built request's history is exactly want, so a fix
+// that silently drops more than it must is caught.
+func keeps(t *testing.T, body []byte, want []turn) {
+	t.Helper()
+	var req request
+	if err := json.Unmarshal(body, &req); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(req.Messages, want) {
+		t.Errorf("the history sent is %v, want %v", req.Messages, want)
+	}
 }
 
 // The store's byte budget drops the oldest turn across every channel, one at
@@ -93,6 +116,7 @@ func TestAHistoryTrimmedByTheByteBudgetOpensOnTheUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	opensOnTheUser(t, body, is("the second question"))
+	keeps(t, body, []turn{{Role: roleUser, Content: "the second question"}})
 }
 
 // buildRequest drops turns from the front until the body fits the window, so
@@ -102,6 +126,8 @@ func TestAHistoryTrimmedToTheWindowOpensOnTheUser(t *testing.T) {
 	turns := []turn{
 		{Role: roleUser, Content: strings.Repeat("q", 3000)},
 		{Role: roleAssistant, Content: "a short answer"},
+		{Role: roleUser, Content: "a short question"},
+		{Role: roleAssistant, Content: "another short answer"},
 		{Role: roleUser, Content: "the newest question"},
 	}
 	body, err := buildRequest("a-model", turns, served)
@@ -109,6 +135,9 @@ func TestAHistoryTrimmedToTheWindowOpensOnTheUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	opensOnTheUser(t, body, is("the newest question"))
+	// The window cuts the long question, the order rule its answer, and
+	// nothing more: the exchange after it fits and is kept.
+	keeps(t, body, turns[2:])
 }
 
 // When nothing fits, only one turn is sent, truncated. That turn is the
