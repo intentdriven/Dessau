@@ -228,7 +228,7 @@ func TestAProbeSaveIsJudgedAgainstTheSettingsInForce(t *testing.T) {
 		t.Fatalf("the fixture is wrong: served window in force %d", prov.ServedContext)
 	}
 	// Stamped with the served window that was in force at the probe's
-	// check, before a save lowered it to the one now in force.
+	// check, before a save raised it to the one now in force.
 	if err := src.Save("org/m", &registry.Measurement{
 		Window: 30000, Bound: registry.BoundServedWindow, At: 1,
 		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes, DecodeConcurrency: prov.DecodeConcurrency, ServedContext: 32768,
