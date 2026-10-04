@@ -96,9 +96,13 @@ GitHub release notes.
   could record a window above the one the model is now served at, and mark
   it current. A paused measurement now starts again when the runtime, the
   memory budget, the decode concurrency or the served window has changed
-  since it began, and one whose settings change while it runs records
-  nothing and is taken again ([how to](docs/context-probe.md);
-  iss-2610032241096901).
+  since it began. One whose settings change while it runs records nothing,
+  and the model is measured again unless the figure saved before is current
+  again under the settings in force (after **Measure now**, it is measured
+  again regardless). A figure whose settings change just as it is recorded
+  is marked stale rather than current, and the largest size a measurement
+  tries is taken from the same settings it is recorded under
+  ([how to](docs/context-probe.md); iss-2610032241096901).
 - **A failed update is on the model's card as soon as the update stops.**
   `impact: fix`. The reason was written a moment after the update stopped
   counting as a download, so the panel could draw the card in between with
