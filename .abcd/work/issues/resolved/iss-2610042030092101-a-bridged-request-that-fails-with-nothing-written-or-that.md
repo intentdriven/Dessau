@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: "internal/bridge/discord/answer.go"
 remedy: "In buildRequest, drop any user turn that is directly followed by another user turn, keeping the newest, so the history sent alternates whatever the store holds."
 refines: [iss-2610032306154631]
+resolution: "buildRequest sends only the newest of a run of user turns, so a history with an unanswered question still alternates"
+impact: fix
+resolved_by:
+  commit: "bb43455b"
 ---
 
 A bridged request that fails with nothing written, or that the model answers with nothing, leaves the user turn it appended unanswered, so the channel's next message sends two user turns in a row. Gemma and Mistral v0.1/v0.2 chat templates require strict user/assistant alternation and raise on that, so every later message in the channel fails the same way and the channel is stuck until /reset.
