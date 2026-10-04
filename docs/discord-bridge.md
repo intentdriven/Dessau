@@ -25,9 +25,8 @@ The bridge is off until you turn it on.
    the bot may talk to it — so where the bot lives is what decides who can use
    your models.
 4. Leave the three **Privileged Gateway Intents** off. The bridge does not ask
-   for message content, presences or server members, and Discord refuses the
-   connection if it is configured to require an intent the bridge does not
-   request. A message in a channel that does not mention the bot is never read.
+   for message content, presences or server members. A message in a channel
+   that does not mention the bot is never read.
 5. Select **Reset Token**, then **Copy**. This is the bot token. Treat it as a
    password: anyone holding it can act as the bot.
 
@@ -86,7 +85,8 @@ A bridged request is recorded exactly as a request over the API is, with one
 extra field: its `source` is `bridge` rather than `http`. The log line carries
 the bridge's name, Discord's channel and user identifiers as plain numbers, the
 model, the sizes and the timing — never a message, never an answer, never the
-token. The
+token. The channel and user identifiers appear on that log line only; the
+statistics record carries none of them. The
 [what is recorded page](statistics-store-reference.md) says all of it field by
 field.
 

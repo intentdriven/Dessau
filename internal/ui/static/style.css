@@ -115,8 +115,8 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
 .pill.quant  { color: var(--muted); }
 .pill.pinned { color: var(--yellow); }
 .pill.debug  { color: var(--red); }
-/* The transcript icon: a pencil while a conversation with the model is
-   written down, struck through while it is not. The words are its label. */
+/* The transcript icon: a struck-through pencil, since Dessau keeps no
+   transcript for any model. The words are its label. */
 .pill.transcript     { color: var(--muted); }
 .pill.transcript.off { text-decoration: line-through; }
 
