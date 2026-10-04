@@ -1,6 +1,6 @@
 name: ci
 
-# Lightweight gates on every push and pull request: format + build + vet + test
+# Lightweight gates on every push to main and every pull request: format + build + vet + test
 # on macOS, which is where Dessau runs and the only place its behaviour is
 # verified; vet + test on Linux, which only keeps the server code building there
 # (with Linux counterparts for the macOS-only parts: real readings, or an
@@ -9,16 +9,15 @@ name: ci
 # a workflow self-audit.
 on:
   push:
-    # The merge queue's own refs are excluded. A queue entry is pushed to
-    # gh-readonly-queue/<base>/pr-N-<sha>, which matches '**' — so the queue ref
-    # raised BOTH a push run and a merge_group run, they shared a concurrency
-    # group (same workflow, same ref), and the push run cancelled the
-    # merge_group one. The queue then saw its required checks cancelled, waited,
-    # and dropped the entry. Testing a queue ref is merge_group's job; a push
-    # run on it is a duplicate that also breaks the thing it duplicates.
+    # Main only. Every other branch is tested through its pull request, and a
+    # push run beside the pull_request run doubled the load on the macOS
+    # runners and starved the merge queue (iss-2609200823571893). The merge
+    # queue's own refs (gh-readonly-queue/<base>/pr-N-<sha>) are not main
+    # either: testing a queue ref is merge_group's job, and a push run on it
+    # once shared its concurrency group and cancelled the merge_group run the
+    # queue was waiting for. internal/archtest holds this list.
     branches:
-      - '**'
-      - '!gh-readonly-queue/**'
+      - main
   pull_request:
   # The merge queue. A queued entry is built on its own temporary ref carrying
   # the candidate merged with everything ahead of it, and the queue waits for
