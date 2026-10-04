@@ -97,6 +97,11 @@ GitHub release notes.
   could happen on every message. The history sent now always opens on something
   somebody said, and still ends on their newest message
   ([Discord bridge](docs/discord-bridge.md); iss-2610032306154631).
+- **The self-test no longer unloads a model you pinned while it ran.**
+  `impact: fix`. When the self-test loaded a model to measure it, it unloaded
+  the model at the end of the run even if you had pinned it in the meantime,
+  leaving it pinned but not in memory. A model pinned during the run now stays
+  loaded and pinned ([self-test](docs/self-test.md); iss-2610032241098944).
 - **A failed update is on the model's card as soon as the update stops.**
   `impact: fix`. The reason was written a moment after the update stopped
   counting as a download, so the panel could draw the card in between with
