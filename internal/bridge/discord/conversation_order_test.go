@@ -137,6 +137,53 @@ func TestTheFallbackSendsTheNewestUserTurn(t *testing.T) {
 	}
 }
 
+// The fallback is held to the window in ENCODED bytes, the way the gateway
+// judges it. A cut in runes lets a turn of four-byte emoji, or of characters
+// JSON escapes to six bytes, through at several times the budget
+// (iss-2610042030098334).
+func TestTheFallbackFitsTheWindowInEncodedBytes(t *testing.T) {
+	const served = 4096
+	for name, unit := range map[string]string{
+		"angle":   "<",
+		"entity":  "&lt;",
+		"emoji":   "\U0001F600",
+		"control": "\x01",
+		"plain":   "y",
+	} {
+		t.Run(name, func(t *testing.T) {
+			question := headBytes(strings.Repeat(unit, maxTurnBytes), maxTurnBytes)
+			body, err := buildRequest("a-model", []turn{{Role: roleUser, Content: question}}, served)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var req request
+			if err := json.Unmarshal(body, &req); err != nil {
+				t.Fatal(err)
+			}
+			if judged := int64(len(body)/bytesPerToken) + int64(req.MaxTokens); judged > served {
+				t.Errorf("the fallback would be judged at %d tokens against a window of %d", judged, served)
+			}
+			if len(req.Messages) != 1 {
+				t.Fatalf("the fallback sent %d turns, want the one", len(req.Messages))
+			}
+			kept := req.Messages[0].Content
+			if kept == "" || !strings.HasSuffix(question, kept) || len(kept) == len(question) {
+				t.Fatalf("the fallback kept %d of %d bytes, want a non-empty tail of the question", len(kept), len(question))
+			}
+			// As much as fits: one rune more would be over.
+			r := []rune(question)
+			more := string(r[len(r)-len([]rune(kept))-1:])
+			bigger, err := json.Marshal(request{Model: "a-model", Messages: []turn{{Role: roleUser, Content: more}}, MaxTokens: req.MaxTokens, Stream: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(bigger) <= (served-req.MaxTokens)*bytesPerToken {
+				t.Errorf("the fallback kept %d runes, and one more would still have fitted", len([]rune(kept)))
+			}
+		})
+	}
+}
+
 // alternates fails unless a built request's turns take strict turns: user,
 // assistant, user, and so on, ending on the user. Gemma- and Mistral-style
 // chat templates raise on two user turns in a row (iss-2610042030092101).

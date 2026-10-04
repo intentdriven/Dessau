@@ -98,6 +98,14 @@ GitHub release notes.
   the channel failed the same way until `/reset`. The history sent now leaves
   out a message that was never answered and keeps the newest
   ([Discord bridge](docs/discord-bridge.md); iss-2610042030092101).
+- **A very long Discord message is cut to fit a small window whatever it is
+  written in.** `impact: fix`. When one message was too long for the model's
+  window on its own, the bridge kept its end by counting characters, not the
+  bytes the request is judged by. A message of emoji, or of `<`, `>`, `&` or
+  control characters, could still be over the window, and the person was told
+  the conversation was too long. The end of the message is now measured as it
+  is sent, so it always fits, and a message of plain text keeps more of what
+  was typed ([Discord bridge](docs/discord-bridge.md); iss-2610042030098334).
 - **A long Discord conversation no longer fails on Gemma- and Mistral-style
   models.** `impact: fix`. When the bridge shortened a conversation, the
   oldest turn it kept could be the model's own answer, and models whose chat

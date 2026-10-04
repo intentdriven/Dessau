@@ -386,10 +386,33 @@ func buildRequest(model string, turns []turn, served int64) ([]byte, error) {
 			break
 		}
 	}
-	last.Content = tailRunes(last.Content, int(budget/bytesPerToken))
-	return json.Marshal(request{
-		Model: model, Messages: []turn{last}, MaxTokens: answer, Stream: true,
-	})
+	//
+	// The tail is measured ENCODED, as the loop above measures and the gateway
+	// judges (iss-2610042030098334): a cut in runes would let a rune of four
+	// bytes, or a character JSON escapes to six (`<`, `>`, `&`, a control
+	// character), carry the body past the window. The encoded size only grows
+	// as the tail does, so the longest tail that fits is found by halving.
+	runes := []rune(last.Content)
+	encode := func(n int) ([]byte, error) {
+		t := turn{Role: last.Role, Content: string(runes[len(runes)-n:])}
+		return json.Marshal(request{
+			Model: model, Messages: []turn{t}, MaxTokens: answer, Stream: true,
+		})
+	}
+	lo, hi := 0, len(runes) // a tail of lo runes fits, or lo is 0; hi+1 does not
+	for lo < hi {
+		mid := lo + (hi-lo+1)/2
+		body, err := encode(mid)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(body)) <= budget {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return encode(lo)
 }
 
 // alternating is turns without any user turn that is directly followed by
@@ -403,19 +426,6 @@ func alternating(turns []turn) []turn {
 		kept = append(kept, t)
 	}
 	return kept
-}
-
-// tailRunes keeps the last n runes of s, cutting on a rune boundary so the
-// result is still text.
-func tailRunes(s string, n int) string {
-	if n <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[len(r)-n:])
 }
 
 // headBytes keeps as much of the start of s as fits in n bytes, cutting on a
