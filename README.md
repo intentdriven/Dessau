@@ -114,12 +114,12 @@ Cross-machine LAN use works. The ordinary port is plain HTTP; only the paired-cl
   so the local one cannot reach the server at all. Every bind includes this
   Mac, so narrowing one never costs you the control panel
   ([what each choice binds](docs/bind-address.md)).
-- **One page that says what is on** — the control panel's Posture tab states,
-  as fact rather than warning, who can reach the server and by which addresses,
-  what a request has to carry from the network and from this Mac, what is
-  announced over Bonjour, what the request log writes down, and what is
-  recorded and for how long — and says where Dessau's own view stops
-  ([what each line is read from](docs/posture-reference.md)).
+- **One page that says who can reach the server** — the control panel's Posture
+  tab states, as fact rather than warning, who can reach the server and by which
+  addresses, what a request has to carry from the network and from this Mac,
+  what is announced over Bonjour, what the request log writes down, and what is
+  recorded and for how long — and says where Dessau's own view stops ([what each
+  line is read from](docs/posture-reference.md)).
 - **Answer Discord messages with a model on this Mac** — off unless you turn it
   on. Paste a Discord bot token in Settings and a direct message to that bot, or
   a mention of it in a channel it has been invited to, is answered by one of

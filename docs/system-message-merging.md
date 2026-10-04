@@ -22,7 +22,9 @@ It applies from the next request. Clear the box and save to switch it off
 again; the request after that goes to the model exactly as it arrives.
 
 In `config.json` the switch is `"merge_system_messages": true` on the model's
-entry under `models`, beside anything else set for that model.
+entry under `models`, beside anything else set for that model. The model is
+matched whichever way its repository id is spelled — `ORG/Model` and
+`org/model` are the same model.
 
 ## What it does to a request
 
