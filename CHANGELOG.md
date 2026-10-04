@@ -89,6 +89,14 @@ GitHub release notes.
 
 ### Fixed
 
+- **The context probe no longer unloads a pinned model.** `impact: fix`.
+  The probe unloads the model it measures before every step, and that unload
+  ignored pins, so measuring a pinned model took it out of memory. A pinned
+  model is now never picked, **Measure now** on its card says why, and a model
+  pinned mid-measurement has its measurement stopped at the next step, keeping
+  what it has verified
+  ([context probe](docs/context-probe.md#which-models-it-measures);
+  iss-2609211754251373).
 - **The tool-call probe no longer waits on a load somebody else started.**
   `impact: fix`. The probe only ever uses a model that is already loaded;
   when it arrived while another request was loading that model, it waited
