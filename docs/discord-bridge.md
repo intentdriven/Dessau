@@ -109,7 +109,9 @@ field.
 - A conversation is kept to the most recent turns that fit the model's served
   window; older turns drop off rather than the request being refused. A
   message the model did not answer — refused, or answered with nothing — is
-  left out of the history sent with the next one.
+  left out of the history sent with the next one. A single message too long
+  for the window on its own is sent cut down to its end, so the latest part of
+  it is what the model sees.
 - The bridge holds a limited number of conversations and answers a small
   number of requests at once. It keeps up to 64 conversations of 32 turns, a
   turn up to 16 KiB — every message Discord delivers fits whole — and 8 MiB of

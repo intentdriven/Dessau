@@ -50,6 +50,9 @@ func TestAConversationIsTrimmedToTheServedWindow(t *testing.T) {
 	if len(req.Messages) >= len(turns) {
 		t.Errorf("all %d turns were sent; the window is %d tokens", len(req.Messages), served)
 	}
+	if len(req.Messages) <= 1 {
+		t.Errorf("only %d turn was sent; the window holds more than the newest turn", len(req.Messages))
+	}
 }
 
 // A single message too large for the window on its own is truncated rather
