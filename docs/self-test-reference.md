@@ -31,7 +31,7 @@ waited on, and the run is dropped with a line in the log.
 | `at` | integer | When the run started, Unix seconds, UTC. |
 | `outcome` | string | `ok`, `yielded`, `stopped` or `failed`; see below. |
 | `reason` | string | For a failed run, `load` or `request`; absent otherwise. |
-| `cold_load` | boolean | `true` when the model was not in memory before the run, so `load_ms` is a load from disk and the run unloaded the model afterwards. |
+| `cold_load` | boolean | `true` when the model was not in memory before the run, so `load_ms` is a load from disk and the run unloaded the model afterwards, unless a request took the model over or it was [pinned](pinning-models.md) during the run. |
 | `load_ms` | integer | How long acquiring the model took, in milliseconds. For a model that was already in memory this is close to zero. |
 | `tests` | array | The tests that completed, in the order they ran; see below. A yielded, stopped or failed run carries those that finished before it ended. |
 

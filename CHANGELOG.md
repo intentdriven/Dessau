@@ -93,7 +93,10 @@ GitHub release notes.
   `impact: fix`. When the self-test loaded a model to measure it, it unloaded
   the model at the end of the run even if you had pinned it in the meantime,
   leaving it pinned but not in memory. A model pinned during the run now stays
-  loaded and pinned ([self-test](docs/self-test.md); iss-2610032241098944).
+  loaded and pinned. The self-test also no longer loads a pinned model that is
+  not in memory, as after a restart: it measures a pinned model only while the
+  model is already loaded, and leaves it there
+  ([self-test](docs/self-test.md); iss-2610032241098944).
 - **A failed update is on the model's card as soon as the update stops.**
   `impact: fix`. The reason was written a moment after the update stopped
   counting as a download, so the panel could draw the card in between with
