@@ -153,9 +153,9 @@ pill says **loading for the context probe** or **held by the context
 probe** rather than only that the model is in memory, and a client on this
 Mac, or one holding the API key, is told in the refusal which model the
 probe holds and for how long. **Unload** on that card releases it at once,
-even while the probe's own request is in flight: the run stands down the
-way it does for a client's request, keeps its bounds, and carries on at the
-next idle minute.
+even while the probe's own request is in flight, and cancels that
+measurement: the model is not loaded again at the next idle minute, and the
+card says the probe was incomplete. Press **Measure now** to run it again.
 
 ## Related
 
