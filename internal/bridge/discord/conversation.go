@@ -336,6 +336,14 @@ const bytesPerToken = 4
 // conversation is shortened here and never refused there. A single turn too
 // large for the window on its own is truncated, because refusing it would
 // leave the person unable to say anything at all in that channel.
+//
+// THE HISTORY SENT OPENS ON THE USER (iss-2610032306154631). The turn count,
+// the store's byte budget and the window below all drop turns one at a time
+// from the front, so the oldest turn kept can be the model's answer, and
+// Gemma- and Mistral-style chat templates raise on a history that opens on
+// one. Every trim's result passes through here on its way to the gateway, so
+// this is where it is held: a cut lands only on a user turn, and the turn the
+// fallback sends alone is the newest user turn.
 func buildRequest(model string, turns []turn, served int64) ([]byte, error) {
 	window := served
 	if window <= 0 {
@@ -348,6 +356,9 @@ func buildRequest(model string, turns []turn, served int64) ([]byte, error) {
 	budget := (window - int64(answer)) * bytesPerToken
 
 	for start := 0; start < len(turns); start++ {
+		if turns[start].Role != roleUser {
+			continue
+		}
 		body, err := json.Marshal(request{
 			Model: model, Messages: turns[start:], MaxTokens: answer, Stream: true,
 		})
@@ -358,11 +369,14 @@ func buildRequest(model string, turns []turn, served int64) ([]byte, error) {
 			return body, nil
 		}
 	}
-	// Even the newest turn alone is over the window. Keep its tail — the end
-	// of what somebody typed is the part they are asking about.
+	// Even the newest user turn alone is over the window. Keep its tail — the
+	// end of what somebody typed is the part they are asking about.
 	last := turn{Role: roleUser}
-	if len(turns) > 0 {
-		last = turns[len(turns)-1]
+	for i := len(turns) - 1; i >= 0; i-- {
+		if turns[i].Role == roleUser {
+			last = turns[i]
+			break
+		}
 	}
 	last.Content = tailRunes(last.Content, int(budget/bytesPerToken))
 	return json.Marshal(request{
