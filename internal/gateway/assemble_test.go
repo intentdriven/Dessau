@@ -575,22 +575,22 @@ func TestWhatTheModelServerIsAskedFor(t *testing.T) {
 		wantStream  any
 		wantOptions any
 	}{
-		{"stream absent", `{"messages":[]}`, true, map[string]any{"include_usage": true}},
-		{"stream false", `{"stream":false,"messages":[]}`, true, map[string]any{"include_usage": true}},
-		{"stream false with options of the client's", `{"stream":false,"stream_options":{"include_usage":false,"x":1},"messages":[]}`,
+		{"stream absent", `{"messages":[{"role":"user","content":"hi"}]}`, true, map[string]any{"include_usage": true}},
+		{"stream false", `{"stream":false,"messages":[{"role":"user","content":"hi"}]}`, true, map[string]any{"include_usage": true}},
+		{"stream false with options of the client's", `{"stream":false,"stream_options":{"include_usage":false,"x":1},"messages":[{"role":"user","content":"hi"}]}`,
 			true, map[string]any{"include_usage": true}},
-		{"stream false with malformed options", `{"stream":false,"stream_options":"yes","messages":[]}`,
+		{"stream false with malformed options", `{"stream":false,"stream_options":"yes","messages":[{"role":"user","content":"hi"}]}`,
 			true, map[string]any{"include_usage": true}},
-		{"stream true", `{"stream":true,"messages":[]}`, true, nil},
+		{"stream true", `{"stream":true,"messages":[{"role":"user","content":"hi"}]}`, true, nil},
 		// The pinned server refuses a stream that is not a bool
 		// (validate_model_parameters: _validate("stream", bool)), so a falsy
 		// one is not an unstreamed request the gateway may answer: it goes as
 		// it came, to be refused there.
-		{"stream 0", `{"stream":0,"messages":[]}`, 0, nil},
-		{"stream empty string", `{"stream":"","messages":[]}`, "", nil},
-		{"stream empty list", `{"stream":[],"messages":[]}`, []any{}, nil},
-		{"logprobs", `{"logprobs":true,"messages":[]}`, nil, nil},
-		{"top_logprobs", `{"top_logprobs":3,"messages":[]}`, nil, nil},
+		{"stream 0", `{"stream":0,"messages":[{"role":"user","content":"hi"}]}`, 0, nil},
+		{"stream empty string", `{"stream":"","messages":[{"role":"user","content":"hi"}]}`, "", nil},
+		{"stream empty list", `{"stream":[],"messages":[{"role":"user","content":"hi"}]}`, []any{}, nil},
+		{"logprobs", `{"logprobs":true,"messages":[{"role":"user","content":"hi"}]}`, nil, nil},
+		{"top_logprobs", `{"top_logprobs":3,"messages":[{"role":"user","content":"hi"}]}`, nil, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

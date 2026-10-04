@@ -38,10 +38,11 @@ import (
 // the bridge's own reach — where the operator invited the bot — which is the
 // maintainer's decision recorded in itd-2609180959397172.
 //
-// Nothing of the body is read here. Ask is handed bytes the caller encoded and
-// hands back the bytes the model server produced; the one field it rewrites is
-// "model", the two it refuses by name are the ones the model server would load
-// something from (loadField), and the merge is the grant
+// Nothing of the conversation is read here beyond whether it is empty
+// (emptyConversation, adr-2610040749545010). Ask is handed bytes the caller
+// encoded and hands back the bytes the model server produced; the one field it
+// rewrites is "model", the two it refuses by name are the ones the model server
+// would load something from (loadField), and the merge is the grant
 // adr-2609061610102325 already made.
 func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 	started := time.Now()
@@ -84,6 +85,10 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 		return &AskError{detail: msg, public: genericRefusal}
 	}
 	if msg := generationRefusal(payload); msg != "" {
+		obs.failed(stats.ClassClientError)
+		return &AskError{detail: msg, public: genericRefusal}
+	}
+	if msg := emptyConversation(payload, true); msg != "" {
 		obs.failed(stats.ClassClientError)
 		return &AskError{detail: msg, public: genericRefusal}
 	}

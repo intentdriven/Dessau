@@ -53,6 +53,9 @@ func TestPlacePutsTheBundleInTheDestinationDirectory(t *testing.T) {
 // exits 0, which leaves every launcher opening the old one.
 func TestPlaceReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 	dir := t.TempDir()
+	// The replaced bundle is set aside in this account's own directory, which
+	// is this test's, never the real Application Support.
+	swapHome(t, dir)
 	src := bundleAt(t, filepath.Join(dir, "extract", "DessauChat.app"), "new")
 	into := filepath.Join(dir, "Applications")
 	dest := bundleAt(t, filepath.Join(into, "DessauChat.app"), "old")
@@ -74,6 +77,9 @@ func TestPlaceReplacesAnInstalledBundleRatherThanNestingInsideIt(t *testing.T) {
 // through: what it points at is left exactly as it was.
 func TestPlaceReplacesASymlinkAtTheDestinationRatherThanFollowingIt(t *testing.T) {
 	dir := t.TempDir()
+	// The replaced bundle is set aside in this account's own directory, which
+	// is this test's, never the real Application Support.
+	swapHome(t, dir)
 	src := bundleAt(t, filepath.Join(dir, "extract", "DessauChat.app"), "new")
 	into := filepath.Join(dir, "Applications")
 	if err := os.MkdirAll(into, 0o755); err != nil {
