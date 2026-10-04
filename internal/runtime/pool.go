@@ -900,6 +900,15 @@ func (p *Pool) acquire(ctx context.Context, repoID string, mayWait bool) (*Upstr
 			return nil, nil, fmt.Errorf("%s is being updated to a newer version; try again in a moment: %w", repoID, ErrUpdating)
 		}
 		if held, ok := p.entries[key]; ok {
+			// An entry still loading is another caller's load, not a model
+			// the pool has: a resident-only caller joining it would wait out
+			// the whole load it promised never to wait for
+			// (iss-2609202010357676).
+			if residentOnlyFrom(ctx) && !isReady(held) {
+				p.leaveQueueLocked(w)
+				p.mu.Unlock()
+				return nil, nil, fmt.Errorf("%s: %w", repoID, ErrNotResident)
+			}
 			e = held
 			break
 		}

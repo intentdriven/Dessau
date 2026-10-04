@@ -101,11 +101,12 @@ func TestTheCardSaysWhetherAModelIsRecorded(t *testing.T) {
 		recorded bool
 		words    string
 	}{
-		{"on and not excepted", `transcriptState({"transcript":true,"models":{}}, "org/m")`, true, "recorded"},
-		{"on and excepted", `transcriptState({"transcript":true,"models":{"org/m":{"no_transcript":true}}}, "org/m")`, false, "keeps no transcript"},
-		{"on and excepted under another spelling", `transcriptState({"transcript":true,"models":{"ORG/M":{"no_transcript":true}}}, "org/m")`, false, "keeps no transcript"},
-		{"another model is excepted", `transcriptState({"transcript":true,"models":{"org/other":{"no_transcript":true}}}, "org/m")`, true, "recorded"},
-		{"the switch is off", `transcriptState({"transcript":false,"models":{}}, "org/m")`, false, "keeps no transcript"},
+		// Dessau keeps no transcript, so the card never reads a model as
+		// recorded, and a snapshot that carried a transcript key would not
+		// make it one: the panel reads no such key (iss-2609211218478273).
+		{"a snapshot carrying a transcript key", `transcriptState({"transcript":true,"models":{}}, "org/m")`, false, "keeps no transcript"},
+		{"an excepted model", `transcriptState({"models":{"org/m":{"no_transcript":true}}}, "org/m")`, false, "keeps no transcript"},
+		{"another model is excepted", `transcriptState({"models":{"org/other":{"no_transcript":true}}}, "org/m")`, false, "keeps no transcript"},
 		{"the snapshot says nothing", `transcriptState({}, "org/m")`, false, "keeps no transcript"},
 	}
 	for _, c := range cases {
@@ -125,7 +126,7 @@ func TestTheCardSaysWhetherAModelIsRecorded(t *testing.T) {
 func TestTheCardDrawsTheTranscriptPillWithItsWords(t *testing.T) {
 	for _, c := range []struct{ expr, words string }{
 		{`transcriptPill({"transcript":true,"models":{"org/m":{"no_transcript":true}}}, "org/m")`, "keeps no transcript"},
-		{`transcriptPill({"transcript":true,"models":{}}, "org/m")`, "recorded"},
+		{`transcriptPill({"transcript":true,"models":{}}, "org/m")`, "keeps no transcript"},
 	} {
 		got := evalPanel(t, c.expr, "foldRepoID", "noTranscriptFor", "transcriptState", "transcriptPill")
 		if !strings.Contains(got, `aria-label="`+c.words+`"`) || !strings.Contains(got, `role="img"`) {
@@ -185,16 +186,15 @@ func TestBothPanelsSayHowTheExceptionMeetsDebugLogging(t *testing.T) {
 // with a person's conversation, so they are pinned whole, as the statistics
 // switch's are.
 func TestTheTranscriptControlExplainsItselfInWholeSentences(t *testing.T) {
-	const want = "Off for every model unless you switch it on here. Tick a model and nothing it is asked " +
-		"and nothing it answers is written to the transcript, whether or not the transcript is on, " +
-		"from the next request it serves; every other model goes on as it was. The exception is a " +
-		"fact about the model that answers a request: a request a recorded model answers is written " +
-		"down whole, including earlier turns from an excepted model that the client carried back. " +
-		"Every client is told, in the models list, whether a model is recorded, and Dessau Chat " +
-		"shows it beside the model before you pick it. A model that keeps no transcript is not " +
-		"offered over the Discord bridge, because Discord would keep what Dessau does not, and " +
-		"debug logging cannot be armed on it: the arming is refused with the reason, and ticking " +
-		"this box takes a model off the debug-logging list. The transcript page says all of this."
+	const want = "Dessau keeps no transcript: nothing any model is asked and nothing it answers is written " +
+		"down. Off for every model unless you tick it here: a model that keeps no transcript is " +
+		"held apart from the two places a conversation could leave a record. It is not offered over" +
+		" the Discord bridge, because Discord would keep what Dessau does not, and debug logging " +
+		"cannot be armed on it: the arming is refused with the reason, and ticking this box takes a" +
+		" model off the debug-logging list; a model already running at debug keeps logging until it" +
+		" is unloaded. Every client is told, in the models list, that no model" +
+		" is recorded, and Dessau Chat shows it beside the model before you pick it. The transcript" +
+		" page says all of this."
 	if got := hintUnder(t, markup(t), "<legend>Transcript</legend>"); got != want {
 		t.Errorf("the paragraph beside the transcript boxes reads:\n  %s\nwant:\n  %s", got, want)
 	}

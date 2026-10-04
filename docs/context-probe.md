@@ -77,6 +77,12 @@ is Dessau's own bound rather than the model server's verdict — the ten
 minutes ran out, or the server was ended by a signal — also goes when
 Dessau restarts: a slow load on a busy Mac says nothing about the next one.
 
+Nor is a [pinned](pinning-models.md) model. The probe stops the model before every
+step, and a pin promises that nothing stops it, so the pin wins: a pinned
+model is never picked, **Measure now** on its card says so, and when a model
+is pinned while it is being measured, the measurement stops at its next step,
+keeping the sizes it has already verified. Unpin it, and the next run goes on from there.
+
 To measure one model without switching the probe on, open the **My Models** tab
 and press **Measure now** on its card. The run starts at the next idle
 minute.
@@ -122,7 +128,10 @@ and appears in no request statistic and no request log line.
 
 The line reads **not measured** while the model has not been asked under
 the runtime in force: a model downloaded again, or a Dessau update that
-changes the runtime, is asked again the next time it is served. It refuses
+changes the runtime, is asked again the next time it is loaded. A probe that
+gets no answer — the model server does not reply, or replies with an error —
+records nothing, and the model is asked again at its next load, not at its
+next request. It refuses
 nothing — a client may still send tools to a model marked **no**, and Dessau
 relays them as it does today. The same answer is published on the models
 list as `tool_calling`.
@@ -140,8 +149,8 @@ least that large, and still stands. Setting it to any other figure does.
 ## Stop it
 
 Clear the box and save, or quit Dessau. A run in progress stops at once,
-writes no figure, leaves the model unloaded, and the card says the probe was
-incomplete. It is not retried on its own; press **Measure now** to run it
+writes no figure, leaves the model unloaded unless it is pinned, and the card
+says the probe was incomplete. It is not retried on its own; press **Measure now** to run it
 again.
 
 While a run holds a model, the memory that model is charged is not free for
@@ -150,9 +159,9 @@ pill says **loading for the context probe** or **held by the context
 probe** rather than only that the model is in memory, and a client on this
 Mac, or one holding the API key, is told in the refusal which model the
 probe holds and for how long. **Unload** on that card releases it at once,
-even while the probe's own request is in flight: the run stands down the
-way it does for a client's request, keeps its bounds, and carries on at the
-next idle minute.
+even while the probe's own request is in flight, and cancels that
+measurement: the model is not loaded again at the next idle minute, and the
+card says the probe was incomplete. Press **Measure now** to run it again.
 
 ## Related
 
