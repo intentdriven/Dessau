@@ -13,3 +13,7 @@ remedy: "Record the vocabulary size among a model's facts and check logit_bias k
 ---
 
 With logit_bias refused outright, a client that relies on it (banning a token, forcing a choice) loses it. The gateway could accept it again if the registry recorded each model's vocabulary size (config.json vocab_size, or text_config's) and the refusal held keys below it after the model is resolved, minding a padded vocabulary larger than the tokenizer.
+
+## Decision 2026-10-03
+
+Maintainer's decision: NOT NOW. `logit_bias` stays refused. The record stays open as future work; the vocabulary-size check is built only when a client needs `logit_bias`.

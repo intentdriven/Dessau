@@ -42,7 +42,7 @@ function debugArmedFor(m, debugArmed) {
   return (debugArmed || []).some((id) => foldRepoID(id) === want);
 }
 
-// noTranscriptFor says whether a model is excepted from the transcript
+// noTranscriptFor says whether a model is marked as keeping no transcript
 // (itd-2609091715089488): the per-model map read folded, the way every
 // other join on a repo id in this panel is, so an exception set under
 // another spelling than the registry's still bites. Any spelling that
@@ -62,17 +62,13 @@ function mergeFor(perModel, repoID) {
     foldRepoID(id) === want && !!(perModel[id] && perModel[id].merge_system_messages));
 }
 
-// transcriptState is whether a conversation with a model is written to the
-// transcript, and the words for it, computed from the snapshot the card
-// already holds: the machine-wide switch AND the model not excepted, the
-// same value /v1/models publishes per entry as `recording`. The card does
-// not read that field; it applies the same rule to the same two facts, so
-// the two surfaces agree by construction rather than by a second fetch.
-// The words are the chat client's picker's words for the same fact.
+// transcriptState is whether a conversation with a model is written to a
+// transcript, and the words for it. Dessau keeps no transcript, so no model
+// is recorded — the value /v1/models publishes per entry as `recording` —
+// and the card reads no setting for it (iss-2609211218478273). The words are
+// the chat client's picker's words for the same fact.
 function transcriptState(config, repoID) {
-  const c = config || {};
-  const recorded = !!c.transcript && !noTranscriptFor(c.models, repoID);
-  return { recorded, words: recorded ? 'recorded' : 'keeps no transcript' };
+  return { recorded: false, words: 'keeps no transcript' };
 }
 
 // transcriptPill is the icon a card carries for that state, labelled in
@@ -1550,8 +1546,8 @@ function checkedPinModels() {
   return pinBoxes().filter((cb) => cb.checked).map((cb) => cb.dataset.model);
 }
 
-// renderTranscriptSwitches draws one box per model the exception can be
-// removed from: every model on this Mac, and every excepted model this Mac
+// renderTranscriptSwitches draws one box per model the mark can be set on
+// or cleared from: every model on this Mac, and every marked model this Mac
 // does not have (transcriptRows). Ticked means the model keeps no
 // transcript.
 function renderTranscriptSwitches() {
