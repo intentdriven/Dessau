@@ -52,9 +52,8 @@ Chosen from the open ledger on 2026-10-04 as the ones a release should not
 ship without. Everything else open is minor, Swift-client, or process.
 
 1. **iss-2610031758029994 — one empty prompt freezes a model for everyone**
-   (major, reproduced on the Mac 2026-10-03). Fixed on
-   `fix/refuse-empty-prompt` (PR 196, adr-2610040749545010); it must be
-   merged before the release is cut.
+   (major, reproduced on the Mac 2026-10-03). Fixed and merged in #196
+   (adr-2610040749545010); nothing left to do but ship it.
 2. **iss-2610040752568866 — a frozen model server goes unnoticed** (major).
    **Measure first, on the Mac:** freeze a server with an empty prompt on a
    build *without* the fix above, then read `/health` from the child
@@ -128,10 +127,9 @@ acquire never waits on a reload), #184 (the context probe honours pins),
 read bound is one figure), #187 to #189 (the Discord bridge: restart after a
 re-save, typing at admission, conversation bounded in bytes), #190 (CI runs
 on pushes to main only), #191 (tests cannot resolve the real home folder),
-#192 (the staging-name test no longer flakes). In the queue or awaiting CI
-when this was written: #194 (the Mac reproduction's records), #195 (a failed
-update says why before the download ends — a race that failed #194's CI),
-#196 (the empty-prompt refusal).
+#192 (the staging-name test no longer flakes), #194 (the Mac reproduction's
+records), #195 (a failed update says why before the download ends — a race
+that failed #194's CI), #196 (the empty-prompt refusal).
 
 ### Hand steps owed on a Mac
 
@@ -155,11 +153,11 @@ update says why before the download ends — a race that failed #194's CI),
   fix/no-transcript-disarms-debug, fix/probe-honours-pins,
   fix/resident-only-no-wait, fix/stale-aside-rescan-check,
   fix/unload-cancels-measurement, test/read-bound-tied,
-  test/stats-no-platform-ids, test/home-guard; and, once merged,
+  test/stats-no-platform-ids, test/home-guard,
   test/staging-name-pid-check, chore/record-mac-reproduction,
-  fix/update-failure-before-settle, fix/refuse-empty-prompt and this
-  branch. Check each is an ancestor of
-  `main` first.
+  fix/update-failure-before-settle, fix/refuse-empty-prompt; and, once
+  merged, docs/handoff-2026-10-04. Check each is an ancestor of `main`
+  first.
 - **PR bodies are clean.** The tooling appends a footer with a session link
   on create; each body was rewritten through the GitHub API afterwards and
   re-read.
