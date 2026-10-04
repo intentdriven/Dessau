@@ -141,3 +141,33 @@ func TestAFailedModelIsSkippedByIdleWorkAndRefusedWithItsReason(t *testing.T) {
 		t.Error("a moved served window left the failure standing")
 	}
 }
+
+// A save that moves only the memory budget lifts a load failure at once: the
+// load may go differently under another budget, and the re-judging runs after
+// the pool takes the budget the save put in force, so it judges the failure
+// against that budget rather than the one it was recorded under
+// (iss-2610042040451551).
+func TestABudgetOnlySaveLiftsALoadFailure(t *testing.T) {
+	a := newTestApp(t)
+	readyModel(t, a, "org/m", 131072)
+	prov := (probeSources{a}).Provenance("org/m")
+	if err := a.Registry.SetLoadFailure("org/m", &registry.LoadFailure{
+		Reason: "could not load: ValueError: Model type glm_ocr not supported.", At: 1,
+		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes, DecodeConcurrency: prov.DecodeConcurrency, ServedContext: prov.ServedContext,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := a.Config()
+	c.MaxResidentBytes = prov.BudgetBytes / 2
+	if err := a.SetConfig(c); err != nil {
+		t.Fatal(err)
+	}
+	after := (probeSources{a}).Provenance("org/m")
+	if after.BudgetBytes == prov.BudgetBytes || after.Runtime != prov.Runtime ||
+		after.DecodeConcurrency != prov.DecodeConcurrency || after.ServedContext != prov.ServedContext {
+		t.Fatalf("the fixture is wrong: the save must move the budget alone, provenance %+v -> %+v", prov, after)
+	}
+	if m, _ := a.Registry.Get("org/m"); m.LoadFailed() {
+		t.Errorf("a budget-only save left the failure standing: %+v (budget now %d)", m.LoadFailure, a.Pool.MemoryBudget())
+	}
+}
