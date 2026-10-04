@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/runtime/pool.go"
 remedy: "Rely on the pool's health watch to restart a server whose generation thread died; report the empty-segment case upstream to mlx-lm and re-check at the next runtime upgrade."
+resolution: "Not reproduced on the Mac (three requests, two exact cache hits, all answered); closed on the maintainer's decision of 2026-10-03. The health watch stays the net."
+impact: internal
+resolved_by:
+  commit: "194fe228e30ff59427e8b19eb1c6a6ea8a8cfb34"
 ---
 
 A prompt that exactly matches a cached one leaves fetch_nearest_cache with nothing left to process (models/cache.py:1656); server.py:723-730 then pops every segment and insert_segments raises on an empty prompt on the generation thread. A /v1/completions request replaying a cached prompt reaches it (medium confidence). The gateway cannot see the cache.
