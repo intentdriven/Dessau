@@ -39,11 +39,9 @@ func (s probeSources) Candidates() []contextprobe.Candidate {
 		if !m.CanChat(rule) || m.LoadFailed() {
 			continue
 		}
-		served, _ := s.a.ServedWindow(m)
 		out = append(out, contextprobe.Candidate{
 			RepoID:           m.RepoID,
 			Declared:         m.ContextLength,
-			Served:           served,
 			Bytes:            chargedSize(m),
 			KVChargePerToken: m.KVChargePerToken,
 			Measured:         m.Measured,

@@ -9,13 +9,10 @@ import (
 )
 
 // lowerServed puts a lower served window into force for the one candidate:
-// the app's candidate and provenance read it, and the gateway's served-window
-// check refuses above it.
+// the app's provenance reads it, and the gateway's served-window check
+// refuses above it.
 func lowerServed(src *fakeSources, gw *fakeGateway, window int64) {
-	src.mu.Lock()
-	src.cands[0].Served = window
-	src.prov = registry.Provenance{Runtime: "0.31.3", BudgetBytes: 1, DecodeConcurrency: 4, ServedContext: window}
-	src.mu.Unlock()
+	src.withServed(window)
 	gw.mu.Lock()
 	gw.accept = window
 	gw.mu.Unlock()
@@ -93,17 +90,16 @@ func TestAResumedProbeDropsBoundsMadeUnderAnotherProvenance(t *testing.T) {
 }
 
 // The bounds' ceiling and their provenance come from one read. Here the
-// candidate still carries the served window from before a raise while the
-// provenance already has the raised one, which is what a raise landing
-// between the two reads looks like: a ceiling from the candidate would stop
-// the sweep at the old window and save that figure, bound by the served
-// window, stamped with the raised one.
+// first read of the provenance still has the served window from before a
+// raise, and every later one the raised window, which is what a raise landing
+// just after the run begins looks like: a ceiling from the first read and a
+// stamp from a later one would stop the sweep at the old window and save that
+// figure, bound by the served window, stamped with the raised one.
 func TestAProbesCeilingComesFromTheProvenanceItIsStampedWith(t *testing.T) {
 	gw := newFakeGateway(t, 131072, http.StatusBadRequest)
-	cand := model
-	cand.Served = 8192
-	src := newFakeSources(gw.srv.URL, cand)
-	src.prov = registry.Provenance{Runtime: "0.31.3", BudgetBytes: 1, DecodeConcurrency: 4, ServedContext: 131072}
+	src := newFakeSources(gw.srv.URL, model)
+	src.next = []registry.Provenance{provServed(8192)}
+	src.withServed(131072)
 	p := probeOf(src, true)
 	r := runner(t, newFakePool("org/m"), p)
 	r.SetEnabled(true)
