@@ -137,7 +137,9 @@ that failed #194's CI), #196 (the empty-prompt refusal).
   `internal/runtime/testdata/clef/`, PR 198), and the Swift client build
   (`client/build.sh` builds against the macOS 27 SDK; the four
   `client/tests` scripts pass, 46 checks).
-- The panel's browser spike (itd-2610031004535845) before step 2 starts.
+- Done 2026-10-04: the panel's browser spike (itd-2610031004535845): every
+  browser and client in the serving account is attributed, another account's
+  is not; step 2 may start (result in its spec).
 - The Swift client's open bugs (iss-2609200815308397, appearance switching,
   is major) — checked by hand in the built app.
 - The six live Discord checks (iss-2609190242198542) before the bridge is
