@@ -1778,14 +1778,23 @@ func (a *App) startDownload(repoID, commit string) error {
 		case dl.staged.Load():
 			// The version being served was never touched: stagedDownload
 			// removed what it fetched, and the record still describes the
-			// files on disk, so there is nothing to put back.
-			a.finishDownload(dl, nil)
-			if errors.Is(err, context.Canceled) {
+			// files on disk, so there is nothing to put back. Why it failed
+			// is said on the model too, so the card is not silent about it,
+			// and inside finishDownload's hold, so nothing that waits for the
+			// download to end reads the model before it says so
+			// (iss-2610040756460648).
+			cancelled := errors.Is(err, context.Canceled)
+			var serr error
+			a.finishDownload(dl, func() {
+				if !cancelled {
+					serr = a.Registry.SetUpdateFailure(repoID, updateFailureClass(err))
+				}
+			})
+			if cancelled {
 				a.Log.Info("update cancelled; the version being served is untouched", "model", repoID)
 			} else {
 				a.Log.Warn("update failed; the version being served is untouched", "model", repoID, "err", err)
-				// Said on the model too, so the card is not silent about it.
-				if serr := a.Registry.SetUpdateFailure(repoID, updateFailureClass(err)); serr != nil {
+				if serr != nil {
 					a.Log.Warn("could not record why an update failed", "model", repoID, "err", serr)
 				}
 			}

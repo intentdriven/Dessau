@@ -89,6 +89,11 @@ GitHub release notes.
 
 ### Fixed
 
+- **A failed update is on the model's card as soon as the update stops.**
+  `impact: fix`. The reason was written a moment after the update stopped
+  counting as a download, so the panel could draw the card in between with
+  nothing said about the failure until its next refresh
+  (iss-2610040756460648).
 - **An empty prompt no longer leaves a model unable to answer anyone.**
   `impact: breaking`. One `/v1/completions` request with an empty prompt left
   the model server running but answering nothing, so every later request to
