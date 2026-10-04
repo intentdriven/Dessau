@@ -89,6 +89,20 @@ GitHub release notes.
 
 ### Fixed
 
+- **A failed update is on the model's card as soon as the update stops.**
+  `impact: fix`. The reason was written a moment after the update stopped
+  counting as a download, so the panel could draw the card in between with
+  nothing said about the failure until its next refresh
+  (iss-2610040756460648).
+- **An empty prompt no longer leaves a model unable to answer anyone.**
+  `impact: breaking`. One `/v1/completions` request with an empty prompt left
+  the model server running but answering nothing, so every later request to
+  that model waited without an answer until the model was unloaded.
+  Such a request is now refused with **400**: a `prompt` that is empty, only
+  whitespace or an empty array, and a chat request whose `messages` is an
+  empty array. Dessau reads only whether they are empty, and keeps nothing
+  ([reference](docs/request-fields.md#nothing-to-answer);
+  adr-2610040749545010; iss-2610031758029994).
 - **The Discord bridge holds at most 8 MiB of conversation.**
   `impact: fix`. Its limits were counted in characters and channels, so
   anyone who could reach the bot could make it hold half a gigabyte of text

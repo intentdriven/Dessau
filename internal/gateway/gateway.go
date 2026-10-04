@@ -755,6 +755,11 @@ func (g *Gateway) completions(w http.ResponseWriter, r *http.Request, chat bool)
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	if msg := emptyConversation(payload, chat); msg != "" {
+		obs.failed(stats.ClassClientError)
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 
 	var requested string
 	if rawModel, ok := payload["model"]; ok {
