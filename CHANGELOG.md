@@ -56,6 +56,12 @@ GitHub release notes.
 
 ### Changed
 
+- **Unload cancels a context-probe measurement it interrupts.** `impact: fix`.
+  An operator's **Unload** of a model the context probe was measuring paused
+  the run, and the probe loaded the model straight back at the next idle
+  minute. It now cancels that measurement: the model stays unloaded, the card
+  says the probe was incomplete, and **Measure now** runs it again
+  ([context probe](docs/context-probe.md); iss-2610031818057157).
 - **A chat request to a model that cannot chat is refused, and the panel
   no longer offers to load one.** `impact: breaking`. A model `/v1/models`
   marks `"chat": false` — a speech, OCR or decision model, or a base model
@@ -83,6 +89,34 @@ GitHub release notes.
 
 ### Fixed
 
+- **The context probe no longer unloads a pinned model.** `impact: fix`.
+  The probe unloads the model it measures before every step, and that unload
+  ignored pins, so measuring a pinned model took it out of memory. A pinned
+  model is now never picked, **Measure now** on its card says why, and a model
+  pinned mid-measurement has its measurement stopped at the next step, keeping
+  what it has verified
+  ([context probe](docs/context-probe.md#which-models-it-measures);
+  iss-2609211754251373).
+- **The tool-call probe no longer waits on a load somebody else started.**
+  `impact: fix`. The probe only ever uses a model that is already loaded;
+  when it arrived while another request was loading that model, it waited
+  out the whole load, up to the start-up timeout, instead of passing the
+  model by. It now passes it by at once, and the load goes on for the
+  request that started it (iss-2609202010357676).
+- **Merge system messages applies whichever way the model's id is spelled.**
+  `impact: fix`. The gateway, the Discord bridge and the panel's box read the
+  setting by the model's exact id, so a setting kept under another spelling,
+  such as `ORG/Model` against `org/model`, could be missed and the messages
+  sent unmerged. Dessau moves saved settings onto the registry's spelling, so
+  this was rare. The setting is now read folded, like every other per-model
+  setting ([system-message merging](docs/system-message-merging.md);
+  iss-2609201015464436).
+- **Ticking a model's transcript box takes it off the debug-logging list.**
+  `impact: fix`. The panel and the transcript page said so, but a save left an
+  arming made before the box was ticked in place, so the model still launched
+  at debug and wrote every prompt and answer to its log. A save that marks a
+  model as keeping no transcript now disarms it ([transcript](docs/transcript.md);
+  iss-2610032212269524).
 - **A start keeps an old version left aside whenever the rescan would refuse
   the model's folder.** `impact: fix`. The start judged the folder with a
   looser check than the rescan's, so a folder holding a part file from an
@@ -317,25 +351,20 @@ GitHub release notes.
 
 ### Added
 
-- **Some models keep no transcript, even while recording is on.**
-  `impact: additive`. Settings gains a **Transcript** group with one box per
-  model: tick a model and nothing it is asked and nothing it answers is
-  written to the server's transcript, from the next request it serves, while
-  every other model goes on as it was. The exception is a per-model setting
-  (`no_transcript` under `models` in `config.json`), off by default, matched
-  whichever way the repository id is spelled, and settable on a model that is
-  not downloaded yet, so it bites from the first request that model ever
-  serves. Every models-list entry now carries `recording`, to every client
-  with or without a key, saying whether a conversation with that model is
-  written down; Dessau Chat's picker and the control panel's model cards show
-  it as an icon labelled in words before the model is chosen. The decision is
-  made on the model that answers a request: a request a recorded model
-  answers is written down whole, including earlier turns from an excepted
-  model that the client carried back, and the transcript page says so. An
-  excepted model is not offered over the Discord bridge — `/model` leaves it
-  out, naming it is refused with the reason, and a channel already on it is
-  refused at its next message — and arming per-model debug logging on it is
-  refused, with both controls saying so before anyone tries.
+- **A model can be marked as one that keeps no transcript.**
+  `impact: additive`. Settings gains a **Transcript** group with one box per model. The
+  mark is a per-model setting (`no_transcript` under `models` in
+  `config.json`), off by default, matched whichever way the repository id is
+  spelled, and settable on a model that is not downloaded yet, so it bites
+  from the first request that model ever serves. A marked model is not offered
+  over the Discord bridge — `/model` leaves it out, naming it is refused with
+  the reason, and a channel already on it is refused at its next message — and
+  arming per-model debug logging on it is refused, with both controls saying
+  so before anyone tries. Every models-list entry now carries `recording`, to
+  every client with or without a key, saying whether a conversation with that
+  model is written down; Dessau keeps no transcript, so it is `false` for
+  every model, and Dessau Chat's picker and the control panel's model cards
+  show it as an icon labelled in words before the model is chosen.
 - **A settings save merges the per-model map field by field.** The save
   used to replace the whole map with what the form sent, so a per-model
   setting written into `config.json` by hand after the panel loaded — a pin,

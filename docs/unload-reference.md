@@ -103,9 +103,10 @@ curl -X POST http://localhost:11535/api/models/unload \
 It is the operator's unload: it unloads a pinned model, which stays pinned, and
 one inside its eviction grace. When the server's own idle work (the self-test,
 the context probe) is using the model, that work is asked to let go and the
-route waits briefly for it. It is refused with `409` when the model is
-answering a request or is not loaded. It is recorded with the reason
-`unloaded`.
+route waits briefly for it; a measurement the context probe is making of the
+model is cancelled, and **Measure now** starts it again. It is refused with
+`409` when the model is answering a request or is not loaded; a measurement it
+cancelled stays cancelled. It is recorded with the reason `unloaded`.
 
 ## `POST /api/models/load`
 
