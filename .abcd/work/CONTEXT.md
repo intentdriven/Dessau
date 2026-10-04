@@ -54,19 +54,16 @@ ship without. Everything else open is minor, Swift-client, or process.
 1. **iss-2610031758029994 — one empty prompt freezes a model for everyone**
    (major, reproduced on the Mac 2026-10-03). Fixed and merged in #196
    (adr-2610040749545010); nothing left to do but ship it.
-2. **iss-2610040752568866 — a frozen model server goes unnoticed** (major).
-   **Measure first, on the Mac:** freeze a server with an empty prompt on a
-   build *without* the fix above, then read `/health` from the child
-   directly and send the child a request directly. mlx-lm's source predicts
-   a 503 and an immediate "generation thread died" error, not the hang that
-   was seen; if the child answers at once while Dessau hangs, the hang is on
-   Dessau's side of the relay and is the thing to fix. If `/health` answers
-   503 and the hang is the child's, the health watch from #173 already
-   restarts it and the record closes. Do not build before the measurement.
+2. **iss-2610040752568866 — a frozen model server goes unnoticed: resolved
+   2026-10-04.** Measured on the Mac: `/health` answers 503 in that state and
+   the health watch (1ff92cc9) replaces the server within one tick. Nothing
+   to build.
 3. **iss-2610040805353721 — an array-of-strings prompt reaches the
-   generation thread** (security, medium confidence). Needs the maintainer's
-   decision first: refusing a non-string `/v1/completions` prompt reads its
-   JSON kind, which widens adr-2610040749545010, so it would be a new ADR.
+   generation thread** (security). Reproduced on the Mac 2026-10-04: `["hi"]`
+   and `[""]` freeze the server. **Decided:** the gateway refuses a
+   `/v1/completions` prompt that is not a JSON string, with a 400, under a new
+   ADR that partly supersedes adr-2610040749545010 (reading the JSON kind and
+   nothing else). Build it test-first.
 4. **iss-2610032306154631 — a bridged history can start with an assistant
    turn** (minor bug, user-visible). Gemma- and Mistral-style templates raise
    on it, and the channel's next message fails. Small, local fix in
@@ -133,31 +130,26 @@ that failed #194's CI), #196 (the empty-prompt refusal).
 
 ### Hand steps owed on a Mac
 
-- The measurement for iss-2610040752568866 (item 2 above).
-- The Clef golden fixtures (itd-2610030656210408 step 3).
+- Done 2026-10-04: the measurement for iss-2610040752568866 (resolved:
+  `/health` answers 503 and the health watch catches it), the reproduction
+  for iss-2610040805353721 (array prompts freeze the server; the maintainer
+  decided the refusal, see DECISIONS), the Clef golden fixtures (in
+  `internal/runtime/testdata/clef/`, PR 198), and the Swift client build
+  (`client/build.sh` builds against the macOS 27 SDK; the four
+  `client/tests` scripts pass, 46 checks).
 - The panel's browser spike (itd-2610031004535845) before step 2 starts.
-- The Swift client build (`client/build.sh`), and the client's open bugs
-  (iss-2609200815308397, appearance switching, is major).
+- The Swift client's open bugs (iss-2609200815308397, appearance switching,
+  is major) — checked by hand in the built app.
 - The six live Discord checks (iss-2609190242198542) before the bridge is
   called done.
 - Installing a release in the serving account.
 
 ### Said plainly
 
-- **Branches are not deleted on GitHub from here.** The proxy answers a
-  deletion with success and leaves the branch. Merged branches to delete:
-  chore/ledger-records, chore/maintainer-decisions-2026-10-03,
-  ci/push-main-only, docs/no-transcript-truth, docs/small-corrections,
-  fix/bridge-conversation-bytes, fix/bridge-resave-restarts,
-  fix/bridge-typing-at-admission, fix/folded-merge-setting,
-  fix/no-transcript-disarms-debug, fix/probe-honours-pins,
-  fix/resident-only-no-wait, fix/stale-aside-rescan-check,
-  fix/unload-cancels-measurement, test/read-bound-tied,
-  test/stats-no-platform-ids, test/home-guard,
-  test/staging-name-pid-check, chore/record-mac-reproduction,
-  fix/update-failure-before-settle, fix/refuse-empty-prompt; and, once
-  merged, docs/handoff-2026-10-04. Check each is an ancestor of `main`
-  first.
+- **Branches are not deleted on GitHub from a cloud session.** The proxy
+  answers a deletion with success and leaves the branch; a local session
+  deletes merged branches, each checked against `main` first. All of the
+  2026-10-04 run's branches are deleted.
 - **PR bodies are clean.** The tooling appends a footer with a session link
   on create; each body was rewritten through the GitHub API afterwards and
   re-read.
