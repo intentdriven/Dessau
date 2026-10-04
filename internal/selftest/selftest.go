@@ -782,7 +782,10 @@ func (r *Runner) run(ctx context.Context, model string, wasResident bool) {
 			return
 		}
 		// A model pinned during the run is refused with ErrPinned and stays.
-		if err := r.opts.Server.Unload(model); err != nil {
+		switch err := r.opts.Server.Unload(model); {
+		case errors.Is(err, ErrPinned):
+			r.opts.Log.Debug("self-test: left the model it loaded in memory, because it was pinned during the run", "model", model)
+		case err != nil:
 			r.opts.Log.Debug("self-test: could not unload the model it loaded", "model", model, "err", err)
 		}
 	}()

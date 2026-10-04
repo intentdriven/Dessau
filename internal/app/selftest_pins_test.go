@@ -125,6 +125,11 @@ func TestTheSelfTestLeavesAModelPinnedDuringItsRunLoaded(t *testing.T) {
 	if !run.ColdLoad {
 		t.Fatalf("the run found the model resident; the case needs the self-test's own load")
 	}
+	// A yielded run skips its unload whatever the pin, so only a completed
+	// run puts the refusal to the test.
+	if run.Outcome != selftest.OutcomeOK {
+		t.Fatalf("the run's outcome is %q, want %q; the case needs a run that reaches its unload", run.Outcome, selftest.OutcomeOK)
+	}
 	if !a.isPinned("org/m") {
 		t.Error("the model is no longer pinned after the run")
 	}
