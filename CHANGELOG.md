@@ -89,6 +89,14 @@ GitHub release notes.
 
 ### Fixed
 
+- **The Discord bridge holds at most 8 MiB of conversation.**
+  `impact: fix`. Its limits were counted in characters and channels, so
+  anyone who could reach the bot could make it hold half a gigabyte of text
+  for as long as the bridge was on. A turn is now bounded in bytes (16 KiB,
+  which every message Discord delivers fits), the bridge keeps 64
+  conversations of 32 turns rather than 256 of 64, and all of them share one
+  8 MiB budget, with the oldest turns going first
+  ([Discord bridge](docs/discord-bridge.md); iss-2609190312188937).
 - **The Discord bot shows as typing while a message waits its turn.**
   `impact: fix`. The indicator went up only when one of the bridge's two
   answering slots took the message, so a message sent while both were busy

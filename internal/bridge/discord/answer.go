@@ -74,7 +74,7 @@ func (s *session) onMessage(ctx context.Context, data json.RawMessage) {
 	if !direct && !mentions(msg, botID) {
 		return
 	}
-	text := headRunes(msg.Content, maxMessageRunes)
+	text := headBytes(msg.Content, maxTurnBytes)
 	if text == "" {
 		return
 	}
