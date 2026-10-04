@@ -4,7 +4,8 @@
 to the model server, changing only the fields listed under
 [What Dessau changes in a request it passes on](#what-dessau-changes-in-a-request-it-passes-on).
 Two fields are refused instead, and a request carrying either goes no further;
-so is a request that asks for an empty answer or whose `stop` is not text.
+so is a request with nothing to answer, one that asks for an empty answer, or
+one whose `stop` is not text.
 
 ## The refused fields
 
@@ -49,6 +50,22 @@ The request is refused before a model is chosen: no model is loaded and none
 is evicted for it, the model server never receives it, and the answer carries
 none of the [response headers](response-headers.md). Every client receives
 the same message, with or without the API key.
+
+## Nothing to answer
+
+A request with nothing to generate from is refused with **400**:
+
+| Request | Refused when | The error message |
+| --- | --- | --- |
+| `POST /v1/completions` | `prompt` is an empty string, a string of only whitespace, or an empty array | `"prompt" is empty: there is nothing to complete` |
+| `POST /v1/chat/completions` | `messages` is an empty array | `"messages" is empty: there is no conversation to answer` |
+
+On the pinned model server, one empty prompt can leave that model unable to
+answer anyone. Dessau reads whether the prompt or the messages are empty, and
+nothing else of them; it keeps none of what it reads. A chat message whose
+content is empty is passed on, because the chat template still frames it. A
+`prompt` or `messages` of another type, or one that is missing, is passed on
+unchanged.
 
 ## An empty answer budget
 
