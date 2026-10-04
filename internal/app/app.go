@@ -572,11 +572,8 @@ func (a *App) SetConfig(c config.Config) error {
 	a.Pool.SetPinned(c.PinnedIDs())
 	// The idle jobs' switches apply live too: on starts the loop, and off
 	// cancels a run in progress and releases its model, so a person who
-	// switched it off because the Mac is needed gets the Mac back now. And a
-	// save may have moved a measurement's provenance — the budget, the
-	// concurrency, a served window — so every measurement is judged again.
+	// switched it off because the Mac is needed gets the Mac back now.
 	a.applyIdleJobs(c)
-	a.refreshStaleness()
 	// The bridge applies live too, and after the settings are in force: on
 	// with a token opens the connection, off closes it, and a changed token
 	// re-identifies. It is never refused — a token Discord will not accept is
@@ -603,6 +600,14 @@ func (a *App) SetConfig(c config.Config) error {
 	// than what it was enforcing before the save — the gateway already refuses
 	// against the new window from the next request.
 	a.Pool.RefreshCharges()
+	// A save may have moved a measurement's provenance — the budget, the
+	// concurrency, a served window — so every measurement is judged again,
+	// and only now: the provenance reads the budget from the pool, which
+	// enforces it and which the probe's memory guard measured against, so a
+	// re-judging before SetMemoryBudget judged a budget save against the old
+	// budget and marked nothing stale until the next start
+	// (iss-2610042040451551).
+	a.refreshStaleness()
 	// Applied live, and after every other setting: the line below is written at
 	// whatever level this save just chose, so an operator who switches to
 	// detailed sees the save that switched it in the detail they asked for.

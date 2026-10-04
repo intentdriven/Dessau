@@ -166,6 +166,34 @@ func TestASaveRejudgesMeasurementsAndAnUnrelatedSaveKeepsTheProbeSettings(t *tes
 	}
 }
 
+// A save that moves the memory budget re-judges against the budget it put in
+// force, not the one the pool enforced before it: the provenance reads the
+// pool's budget, so the re-judging must come after the pool takes the new one
+// (iss-2610042040451551).
+func TestABudgetSaveMarksAMeasurementStaleForTheBudget(t *testing.T) {
+	a := newTestApp(t)
+	readyModel(t, a, "org/m", 131072)
+	prov := probeSources{a}.Provenance("org/m")
+	if err := a.Registry.SetMeasurement("org/m", &registry.Measurement{
+		Window: 65536, Bound: registry.BoundModel, At: 1,
+		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes, DecodeConcurrency: prov.DecodeConcurrency, ServedContext: prov.ServedContext,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := a.Config()
+	c.MaxResidentBytes = prov.BudgetBytes / 2
+	if err := a.SetConfig(c); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Pool.MemoryBudget(); got == prov.BudgetBytes {
+		t.Fatalf("the fixture is wrong: the save left the pool's budget at %d", got)
+	}
+	m, _ := a.Registry.Get("org/m")
+	if m.Measured == nil || m.Measured.Stale != registry.StaleBudget {
+		t.Errorf("after a budget save the measurement reads %+v, want stale for the budget (budget now %d)", m.Measured, a.Pool.MemoryBudget())
+	}
+}
+
 // The provenance the app stamps is the one it judges by: the pinned runtime,
 // the pool's budget and concurrency, the model's served window.
 func TestTheProvenanceIsWhatThePoolAndTheRuntimeSay(t *testing.T) {

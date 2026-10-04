@@ -103,6 +103,13 @@ GitHub release notes.
   is marked stale rather than current, and the largest size a measurement
   tries is taken from the same settings it is recorded under
   ([how to](docs/context-probe.md); iss-2610032241096901).
+- **Changing the memory budget marks a context measurement stale at once.**
+  `impact: fix`. A save that changed the memory budget judged each
+  measurement against the budget in force before the save, so a figure taken
+  under the old budget kept reading current, and could still be adopted,
+  until Dessau restarted. The measurements are now judged once the new
+  budget is in force ([how to](docs/context-probe.md);
+  iss-2610042040451551).
 - **A failed update is on the model's card as soon as the update stops.**
   `impact: fix`. The reason was written a moment after the update stopped
   counting as a download, so the panel could draw the card in between with
