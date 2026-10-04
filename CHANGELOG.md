@@ -89,6 +89,12 @@ GitHub release notes.
 
 ### Fixed
 
+- **The tool-call probe no longer waits on a load somebody else started.**
+  `impact: fix`. The probe only ever uses a model that is already loaded;
+  when it arrived while another request was loading that model, it waited
+  out the whole load, up to the start-up timeout, instead of passing the
+  model by. It now passes it by at once, and the load goes on for the
+  request that started it (iss-2609202010357676).
 - **Merge system messages applies whichever way the model's id is spelled.**
   `impact: fix`. The gateway, the Discord bridge and the panel's box read the
   setting by the model's exact id, so a setting kept under another spelling,
