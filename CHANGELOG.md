@@ -105,12 +105,15 @@ GitHub release notes.
   ([how to](docs/context-probe.md); iss-2610032241096901).
 - **Changing the memory budget marks a context measurement stale at once.**
   `impact: fix`. A save that changed the memory budget judged each
-  measurement against the budget in force before the save, so a figure taken
-  under the old budget kept reading current, and could still be adopted,
-  until Dessau restarted. The measurements are now judged once the new
-  budget is in force. The same change lifts a model's **did not load** mark
-  as soon as a save changes the memory budget, as the guide says it does;
-  before, the mark stood until Dessau restarted
+  measurement against the budget in force before the save. A model whose
+  automatic served window follows the budget still read stale, for its
+  served window; but for a model with a served window set by hand, with no
+  per-token memory charge, or whose automatic window stops at the size it
+  declares, a figure taken under the old budget kept reading current, and
+  could still be adopted, until Dessau restarted. The measurements are now
+  judged once the new budget is in force. The same change lifts a model's
+  **did not load** mark as soon as a save changes the memory budget, as the
+  guide says it does; before, the mark stood until Dessau restarted
   ([how to](docs/context-probe.md); iss-2610042040451551).
 - **A failed update is on the model's card as soon as the update stops.**
   `impact: fix`. The reason was written a moment after the update stopped
