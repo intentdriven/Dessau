@@ -1,7 +1,7 @@
 ---
 id: adr-2609061610102325
 slug: the-gateway-may-rewrite-prompt-content-only-to-merge-system
-status: superseded by adr-2609201008470380, on the never-retain clause; the merging decision is restated there
+status: superseded by adr-2609201008470380, on the never-retain clause; the merging decision is restated there; its further-reading rule, restated there too, is superseded in part by adr-2610040749545010
 date: 2026-09-06
 supersedes: null
 superseded_by: adr-2609201008470380

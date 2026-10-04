@@ -1,7 +1,7 @@
 ---
 id: adr-2609201008470380
 slug: the-gateway-may-retain-both-sides-of-a-conversation-in-a-tra
-status: superseded in part by adr-2610030906462776, on decision 7 (refused under the shared-cache install); every other decision stands
+status: superseded in part by adr-2610030906462776, on decision 7 (refused under the shared-cache install); and in part by adr-2610040749545010, on the closing readers rule (an emptiness check is admitted); every other decision stands
 date: 2026-09-20
 supersedes: adr-2609061610102325
 superseded_by: adr-2610030906462776

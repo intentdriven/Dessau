@@ -9,6 +9,10 @@ found_during: "2026-09-19 autonomous sweep, recorded 2026-09-20"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/lifecycle"
+resolution: "config.userSupportDir refuses inside a test binary while HOME is the starting one; TestOnlyTheKnownReadersResolveTheHomeDirectory lists the other HOME readers. Both watched to fail first."
+impact: internal
+resolved_by:
+  commit: "f9a87d7"
 ---
 
 Nothing guards HOME in the test suite: the lifecycle tests wrote into the real ~/Library until PR 83 pointed HOME at a fixture, and any new test that resolves the account directory can do it again. A liveguard-style guard that fails a test which reads the real HOME is missing.
