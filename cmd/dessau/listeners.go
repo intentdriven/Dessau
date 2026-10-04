@@ -3,6 +3,8 @@ package main
 import (
 	"net/http"
 	"time"
+
+	"github.com/intentdriven/Dessau/internal/gateway"
 )
 
 // The bounds every listener this process opens is built with.
@@ -16,8 +18,9 @@ import (
 // (iss-2609190226050845). /pair is the sharp case, because it asks for no
 // credential.
 //
-// Thirty seconds, which is the figure internal/gateway already puts on the
-// completions body per request, and for the same reason. That deadline covers
+// Thirty seconds: it is gateway.BodyReadTimeout, the figure internal/gateway
+// puts on the completions body per request, for the same reason, and defined
+// as it so the two cannot drift apart (iss-2609190254515481). That deadline covers
 // the one route that reads a large body and lifts itself before the generation
 // starts; this one covers everything else — /pair, the control plane, and any
 // route added later that forgets to bound itself. A bound on the listener is
@@ -50,7 +53,7 @@ import (
 const (
 	headerReadTimeout  = 15 * time.Second
 	idleTimeout        = 120 * time.Second
-	requestReadTimeout = 30 * time.Second
+	requestReadTimeout = gateway.BodyReadTimeout
 )
 
 // listenerServer is the http.Server both listeners are built from — the plain

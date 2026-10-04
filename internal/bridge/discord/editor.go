@@ -205,8 +205,8 @@ const typingEvery = 8 * time.Second
 // itd-2609180959397172 promises rather than eight seconds later, and then on
 // the cadence. It is a best-effort courtesy: a failure is not logged and
 // never affects the answer.
-func (e *editor) showTyping(ctx context.Context, r *rest) {
-	_ = r.typing(ctx, e.channelID)
+func showTyping(ctx context.Context, r *rest, channelID string) {
+	_ = r.typing(ctx, channelID)
 	ticker := time.NewTicker(typingEvery)
 	defer ticker.Stop()
 	for {
@@ -214,7 +214,7 @@ func (e *editor) showTyping(ctx context.Context, r *rest) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = r.typing(ctx, e.channelID)
+			_ = r.typing(ctx, channelID)
 		}
 	}
 }

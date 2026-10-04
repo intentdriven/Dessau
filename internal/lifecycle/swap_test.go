@@ -400,6 +400,32 @@ func TestSwapRefusesToClobberWhatAppearedAtTheDestination(t *testing.T) {
 	}
 }
 
+// carriesPid reports whether a staging name is derived from the process id:
+// its suffix after the prefix IS the pid. os.MkdirTemp's suffix is a random
+// decimal of up to ten digits, so one that merely contains the pid's digits
+// is chance, not a signal anyone can read (iss-2610040003465642).
+func carriesPid(base string, pid int) bool {
+	return strings.TrimPrefix(base, stagingPrefix) == strconv.Itoa(pid)
+}
+
+// The check above tells a pid-derived name from a random one that happens to
+// share the pid's digits — the collision PR 180's CI run met.
+func TestCarriesPidMeansDerivedFromIt(t *testing.T) {
+	for _, tc := range []struct {
+		base string
+		pid  int
+		want bool
+	}{
+		{stagingPrefix + "4155", 4155, true},
+		{stagingPrefix + "1415576321", 4155, false},
+		{stagingPrefix + "1415576321", 1415576321, true},
+	} {
+		if got := carriesPid(tc.base, tc.pid); got != tc.want {
+			t.Errorf("carriesPid(%q, %d) = %v, want %v", tc.base, tc.pid, got, tc.want)
+		}
+	}
+}
+
 // The staging name is unguessable. A predictable name — the pid, the bundle's
 // own name — hands anyone watching the destination directory a reliable signal
 // for when to act on it, and on a Mac where /Applications is group-writable by
@@ -420,7 +446,7 @@ func TestTheStagingNameIsUnguessable(t *testing.T) {
 	}
 	for _, name := range []string{first, second} {
 		base := filepath.Base(name)
-		if strings.Contains(base, strconv.Itoa(os.Getpid())) {
+		if carriesPid(base, os.Getpid()) {
 			t.Errorf("the staging name %q carries the process id, which anyone watching the directory can read", base)
 		}
 		fi, err := os.Stat(name)

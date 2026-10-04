@@ -9,6 +9,10 @@ found_during: "spec spc-2609201007367486 design, 2026-09-20"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/gateway/gateway.go"
+resolution: "Config.MergeSystemMessages reads the setting folded; the gateway's completions path and Ask both use it."
+impact: fix
+resolved_by:
+  commit: "a3389944e8396b020389a893d9acf584bf8178cb"
 ---
 
 The gateway reads a per-model setting by a raw map index rather than the folded reader: cfg.Models[model].MergeSystemMessages is indexed on the request's model string in internal/gateway/gateway.go and ask.go, while the registry, the pool and the models listing all key on config.FoldRepoID, so a request whose spelling differs from the stored key by case or by a trailing slash misses the setting and takes the default. Found while writing the no-transcript spec, whose folded reader must not inherit the gap.

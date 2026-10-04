@@ -563,6 +563,13 @@ func (a *App) SetConfig(c config.Config) error {
 	// records already on disk stay where they are, because switching recording
 	// off is asking for it to stop, not for a history to be destroyed.
 	a.applyStatistics(c)
+	// Applied live, so a model already in memory is protected from the next
+	// eviction rather than from the one after a restart. The pool takes its own
+	// lock, the one both eviction paths hold while they read the set. Before
+	// the idle jobs' switches: a run this save stops unloads its model on the
+	// way out, and a pin in the same save must already be in force for that
+	// unload to meet it (iss-2610032241093785).
+	a.Pool.SetPinned(c.PinnedIDs())
 	// The idle jobs' switches apply live too: on starts the loop, and off
 	// cancels a run in progress and releases its model, so a person who
 	// switched it off because the Mac is needed gets the Mac back now. And a
@@ -581,10 +588,6 @@ func (a *App) SetConfig(c config.Config) error {
 	// every request they issue, and a download already running keeps the token
 	// it started with rather than changing horses mid-repo.
 	a.Hub.SetToken(c.HFToken)
-	// Applied live, so a model already in memory is protected from the next
-	// eviction rather than from the one after a restart. The pool takes its own
-	// lock, the one both eviction paths hold while they read the set.
-	a.Pool.SetPinned(c.PinnedIDs())
 	// Applied live for the same reason, and it unloads nothing: a lowered
 	// budget governs the next load, so no model is pulled out from under the
 	// operator at the moment they pressed Save.
