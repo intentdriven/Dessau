@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/selftest/selftest.go"
 remedy: "Decide with the maintainer: keep the yield (the measurement was asked for), or have the panel's Unload cancel a queued measurement of that model, and say which in docs/context-probe.md."
+resolution: "Maintainer's decision 2026-10-03, UNLOAD CANCELS: an operator's Unload of a model the probe is measuring cancels that measurement (dequeued, bisection dropped, marked incomplete); Measure now starts it again. Stated in docs/context-probe.md."
+impact: fix
+resolved_by:
+  commit: "4c1408327eaf56c857b21ae977b82def2242d4ce"
 ---
 
 An operator's Unload of a model the context probe holds is a yield: the probe lets go, the model is unloaded, and the measurement the operator asked for resumes at the next idle tick, loading the model straight back. Whether the person who pressed Unload wanted the measurement abandoned, or only the memory back for now, is not decided anywhere; the test only now stops racing it.
