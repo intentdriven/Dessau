@@ -25,6 +25,8 @@ Models**.
   straight away, rather than served by unloading it.
 - The [context probe](context-probe.md) does not measure it, because the probe
   unloads the model before every step.
+- The [self-test](self-test.md) measures it only while it is already in
+  memory, and leaves it there afterwards.
 
 The client that is refused is told only that there is not enough memory. It is
 never told which models are protected, or what this Mac is running.
@@ -33,9 +35,10 @@ never told which models are protected, or what this Mac is running.
 
 - **It does not load the model.** Pinning protects a model; it does not put it
   in memory. Until something loads it — a request, **My Models → Load**, or
-  **Preload** — the card reads `pinned, not loaded`. Name a model in both
-  **Preload** and **Pinned models** to have it loaded at start-up and protected
-  from then on.
+  **Preload** — the card reads `pinned, not loaded`. Neither of Dessau's idle
+  jobs, the context probe and the self-test, loads a pinned model. Name a model
+  in both **Preload** and **Pinned models** to have it loaded at start-up and
+  protected from then on.
 - **It does not survive everything.** Your own **Unload** works on a pinned
   model, and so does quitting Dessau or a model server crashing. The pin stays
   in Settings either way, so the model is protected again the next time it

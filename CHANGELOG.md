@@ -129,6 +129,10 @@ GitHub release notes.
   since it began, and one whose settings change while it runs records
   nothing and is taken again ([how to](docs/context-probe.md);
   iss-2610032241096901).
+  loaded and pinned. The self-test also no longer loads a pinned model that is
+  not in memory, as after a restart: it measures a pinned model only while the
+  model is already loaded, and leaves it there
+  ([self-test](docs/self-test.md); iss-2610032241098944).
 - **A failed update is on the model's card as soon as the update stops.**
   `impact: fix`. The reason was written a moment after the update stopped
   counting as a download, so the panel could draw the card in between with

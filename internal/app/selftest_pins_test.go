@@ -125,6 +125,11 @@ func TestTheSelfTestLeavesAModelPinnedDuringItsRunLoaded(t *testing.T) {
 	if !run.ColdLoad {
 		t.Fatalf("the run found the model resident; the case needs the self-test's own load")
 	}
+	// A yielded run skips its unload whatever the pin, so only a completed
+	// run puts the refusal to the test.
+	if run.Outcome != selftest.OutcomeOK {
+		t.Fatalf("the run's outcome is %q, want %q; the case needs a run that reaches its unload", run.Outcome, selftest.OutcomeOK)
+	}
 	if !a.isPinned("org/m") {
 		t.Error("the model is no longer pinned after the run")
 	}
@@ -162,5 +167,108 @@ func TestTheSelfTestLeavesAModelPinnedBeforeItsRunLoaded(t *testing.T) {
 	}
 	if !residentIn(a, "org/m") {
 		t.Errorf("the self-test unloaded a pinned model that was resident before its run (outcome %q)", run.Outcome)
+	}
+}
+
+// watchingServer is the app's own self-test adapter, counting the loop's
+// calls: Ready opens every tick, so its count says how many ticks have
+// passed, and Acquire is every load the self-test asked for.
+type watchingServer struct {
+	selfTestServer
+	mu       sync.Mutex
+	readies  int
+	acquired []string
+}
+
+func (s *watchingServer) Ready() []string {
+	s.mu.Lock()
+	s.readies++
+	s.mu.Unlock()
+	return s.selfTestServer.Ready()
+}
+
+func (s *watchingServer) Acquire(ctx context.Context, repoID string) (selftest.Upstream, func(), error) {
+	s.mu.Lock()
+	s.acquired = append(s.acquired, repoID)
+	s.mu.Unlock()
+	return s.selfTestServer.Acquire(ctx, repoID)
+}
+
+func (s *watchingServer) counts() (int, []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.readies, append([]string(nil), s.acquired...)
+}
+
+// A model pinned and not loaded — the state every pinned model is in after a
+// restart — is not one the self-test loads: the self-test never unloads a
+// pinned model, so it would stay resident after the run, and the self-test
+// would have become a loader of pinned models. A pinned model is measured
+// only while it is already in memory, and an unpinned model beside it is
+// measured as ever (iss-2610032241098944).
+func TestTheSelfTestDoesNotLoadAModelPinnedAndNotLoaded(t *testing.T) {
+	a := newSelfTestPinApp(t, "org/m")
+	dir := filepath.Join(t.TempDir(), "n")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "weights.safetensors"), []byte("w"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Registry.Put(registry.Model{
+		RepoID: "org/n", Path: dir, State: registry.StateReady, Bytes: 1 << 20, ChatTemplate: true,
+		ToolCalling: &registry.ToolCalling{Can: false, At: 1, Runtime: runtime.MLXLMVersion()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pin(t, a, "ORG/M")
+	if residentIn(a, "org/m") {
+		t.Fatal("the pinned model is resident before the run; the case needs it not loaded")
+	}
+
+	srv := &watchingServer{selfTestServer: selfTestServer{a}}
+	path := filepath.Join(t.TempDir(), selftest.FileName)
+	r := selftest.New(selftest.Options{
+		Server: srv, Path: path,
+		Tick: 10 * time.Millisecond, Poll: 5 * time.Millisecond, Quiet: time.Millisecond,
+	})
+	r.SetEnabled(true)
+	waitFor(t, "the self-test to measure the unpinned model", func() bool {
+		runs, _ := selftest.ReadResults(path)
+		for _, run := range runs {
+			if run.Model == "org/n" {
+				return true
+			}
+		}
+		return false
+	})
+	// Ready is read twice a tick (the tick's own read and the next model's),
+	// so six more reads are at least two whole ticks after the unpinned
+	// model's run, either of which would have picked the pinned one.
+	seen, _ := srv.counts()
+	waitFor(t, "more ticks to pass", func() bool {
+		n, _ := srv.counts()
+		return n >= seen+6
+	})
+	r.Close()
+
+	_, acquired := srv.counts()
+	for _, id := range acquired {
+		if config.FoldRepoID(id) == config.FoldRepoID("org/m") {
+			t.Errorf("the self-test loaded a model pinned and not loaded (loads %v)", acquired)
+			break
+		}
+	}
+	if residentIn(a, "org/m") {
+		t.Error("the pinned model is resident after the self-test; it was not loaded before")
+	}
+	if !a.isPinned("org/m") {
+		t.Error("the model is no longer pinned after the self-test")
+	}
+	runs, _ := selftest.ReadResults(path)
+	for _, run := range runs {
+		if config.FoldRepoID(run.Model) == config.FoldRepoID("org/m") {
+			t.Errorf("the self-test measured a model pinned and not loaded: %+v", run)
+		}
 	}
 }
