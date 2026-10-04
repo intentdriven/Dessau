@@ -56,6 +56,11 @@ Mac wakes shows the moment the bot was last on Discord. A token Discord refuses
 stops the bridge and says so there; it never refuses a save, so you can change
 any other setting while the bridge is unhappy.
 
+A bridge Discord has stopped starts again when you press **Save settings**,
+even with nothing changed: the save is the restart. A refused token is refused
+again until you paste a new one, but a stop that was Discord's own — a
+connection it closed for good — needs nothing changed to try again.
+
 The same two settings are `discord_bridge` and `discord_token` in
 `config.json`, and `dessau config show` prints the token redacted, the way it
 prints the API key.

@@ -241,9 +241,13 @@ func (b *Bridge) Apply(on bool, token string) {
 		b.mu.Unlock()
 		return
 	}
-	if b.on && b.token == token && b.done != nil {
+	// Already running under exactly these settings. A run Discord stopped
+	// leaves its handle closed rather than nil, and is not running: saving
+	// the same settings is how the operator starts it again (the 2026-09-20
+	// decision on iss-2609190312326963).
+	if b.on && b.token == token && b.done != nil && !isClosed(b.done) {
 		b.mu.Unlock()
-		return // already running under exactly these settings
+		return
 	}
 	b.stopLocked()
 	b.on, b.token = true, token
@@ -432,5 +436,16 @@ func (b *Bridge) run(ctx context.Context, token string) {
 		if backoff *= 2; backoff > maxBackoff {
 			backoff = maxBackoff
 		}
+	}
+}
+
+// isClosed reports whether a run's done channel has been closed, without
+// blocking.
+func isClosed(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	default:
+		return false
 	}
 }

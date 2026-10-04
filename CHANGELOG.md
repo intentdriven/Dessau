@@ -89,6 +89,12 @@ GitHub release notes.
 
 ### Fixed
 
+- **Saving the settings restarts a Discord bridge that Discord stopped.**
+  `impact: fix`. After Discord closed the connection for good, saving the
+  same switch and token did nothing, because the bridge still counted as
+  running under them, and the only way to try again was to switch the bridge
+  off and on. The save is now the restart
+  ([Discord bridge](docs/discord-bridge.md); iss-2609190312326963).
 - **The context probe no longer unloads a pinned model.** `impact: fix`.
   The probe unloads the model it measures before every step, and that unload
   ignored pins, so measuring a pinned model took it out of memory. A pinned
