@@ -103,6 +103,17 @@ GitHub release notes.
   empty array. Dessau reads only whether they are empty, and keeps nothing
   ([reference](docs/request-fields.md#nothing-to-answer);
   adr-2610040749545010; iss-2610031758029994).
+- **A prompt that is a list no longer leaves a model unable to answer
+  anyone.** `impact: breaking`. A `/v1/completions` request whose `prompt`
+  was an array of strings, such as `["hi"]` or `[""]`, froze the model server
+  as an empty prompt did. A `prompt` that is not a string — an array of any
+  kind, a number, an object, a boolean or `null` — is now refused with
+  **400** and `"prompt" must be a string`. None of these produced an answer
+  before: an array of token ids was already refused by the model server.
+  Dessau reads only whether the prompt is a string, never what an array
+  holds, and keeps nothing
+  ([reference](docs/request-fields.md#nothing-to-answer);
+  adr-2610042021365934; iss-2610040805353721).
 - **The Discord bridge holds at most 8 MiB of conversation.**
   `impact: fix`. Its limits were counted in characters and channels, so
   anyone who could reach the bot could make it hold half a gigabyte of text

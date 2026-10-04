@@ -58,7 +58,8 @@ var templateOwnArgs = map[string]bool{
 // generationRefusal is the refusal for a request carrying a value the model
 // server's generation thread would die on, or "" for none. The conversation
 // itself is not read here: emptyConversation holds the one narrow exception,
-// whether there is any prompt at all (adr-2610040749545010).
+// whether there is any prompt at all and whether a completions prompt is a
+// string (adr-2610040749545010, adr-2610042021365934).
 func generationRefusal(payload map[string]json.RawMessage) string {
 	for _, b := range numericBounds {
 		raw, ok := payload[b.key]

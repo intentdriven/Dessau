@@ -1,7 +1,7 @@
 ---
 id: adr-2610040749545010
 slug: the-gateway-may-refuse-a-request-whose-prompt-or-messages
-status: accepted
+status: accepted; superseded in part by adr-2610042021365934 (a /v1/completions prompt that is not a JSON string is refused too, reading its kind)
 date: 2026-10-04
 supersedes: [adr-2609201008470380, adr-2609061610102325]
 superseded_by: null
