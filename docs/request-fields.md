@@ -4,8 +4,8 @@
 to the model server, changing only the fields listed under
 [What Dessau changes in a request it passes on](#what-dessau-changes-in-a-request-it-passes-on).
 Two fields are refused instead, and a request carrying either goes no further;
-so is a request with nothing to answer, one that asks for an empty answer, or
-one whose `stop` is not text.
+so is a request with nothing to answer, a `prompt` that is not a string, one
+that asks for an empty answer, or one whose `stop` is not text.
 
 ## The refused fields
 
@@ -57,15 +57,18 @@ A request with nothing to generate from is refused with **400**:
 
 | Request | Refused when | The error message |
 | --- | --- | --- |
-| `POST /v1/completions` | `prompt` is an empty string, a string of only whitespace, or an empty array | `"prompt" is empty: there is nothing to complete` |
+| `POST /v1/completions` | `prompt` is an empty string or a string of only whitespace | `"prompt" is empty: there is nothing to complete` |
+| `POST /v1/completions` | `prompt` is not a string: an array (of strings, of token ids, or empty), a number, an object, `true`, `false` or `null` | `"prompt" must be a string` |
 | `POST /v1/chat/completions` | `messages` is an empty array | `"messages" is empty: there is no conversation to answer` |
 
-On the pinned model server, one empty prompt can leave that model unable to
-answer anyone. Dessau reads whether the prompt or the messages are empty, and
-nothing else of them; it keeps none of what it reads. A chat message whose
-content is empty is passed on, because the chat template still frames it. A
-`prompt` or `messages` of another type, or one that is missing, is passed on
-unchanged.
+On the pinned model server, one empty prompt, or a `prompt` that is an array
+of strings, can leave that model unable to answer anyone, and a `prompt` of
+token ids is refused by the model server itself. Dessau reads whether the
+prompt is a string and whether it or the messages are empty, and nothing else
+of them: it never looks inside an array. It keeps none of what it reads. A
+chat message whose content is empty is passed on, because the chat template
+still frames it. A `messages` of another type, or a `prompt` or `messages`
+that is missing, is passed on unchanged.
 
 ## An empty answer budget
 
