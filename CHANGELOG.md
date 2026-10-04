@@ -102,6 +102,16 @@ GitHub release notes.
   the model at the end of the run even if you had pinned it in the meantime,
   leaving it pinned but not in memory. A model pinned during the run now stays
   loaded and pinned ([self-test](docs/self-test.md); iss-2610032241098944).
+- **A paused context measurement no longer records a window the model is
+  not served at.** `impact: fix`. A measurement that paused
+  for a request or a pin resumed from the steps it had taken under the
+  settings in force when it began, so after the served window was lowered it
+  could record a window above the one the model is now served at, and mark
+  it current. A paused measurement now starts again when the runtime, the
+  memory budget, the decode concurrency or the served window has changed
+  since it began, and one whose settings change while it runs records
+  nothing and is taken again ([how to](docs/context-probe.md);
+  iss-2610032241096901).
 - **A failed update is on the model's card as soon as the update stops.**
   `impact: fix`. The reason was written a moment after the update stopped
   counting as a download, so the panel could draw the card in between with

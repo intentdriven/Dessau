@@ -94,6 +94,8 @@ type fakeSources struct {
 	saved      map[string]*registry.Measurement
 	incomplete map[string]bool
 	url, key   string
+	// prov is the provenance in force; zero means the default below.
+	prov registry.Provenance
 }
 
 func newFakeSources(url string, cands ...Candidate) *fakeSources {
@@ -112,6 +114,11 @@ func (f *fakeSources) Candidates() []Candidate {
 	return out
 }
 func (f *fakeSources) Provenance(string) registry.Provenance {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.prov != (registry.Provenance{}) {
+		return f.prov
+	}
 	return registry.Provenance{Runtime: "0.31.3", BudgetBytes: 1, DecodeConcurrency: 4, ServedContext: 131072}
 }
 func (f *fakeSources) Available() int64 { f.mu.Lock(); defer f.mu.Unlock(); return f.available }
