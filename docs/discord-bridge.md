@@ -25,9 +25,8 @@ The bridge is off until you turn it on.
    the bot may talk to it — so where the bot lives is what decides who can use
    your models.
 4. Leave the three **Privileged Gateway Intents** off. The bridge does not ask
-   for message content, presences or server members, and Discord refuses the
-   connection if it is configured to require an intent the bridge does not
-   request. A message in a channel that does not mention the bot is never read.
+   for message content, presences or server members. A message in a channel
+   that does not mention the bot is never read.
 5. Select **Reset Token**, then **Copy**. This is the bot token. Treat it as a
    password: anyone holding it can act as the bot.
 
@@ -56,6 +55,11 @@ not connected it also says when it last was, so a session re-opening after the
 Mac wakes shows the moment the bot was last on Discord. A token Discord refuses
 stops the bridge and says so there; it never refuses a save, so you can change
 any other setting while the bridge is unhappy.
+
+A bridge Discord has stopped starts again when you press **Save settings**,
+even with nothing changed: the save is the restart. A refused token is refused
+again until you paste a new one, but a stop that was Discord's own — a
+connection it closed for good — needs nothing changed to try again.
 
 The same two settings are `discord_bridge` and `discord_token` in
 `config.json`, and `dessau config show` prints the token redacted, the way it
@@ -88,7 +92,8 @@ A bridged request is recorded exactly as a request over the API is, with one
 extra field: its `source` is `bridge` rather than `http`. The log line carries
 the bridge's name, Discord's channel and user identifiers as plain numbers, the
 model, the sizes and the timing — never a message, never an answer, never the
-token. The
+token. The channel and user identifiers appear on that log line only; the
+statistics record carries none of them. The
 [what is recorded page](statistics-store-reference.md) says all of it field by
 field.
 

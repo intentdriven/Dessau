@@ -169,7 +169,7 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 	}
 	payload["model"] = rewritten
 
-	if cfg.Models[model].MergeSystemMessages {
+	if cfg.MergeSystemMessages(model) {
 		if mergeSystemMessagesInto(payload) == mergeRefused {
 			g.log.Debug("relayed a request unmerged: its messages carry something merging cannot rebuild faithfully", "model", model)
 		}

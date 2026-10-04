@@ -9,6 +9,10 @@ found_during: "fidelity audit of itd-2609201445423499 (receipt rcp-89e6e831c5c0)
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-2609201445423499-alice-s-server-knows-which-models-can-call-tools-a-one-time.md"
+resolution: "Reconciled by a dated line in .abcd/work/DECISIONS.md; the closed or shipped record itself is not edited."
+impact: internal
+resolved_by:
+  commit: "b1cfd55ba6ef1a16fff68c8e2a5d0231c1875e1e"
 ---
 
 The shipped intent's first criterion says the tool-call probe runs when the model's context has been measured, while the spec and the code fire it when the model reaches loaded after the loading request is served. The fidelity audit judged ac-1 MET_WITH_CONCERNS on exactly this: the probe ran before any context measurement in the hand check, as the spec's Approach designed it. The behaviour is the spec's and is what the maintainer accepted at the interview; the criterion's wording is the artefact to reconcile, by the maintainer's decision, not the code.

@@ -1,12 +1,12 @@
 # The posture page
 
-The **Posture** tab in the control panel is one page that says what is on. It
-states, in the present tense, who can reach this server and by which addresses,
-what a request has to carry, what Dessau announces, what it writes to its log
-and what it records. Nothing on it is a warning, and nothing on it changes a
-setting: **Settings** is where a setting changes, and the warning for a server
-that is reachable from the network with no API key stays at the top of the
-panel whatever this page says.
+The **Posture** tab in the control panel is one page that says who can reach
+this server. It states, in the present tense, who can reach it and by which
+addresses, what a request has to carry, what Dessau announces, what it writes to
+its log and what it records. Nothing on it is a warning, and nothing on it
+changes a setting: **Settings** is where a setting changes, and the warning for
+a server that is reachable from the network with no API key stays at the top of
+the panel whatever this page says.
 
 Every line is read from the same state snapshot the rest of the panel is drawn
 from. The page adds no observation of its own, which is what keeps it honest:
