@@ -181,6 +181,7 @@ func (p *fakePool) Activity() selftest.Activity {
 func (p *fakePool) Unload(string) error { return nil }
 func (p *fakePool) Concurrency() int    { return 1 }
 func (p *fakePool) Fits(string) bool    { p.mu.Lock(); defer p.mu.Unlock(); return p.fits }
+func (p *fakePool) Pinned(string) bool  { return false }
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 

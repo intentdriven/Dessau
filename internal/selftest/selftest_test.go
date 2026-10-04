@@ -188,6 +188,10 @@ func (s *fakeServer) Unload(id string) error {
 
 func (s *fakeServer) Concurrency() int { return s.concurrency }
 
+// Pinned is false: the fake pins nothing, and the pin rule is tested against
+// the app's own adapter and pool (internal/app/selftest_pins_test.go).
+func (s *fakeServer) Pinned(string) bool { return false }
+
 func (s *fakeServer) Fits(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

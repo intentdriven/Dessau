@@ -71,6 +71,10 @@ type Server interface {
 	// Unload stops a model server. The pool refuses one that is serving,
 	// and the implementation refuses a pinned one with ErrPinned.
 	Unload(repoID string) error
+	// Pinned reports whether the model is pinned. The self-test measures a
+	// pinned model only while it is already resident: it never unloads one,
+	// so a pinned model it loaded would stay in memory after the run.
+	Pinned(repoID string) bool
 	// Concurrency is the decode concurrency each model server runs with,
 	// which is how many requests the concurrent test sends at once.
 	Concurrency() int
@@ -493,7 +497,7 @@ func (r *Runner) tick(ctx context.Context) {
 		}
 	}
 	if job == nil && (r.opts.SelfTest == nil || r.opts.SelfTest()) {
-		model = r.next(now)
+		model = r.next(now, act)
 	}
 	for _, m := range noRoom {
 		r.sayNoRoom(m)
@@ -659,14 +663,24 @@ func resident(act Activity, repoID string) bool {
 
 // next is the ready model measured longest ago, or "" when every ready model
 // has a result younger than the re-test window. A model with no result at
-// all comes first.
-func (r *Runner) next(now time.Time) string {
+// all comes first. act is the tick's view of the pool, the same one the run's
+// wasResident is read from.
+func (r *Runner) next(now time.Time, act Activity) string {
 	ready := r.opts.Server.Ready()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var due []string
 	for _, id := range ready {
 		if at, ok := r.tested[config.FoldRepoID(id)]; ok && now.Sub(at) < r.opts.Retest {
+			continue
+		}
+		// A pinned model is measured only while it is already resident,
+		// and then left there: the self-test never unloads a pinned model,
+		// so loading one would leave it in memory after the run. Pinned
+		// and not loaded — every pinned model after a restart — it is
+		// passed over, as the context probe passes over a pinned model; it
+		// stays due, and is not charged a day (iss-2610032241098944).
+		if !resident(act, id) && r.opts.Server.Pinned(id) {
 			continue
 		}
 		// A model that would need something evicted is left for a tick when
