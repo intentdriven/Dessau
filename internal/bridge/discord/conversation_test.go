@@ -13,9 +13,16 @@ import (
 // stays.
 func TestAConversationIsTrimmedToTheServedWindow(t *testing.T) {
 	const served = 2048
+	// Alternating, as a channel's history does, so it is the window that
+	// trims it and not the rule that sends only the newest of a run of user
+	// turns.
 	var turns []turn
-	for i := range 200 {
-		turns = append(turns, turn{Role: roleUser, Content: "turn " + strconv.Itoa(i) + " " + strings.Repeat("x", 200)})
+	for i := range 201 {
+		role := roleUser
+		if i%2 == 1 {
+			role = roleAssistant
+		}
+		turns = append(turns, turn{Role: role, Content: "turn " + strconv.Itoa(i) + " " + strings.Repeat("x", 200)})
 	}
 	turns[len(turns)-1].Content = "the newest thing said"
 

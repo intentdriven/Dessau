@@ -1,10 +1,17 @@
 package discord
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/intentdriven/Dessau/internal/gateway"
 )
 
 // opensOnTheUser fails unless a built request's history starts with a user
@@ -127,5 +134,113 @@ func TestTheFallbackSendsTheNewestUserTurn(t *testing.T) {
 	}
 	if judged := int64(len(body)/bytesPerToken) + int64(req.MaxTokens); judged > served {
 		t.Errorf("the fallback would be judged at %d tokens against a window of %d", judged, served)
+	}
+}
+
+// alternates fails unless a built request's turns take strict turns: user,
+// assistant, user, and so on, ending on the user. Gemma- and Mistral-style
+// chat templates raise on two user turns in a row (iss-2610042030092101).
+func alternates(t *testing.T, req request) {
+	t.Helper()
+	for i, m := range req.Messages {
+		want := roleUser
+		if i%2 == 1 {
+			want = roleAssistant
+		}
+		if m.Role != want {
+			t.Errorf("turn %d of %d is a %q turn (%q), want %q: the history sent does not alternate",
+				i, len(req.Messages), m.Role, headRunes(m.Content, 40), want)
+		}
+	}
+	if n := len(req.Messages); n == 0 || req.Messages[n-1].Role != roleUser {
+		t.Error("the history sent does not end on the user")
+	}
+}
+
+// A request refused with nothing written, and an answer that comes back
+// empty, each leave the question they appended unanswered. The channel's
+// next message must still send a history that alternates, or a
+// strict-alternation template refuses it and every message after it, and the
+// channel is stuck until /reset (iss-2610042030092101). Driven end to end
+// against the fake, so it is the history the gateway is actually handed.
+func TestAnUnansweredQuestionDoesNotBreakTheAlternation(t *testing.T) {
+	f := newFakeDiscord(t)
+	var mu sync.Mutex
+	var asked []request
+	opts := f.options(time.Now)
+	opts.Ask = func(ctx context.Context, req gateway.AskRequest) error {
+		var body request
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return err
+		}
+		mu.Lock()
+		asked = append(asked, body)
+		n := len(asked)
+		mu.Unlock()
+		switch n {
+		case 2:
+			return errors.New("refused before a token was written")
+		case 3:
+			return nil // an answer of nothing at all
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"choices": []any{map[string]any{"delta": map[string]any{"content": "answer " + strconv.Itoa(n-1)}}},
+		})
+		req.OnEvent(payload)
+		return nil
+	}
+	b := New(opts)
+	t.Cleanup(func() { _ = b.Close() })
+	connected(t, f, b)
+
+	for i := range 4 {
+		f.message("question "+strconv.Itoa(i), false, false)
+		answered(t, f, b)
+	}
+	mu.Lock()
+	got := append([]request(nil), asked...)
+	mu.Unlock()
+	if len(got) != 4 {
+		t.Fatalf("the gateway was asked %d times, want 4", len(got))
+	}
+	last := got[3]
+	alternates(t, last)
+	want := []turn{
+		{Role: roleUser, Content: "question 0"},
+		{Role: roleAssistant, Content: "answer 0"},
+		{Role: roleUser, Content: "question 3"},
+	}
+	if !slices.Equal(last.Messages, want) {
+		t.Errorf("the history sent is %v, want %v: the unanswered questions go, the newest stays", last.Messages, want)
+	}
+}
+
+// buildRequest holds the alternation whatever the store hands it: every run
+// of user turns is cut to its newest.
+func TestOnlyTheNewestOfConsecutiveUserTurnsIsSent(t *testing.T) {
+	turns := []turn{
+		{Role: roleUser, Content: "unanswered 1"},
+		{Role: roleUser, Content: "question 1"},
+		{Role: roleAssistant, Content: "answer 1"},
+		{Role: roleUser, Content: "unanswered 2"},
+		{Role: roleUser, Content: "unanswered 3"},
+		{Role: roleUser, Content: "question 4"},
+	}
+	body, err := buildRequest("a-model", turns, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req request
+	if err := json.Unmarshal(body, &req); err != nil {
+		t.Fatal(err)
+	}
+	alternates(t, req)
+	want := []turn{
+		{Role: roleUser, Content: "question 1"},
+		{Role: roleAssistant, Content: "answer 1"},
+		{Role: roleUser, Content: "question 4"},
+	}
+	if !slices.Equal(req.Messages, want) {
+		t.Errorf("the history sent is %v, want %v", req.Messages, want)
 	}
 }

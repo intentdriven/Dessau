@@ -89,6 +89,15 @@ GitHub release notes.
 
 ### Fixed
 
+- **One unanswered Discord message no longer leaves the channel stuck on
+  Gemma- and Mistral-style models.** `impact: fix`. A message the model
+  refused before writing anything, or answered with nothing, stayed in the
+  conversation unanswered, so the channel's next message sent two of the
+  person's turns in a row. Models whose chat template insists the person and
+  the model take turns raised an error on that, and every later message in
+  the channel failed the same way until `/reset`. The history sent now leaves
+  out a message that was never answered and keeps the newest
+  ([Discord bridge](docs/discord-bridge.md); iss-2610042030092101).
 - **A long Discord conversation no longer fails on Gemma- and Mistral-style
   models.** `impact: fix`. When the bridge shortened a conversation, the
   oldest turn it kept could be the model's own answer, and models whose chat

@@ -344,7 +344,15 @@ const bytesPerToken = 4
 // one. Every trim's result passes through here on its way to the gateway, so
 // this is where it is held: a cut lands only on a user turn, and the turn the
 // fallback sends alone is the newest user turn.
+//
+// AND IT ALTERNATES (iss-2610042030092101). A request refused before a token
+// was written, or answered with nothing, leaves its question in the history
+// unanswered, so the next message would send two user turns in a row — which
+// the same templates raise on, failing every later message in the channel
+// until `/reset`. Only the newest of a run of user turns is sent; the store
+// keeps what it holds.
 func buildRequest(model string, turns []turn, served int64) ([]byte, error) {
+	turns = alternating(turns)
 	window := served
 	if window <= 0 {
 		window = defaultWindow
@@ -382,6 +390,19 @@ func buildRequest(model string, turns []turn, served int64) ([]byte, error) {
 	return json.Marshal(request{
 		Model: model, Messages: []turn{last}, MaxTokens: answer, Stream: true,
 	})
+}
+
+// alternating is turns without any user turn that is directly followed by
+// another user turn, so a run of unanswered questions is sent as its newest.
+func alternating(turns []turn) []turn {
+	kept := make([]turn, 0, len(turns))
+	for i, t := range turns {
+		if t.Role == roleUser && i+1 < len(turns) && turns[i+1].Role == roleUser {
+			continue
+		}
+		kept = append(kept, t)
+	}
+	return kept
 }
 
 // tailRunes keeps the last n runes of s, cutting on a rune boundary so the
