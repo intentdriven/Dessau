@@ -89,6 +89,14 @@ GitHub release notes.
 
 ### Fixed
 
+- **A long Discord conversation no longer fails on Gemma- and Mistral-style
+  models.** `impact: fix`. When the bridge shortened a conversation, the
+  oldest turn it kept could be the model's own answer, and models whose chat
+  template insists the history opens on the person raised an error, so the
+  channel's next message failed. Past sixteen exchanges in one channel, it
+  could happen on every message. The history sent now always opens on something
+  somebody said, and still ends on their newest message
+  ([Discord bridge](docs/discord-bridge.md); iss-2610032306154631).
 - **A failed update is on the model's card as soon as the update stops.**
   `impact: fix`. The reason was written a moment after the update stopped
   counting as a download, so the panel could draw the card in between with
