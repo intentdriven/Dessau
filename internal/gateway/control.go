@@ -105,6 +105,10 @@ type Control struct {
 	// appear in the body. The reload_models list has the same staleness: it
 	// compares the incoming settings against that snapshot.
 	//
+	// It also orders the debug-logging arm against a save: handleDebugLog
+	// checks the transcript mark and arms under it, so an arm and a save that
+	// marks the same model cannot interleave (iss-2610032221548858).
+	//
 	// This handler is the only caller of SetConfig there is, so serialising it
 	// here serialises every settings write. It is held across SetConfig, which
 	// takes App's own save lock inside it; nothing taken under that lock
@@ -1526,9 +1530,17 @@ func (c *Control) handleUnload(w http.ResponseWriter, r *http.Request) {
 	// the model itself — and the unload here waits, bounded, for that to
 	// land rather than answering 409 to the one person who can take the
 	// memory back (iss-2609211334576018).
+	// An Unload of a model the context probe is measuring cancels that
+	// measurement, before the run is interrupted, so the idle loop cannot
+	// pick the model up again in between; the operator starts it again with
+	// Measure now (maintainer's decision, 2026-10-03; iss-2610031818057157).
+	probing := c.App.ProbeHolds(model)
+	if probing {
+		c.App.CancelMeasurement(model)
+	}
 	err := c.App.Pool.Unload(model)
 	interrupted := false
-	if errors.Is(err, runtime.ErrBusy) && c.App.SelfTest.Interrupt(model) {
+	if (probing || errors.Is(err, runtime.ErrBusy)) && c.App.SelfTest.Interrupt(model) {
 		interrupted = true
 		deadline := time.Now().Add(idleJobReleaseWait)
 		for errors.Is(err, runtime.ErrBusy) && time.Now().Before(deadline) {
@@ -1585,9 +1597,10 @@ func decodeDebugLogRequest(w http.ResponseWriter, r *http.Request) (debugLogRequ
 // pool so that its NEXT launch runs at the model server's debug level, at
 // which the server's own log holds every request sent to it and every answer
 // it produced; it touches no running process, and it is spent by the launch
-// that carries it. It is an action and not a setting: nothing here reads or
-// writes the configuration, and the mark is derived from nothing but this
-// request.
+// that carries it. It is an action and not a setting: nothing here writes
+// the configuration, and the mark is derived from nothing but this request.
+// The configuration is read once, for the transcript mark below, under the
+// settings lock so a save that marks the model is ordered against the arm.
 //
 // A model carrying the transcript exception (itd-2609091715089488) — a model
 // promised that no prompt of its is ever written down — refuses the arm with
@@ -1612,6 +1625,11 @@ func (c *Control) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "disarmed", "model": req.Model})
 		return
 	}
+	// Under the settings lock, so a save that marks the model and this arm are
+	// ordered: the arm lands first and the save disarms it, or it reads the
+	// mark and is refused (iss-2610032221548858).
+	c.settingsMu.Lock()
+	defer c.settingsMu.Unlock()
 	if c.App.Config().NoTranscript(req.Model) {
 		writeError(w, http.StatusConflict,
 			"this model keeps no transcript, so debug logging is refused: at the model server's debug level its log would hold every prompt sent to it")
@@ -1784,6 +1802,15 @@ func (c *Control) applySettings(raw []byte) (map[string]any, error) {
 
 	if err := c.App.SetConfig(incoming); err != nil {
 		return nil, refusalNamingWhatChanged(err, current, incoming, raw)
+	}
+	// A model the save marks as keeping no transcript comes off the
+	// debug-logging list: an arming made before the box was ticked would
+	// otherwise launch it at debug, writing every prompt and answer to its
+	// log (iss-2610032212269524; the 2026-09-20 decision).
+	for _, id := range c.App.Pool.DebugArmed() {
+		if incoming.NoTranscript(id) {
+			_ = c.App.Pool.DisarmDebugLog(id)
+		}
 	}
 	// The file has just been written from the settings in force, repairs and
 	// all, so there is nothing left in it to repair.

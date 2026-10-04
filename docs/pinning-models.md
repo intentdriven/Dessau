@@ -23,6 +23,8 @@ Models**.
 - The idle timeout does not touch it, however long it goes unused.
 - A request for a different model that would need its memory is refused
   straight away, rather than served by unloading it.
+- The [context probe](context-probe.md) does not measure it, because the probe
+  unloads the model before every step.
 
 The client that is refused is told only that there is not enough memory. It is
 never told which models are protected, or what this Mac is running.

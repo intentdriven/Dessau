@@ -9,6 +9,7 @@ found_during: "the adversarial security review adr-2609181004167097 obliges befo
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/ui/static/index.html"
+wontfix_reason: "Maintainer's decision 2026-09-20: the Posture tab is about inbound reach and does not state that a bridge is on; the README and the posture reference are tightened to say so (370acffa06fcefa75083ef8aa1f650ce36274d55)."
 ---
 
 The Posture tab says, as fact rather than warning, who can reach the server and by which addresses, what is announced, and what is recorded — and it is described in README.md as 'one page that says what is on'. The Discord bridge is now a thing that can be on and that the Posture tab says nothing about. It is outbound only, so none of the page's existing claims about who can reach this Mac become untrue; what is missing is the fact that, while the bridge is on, conversations are leaving the Mac to a third party. That belongs on the page that exists to say what is on. Left out of the bridge's own change deliberately: the spec (spc-2609181018499470) scopes the bridge's surfaces to the Settings pane, the docs page and the changelog, and adding a Posture line is a judgement about what that page is for.
@@ -27,3 +28,7 @@ Maintainer's decision at interview: the Posture tab is about inbound reach and
 does not state that a bridge is on. The README's "one page that says what is
 on" is tightened to match. Wontfix with this reason; recorded in
 `.abcd/work/DECISIONS.md`.
+
+## Grounds
+
+- declined: Maintainer's decision 2026-09-20: the Posture tab is about inbound reach and does not state that a bridge is on; the README and the posture reference are tightened to say so (370acffa06fcefa75083ef8aa1f650ce36274d55).
