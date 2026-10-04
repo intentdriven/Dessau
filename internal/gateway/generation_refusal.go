@@ -123,6 +123,11 @@ func badLogitBias(payload map[string]json.RawMessage) string {
 // Go decodes such an escape to U+FFFD, so badStop passes it, but the model
 // server's Python keeps the lone surrogate, and encoding it raises on the
 // generation thread. The raw bytes are what is read.
+//
+// A string prompt is not held to the same rule. The pinned mlx-lm (0.32.0)
+// encodes the prompt inside the generation loop's try, so an encode error
+// answers that one request and the thread survives; the stop strings are
+// encoded after that try, which is why only they can kill it.
 func badStopText(payload map[string]json.RawMessage) string {
 	raw, ok := payload["stop"]
 	if !ok {
