@@ -89,6 +89,12 @@ GitHub release notes.
 
 ### Fixed
 
+- **The Discord bot shows as typing while a message waits its turn.**
+  `impact: fix`. The indicator went up only when one of the bridge's two
+  answering slots took the message, so a message sent while both were busy
+  showed nothing until one freed. It now goes up when the message is taken,
+  and stays up while it waits ([Discord bridge](docs/discord-bridge.md);
+  iss-2609190242078205).
 - **Saving the settings restarts a Discord bridge that Discord stopped.**
   `impact: fix`. After Discord closed the connection for good, saving the
   same switch and token did nothing, because the bridge still counted as

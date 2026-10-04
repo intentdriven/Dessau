@@ -70,8 +70,10 @@ prints the API key.
 - **Direct message the bot** and it answers.
 - **Mention the bot** in a channel it has been invited to and it answers there.
   A message in that channel that does not mention it is not read at all.
-- A reply appears as a placeholder and fills in as the model writes. A long
-  answer is cut at a paragraph and continues in a second message.
+- The bot shows as typing as soon as it has taken a message, even while it
+  waits behind other answers. A reply appears as a placeholder and fills in as
+  the model writes. A long answer is cut at a paragraph and continues in a
+  second message.
 - Each channel and each direct message is its own conversation, held in memory
   for as long as the bridge is on. A connection that drops and comes back keeps
   it; switching the bridge off forgets it. Nothing of a message is written to
