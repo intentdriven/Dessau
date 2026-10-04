@@ -1,0 +1,43 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "When you have time, could the docs mention the keyboard shortcut for search?",
+  "questions": {
+   "urgency": {
+    "type": "score",
+    "criteria": [
+     "Can wait",
+     "This week",
+     "Today"
+    ]
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.44,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "urgency": {
+    "type": "score",
+    "score": 0.1485,
+    "confidence": 0.8873,
+    "legend": {
+     "0": "Can wait",
+     "1": "This week",
+     "2": "Today"
+    },
+    "probabilities": {
+     "0": 0.8873,
+     "1": 0.0769,
+     "2": 0.0358
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 154,
+   "output_tokens": 0,
+   "latency_ms": 434.7
+  }
+ }
+}

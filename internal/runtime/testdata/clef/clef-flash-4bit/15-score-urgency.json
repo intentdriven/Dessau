@@ -1,0 +1,43 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "Checkout has been failing for every customer for the last hour.",
+  "questions": {
+   "urgency": {
+    "type": "score",
+    "criteria": [
+     "Can wait",
+     "This week",
+     "Today"
+    ]
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.43,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "urgency": {
+    "type": "score",
+    "score": 1.7464,
+    "confidence": 0.8411,
+    "legend": {
+     "0": "Can wait",
+     "1": "This week",
+     "2": "Today"
+    },
+    "probabilities": {
+     "0": 0.0947,
+     "1": 0.0641,
+     "2": 0.8411
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 151,
+   "output_tokens": 0,
+   "latency_ms": 431.2
+  }
+ }
+}

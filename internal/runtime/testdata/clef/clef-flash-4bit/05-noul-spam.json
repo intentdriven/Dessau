@@ -1,0 +1,28 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "Congratulations! You have been selected to receive a free cruise. Click here to claim.",
+  "questions": {
+   "spam": {
+    "type": "noul",
+    "instructions": "Is this message unsolicited marketing or a scam?"
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.44,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "spam": {
+    "type": "noul",
+    "noul": 0.7957
+   }
+  },
+  "usage": {
+   "input_tokens": 163,
+   "output_tokens": 0,
+   "latency_ms": 436.5
+  }
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "A typo on the pricing page says 'mounthly' instead of 'monthly'.",
+  "questions": {
+   "severity": {
+    "type": "score",
+    "criteria": [
+     "Cosmetic",
+     "Minor",
+     "Major",
+     "Critical"
+    ]
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.45,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "severity": {
+    "type": "score",
+    "score": 0.6336,
+    "confidence": 0.4719,
+    "legend": {
+     "0": "Cosmetic",
+     "1": "Minor",
+     "2": "Major",
+     "3": "Critical"
+    },
+    "probabilities": {
+     "0": 0.4719,
+     "1": 0.4503,
+     "2": 0.0501,
+     "3": 0.0277
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 171,
+   "output_tokens": 0,
+   "latency_ms": 452.4
+  }
+ }
+}

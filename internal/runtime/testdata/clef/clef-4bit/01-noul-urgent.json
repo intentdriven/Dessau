@@ -1,0 +1,28 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "Checkout has been failing for every customer for the last hour.",
+  "questions": {
+   "urgent": {
+    "type": "noul",
+    "instructions": "Is this urgent?"
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.67,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "urgent": {
+    "type": "noul",
+    "noul": 0.9914
+   }
+  },
+  "usage": {
+   "input_tokens": 152,
+   "output_tokens": 0,
+   "latency_ms": 653.3
+  }
+ }
+}

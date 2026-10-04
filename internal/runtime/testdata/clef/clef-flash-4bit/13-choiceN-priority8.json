@@ -1,0 +1,49 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "The export button produces an empty file for some customers on the old plan.",
+  "questions": {
+   "component": {
+    "type": "choice",
+    "instructions": "Which component is affected?",
+    "criteria": {
+     "auth": "Sign-in",
+     "search": "Search",
+     "export": "Data export",
+     "import": "Data import",
+     "billing": "Billing",
+     "notifications": "Email and push",
+     "mobile": "Mobile apps",
+     "api": "Public API"
+    }
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.62,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "component": {
+    "type": "choice",
+    "choice": "export",
+    "confidence": 0.9686,
+    "probabilities": {
+     "auth": 0.0029,
+     "search": 0.003,
+     "export": 0.9686,
+     "import": 0.0069,
+     "billing": 0.0049,
+     "notifications": 0.0029,
+     "mobile": 0.0041,
+     "api": 0.0069
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 242,
+   "output_tokens": 0,
+   "latency_ms": 623.5
+  }
+ }
+}

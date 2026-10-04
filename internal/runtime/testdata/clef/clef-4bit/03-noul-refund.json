@@ -1,0 +1,28 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "I was charged twice for the same order last week and would like one charge reversed.",
+  "questions": {
+   "refund": {
+    "type": "noul",
+    "instructions": "Is the customer asking for money back?"
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.75,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "refund": {
+    "type": "noul",
+    "noul": 0.9429
+   }
+  },
+  "usage": {
+   "input_tokens": 161,
+   "output_tokens": 0,
+   "latency_ms": 744.7
+  }
+ }
+}

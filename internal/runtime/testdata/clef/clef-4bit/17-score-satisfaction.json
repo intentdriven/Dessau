@@ -1,0 +1,49 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "It works, but setting it up took far longer than the guide said.",
+  "questions": {
+   "satisfaction": {
+    "type": "score",
+    "criteria": [
+     "Very unhappy",
+     "Unhappy",
+     "Neutral",
+     "Happy",
+     "Very happy"
+    ]
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.76,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "satisfaction": {
+    "type": "score",
+    "score": 2.0788,
+    "confidence": 0.7864,
+    "legend": {
+     "0": "Very unhappy",
+     "1": "Unhappy",
+     "2": "Neutral",
+     "3": "Happy",
+     "4": "Very happy"
+    },
+    "probabilities": {
+     "0": 0.0111,
+     "1": 0.0563,
+     "2": 0.7864,
+     "3": 0.1351,
+     "4": 0.0111
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 187,
+   "output_tokens": 0,
+   "latency_ms": 755.4
+  }
+ }
+}

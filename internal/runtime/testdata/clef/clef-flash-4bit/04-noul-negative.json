@@ -1,0 +1,28 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "Thanks for the quick fix yesterday, everything works again.",
+  "questions": {
+   "complaint": {
+    "type": "noul",
+    "instructions": "Is this a complaint?"
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.4,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "complaint": {
+    "type": "noul",
+    "noul": 0.0086
+   }
+  },
+  "usage": {
+   "input_tokens": 152,
+   "output_tokens": 0,
+   "latency_ms": 400.4
+  }
+ }
+}

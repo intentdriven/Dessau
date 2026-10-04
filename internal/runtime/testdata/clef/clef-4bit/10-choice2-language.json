@@ -1,0 +1,37 @@
+{
+ "request": {
+  "model": "clef",
+  "state": "Bonjour, je n'arrive pas à me connecter à mon compte depuis ce matin.",
+  "questions": {
+   "language": {
+    "type": "choice",
+    "instructions": "Which language is the message written in?",
+    "criteria": {
+     "english": "English",
+     "french": "French"
+    }
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 0.63,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "language": {
+    "type": "choice",
+    "choice": "french",
+    "confidence": 0.9977,
+    "probabilities": {
+     "english": 0.0023,
+     "french": 0.9977
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 145,
+   "output_tokens": 0,
+   "latency_ms": 629.6
+  }
+ }
+}

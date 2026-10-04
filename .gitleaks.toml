@@ -11,9 +11,15 @@
 # public, and exist to be searched for; nothing real has that shape. The
 # second pattern is the pair of digit-run tokens the settings tests post to
 # prove a refusal never says whether a guessed secret was right.
+#
+# The path is the Clef golden fixtures' manifests: they list the sha256 of
+# each model file the fixtures were recorded against, and the hashes keyed
+# tokenizer.json and tokenizer_config.json match generic-api-key. They are
+# hashes of public files, written by the recording script, never typed by hand.
 [extend]
 useDefault = true
 
 [allowlist]
-description = "Marker strings the log tests plant to prove a key never reaches the log"
+description = "Marker strings the log tests plant, and the Clef fixture manifests' file hashes"
 regexes = ['''sk-(marker|test)-2f9c4a1e7b3d''', '''(bh|hf)_0123456789abcdef''']
+paths = ['''^internal/runtime/testdata/clef/[^/]+/MANIFEST\.json$''']

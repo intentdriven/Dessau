@@ -1,0 +1,60 @@
+{
+ "request": {
+  "model": "clef",
+  "state": [
+   {
+    "from": "customer",
+    "text": "The app crashes when I open settings."
+   },
+   {
+    "from": "agent",
+    "text": "Which version are you on?"
+   },
+   {
+    "from": "customer",
+    "text": "The latest one, updated this morning."
+   }
+  ],
+  "questions": {
+   "resolved": {
+    "type": "noul",
+    "instructions": "Has the issue been resolved in this conversation?"
+   },
+   "topic": {
+    "type": "choice",
+    "instructions": "What is the conversation about?",
+    "criteria": {
+     "bug": "Software defect",
+     "billing": "Payments",
+     "feature": "Feature request"
+    }
+   }
+  }
+ },
+ "status": 200,
+ "seconds": 1.12,
+ "response": {
+  "model": "clef",
+  "answers": {
+   "resolved": {
+    "type": "noul",
+    "noul": 0.0066
+   },
+   "topic": {
+    "type": "choice",
+    "choice": "bug",
+    "confidence": 0.9917,
+    "probabilities": {
+     "bug": 0.9917,
+     "billing": 0.0041,
+     "feature": 0.0042
+    }
+   }
+  },
+  "usage": {
+   "input_tokens": 272,
+   "output_tokens": 0,
+   "latency_ms": 1122.2
+  }
+ }
+}
