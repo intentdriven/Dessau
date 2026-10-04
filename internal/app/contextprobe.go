@@ -39,11 +39,9 @@ func (s probeSources) Candidates() []contextprobe.Candidate {
 		if !m.CanChat(rule) || m.LoadFailed() {
 			continue
 		}
-		served, _ := s.a.ServedWindow(m)
 		out = append(out, contextprobe.Candidate{
 			RepoID:           m.RepoID,
 			Declared:         m.ContextLength,
-			Served:           served,
 			Bytes:            chargedSize(m),
 			KVChargePerToken: m.KVChargePerToken,
 			Measured:         m.Measured,
@@ -123,15 +121,16 @@ func (a *App) isPinned(repoID string) bool {
 // Save records a measurement and judges it at once against what is in force.
 // The probe stamps it with the provenance it found in force before saving,
 // but a settings save can move that provenance between the probe's check and
-// this write, and the settings save's own re-judging may already have run:
-// judging here, after the write, leaves no gap in which the figure reads
-// current under settings it was not taken under.
+// this write, and the settings save's own re-judging may already have run.
+// Judging here, after the write, means the figure is never left reading
+// current under settings it was not taken under once Save returns. It judges
+// whether or not the write reached the disk: the registry puts the figure in
+// force in memory before it writes the file, so a failed write still leaves
+// it live.
 func (s probeSources) Save(repoID string, m *registry.Measurement) error {
-	if err := s.a.Registry.SetMeasurement(repoID, m); err != nil {
-		return err
-	}
+	err := s.a.Registry.SetMeasurement(repoID, m)
 	s.a.refreshStaleness()
-	return nil
+	return err
 }
 
 func (s probeSources) MarkIncomplete(repoID string, on bool) error {

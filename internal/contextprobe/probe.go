@@ -45,13 +45,11 @@ const Name = "context-probe"
 type Candidate struct {
 	RepoID string
 	// Declared is the window the model's own configuration declares; zero
-	// means none, and there is nothing to bisect between.
-	Declared int64
-	// Served is the window Dessau serves the model at (the operator's
-	// setting, or Declared). The probe's largest step is bounded by the
-	// served window in Sources.Provenance instead, the read its figure is
+	// means none, and there is nothing to bisect between. The window Dessau
+	// serves the model at is not here: the probe's largest step is bounded
+	// by the served window in Sources.Provenance, the read its figure is
 	// stamped from, so the ceiling and the stamp cannot disagree.
-	Served int64
+	Declared int64
 	// Bytes and KVChargePerToken are what the memory guard projects from.
 	Bytes, KVChargePerToken int64
 	// Measured is the model's current measurement, or nil.
@@ -377,9 +375,10 @@ func (p *Probe) Run(s *selftest.Session, model string) {
 		// window whether or not it is below the declared one, so a sweep
 		// that reaches the cap without a refusal was stopped by it; the
 		// model's own limit is recorded only from a step it actually refused.
-		// The served window is the provenance's, not the candidate's: the two
-		// are separate reads, and a window moved between them would give a
-		// ceiling from one and a stamp from the other.
+		// The served window is the one in the provenance the bounds are
+		// stamped with, so the ceiling and the stamp come from one read and
+		// a window moved after it cannot give a ceiling from one setting and
+		// a stamp from another.
 		b = &bounds{hi: min(cand.Declared, MaxProbeWindow), bound: registry.BoundServedWindow, prov: inForce}
 		if inForce.ServedContext > 0 && inForce.ServedContext < b.hi {
 			b.hi = inForce.ServedContext

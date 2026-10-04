@@ -2,6 +2,8 @@ package app
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -226,7 +228,7 @@ func TestAProbeSaveIsJudgedAgainstTheSettingsInForce(t *testing.T) {
 		t.Fatalf("the fixture is wrong: served window in force %d", prov.ServedContext)
 	}
 	// Stamped with the served window that was in force at the probe's
-	// check, before a save lowered it to the one now in force.
+	// check, before a save raised it to the one now in force.
 	if err := src.Save("org/m", &registry.Measurement{
 		Window: 30000, Bound: registry.BoundServedWindow, At: 1,
 		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes, DecodeConcurrency: prov.DecodeConcurrency, ServedContext: 32768,
@@ -235,6 +237,40 @@ func TestAProbeSaveIsJudgedAgainstTheSettingsInForce(t *testing.T) {
 	}
 	if m, _ := a.Registry.Get("org/m"); m.Measured == nil || m.Measured.Stale != registry.StaleServedContext {
 		t.Errorf("a figure saved under another served window reads %+v, want stale for the served window", m.Measured)
+	}
+}
+
+// The registry puts a figure in force in memory before it writes the file, so
+// a write that fails still leaves the figure live: the probe's save judges it
+// all the same, rather than leaving it reading current under settings it was
+// not taken under until the next settings save (iss-2610032241096901).
+func TestAProbeSaveThatFailsToPersistIsStillJudged(t *testing.T) {
+	a := newTestApp(t)
+	readyModel(t, a, "org/m", 131072)
+	src := probeSources{a}
+	prov := src.Provenance("org/m")
+	// Break the registry's write deterministically, without relying on
+	// permissions (the test may run as root): a non-empty directory where
+	// registry.json goes makes the final rename fail.
+	if err := os.Remove(a.Paths.State); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(a.Paths.State, "occupied"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := src.Save("org/m", &registry.Measurement{
+		Window: 30000, Bound: registry.BoundServedWindow, At: 1,
+		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes, DecodeConcurrency: prov.DecodeConcurrency, ServedContext: 32768,
+	})
+	if err == nil {
+		t.Fatal("the fixture is wrong: the registry's write did not fail")
+	}
+	m, _ := a.Registry.Get("org/m")
+	if m.Measured == nil {
+		t.Fatal("the fixture is wrong: the figure is not live in memory")
+	}
+	if m.Measured.Stale != registry.StaleServedContext {
+		t.Errorf("a figure whose write failed reads %+v, want stale for the served window", m.Measured)
 	}
 }
 
