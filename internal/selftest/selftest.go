@@ -43,6 +43,11 @@ import (
 // model's day: the model is measured once it can be served.
 var ErrNotNow = errors.New("the model cannot be served just now")
 
+// ErrPinned is Server.Unload's refusal for a pinned model. The self-test
+// unloads only what it loaded itself, and a model pinned meanwhile is one a
+// person wants kept in memory, so it stays (iss-2610032241098944).
+var ErrPinned = errors.New("the model is pinned, and the self-test never unloads a pinned model")
+
 // Server is what the self-test needs from the app: the models it may test,
 // the pool's ordinary way of loading one, the pool's view of what is going on,
 // and a way to unload what the self-test itself loaded.
@@ -63,7 +68,8 @@ type Server interface {
 	Acquire(ctx context.Context, repoID string) (Upstream, func(), error)
 	// Activity is what the pool is doing right now.
 	Activity() Activity
-	// Unload stops a model server. The pool refuses one that is serving.
+	// Unload stops a model server. The pool refuses one that is serving,
+	// and the implementation refuses a pinned one with ErrPinned.
 	Unload(repoID string) error
 	// Concurrency is the decode concurrency each model server runs with,
 	// which is how many requests the concurrent test sends at once.
@@ -761,6 +767,7 @@ func (r *Runner) run(ctx context.Context, model string, wasResident bool) {
 		if wasResident || res.Outcome == OutcomeYielded {
 			return
 		}
+		// A model pinned during the run is refused with ErrPinned and stays.
 		if err := r.opts.Server.Unload(model); err != nil {
 			r.opts.Log.Debug("self-test: could not unload the model it loaded", "model", model, "err", err)
 		}

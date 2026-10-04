@@ -54,8 +54,9 @@ so a figure here can be set beside a published one.
 
 When the set is done Dessau writes one line to the results file and, if the
 self-test was what loaded the model, unloads it again; a model that was
-already in memory is left there. Then it goes back to waiting for the next
-idle minute and the next model.
+already in memory is left there, and so is one you
+[pinned](pinning-models.md) while the run was going. Then it goes back to
+waiting for the next idle minute and the next model.
 
 ## What it costs, and what it never does
 

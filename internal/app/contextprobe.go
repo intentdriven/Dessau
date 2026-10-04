@@ -90,15 +90,22 @@ func (s probeSources) Available() int64 {
 	return s.a.Pool.MemoryBudget() - used
 }
 
-// Unload stops a model server for the probe, and never a pinned one: the
-// pool's Unload is the operator's and stops whatever it is given, so the pin
-// is the probe's to honour (iss-2609211754251373). A pin saved between this
-// check and the stop is met at the next step's unload.
+// Unload stops a model server for the probe, and never a pinned one
+// (iss-2609211754251373); see unloadUnpinned. A pin saved between the check
+// and the stop is met at the next step's unload.
 func (s probeSources) Unload(repoID string) error {
-	if s.a.isPinned(repoID) {
-		return fmt.Errorf("%s: %w", repoID, contextprobe.ErrPinned)
+	return s.a.unloadUnpinned(repoID, contextprobe.ErrPinned)
+}
+
+// unloadUnpinned is the idle jobs' unload: the pool's Unload, refused with
+// refusal — the job's own ErrPinned — when the model is pinned. The pool's
+// Unload is the operator's and stops whatever it is given, so a pin is each
+// idle job's to honour, and this is the one place they honour it.
+func (a *App) unloadUnpinned(repoID string, refusal error) error {
+	if a.isPinned(repoID) {
+		return fmt.Errorf("%s: %w", repoID, refusal)
 	}
-	return s.a.Pool.Unload(repoID)
+	return a.Pool.Unload(repoID)
 }
 
 // isPinned reports whether the pool holds the model pinned, whichever way
