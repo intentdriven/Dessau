@@ -48,7 +48,9 @@ type Candidate struct {
 	// means none, and there is nothing to bisect between.
 	Declared int64
 	// Served is the window Dessau serves the model at (the operator's
-	// setting, or Declared), which bounds the largest step.
+	// setting, or Declared). The probe's largest step is bounded by the
+	// served window in Sources.Provenance instead, the read its figure is
+	// stamped from, so the ceiling and the stamp cannot disagree.
 	Served int64
 	// Bytes and KVChargePerToken are what the memory guard projects from.
 	Bytes, KVChargePerToken int64
@@ -79,7 +81,9 @@ type Sources interface {
 	// flight on it, runtime.ErrNotLoaded when it is not resident, ErrPinned
 	// when it is pinned.
 	Unload(repoID string) error
-	// Save records a completed measurement on the model.
+	// Save records a completed measurement on the model, and judges it
+	// against what is in force once it is written, so a figure whose
+	// provenance moved after the probe's last check reads stale.
 	Save(repoID string, m *registry.Measurement) error
 	// MarkIncomplete records that a probe of the model was interrupted.
 	MarkIncomplete(repoID string, on bool) error
@@ -373,9 +377,12 @@ func (p *Probe) Run(s *selftest.Session, model string) {
 		// window whether or not it is below the declared one, so a sweep
 		// that reaches the cap without a refusal was stopped by it; the
 		// model's own limit is recorded only from a step it actually refused.
+		// The served window is the provenance's, not the candidate's: the two
+		// are separate reads, and a window moved between them would give a
+		// ceiling from one and a stamp from the other.
 		b = &bounds{hi: min(cand.Declared, MaxProbeWindow), bound: registry.BoundServedWindow, prov: inForce}
-		if cand.Served > 0 && cand.Served < b.hi {
-			b.hi = cand.Served
+		if inForce.ServedContext > 0 && inForce.ServedContext < b.hi {
+			b.hi = inForce.ServedContext
 		}
 		p.bounds[key] = b
 	}
@@ -491,8 +498,11 @@ func (p *Probe) Run(s *selftest.Session, model string) {
 		return
 	}
 	// Stamped with the provenance the bounds were made under, which is the
-	// one just found in force: a move after that check leaves the figure
-	// stamped truthfully, and the staleness refresh then marks it.
+	// one just found in force. A settings save can still land between that
+	// check and the save below, and its own re-judging may already have run;
+	// the stamp stays truthful, and Save judges the figure against what is in
+	// force once it is written, so such a move marks it stale rather than
+	// leaving it current.
 	m := &registry.Measurement{
 		Window: b.loTokens, Bound: b.bound, At: p.opts.Now().Unix(),
 		Runtime: b.prov.Runtime, BudgetBytes: b.prov.BudgetBytes, DecodeConcurrency: b.prov.DecodeConcurrency,
