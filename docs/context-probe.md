@@ -81,7 +81,9 @@ Nor is a [pinned](pinning-models.md) model. The probe stops the model before eve
 step, and a pin promises that nothing stops it, so the pin wins: a pinned
 model is never picked, **Measure now** on its card says so, and when a model
 is pinned while it is being measured, the measurement stops at its next step,
-keeping the sizes it has already verified. Unpin it, and the next run goes on from there.
+keeping the sizes it has already verified. Unpin it, and the next run goes on from there,
+unless the settings a measurement depends on have changed in the meantime
+(see [Read the result](#read-the-result)).
 
 To measure one model without switching the probe on, open the **My Models** tab
 and press **Measure now** on its card. The run starts at the next idle
@@ -110,6 +112,15 @@ A measurement is marked **stale** when the runtime, the memory budget, the
 decode concurrency or the model's served window has changed since it was
 taken, and the card says which. A stale figure is not published and cannot
 be adopted; measure again.
+
+The same four settings govern a measurement that is not finished. When the
+runtime, the memory budget, the decode concurrency or the model's served
+window changes while a measurement is paused — for a request, or for a pin —
+or while it is running, the measurement starts over under the new settings
+rather than finishing: the sizes it verified under the old ones are dropped,
+and nothing measured under the old settings is saved. A model whose earlier
+figure is current again under the new settings is not measured again, unless
+you asked for it with **Measure now**.
 
 The figure is also published on the models list as `measured_context` and
 `measured_bound`, beside `context_length` and `served_context`:

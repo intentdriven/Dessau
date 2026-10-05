@@ -2,6 +2,8 @@ package app
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -166,6 +168,34 @@ func TestASaveRejudgesMeasurementsAndAnUnrelatedSaveKeepsTheProbeSettings(t *tes
 	}
 }
 
+// A save that moves the memory budget re-judges against the budget it put in
+// force, not the one the pool enforced before it: the provenance reads the
+// pool's budget, so the re-judging must come after the pool takes the new one
+// (iss-2610042040451551).
+func TestABudgetSaveMarksAMeasurementStaleForTheBudget(t *testing.T) {
+	a := newTestApp(t)
+	readyModel(t, a, "org/m", 131072)
+	prov := probeSources{a}.Provenance("org/m")
+	if err := a.Registry.SetMeasurement("org/m", &registry.Measurement{
+		Window: 65536, Bound: registry.BoundModel, At: 1,
+		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes, DecodeConcurrency: prov.DecodeConcurrency, ServedContext: prov.ServedContext,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := a.Config()
+	c.MaxResidentBytes = prov.BudgetBytes / 2
+	if err := a.SetConfig(c); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Pool.MemoryBudget(); got == prov.BudgetBytes {
+		t.Fatalf("the fixture is wrong: the save left the pool's budget at %d", got)
+	}
+	m, _ := a.Registry.Get("org/m")
+	if m.Measured == nil || m.Measured.Stale != registry.StaleBudget {
+		t.Errorf("after a budget save the measurement reads %+v, want stale for the budget (budget now %d)", m.Measured, a.Pool.MemoryBudget())
+	}
+}
+
 // The provenance the app stamps is the one it judges by: the pinned runtime,
 // the pool's budget and concurrency, the model's served window.
 func TestTheProvenanceIsWhatThePoolAndTheRuntimeSay(t *testing.T) {
@@ -183,6 +213,66 @@ func TestTheProvenanceIsWhatThePoolAndTheRuntimeSay(t *testing.T) {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// The probe stamps a figure with the provenance its bounds were made under
+// and checks it is still in force before saving, but a settings save can
+// land between that check and the save, and its own re-judging has already
+// run by then. The probe's save re-judges, so the figure reads stale rather
+// than current under settings it was not taken under.
+func TestAProbeSaveIsJudgedAgainstTheSettingsInForce(t *testing.T) {
+	a := newTestApp(t)
+	readyModel(t, a, "org/m", 131072)
+	src := probeSources{a}
+	prov := src.Provenance("org/m")
+	if prov.ServedContext != 131072 {
+		t.Fatalf("the fixture is wrong: served window in force %d", prov.ServedContext)
+	}
+	// Stamped with the served window that was in force at the probe's
+	// check, before a save raised it to the one now in force.
+	if err := src.Save("org/m", &registry.Measurement{
+		Window: 30000, Bound: registry.BoundServedWindow, At: 1,
+		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes, DecodeConcurrency: prov.DecodeConcurrency, ServedContext: 32768,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := a.Registry.Get("org/m"); m.Measured == nil || m.Measured.Stale != registry.StaleServedContext {
+		t.Errorf("a figure saved under another served window reads %+v, want stale for the served window", m.Measured)
+	}
+}
+
+// The registry puts a figure in force in memory before it writes the file, so
+// a write that fails still leaves the figure live: the probe's save judges it
+// all the same, rather than leaving it reading current under settings it was
+// not taken under until the next settings save (iss-2610032241096901).
+func TestAProbeSaveThatFailsToPersistIsStillJudged(t *testing.T) {
+	a := newTestApp(t)
+	readyModel(t, a, "org/m", 131072)
+	src := probeSources{a}
+	prov := src.Provenance("org/m")
+	// Break the registry's write deterministically, without relying on
+	// permissions (the test may run as root): a non-empty directory where
+	// registry.json goes makes the final rename fail.
+	if err := os.Remove(a.Paths.State); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(a.Paths.State, "occupied"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := src.Save("org/m", &registry.Measurement{
+		Window: 30000, Bound: registry.BoundServedWindow, At: 1,
+		Runtime: prov.Runtime, BudgetBytes: prov.BudgetBytes, DecodeConcurrency: prov.DecodeConcurrency, ServedContext: 32768,
+	})
+	if err == nil {
+		t.Fatal("the fixture is wrong: the registry's write did not fail")
+	}
+	m, _ := a.Registry.Get("org/m")
+	if m.Measured == nil {
+		t.Fatal("the fixture is wrong: the figure is not live in memory")
+	}
+	if m.Measured.Stale != registry.StaleServedContext {
+		t.Errorf("a figure whose write failed reads %+v, want stale for the served window", m.Measured)
+	}
+}
 
 // The probe measures through chat completions, so only a model the server
 // offers to chat is a candidate: the same verdict the models list publishes

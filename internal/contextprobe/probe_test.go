@@ -34,6 +34,8 @@ type fakeGateway struct {
 	prompts  []string
 	requests int
 	auth     string
+	// inside counts the requests a handler is still serving.
+	inside int
 }
 
 func newFakeGateway(t *testing.T, accept int64, above int) *fakeGateway {
@@ -45,6 +47,14 @@ func newFakeGateway(t *testing.T, accept int64, above int) *fakeGateway {
 }
 
 func (g *fakeGateway) handle(w http.ResponseWriter, r *http.Request) {
+	g.mu.Lock()
+	g.inside++
+	g.mu.Unlock()
+	defer func() {
+		g.mu.Lock()
+		g.inside--
+		g.mu.Unlock()
+	}()
 	var body struct {
 		Messages []struct {
 			Content string `json:"content"`
@@ -78,6 +88,13 @@ func (g *fakeGateway) handle(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"usage": map[string]any{"prompt_tokens": tokens}})
 }
 
+// active is how many requests a handler is still serving.
+func (g *fakeGateway) active() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.inside
+}
+
 func (g *fakeGateway) seen() []string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -94,6 +111,25 @@ type fakeSources struct {
 	saved      map[string]*registry.Measurement
 	incomplete map[string]bool
 	url, key   string
+	// prov is the provenance in force; zero means the default below.
+	prov registry.Provenance
+	// next, when set, answers the next reads of the provenance in turn,
+	// one each, before prov or the default answers again: a setting that
+	// moves between two reads.
+	next []registry.Provenance
+}
+
+// withServed puts a served window into force for every model: the
+// provenance carries it, as the app's does.
+func (f *fakeSources) withServed(window int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.prov = provServed(window)
+}
+
+// provServed is the default provenance with the given served window.
+func provServed(window int64) registry.Provenance {
+	return registry.Provenance{Runtime: "0.31.3", BudgetBytes: 1, DecodeConcurrency: 4, ServedContext: window}
 }
 
 func newFakeSources(url string, cands ...Candidate) *fakeSources {
@@ -111,8 +147,29 @@ func (f *fakeSources) Candidates() []Candidate {
 	}
 	return out
 }
-func (f *fakeSources) Provenance(string) registry.Provenance {
-	return registry.Provenance{Runtime: "0.31.3", BudgetBytes: 1, DecodeConcurrency: 4, ServedContext: 131072}
+
+// Provenance is the next queued reading when a test queues some, then prov
+// when a test sets one, and otherwise the default with the candidate's
+// declared window as the served one, which is what the app serves when
+// nothing sets another.
+func (f *fakeSources) Provenance(id string) registry.Provenance {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.next) > 0 {
+		p := f.next[0]
+		f.next = f.next[1:]
+		return p
+	}
+	if f.prov != (registry.Provenance{}) {
+		return f.prov
+	}
+	served := int64(131072)
+	for _, c := range f.cands {
+		if c.RepoID == id {
+			served = c.Declared
+		}
+	}
+	return provServed(served)
 }
 func (f *fakeSources) Available() int64 { f.mu.Lock(); defer f.mu.Unlock(); return f.available }
 func (f *fakeSources) Unload(id string) error {
@@ -181,6 +238,7 @@ func (p *fakePool) Activity() selftest.Activity {
 func (p *fakePool) Unload(string) error { return nil }
 func (p *fakePool) Concurrency() int    { return 1 }
 func (p *fakePool) Fits(string) bool    { p.mu.Lock(); defer p.mu.Unlock(); return p.fits }
+func (p *fakePool) Pinned(string) bool  { return false }
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
@@ -229,7 +287,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("gave up waiting for %s", what)
 }
 
-var model = Candidate{RepoID: "org/m", Declared: 131072, Served: 131072, Bytes: 1 << 30, KVChargePerToken: 1024}
+var model = Candidate{RepoID: "org/m", Declared: 131072, Bytes: 1 << 30, KVChargePerToken: 1024}
 
 // The switch off, nothing queued: nothing is due, whatever finished
 // downloading. "Measure now" makes a model due whatever the switch says.
@@ -327,9 +385,8 @@ func TestAStepStoppedByTheDeadlineIsAFloor(t *testing.T) {
 // accepts everything up to it is bounded by the served window.
 func TestAServedWindowCapsTheSweep(t *testing.T) {
 	gw := newFakeGateway(t, 1<<40, http.StatusInternalServerError)
-	c := model
-	c.Served = 16_384
-	src := newFakeSources(gw.srv.URL, c)
+	src := newFakeSources(gw.srv.URL, model)
+	src.withServed(16_384)
 	p := probeOf(src, true)
 	r := runner(t, newFakePool("org/m"), p)
 	r.SetEnabled(true)
@@ -617,7 +674,7 @@ func TestARefusedKeyAbandonsTheRun(t *testing.T) {
 func TestAPlantedDeclaredWindowIsCappedAndTheCalibrationClamped(t *testing.T) {
 	gw := newFakeGateway(t, 1<<40, http.StatusInternalServerError)
 	c := model
-	c.Declared, c.Served = 1<<23, 1<<23
+	c.Declared = 1 << 23
 	src := newFakeSources(gw.srv.URL, c)
 	p := probeOf(src, true)
 	r := runner(t, newFakePool("org/m"), p)

@@ -39,11 +39,9 @@ func (s probeSources) Candidates() []contextprobe.Candidate {
 		if !m.CanChat(rule) || m.LoadFailed() {
 			continue
 		}
-		served, _ := s.a.ServedWindow(m)
 		out = append(out, contextprobe.Candidate{
 			RepoID:           m.RepoID,
 			Declared:         m.ContextLength,
-			Served:           served,
 			Bytes:            chargedSize(m),
 			KVChargePerToken: m.KVChargePerToken,
 			Measured:         m.Measured,
@@ -90,15 +88,22 @@ func (s probeSources) Available() int64 {
 	return s.a.Pool.MemoryBudget() - used
 }
 
-// Unload stops a model server for the probe, and never a pinned one: the
-// pool's Unload is the operator's and stops whatever it is given, so the pin
-// is the probe's to honour (iss-2609211754251373). A pin saved between this
-// check and the stop is met at the next step's unload.
+// Unload stops a model server for the probe, and never a pinned one
+// (iss-2609211754251373); see unloadUnpinned. A pin saved between the check
+// and the stop is met at the next step's unload.
 func (s probeSources) Unload(repoID string) error {
-	if s.a.isPinned(repoID) {
-		return fmt.Errorf("%s: %w", repoID, contextprobe.ErrPinned)
+	return s.a.unloadUnpinned(repoID, contextprobe.ErrPinned)
+}
+
+// unloadUnpinned is the idle jobs' unload: the pool's Unload, refused with
+// refusal — the job's own ErrPinned — when the model is pinned. The pool's
+// Unload is the operator's and stops whatever it is given, so a pin is each
+// idle job's to honour, and this is the one place they honour it.
+func (a *App) unloadUnpinned(repoID string, refusal error) error {
+	if a.isPinned(repoID) {
+		return fmt.Errorf("%s: %w", repoID, refusal)
 	}
-	return s.a.Pool.Unload(repoID)
+	return a.Pool.Unload(repoID)
 }
 
 // isPinned reports whether the pool holds the model pinned, whichever way
@@ -113,8 +118,19 @@ func (a *App) isPinned(repoID string) bool {
 	return false
 }
 
+// Save records a measurement and judges it at once against what is in force.
+// The probe stamps it with the provenance it found in force before saving,
+// but a settings save can move that provenance between the probe's check and
+// this write, and the settings save's own re-judging may already have run.
+// Judging here, after the write, means the figure is never left reading
+// current under settings it was not taken under once Save returns. It judges
+// whether or not the write reached the disk: the registry puts the figure in
+// force in memory before it writes the file, so a failed write still leaves
+// it live.
 func (s probeSources) Save(repoID string, m *registry.Measurement) error {
-	return s.a.Registry.SetMeasurement(repoID, m)
+	err := s.a.Registry.SetMeasurement(repoID, m)
+	s.a.refreshStaleness()
+	return err
 }
 
 func (s probeSources) MarkIncomplete(repoID string, on bool) error {

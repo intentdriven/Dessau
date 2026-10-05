@@ -76,7 +76,16 @@ func (s selfTestServer) Activity() selftest.Activity {
 	return act
 }
 
-func (s selfTestServer) Unload(repoID string) error { return s.a.Pool.Unload(repoID) }
+// Unload stops a model the self-test loaded, and never a pinned one: a model
+// pinned during the run stays loaded and pinned (iss-2610032241098944); see
+// unloadUnpinned.
+func (s selfTestServer) Unload(repoID string) error {
+	return s.a.unloadUnpinned(repoID, selftest.ErrPinned)
+}
+
+// Pinned is the pool's pin, the one the context probe's candidates and both
+// idle jobs' unloads read (isPinned).
+func (s selfTestServer) Pinned(repoID string) bool { return s.a.isPinned(repoID) }
 
 func (s selfTestServer) Concurrency() int { return s.a.Pool.DecodeConcurrency() }
 

@@ -336,7 +336,23 @@ const bytesPerToken = 4
 // conversation is shortened here and never refused there. A single turn too
 // large for the window on its own is truncated, because refusing it would
 // leave the person unable to say anything at all in that channel.
+//
+// THE HISTORY SENT OPENS ON THE USER (iss-2610032306154631). The turn count,
+// the store's byte budget and the window below all drop turns one at a time
+// from the front, so the oldest turn kept can be the model's answer, and
+// Gemma- and Mistral-style chat templates raise on a history that opens on
+// one. Every trim's result passes through here on its way to the gateway, so
+// this is where it is held: a cut lands only on a user turn, and the turn the
+// fallback sends alone is the newest user turn.
+//
+// AND IT ALTERNATES (iss-2610042030092101). A request refused before a token
+// was written, or answered with nothing, leaves its question in the history
+// unanswered, so the next message would send two user turns in a row — which
+// the same templates raise on, failing every later message in the channel
+// until `/reset`. Only the newest of a run of user turns is sent; the store
+// keeps what it holds.
 func buildRequest(model string, turns []turn, served int64) ([]byte, error) {
+	turns = alternating(turns)
 	window := served
 	if window <= 0 {
 		window = defaultWindow
@@ -348,6 +364,9 @@ func buildRequest(model string, turns []turn, served int64) ([]byte, error) {
 	budget := (window - int64(answer)) * bytesPerToken
 
 	for start := 0; start < len(turns); start++ {
+		if turns[start].Role != roleUser {
+			continue
+		}
 		body, err := json.Marshal(request{
 			Model: model, Messages: turns[start:], MaxTokens: answer, Stream: true,
 		})
@@ -358,29 +377,55 @@ func buildRequest(model string, turns []turn, served int64) ([]byte, error) {
 			return body, nil
 		}
 	}
-	// Even the newest turn alone is over the window. Keep its tail — the end
-	// of what somebody typed is the part they are asking about.
+	// Even the newest user turn alone is over the window. Keep its tail — the
+	// end of what somebody typed is the part they are asking about.
 	last := turn{Role: roleUser}
-	if len(turns) > 0 {
-		last = turns[len(turns)-1]
+	for i := len(turns) - 1; i >= 0; i-- {
+		if turns[i].Role == roleUser {
+			last = turns[i]
+			break
+		}
 	}
-	last.Content = tailRunes(last.Content, int(budget/bytesPerToken))
-	return json.Marshal(request{
-		Model: model, Messages: []turn{last}, MaxTokens: answer, Stream: true,
-	})
+	//
+	// The tail is measured ENCODED, as the loop above measures and the gateway
+	// judges (iss-2610042030098334): a cut in runes would let a rune of four
+	// bytes, or a character JSON escapes to six (`<`, `>`, `&`, a control
+	// character), carry the body past the window. The encoded size only grows
+	// as the tail does, so the longest tail that fits is found by halving.
+	runes := []rune(last.Content)
+	encode := func(n int) ([]byte, error) {
+		t := turn{Role: last.Role, Content: string(runes[len(runes)-n:])}
+		return json.Marshal(request{
+			Model: model, Messages: []turn{t}, MaxTokens: answer, Stream: true,
+		})
+	}
+	lo, hi := 0, len(runes) // a tail of lo runes fits, or lo is 0; hi+1 does not
+	for lo < hi {
+		mid := lo + (hi-lo+1)/2
+		body, err := encode(mid)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(body)) <= budget {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return encode(lo)
 }
 
-// tailRunes keeps the last n runes of s, cutting on a rune boundary so the
-// result is still text.
-func tailRunes(s string, n int) string {
-	if n <= 0 {
-		return ""
+// alternating is turns without any user turn that is directly followed by
+// another user turn, so a run of unanswered questions is sent as its newest.
+func alternating(turns []turn) []turn {
+	kept := make([]turn, 0, len(turns))
+	for i, t := range turns {
+		if t.Role == roleUser && i+1 < len(turns) && turns[i+1].Role == roleUser {
+			continue
+		}
+		kept = append(kept, t)
 	}
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[len(r)-n:])
+	return kept
 }
 
 // headBytes keeps as much of the start of s as fits in n bytes, cutting on a

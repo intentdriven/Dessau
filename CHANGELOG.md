@@ -11,6 +11,8 @@ GitHub release notes.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-04
+
 ### Added
 
 - **The models list says which models are builds of one model.**
@@ -87,8 +89,135 @@ GitHub release notes.
   ([request fields](docs/request-fields.md#an-empty-answer-budget);
   itd-2610030656210408).
 
+- **Downloading a model you already have no longer takes it out of service,
+  and can no longer leave it half one version and half the next.**
+  `impact: fix`. The newer version is fetched beside the one being served,
+  every file checked against HuggingFace's hash for it, and swapped in only
+  once it has checked out and the requests the model was answering have
+  finished; any failure leaves the old version serving, unchanged. Before,
+  the model was marked as downloading for the whole re-download, and a file
+  of the same size from the old version was kept unchecked while a file the
+  new version dropped was never removed (iss-2610030913179523;
+  [how it works](docs/model-updates.md)).
+- **A download fetches every file at one commit, and Dessau records which.**
+  `impact: additive`. A download first asks HuggingFace for the
+  repository's current commit, then lists and fetches every file at that
+  commit rather than at `main`, so a commit that lands on the Hub while
+  Alice's download is running can no longer leave her with a model that is
+  half one version and half the next. The registry records the commit and
+  each downloaded file's hash as the Hub listed it; a model downloaded
+  before this, or found on disk by a rescan, is "version unknown". This is
+  the groundwork for checking downloaded models for newer versions
+  (itd-2610030857275099).
+
+- **A request carrying `draft_model` or `adapters` is refused.**
+  `impact: breaking`. Security. The model server reads both as an
+  instruction to load files from a path the request gives — a second model
+  for speculative decoding, or adapter weights, with the served model
+  reloaded to apply them — and a model it loads that way can name a Python
+  file of its own that loading runs. Dessau checks the model it loads before
+  the model server starts, and could not check one a request named. A
+  request on `/v1/chat/completions` or `/v1/completions` whose top level
+  carries either field, with any value, `null` included, is now answered
+  with a 400 naming the field — for example `"draft_model" is not accepted:
+  Dessau does not load a second model for a request` — before any model is
+  loaded or evicted, and the model server never receives it. No sampling
+  parameter is affected. See
+  [Fields a completion request may not carry](docs/request-fields.md).
+- **A server loads only a model whose folder and `config.json` belong to the
+  account running it.** `impact: breaking`. Security. Any other model is
+  refused before any process starts, and its card says why: "this model's
+  files belong to another account, which Dessau does not load". A model
+  downloaded through the control panel, by whoever asked, belongs to the
+  serving account. A model folder copied in from another account does not;
+  download it again from the serving account.
+
+### Removed
+
+- **Shared-cache mode is gone: Dessau serves from one macOS account.**
+  `impact: breaking`. `make install-shared` is removed, and Dessau neither reads
+  nor serves anything from the machine-wide folder under `/Users/Shared`: a
+  model is served only from the serving account's own models folder, and at
+  start-up any model the index still records elsewhere is dropped from the
+  list when the serving account's models folder is there and holds no copy of
+  it, and is otherwise re-pointed at its place in that folder — never served
+  from where the index recorded it. Dessau keeps everything —
+  models, settings, logs, statistics and its private runtime — in the serving
+  account's own `~/Library/Application Support/Dessau` (or wherever
+  `DESSAU_ROOT` points, as before). Other accounts on the same Mac use the
+  server the way any client does, at `http://localhost:11535/v1`, with no key
+  and no copy of the models; they do not launch Dessau Server themselves.
+  Nothing is migrated. If you used the shared cache: choose the account that
+  serves, start Dessau there, download your models again from its control
+  panel (settings saved in another account's folder are not read), and remove
+  the old folder under `/Users/Shared` once nobody needs it. `dessau
+  uninstall` acts on this account's own folder only.
+
 ### Fixed
 
+- **One unanswered Discord message no longer leaves the channel stuck on
+  Gemma- and Mistral-style models.** `impact: fix`. A message the model
+  refused before writing anything, or answered with nothing, stayed in the
+  conversation unanswered, so the channel's next message sent two of the
+  person's turns in a row. Models whose chat template insists the person and
+  the model take turns raised an error on that, and every later message in
+  the channel failed the same way until `/reset`. The history sent now leaves
+  out a message that was never answered and keeps the newest
+  ([Discord bridge](docs/discord-bridge.md); iss-2610042030092101).
+- **A very long Discord message is cut to fit a small window whatever it is
+  written in.** `impact: fix`. When one message was too long for the model's
+  window on its own, the bridge kept its end by counting characters, not the
+  bytes the request is judged by. A message of emoji, or of `<`, `>`, `&` or
+  control characters, could still be over the window, and the person was told
+  the conversation was too long. The end of the message is now measured as it
+  is sent, so it always fits, and a message of plain text keeps more of what
+  was typed ([Discord bridge](docs/discord-bridge.md); iss-2610042030098334).
+- **A long Discord conversation no longer fails on Gemma- and Mistral-style
+  models.** `impact: fix`. When the bridge shortened a conversation, the
+  oldest turn it kept could be the model's own answer, and models whose chat
+  template insists the history opens on the person raised an error, so the
+  channel's next message failed. Past sixteen exchanges in one channel, it
+  could happen on every message. The history sent now always opens on something
+  somebody said, and still ends on their newest message
+  ([Discord bridge](docs/discord-bridge.md); iss-2610032306154631).
+- **The self-test no longer unloads a model you pinned while it ran.**
+  `impact: fix`. When the self-test loaded a model to measure it, it unloaded
+  the model at the end of the run even if you had pinned it in the meantime,
+  leaving it pinned but not in memory. A model pinned during the run now stays
+  loaded and pinned ([self-test](docs/self-test.md); iss-2610032241098944).
+- **A paused context measurement no longer records a window the model is
+  not served at.** `impact: fix`. A measurement that paused
+  for a request or a pin resumed from the steps it had taken under the
+  settings in force when it began, so after the served window was lowered it
+  could record a window above the one the model is now served at, and mark
+  it current. A paused measurement now starts again when the runtime, the
+  memory budget, the decode concurrency or the served window has changed
+  since it began, and one whose settings change while it runs records
+  nothing and is taken again ([how to](docs/context-probe.md);
+  iss-2610032241096901).
+  loaded and pinned. The self-test also no longer loads a pinned model that is
+  not in memory, as after a restart: it measures a pinned model only while the
+  model is already loaded, and leaves it there
+  ([self-test](docs/self-test.md); iss-2610032241098944).
+  since it began. One whose settings change while it runs records nothing,
+  and the model is measured again unless the figure saved before is current
+  again under the settings in force (after **Measure now**, it is measured
+  again regardless). A figure whose settings change just as it is recorded
+  is marked stale rather than current, and the largest size a measurement
+  tries is taken from the same settings it is recorded under
+  ([how to](docs/context-probe.md); iss-2610032241096901).
+- **Changing the memory budget marks a context measurement stale at once.**
+  `impact: fix`. A save that changed the memory budget judged each
+  measurement against the budget in force before the save. A model whose
+  automatic served window follows the budget still read stale, for its
+  served window; but for a model with a served window set by hand, with no
+  per-token memory charge, or whose automatic window stops at the size it
+  declares, a figure taken under the old budget kept reading current, and
+  could still be adopted, until Dessau restarted. The measurements are now
+  judged once the new budget is in force. The same change lifts a model's
+  **did not load** mark as soon as a save changes the memory budget, as the
+  guide says it does; before, the mark stood until Dessau restarted
+  ([how to](docs/context-probe.md); iss-2610042040451551).
 - **A failed update is on the model's card as soon as the update stops.**
   `impact: fix`. The reason was written a moment after the update stopped
   counting as a download, so the panel could draw the card in between with
@@ -103,6 +232,17 @@ GitHub release notes.
   empty array. Dessau reads only whether they are empty, and keeps nothing
   ([reference](docs/request-fields.md#nothing-to-answer);
   adr-2610040749545010; iss-2610031758029994).
+- **A prompt that is a list no longer leaves a model unable to answer
+  anyone.** `impact: breaking`. A `/v1/completions` request whose `prompt`
+  was an array of strings, such as `["hi"]` or `[""]`, froze the model server
+  as an empty prompt did. A `prompt` that is not a string — an array of any
+  kind, a number, an object, a boolean or `null` — is now refused with
+  **400** and `"prompt" must be a string`. None of these produced an answer
+  before: an array of token ids was already refused by the model server.
+  Dessau reads only whether the prompt is a string, never what an array
+  holds, and keeps nothing
+  ([reference](docs/request-fields.md#nothing-to-answer);
+  adr-2610042021365934; iss-2610040805353721).
 - **The Discord bridge holds at most 8 MiB of conversation.**
   `impact: fix`. Its limits were counted in characters and channels, so
   anyone who could reach the bot could make it hold half a gigabyte of text
@@ -279,73 +419,6 @@ GitHub release notes.
   model server did not start answering in time and names
   `upstream_header_timeout_sec` in `config.json`, where the wait is set
   (iss-2610030919536329).
-### Changed
-
-- **Downloading a model you already have no longer takes it out of service,
-  and can no longer leave it half one version and half the next.**
-  `impact: fix`. The newer version is fetched beside the one being served,
-  every file checked against HuggingFace's hash for it, and swapped in only
-  once it has checked out and the requests the model was answering have
-  finished; any failure leaves the old version serving, unchanged. Before,
-  the model was marked as downloading for the whole re-download, and a file
-  of the same size from the old version was kept unchecked while a file the
-  new version dropped was never removed (iss-2610030913179523;
-  [how it works](docs/model-updates.md)).
-- **A download fetches every file at one commit, and Dessau records which.**
-  `impact: additive`. A download first asks HuggingFace for the
-  repository's current commit, then lists and fetches every file at that
-  commit rather than at `main`, so a commit that lands on the Hub while
-  Alice's download is running can no longer leave her with a model that is
-  half one version and half the next. The registry records the commit and
-  each downloaded file's hash as the Hub listed it; a model downloaded
-  before this, or found on disk by a rescan, is "version unknown". This is
-  the groundwork for checking downloaded models for newer versions
-  (itd-2610030857275099).
-
-- **A request carrying `draft_model` or `adapters` is refused.**
-  `impact: breaking`. Security. The model server reads both as an
-  instruction to load files from a path the request gives — a second model
-  for speculative decoding, or adapter weights, with the served model
-  reloaded to apply them — and a model it loads that way can name a Python
-  file of its own that loading runs. Dessau checks the model it loads before
-  the model server starts, and could not check one a request named. A
-  request on `/v1/chat/completions` or `/v1/completions` whose top level
-  carries either field, with any value, `null` included, is now answered
-  with a 400 naming the field — for example `"draft_model" is not accepted:
-  Dessau does not load a second model for a request` — before any model is
-  loaded or evicted, and the model server never receives it. No sampling
-  parameter is affected. See
-  [Fields a completion request may not carry](docs/request-fields.md).
-- **A server loads only a model whose folder and `config.json` belong to the
-  account running it.** `impact: breaking`. Security. Any other model is
-  refused before any process starts, and its card says why: "this model's
-  files belong to another account, which Dessau does not load". A model
-  downloaded through the control panel, by whoever asked, belongs to the
-  serving account. A model folder copied in from another account does not;
-  download it again from the serving account.
-
-### Removed
-
-- **Shared-cache mode is gone: Dessau serves from one macOS account.**
-  `impact: breaking`. `make install-shared` is removed, and Dessau neither reads
-  nor serves anything from the machine-wide folder under `/Users/Shared`: a
-  model is served only from the serving account's own models folder, and at
-  start-up any model the index still records elsewhere is dropped from the
-  list when the serving account's models folder is there and holds no copy of
-  it, and is otherwise re-pointed at its place in that folder — never served
-  from where the index recorded it. Dessau keeps everything —
-  models, settings, logs, statistics and its private runtime — in the serving
-  account's own `~/Library/Application Support/Dessau` (or wherever
-  `DESSAU_ROOT` points, as before). Other accounts on the same Mac use the
-  server the way any client does, at `http://localhost:11535/v1`, with no key
-  and no copy of the models; they do not launch Dessau Server themselves.
-  Nothing is migrated. If you used the shared cache: choose the account that
-  serves, start Dessau there, download your models again from its control
-  panel (settings saved in another account's folder are not read), and remove
-  the old folder under `/Users/Shared` once nobody needs it. `dessau
-  uninstall` acts on this account's own folder only.
-
-### Fixed
 
 - **Dessau no longer loads a model whose `config.json` names code of its
   own.** `impact: fix`. Security. A repository can ship a Python file of its
