@@ -9,7 +9,7 @@ found_during: "tracing an unexplained model load after a peer's run, 2026-10-04,
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/runtime/pool.go"
-remedy: "Fold into itd-2610030656210408: spc-2610030846273729 steps 2 (recognise a decision model) and 4 (charge it at weights plus its measured prefill peak at the build's fixed window) are the fix; resolve this issue in the change that lands them. No interim code."
+remedy: "Waits on itd-2610030656210408: spc-2610030846273729 steps 2 (recognise a decision model) and 4 (charge it at weights plus its measured prefill peak) are the fix, by the maintainer's decision of 2026-10-07; no interim code, and the issue is resolved in the change that lands those steps."
 ---
 
 A decision model is charged about five times its size against the memory budget. While the self-test loaded mlx-community/clef-4bit on 2026-10-04, /api/state showed bytes 16330982843 (about 16 GB on disk) and charge_bytes 82463242771 (about 82 GB). The charge probably includes a KV cache sized for a served chat window, which a decision model answering short typed questions never fills. An over-charge like this makes the pool refuse or delay other models for memory that is never used.
