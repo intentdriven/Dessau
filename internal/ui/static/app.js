@@ -341,14 +341,19 @@ function graceWaitHint(graceValue, maxWaitValue, defaults) {
     + 'protection. Raise the maximum to at least the protection.';
 }
 
-// intervalWords puts an interval into words, in minutes where the figure is a
-// whole number of them and in seconds otherwise — rounding 90 seconds to
-// "1.5 minutes" would state a figure the server does not hold. Empty for an
-// interval the panel was not told, so whatever is written from it says nothing
-// rather than naming a figure nobody sent.
+// intervalWords puts an interval into words, in hours where the figure is a
+// whole number of them, in minutes where it is a whole number of those, and
+// in seconds otherwise — rounding 90 seconds to "1.5 minutes" would state a
+// figure the server does not hold. Empty for an interval the panel was not
+// told, so whatever is written from it says nothing rather than naming a
+// figure nobody sent.
 function intervalWords(sec) {
   if (!sec) return '';
   if (sec % 60 !== 0) return `${sec} second${sec === 1 ? '' : 's'}`;
+  if (sec % 3600 === 0) {
+    const hours = sec / 3600;
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
   const minutes = sec / 60;
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
@@ -361,25 +366,28 @@ function blankIsSentence(sec) {
   return words ? ` Blank is ${words}.` : '';
 }
 
-// idleThresholdWords is how long this Mac must have gone unasked before it
-// counts as idle, in the words the status prose reads it in. It is the
-// threshold in force — the setting where one is set, the server's default
-// where it is not, which is config.EffectiveIdleThresholdSec on the Go side —
-// and never a figure the panel holds a copy of (iss-2609190201317726). Told
-// neither, it names the setting instead of a number: the sentences this goes
-// into run on either side of it, so it cannot simply vanish the way the
-// sentence beside the field does.
-function idleThresholdWords(state) {
+// selfTestIdleWords is how long this Mac must have gone unasked before the
+// self-test counts it as idle, in the words the status prose reads it in. It
+// is the self-test's own threshold in force — its setting where one is set,
+// the server's default for it where it is not, which is
+// config.EffectiveSelfTestIdleThresholdSec on the Go side — and never the
+// context probe's, nor a figure the panel holds a copy of
+// (iss-2609190201317726, iss-2610041956214381). Told neither, it names the
+// setting instead of a number: the sentences this goes into run on either
+// side of it, so it cannot simply vanish the way the sentence beside the
+// field does.
+function selfTestIdleWords(state) {
   const s = state || {};
   const c = s.config || {};
   const d = s.defaults || {};
-  return intervalWords(c.idle_threshold_sec || d.idle_threshold_sec) || 'the idle threshold';
+  return intervalWords(c.self_test_idle_threshold_sec || d.self_test_idle_threshold_sec)
+    || 'the self-test idle threshold';
 }
 
 // renderIdleProse fills the figure in the Self-test hint, which is prose about
 // the threshold in force rather than a hint about what a blank field means.
 function renderIdleProse(state) {
-  $('selfTestIdleFigure').textContent = idleThresholdWords(state);
+  $('selfTestIdleFigure').textContent = selfTestIdleWords(state);
 }
 
 // renderDefaults says, on the settings fields themselves, what leaving one
@@ -396,6 +404,9 @@ function renderDefaults(defaults) {
   $('setGraceWait').placeholder = d.eviction_max_wait_sec ? String(d.eviction_max_wait_sec) : '';
   $('setIdleThreshold').placeholder = d.idle_threshold_sec ? String(d.idle_threshold_sec) : '';
   $('idleThresholdDefault').textContent = blankIsSentence(d.idle_threshold_sec);
+  $('setSelfTestIdleThreshold').placeholder = d.self_test_idle_threshold_sec
+    ? String(d.self_test_idle_threshold_sec) : '';
+  $('selfTestIdleThresholdDefault').textContent = blankIsSentence(d.self_test_idle_threshold_sec);
   $('setUpdateCheckInterval').placeholder = d.update_check_interval_hours ? String(d.update_check_interval_hours) : '';
   // In hours, which is how the field is typed; blankIsSentence speaks in
   // seconds and minutes.
@@ -1176,11 +1187,11 @@ function postureLines(state) {
 
   // The self-test loads models on its own while the Mac is idle, which is a
   // thing that can be on; the page says so from the setting, which applies
-  // the moment it is saved. The interval it names is the threshold in force,
-  // off the snapshot: the setting where one is set, the served default where
-  // it is not, and never a figure written into this page (iss-2609190201317726).
-  const idleFor = intervalWords(c.idle_threshold_sec || (state.defaults || {}).idle_threshold_sec)
-    || 'the idle threshold';
+  // the moment it is saved. The interval it names is the self-test's own
+  // threshold in force, off the snapshot: its setting where one is set, the
+  // served default where it is not, and never a figure written into this page
+  // (iss-2609190201317726, iss-2610041956214381).
+  const idleFor = selfTestIdleWords(state);
   const selfTest = c.self_test
     ? `The self-test is on: while nothing has asked this Mac for a model for ${idleFor} and ` +
       'nothing is downloading, Dessau loads one of its models at a time where it fits beside ' +
@@ -1189,7 +1200,7 @@ function postureLines(state) {
       'hold no prompt and no answer.'
     : 'The self-test is off: Dessau loads no model on its own.';
   lines.push({ id: 'selftest', heading: 'Self-test', text: selfTest,
-    reads: ['config.self_test', 'config.idle_threshold_sec', 'defaults.idle_threshold_sec'] });
+    reads: ['config.self_test', 'config.self_test_idle_threshold_sec', 'defaults.self_test_idle_threshold_sec'] });
 
   return lines;
 }
@@ -1461,6 +1472,7 @@ function renderSettings() {
   $('setUpdateCheck').checked = !!c.update_check_enabled;
   $('setUpdateCheckInterval').value = c.update_check_interval_hours || '';
   $('setSelfTest').checked = !!c.self_test;
+  $('setSelfTestIdleThreshold').value = c.self_test_idle_threshold_sec || '';
   $('setStats').checked = !!c.statistics;
   $('setStatsMonths').value = c.stats_months;
   // Typed in megabytes and stored in bytes, which is how every other size in
@@ -2057,6 +2069,7 @@ $('setUpdateCheck').addEventListener('change', () => { settingsTouched = true; }
 $('setUpdateCheckInterval').addEventListener('input', () => { settingsTouched = true; });
 $('setIdleThreshold').addEventListener('input', () => { settingsTouched = true; });
 $('setSelfTest').addEventListener('change', () => { settingsTouched = true; });
+$('setSelfTestIdleThreshold').addEventListener('input', () => { settingsTouched = true; });
 $('setStats').addEventListener('change', () => { settingsTouched = true; });
 $('setGrace').addEventListener('change', () => { settingsTouched = true; });
 $('setAdvertise').addEventListener('change', () => { settingsTouched = true; });
@@ -2191,6 +2204,8 @@ $('settingsForm').addEventListener('submit', async (e) => {
     // Blank posts zero, which the server reads as daily.
     update_check_interval_hours: parseInt($('setUpdateCheckInterval').value, 10) || 0,
     self_test:          $('setSelfTest').checked,
+    // Blank posts zero, which the server reads as the self-test's default.
+    self_test_idle_threshold_sec: parseInt($('setSelfTestIdleThreshold').value, 10) || 0,
     statistics:         $('setStats').checked,
     stats_months:       parseInt($('setStatsMonths').value, 10) || 6,
     stats_max_bytes:    (parseInt($('setStatsMB').value, 10) || 200) * 1024 * 1024,
@@ -2309,7 +2324,7 @@ function selfTestHint(on, measured, idleFor) {
 function renderSelfTest(view) {
   const on = !!(view && view.enabled);
   const latest = (view && view.latest) || [];
-  $('selftestHint').textContent = selfTestHint(on, latest.length > 0, idleThresholdWords(state));
+  $('selftestHint').textContent = selfTestHint(on, latest.length > 0, selfTestIdleWords(state));
   $('selftestBody').hidden = latest.length === 0;
   const rows = $('selftestRows');
   rows.replaceChildren();

@@ -413,10 +413,18 @@ type Config struct {
 	ContextProbe bool `json:"context_probe,omitempty"`
 
 	// IdleThresholdSec is how long the last request must be in the past
-	// before the Mac counts as idle for the self-test and the context probe
-	// — one idea of idle for both. Zero means the default; read it through
-	// EffectiveIdleThresholdSec.
+	// before the Mac counts as idle for the context probe. Zero means the
+	// default; read it through EffectiveIdleThresholdSec.
 	IdleThresholdSec int `json:"idle_threshold_sec,omitempty"`
+
+	// SelfTestIdleThresholdSec is the self-test's own idle threshold: how
+	// long the last request must be in the past before the self-test loads
+	// and measures a model. It is longer than the context probe's by
+	// default, because a benchmark five minutes after the last request
+	// lands in an ordinary pause in use (iss-2610041956214381). Zero means
+	// the default; read it through EffectiveSelfTestIdleThresholdSec. The
+	// bounds are the idle threshold's.
+	SelfTestIdleThresholdSec int `json:"self_test_idle_threshold_sec,omitempty"`
 
 	// APIUnloadOff turns off POST /v1/dessau/unload, the model API's request
 	// for a program to unload a model it has finished with
@@ -1202,18 +1210,44 @@ func (c Config) EffectiveIdleThreshold() time.Duration {
 	return time.Duration(c.EffectiveIdleThresholdSec()) * time.Second
 }
 
+// DefaultSelfTestIdleThresholdSec is the self-test's own idle threshold
+// when none is set: four hours, so a benchmark waits for a long quiet spell
+// rather than an ordinary pause (iss-2610041956214381). Its bounds are
+// MinIdleThresholdSec and MaxIdleThresholdSec.
+const DefaultSelfTestIdleThresholdSec = 14400
+
+// EffectiveSelfTestIdleThresholdSec is the self-test's idle threshold in
+// force: the setting, or the default when none is set.
+func (c Config) EffectiveSelfTestIdleThresholdSec() int {
+	if c.SelfTestIdleThresholdSec == 0 {
+		return DefaultSelfTestIdleThresholdSec
+	}
+	return c.SelfTestIdleThresholdSec
+}
+
+// EffectiveSelfTestIdleThreshold is EffectiveSelfTestIdleThresholdSec as a
+// duration.
+func (c Config) EffectiveSelfTestIdleThreshold() time.Duration {
+	return time.Duration(c.EffectiveSelfTestIdleThresholdSec()) * time.Second
+}
+
 func usableIdleThreshold(sec int) bool {
 	return sec == 0 || (sec >= MinIdleThresholdSec && sec <= MaxIdleThresholdSec)
 }
 
-// sanitizeIdleThreshold repairs a threshold this build cannot use and returns
-// what it repaired, for the reason sanitizeStats gives.
+// sanitizeIdleThreshold repairs a threshold this build cannot use — the
+// context probe's or the self-test's — and returns what it repaired, for the
+// reason sanitizeStats gives.
 func (c *Config) sanitizeIdleThreshold() []string {
-	if usableIdleThreshold(c.IdleThresholdSec) {
-		return nil
+	var repaired []string
+	if !usableIdleThreshold(c.IdleThresholdSec) {
+		repaired = append(repaired, "idle_threshold_sec="+strconv.Itoa(c.IdleThresholdSec))
+		c.IdleThresholdSec = 0
 	}
-	repaired := []string{"idle_threshold_sec=" + strconv.Itoa(c.IdleThresholdSec)}
-	c.IdleThresholdSec = 0
+	if !usableIdleThreshold(c.SelfTestIdleThresholdSec) {
+		repaired = append(repaired, "self_test_idle_threshold_sec="+strconv.Itoa(c.SelfTestIdleThresholdSec))
+		c.SelfTestIdleThresholdSec = 0
+	}
 	return repaired
 }
 
@@ -1307,6 +1341,10 @@ func (c Config) Validate() error {
 	if !usableIdleThreshold(c.IdleThresholdSec) {
 		return fmt.Errorf("idle_threshold_sec must be between %d and %d, or 0 for the default, got %d",
 			MinIdleThresholdSec, MaxIdleThresholdSec, c.IdleThresholdSec)
+	}
+	if !usableIdleThreshold(c.SelfTestIdleThresholdSec) {
+		return fmt.Errorf("self_test_idle_threshold_sec must be between %d and %d, or 0 for the default, got %d",
+			MinIdleThresholdSec, MaxIdleThresholdSec, c.SelfTestIdleThresholdSec)
 	}
 	if !usableUpdateCheckInterval(c.UpdateCheckIntervalHours) {
 		return fmt.Errorf("update_check_interval_hours must be between %d and %d, or 0 for daily, got %d",

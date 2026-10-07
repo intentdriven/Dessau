@@ -44,7 +44,7 @@ const loopbackOnlyEdits = `{
   "bind": {"mode":"","candidates":[],"mode_in_force":"","wildcard":false,"reaches_other_machines":false,
            "port":11535,"advertising":false}}`
 
-var postureFunctions = []string{"endpointOf", "bytes", "advertising", "intervalWords", "postureLines"}
+var postureFunctions = []string{"endpointOf", "bytes", "advertising", "intervalWords", "selfTestIdleWords", "postureLines"}
 
 // privateAddr is an address in the RFC 6598 shared range, which is the shape
 // the classifier marks as a private network; the snapshots below write PRIV

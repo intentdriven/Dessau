@@ -24,3 +24,32 @@ func TestTheContextProbePageStatesTheIdleThresholdsRange(t *testing.T) {
 		}
 	}
 }
+
+// The self-test's pages name its own threshold, its default and its range
+// from the server's constants, and no page still says the self-test and the
+// context probe share one (iss-2610041956214381).
+func TestTheSelfTestPagesStateItsOwnThreshold(t *testing.T) {
+	def := fmt.Sprintf("%d hours", config.DefaultSelfTestIdleThresholdSec/3600)
+	for page, wants := range map[string][]string{
+		"self-test.md": {
+			"`self_test_idle_threshold_sec`", "Settings → Self-test", def,
+			fmt.Sprintf("%d hours", config.MaxIdleThresholdSec/3600),
+		},
+		"self-test-reference.md": {"`self_test_idle_threshold_sec`", def},
+	} {
+		body := readDoc(t, page)
+		for _, want := range wants {
+			if !containsAll(body, want) {
+				t.Errorf("docs/%s does not say %q", page, want)
+			}
+		}
+	}
+	for _, page := range []string{"self-test.md", "self-test-reference.md", "context-probe.md"} {
+		body := readDoc(t, page)
+		for _, stale := range []string{"shared with the context probe", "shares the idle threshold", "share it"} {
+			if containsAll(body, stale) {
+				t.Errorf("docs/%s still says %q, and the self-test has a threshold of its own", page, stale)
+			}
+		}
+	}
+}

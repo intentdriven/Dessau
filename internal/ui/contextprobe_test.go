@@ -124,55 +124,80 @@ func TestTheIdleThresholdDefaultIsFilledFromTheServer(t *testing.T) {
 // told the operator five minutes anyway (iss-2609190201317726).
 //
 // All three now read the threshold in force — the setting where one is set and
-// the default otherwise, which is config.EffectiveIdleThresholdSec on the Go
-// side — and a panel that has not been told it names no figure at all.
+// the default otherwise — and a panel that has not been told it names no
+// figure at all. The self-test has a threshold of its own
+// (iss-2610041956214381), so all three are prose about that one,
+// config.EffectiveSelfTestIdleThresholdSec on the Go side, and none of them
+// reads the context probe's idle_threshold_sec.
 func TestTheIdleThresholdInStatusProseIsFilledFromTheServer(t *testing.T) {
 	page, err := assets.ReadFile("static/index.html")
 	if err != nil {
 		t.Fatal(err)
 	}
-	literal := regexp.MustCompile(`\b` + strconv.Itoa(config.DefaultIdleThresholdSec) + `\b`)
-	for name, body := range map[string]string{"index.html": string(page), "app.js": readPanelSource(t)} {
-		if strings.Contains(body, "five minutes") {
-			t.Errorf("%s still spells the idle threshold out as \"five minutes\"; the figure is the "+
-				"server's, off the snapshot, and a Mac serving another one must say so", name)
+	for _, def := range []struct {
+		name string
+		sec  int
+	}{
+		{"config.DefaultIdleThresholdSec", config.DefaultIdleThresholdSec},
+		{"config.DefaultSelfTestIdleThresholdSec", config.DefaultSelfTestIdleThresholdSec},
+	} {
+		literal := regexp.MustCompile(`\b` + strconv.Itoa(def.sec) + `\b`)
+		for name, body := range map[string]string{"index.html": string(page), "app.js": readPanelSource(t)} {
+			if loc := literal.FindStringIndex(body); loc != nil {
+				t.Errorf("%s writes %s out as a literal at byte %d; "+
+					"the panel is told the figure and never holds a copy of it", name, def.name, loc[0])
+			}
 		}
-		if loc := literal.FindStringIndex(body); loc != nil {
-			t.Errorf("%s writes config.DefaultIdleThresholdSec out as a literal at byte %d; "+
-				"the panel is told the figure and never holds a copy of it", name, loc[0])
+	}
+	for name, body := range map[string]string{"index.html": string(page), "app.js": readPanelSource(t)} {
+		for _, spelled := range []string{"five minutes", "four hours"} {
+			if strings.Contains(body, spelled) {
+				t.Errorf("%s still spells an idle threshold out as %q; the figure is the "+
+					"server's, off the snapshot, and a Mac serving another one must say so", name, spelled)
+			}
 		}
 	}
 
-	// The words the prose is written in: minutes for a whole number of them,
-	// seconds otherwise, and nothing at all for a figure nobody sent.
+	// The words the prose is written in: hours for a whole number of them,
+	// minutes for a whole number of those, seconds otherwise, and nothing at
+	// all for a figure nobody sent.
 	words := func(expr string) string {
 		v := evalPanelValue(t, "({text: "+expr+"})", "intervalWords")
 		s, _ := v["text"].(string)
 		return s
 	}
 	for expr, want := range map[string]string{
-		"intervalWords(300)": "5 minutes",
-		"intervalWords(60)":  "1 minute",
-		"intervalWords(90)":  "90 seconds",
-		"intervalWords(0)":   "",
+		"intervalWords(300)":   "5 minutes",
+		"intervalWords(60)":    "1 minute",
+		"intervalWords(90)":    "90 seconds",
+		"intervalWords(5400)":  "90 minutes",
+		"intervalWords(3600)":  "1 hour",
+		"intervalWords(14400)": "4 hours",
+		"intervalWords(0)":     "",
 	} {
 		if got := words(expr); got != want {
 			t.Errorf("%s = %q, want %q", expr, got, want)
 		}
 	}
 
-	// The threshold in force: the setting where one is set, the default where
-	// it is not, and a phrase naming no figure where the panel knows neither.
+	// The self-test's threshold in force: its own setting where one is set,
+	// its own default where it is not, and a phrase naming no figure where the
+	// panel knows neither. The context probe's threshold is in every snapshot
+	// below, and none of the self-test's prose may read it.
 	said := func(snapshot string) string {
-		v := evalPanelValue(t, "({text: idleThresholdWords("+snapshot+")})", "intervalWords", "idleThresholdWords")
+		v := evalPanelValue(t, "({text: selfTestIdleWords("+snapshot+")})", "intervalWords", "selfTestIdleWords")
 		s, _ := v["text"].(string)
 		return s
 	}
-	if got := said(`{"config":{},"defaults":{"idle_threshold_sec":300}}`); got != "5 minutes" {
-		t.Errorf("with only a default served the prose says %q, want the default in words", got)
+	if got := said(`{"config":{"idle_threshold_sec":600},"defaults":{"idle_threshold_sec":300,"self_test_idle_threshold_sec":14400}}`); got != "4 hours" {
+		t.Errorf("with only the self-test's default served the prose says %q, want that default in words", got)
 	}
-	if got := said(`{"config":{"idle_threshold_sec":600},"defaults":{"idle_threshold_sec":300}}`); got != "10 minutes" {
-		t.Errorf("with a threshold set the prose says %q, want the setting and not the default", got)
+	if got := said(`{"config":{"idle_threshold_sec":600,"self_test_idle_threshold_sec":7200},` +
+		`"defaults":{"idle_threshold_sec":300,"self_test_idle_threshold_sec":14400}}`); got != "2 hours" {
+		t.Errorf("with the self-test's threshold set the prose says %q, want the setting and not the default", got)
+	}
+	if got := said(`{"config":{"idle_threshold_sec":600},"defaults":{"idle_threshold_sec":300}}`); got == "" || strings.ContainsAny(got, "0123456789") {
+		t.Errorf("told only the probe's threshold the prose says %q, want a phrase carrying no figure", got)
 	}
 	if got := said(`{}`); got == "" || strings.ContainsAny(got, "0123456789") {
 		t.Errorf("told no threshold the prose says %q, want a phrase carrying no figure", got)
@@ -180,21 +205,32 @@ func TestTheIdleThresholdInStatusProseIsFilledFromTheServer(t *testing.T) {
 
 	// The Self-test hint in the markup: a span the panel fills, not a figure
 	// written into the page.
-	doc := evalPanelDOM(t, `renderIdleProse({"config":{"idle_threshold_sec":600},"defaults":{"idle_threshold_sec":300}});`,
-		"intervalWords", "idleThresholdWords", "renderIdleProse")
-	if got, _ := doc["selfTestIdleFigure"]["textContent"].(string); got != "10 minutes" {
-		t.Errorf("the Self-test hint's figure reads %q, want the threshold in force", got)
+	doc := evalPanelDOM(t, `renderIdleProse({"config":{"idle_threshold_sec":600,"self_test_idle_threshold_sec":7200},`+
+		`"defaults":{"idle_threshold_sec":300,"self_test_idle_threshold_sec":14400}});`,
+		"intervalWords", "selfTestIdleWords", "renderIdleProse")
+	if got, _ := doc["selfTestIdleFigure"]["textContent"].(string); got != "2 hours" {
+		t.Errorf("the Self-test hint's figure reads %q, want the self-test's threshold in force", got)
 	}
 	if !strings.Contains(string(page), `id="selfTestIdleFigure"`) {
 		t.Error("the Self-test hint carries no span for the threshold, so nothing can fill it from the snapshot")
 	}
 
 	// The posture page's self-test line.
-	line := evalPanelValue(t, `(postureLines({"config":{"self_test":true,"idle_threshold_sec":600},`+
-		`"defaults":{"idle_threshold_sec":300},"bind":{},"endpoints":[]}).find((l) => l.id === "selftest"))`,
-		append(postureFunctions, "intervalWords")...)
-	if text, _ := line["text"].(string); !strings.Contains(text, "10 minutes") {
-		t.Errorf("the posture page's self-test line reads %q, want the threshold in force in it", text)
+	line := evalPanelValue(t, `(postureLines({"config":{"self_test":true,"idle_threshold_sec":600,"self_test_idle_threshold_sec":7200},`+
+		`"defaults":{"idle_threshold_sec":300,"self_test_idle_threshold_sec":14400},"bind":{},"endpoints":[]}).find((l) => l.id === "selftest"))`,
+		postureFunctions...)
+	if text, _ := line["text"].(string); !strings.Contains(text, "2 hours") {
+		t.Errorf("the posture page's self-test line reads %q, want the self-test's threshold in force in it", text)
+	}
+	reads, _ := line["reads"].([]any)
+	for _, want := range []string{"config.self_test_idle_threshold_sec", "defaults.self_test_idle_threshold_sec"} {
+		found := false
+		for _, r := range reads {
+			found = found || r == want
+		}
+		if !found {
+			t.Errorf("the posture page's self-test line does not say it reads %s: %v", want, reads)
+		}
 	}
 
 	// The Self-test view's own hint, on and off.

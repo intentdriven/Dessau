@@ -223,7 +223,7 @@ func fastRunner(t *testing.T, srv Server, dir string) *Runner {
 		Path:   filepath.Join(dir, FileName),
 		Tick:   5 * time.Millisecond,
 		Poll:   2 * time.Millisecond,
-		Quiet:  time.Nanosecond,
+		Quiet:  time.Nanosecond, SelfTestQuiet: time.Nanosecond,
 	})
 	t.Cleanup(r.Close)
 	return r
@@ -312,7 +312,7 @@ func TestAQueuedJobWhoseModelDoesNotFitIsHeldRatherThanDropped(t *testing.T) {
 	lines := &recordingHandler{}
 	r := New(Options{
 		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
-		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond,
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond, SelfTestQuiet: time.Nanosecond,
 		Jobs: []Job{job}, SelfTest: func() bool { return false },
 		Log: slog.New(lines),
 	})
@@ -353,7 +353,7 @@ func TestAQueuedJobWithNoRoomIsReportedWhileAnotherModelIsMeasured(t *testing.T)
 	lines := &recordingHandler{}
 	r := New(Options{
 		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
-		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond,
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond, SelfTestQuiet: time.Nanosecond,
 		// Measured again at once, so there is a run to go ahead on every tick.
 		Retest: time.Millisecond,
 		Jobs:   []Job{job},
@@ -598,7 +598,7 @@ func TestNothingRunsWhileTheMacIsBusy(t *testing.T) {
 			srv.mu.Unlock()
 			r := New(Options{
 				Server: srv, Path: filepath.Join(t.TempDir(), FileName),
-				Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Hour,
+				Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Hour, SelfTestQuiet: time.Hour,
 			})
 			t.Cleanup(r.Close)
 			r.SetEnabled(true)
@@ -629,7 +629,7 @@ func TestAResultStandsForADayAndTheStalestModelGoesFirst(t *testing.T) {
 	srv := newFakeServer(t, "org/a", "org/b", "org/c")
 	r := New(Options{
 		Server: srv, Path: filepath.Join(dir, FileName),
-		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond,
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond, SelfTestQuiet: time.Nanosecond,
 		Retest: 24 * time.Hour, Now: func() time.Time { return now },
 	})
 	t.Cleanup(r.Close)
@@ -961,7 +961,7 @@ func TestTheSelfTestsOwnRunDoesNotCountAsARecentRequest(t *testing.T) {
 	srv.mu.Unlock()
 	r := New(Options{
 		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
-		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Hour,
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Hour, SelfTestQuiet: time.Hour,
 	})
 	t.Cleanup(r.Close)
 	r.SetEnabled(true)
@@ -994,7 +994,7 @@ func TestAJobsOwnGatewayRequestsDoNotCountAsARecentRequest(t *testing.T) {
 	job := &gatewayJob{srv: srv}
 	r := New(Options{
 		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
-		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Hour,
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Hour, SelfTestQuiet: time.Hour,
 		Jobs: []Job{job}, SelfTest: func() bool { return false },
 	})
 	t.Cleanup(r.Close)
@@ -1009,7 +1009,7 @@ func TestAClientRequestAfterARunHoldsTheNextTick(t *testing.T) {
 	job := &gatewayJob{srv: srv}
 	r := New(Options{
 		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
-		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Hour,
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Hour, SelfTestQuiet: time.Hour,
 		Jobs: []Job{job}, SelfTest: func() bool { return false },
 	})
 	t.Cleanup(r.Close)
@@ -1237,7 +1237,7 @@ func TestInterruptEndsTheRunOnThatModelAsAYield(t *testing.T) {
 	job := &blockingJob{due: "org/a", started: make(chan struct{}), ended: make(chan struct{})}
 	r := New(Options{
 		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
-		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond,
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Nanosecond, SelfTestQuiet: time.Nanosecond,
 		Jobs: []Job{job}, SelfTest: func() bool { return false },
 		Log: slog.New(slog.DiscardHandler),
 	})

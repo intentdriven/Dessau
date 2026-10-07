@@ -91,7 +91,8 @@ for the same model, which times the prompt alone.
 | | |
 | --- | --- |
 | The idle check | once a minute |
-| Idle means | no request in flight, none waiting for a load, no download running, and the last request older than the idle threshold (`idle_threshold_sec`, five minutes unless set; shared with the context probe) |
+| Idle means | no request in flight, none waiting for a load, no download running, and the last request older than the self-test's idle threshold |
+| The self-test's idle threshold | `self_test_idle_threshold_sec`, 4 hours unless set, from 60 seconds to 86,400 (24 hours); the context probe waits for its own, `idle_threshold_sec` |
 | A request counts when | it is a client's request for an answer that the server admits, however it ends — answered, failed or refused by the model's server — and whether or not its model is still loaded; a request turned away for a missing or wrong key, or from an unpaired client, does not count |
 | A model is loaded only when | it fits beside what is in memory; the self-test never evicts |
 | A run in progress ends when | a request is in flight on any model, a load is waiting for room, a load has been refused room since the run began, or a client's load needs the memory the run is holding |

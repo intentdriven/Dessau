@@ -20,6 +20,18 @@ GitHub release notes.
   in `config.json` and in the **Idle threshold** field under **Settings →
   Context probe** alike; the default is unchanged
   ([context probe](docs/context-probe.md); iss-2610041948272032).
+- **The self-test waits for an idle threshold of its own, four hours unless
+  set.** `impact: breaking`. The self-test shared `idle_threshold_sec` with
+  the context probe, so out of the box it loaded and benchmarked a model five
+  minutes after the last request — an ordinary pause in Bob's use of the
+  server. It now waits for `self_test_idle_threshold_sec`, 4 hours unless
+  set, from 60 seconds to 86,400 (24 hours), in `config.json` and in
+  **Self-test idle threshold** under **Settings → Self-test** alike; the
+  panel's self-test lines name that threshold. `idle_threshold_sec` is the
+  context probe's alone and keeps its five-minute default. A Mac that had
+  set `idle_threshold_sec` to hold the self-test back should set the new
+  setting too: nothing is carried across
+  ([self-test](docs/self-test.md); iss-2610041956214381).
 
 ### Fixed
 

@@ -43,6 +43,7 @@
     "sampling.top_k": null,
     "sampling.top_p": null,
     "self_test": false,
+    "self_test_idle_threshold_sec": 0,
     "statistics": false,
     "stats_max_bytes": 209715200,
     "stats_months": 6,

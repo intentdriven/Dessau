@@ -51,7 +51,8 @@ measurement, one model at a time. A model you download later is measured
 the next time the Mac is idle. In `config.json` the switch is
 `"context_probe": true` and the threshold `idle_threshold_sec`, in seconds:
 anything from 60 (1 minute) to 86,400 (24 hours), or leave it out for the
-default.
+default. The threshold is the context probe's alone: the
+[self-test](self-test.md) waits for one of its own.
 
 ## Which models it measures
 
@@ -182,4 +183,4 @@ card says the probe was incomplete. Press **Measure now** to run it again.
 - [The memory budget, explained](memory-budget-explained.md) — what a served
   window costs, and why adopting a measurement is a separate act.
 - [Test your models while the Mac is idle](self-test.md) — the other idle
-  job, which shares the idle threshold.
+  job, which waits for an idle threshold of its own.

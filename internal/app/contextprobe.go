@@ -147,10 +147,12 @@ func (s probeSources) Endpoint() (string, string) {
 
 // applyIdleJobs puts the idle loop's switches into force: the loop runs when
 // either idle job is switched on or a probe is queued, the self-test's own
-// set follows its switch alone, and the idle threshold applies to both.
+// set follows its switch alone, the context probe waits for the idle
+// threshold and the self-test for its own (iss-2610041956214381).
 func (a *App) applyIdleJobs(c config.Config) {
 	if a.idleQuiet == 0 {
 		a.SelfTest.SetQuiet(c.EffectiveIdleThreshold())
+		a.SelfTest.SetSelfTestQuiet(c.EffectiveSelfTestIdleThreshold())
 	}
 	a.SelfTest.SetEnabled(c.SelfTest || c.ContextProbe || len(a.Probe.Queued()) > 0)
 }

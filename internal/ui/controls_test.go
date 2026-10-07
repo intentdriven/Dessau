@@ -135,6 +135,7 @@ func numericSettingsControls() []settingsControl {
 		{"setStatsMonths", true, func(c *config.Config, v float64) { c.StatsMonths = int(v) }},
 		{"setStatsMB", true, func(c *config.Config, v float64) { c.StatsMaxBytes = int64(v) * (1 << 20) }},
 		{"setIdleThreshold", true, func(c *config.Config, v float64) { c.IdleThresholdSec = int(v) }},
+		{"setSelfTestIdleThreshold", true, func(c *config.Config, v float64) { c.SelfTestIdleThresholdSec = int(v) }},
 		{"setUpdateCheckInterval", true, func(c *config.Config, v float64) { c.UpdateCheckIntervalHours = int(v) }},
 
 		{"setTemp", false, func(c *config.Config, v float64) { c.Sampling.Temperature = &v }},
