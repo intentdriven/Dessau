@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,8 +40,9 @@ var errChecksOff = errors.New("update checks were turned off")
 
 // ReviewedBuilds says whether a model is a decision model, and which upstream
 // commits of it a Dessau release has reviewed. A decision model is offered an
-// update only to a reviewed commit (itd-2610030656210408). Nil means no model
-// is a decision model.
+// update only to a reviewed commit (itd-2610030656210408), and a newer one
+// that is not reviewed is never marked (iss-2610042101436891). Nil means no
+// model is a decision model.
 type ReviewedBuilds func(repoID string) (decision bool, reviewed []string)
 
 // UpdateRound is what one round of update checks did.
@@ -225,9 +227,13 @@ func (a *App) checkOne(ctx context.Context, m registry.Model) (registry.UpdateCh
 	if err != nil {
 		return registry.UpdateCheck{}, err
 	}
-	changed, configChanged := a.compareVersions(m, hub.WantedFiles(files))
+	changed, configChanged, paths := a.compareVersions(m, hub.WantedFiles(files))
 	if !changed {
 		return registry.UpdateCheck{Status: registry.UpdateCurrent}, nil
+	}
+	// What a newer version is found to be, naming the files it changes.
+	found := func(status string) (registry.UpdateCheck, error) {
+		return newerVersion(status, up.Commit, paths), nil
 	}
 	if configChanged {
 		if !a.Config().UpdateCheck {
@@ -248,7 +254,7 @@ func (a *App) checkOne(ctx context.Context, m registry.Model) (registry.UpdateCh
 			// sha256 to check, not the listed bytes, or past the bound —
 			// so whether the newer version names a model_file is unknown,
 			// and it is not offered (iss-2610042101439623).
-			return registry.UpdateCheck{Status: registry.UpdateCannotCheck, Commit: up.Commit}, nil
+			return found(registry.UpdateCannotCheck)
 		case err != nil:
 			return registry.UpdateCheck{}, err
 		default:
@@ -257,7 +263,7 @@ func (a *App) checkOne(ctx context.Context, m registry.Model) (registry.UpdateCh
 				return registry.UpdateCheck{}, err
 			}
 			if names {
-				return registry.UpdateCheck{Status: registry.UpdateRunsOwnCode, Commit: up.Commit}, nil
+				return found(registry.UpdateRunsOwnCode)
 			}
 		}
 	}
@@ -265,28 +271,45 @@ func (a *App) checkOne(ctx context.Context, m registry.Model) (registry.UpdateCh
 		if decision, reviewed := a.reviewed(m.RepoID); decision {
 			for _, c := range reviewed {
 				if c == up.Commit {
-					return registry.UpdateCheck{Status: registry.UpdateAvailable, Commit: up.Commit}, nil
+					return found(registry.UpdateAvailable)
 				}
 			}
-			return registry.UpdateCheck{Status: registry.UpdateAwaitingReview, Commit: up.Commit}, nil
+			// Nothing to offer, and a decision model is never marked: the
+			// 'awaiting review' mark is withdrawn (iss-2610042101436891), so
+			// the check records what it records for a version with nothing
+			// newer, which carries no mark and no Update.
+			return registry.UpdateCheck{Status: registry.UpdateCurrent}, nil
 		}
 	}
-	return registry.UpdateCheck{Status: registry.UpdateAvailable, Commit: up.Commit}, nil
+	return found(registry.UpdateAvailable)
+}
+
+// newerVersion is what a check records for a newer version: its status, its
+// commit, and the files it changes, the first registry.MaxUpdateFiles of them
+// in order with the count of all (iss-2610042101436222).
+func newerVersion(status, commit string, paths []string) registry.UpdateCheck {
+	slices.Sort(paths)
+	u := registry.UpdateCheck{Status: status, Commit: commit, FilesChanged: len(paths)}
+	if len(paths) > 0 {
+		u.Files = slices.Clone(paths[:min(len(paths), registry.MaxUpdateFiles)])
+	}
+	return u
 }
 
 // compareVersions says whether the files Dessau uses differ between the
-// version on disk and the listing at the newer commit, and whether
-// config.json is among them.
+// version on disk and the listing at the newer commit, whether config.json is
+// among them, and which they are: a file changed, removed or added.
 //
 // Documentation is not compared: a README, a licence, any Markdown. A file
 // the record holds a hash for differs when the listing gives another or
 // lists it no more. A file the record has no hash for is unknown, not
 // changed (iss-2610031239271873): it counts as added only when it is not on
 // disk, which is what an added file is. A version recorded as its commit
-// alone has no hashes to compare, so any move of the commit is a change.
-func (a *App) compareVersions(m registry.Model, files []hub.File) (changed, configChanged bool) {
+// alone has no hashes to compare, so any move of the commit is a change, and
+// which files it changes is not known: no path is named.
+func (a *App) compareVersions(m registry.Model, files []hub.File) (changed, configChanged bool, paths []string) {
 	if m.FileHashes == nil {
-		return true, true
+		return true, true, nil
 	}
 	// A config.json the record has no hash for is read whenever anything
 	// changed: whether the newer one names a model_file cannot otherwise be
@@ -310,6 +333,7 @@ func (a *App) compareVersions(m registry.Model, files []hub.File) (changed, conf
 	}
 	mark := func(p string) {
 		changed = true
+		paths = append(paths, p)
 		if p == "config.json" {
 			configChanged = true
 		}
@@ -333,7 +357,7 @@ func (a *App) compareVersions(m registry.Model, files []hub.File) (changed, conf
 			mark(p)
 		}
 	}
-	return changed, configChanged
+	return changed, configChanged, paths
 }
 
 // isDocumentation reports whether a repository file is one no model server

@@ -14,6 +14,7 @@
 package stats
 
 import (
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -320,6 +321,12 @@ type ModelCounters struct {
 	// out to make room for another. An idle reap, an operator's unload and a
 	// crash are removals, not evictions.
 	Evictions int `json:"evictions"`
+	// Released counts the times a program unloaded the model through the
+	// model API, by the kind of caller that asked: one of the Caller kinds,
+	// or "" for a kind this package does not know. A release is a removal,
+	// not an eviction, and is counted apart from Evictions so the Statistics
+	// tab can show both (iss-2610042100405045).
+	Released map[string]int `json:"released,omitempty"`
 	// The last request's figures, which is what a reader comparing two
 	// quantisations looks at first.
 	LastFirstTokenMS     int64 `json:"last_first_token_ms"`
@@ -673,8 +680,7 @@ func (r *Recorder) Released(model, by string) {
 }
 
 func (r *Recorder) removed(ev Event) {
-	model, reason := ev.Model, ev.Reason
-	if !r.removedLocked(model, reason) {
+	if !r.removedLocked(ev.Model, ev.Reason, ev.By) {
 		return
 	}
 	if r.store != nil {
@@ -682,16 +688,21 @@ func (r *Recorder) removed(ev Event) {
 	}
 }
 
-func (r *Recorder) removedLocked(model, reason string) bool {
+func (r *Recorder) removedLocked(model, reason, by string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.enabled {
 		return false
 	}
-	if reason == ReasonEvicted {
-		r.modelLocked(model).Evictions++
-	} else {
-		r.modelLocked(model)
+	m := r.modelLocked(model)
+	switch reason {
+	case ReasonEvicted:
+		m.Evictions++
+	case ReasonReleased:
+		if m.Released == nil {
+			m.Released = map[string]int{}
+		}
+		m.Released[by]++
 	}
 	return true
 }
@@ -752,6 +763,7 @@ func (r *Recorder) summaryLocked() []ModelCounters {
 		for k, v := range m.ByClass {
 			c.ByClass[k] = v
 		}
+		c.Released = maps.Clone(m.Released)
 		out = append(out, c)
 	}
 	sortModels(out)

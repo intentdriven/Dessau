@@ -79,7 +79,10 @@ are on, as a removal with the reason `released` and the kind of caller that
 asked: a program on this Mac (whether or not it sent the API key), a program
 elsewhere that sent the API key, or a paired client. The statistics record the
 kind only, never the key and never which client
-([statistics reference](statistics-store-reference.md)). The server log's
+([statistics reference](statistics-store-reference.md)). The control panel's
+Statistics tab shows the count on the model's card, beside its evictions and
+by kind of caller ([request statistics](request-statistics.md#what-is-recorded)).
+The server log's
 `model unloaded` line says the same, and names a paired client by the name it
 was paired under and the short fingerprint of its key.
 

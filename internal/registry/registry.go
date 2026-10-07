@@ -156,6 +156,14 @@ type UpdateCheck struct {
 	// Commit is the newer upstream commit the check found; empty when the
 	// version on disk is current.
 	Commit string `json:"commit,omitempty"`
+	// Files names the files the newer version changes — changed, added or
+	// removed, documentation never — in order, at most MaxUpdateFiles of
+	// them; FilesChanged is how many it changes in all, so the card can say
+	// how many more there are (iss-2610042101436222). Both are empty when
+	// the version on disk is current, or when the record holds no hashes to
+	// compare against and which files changed is not known.
+	Files        []string `json:"files,omitempty"`
+	FilesChanged int      `json:"files_changed,omitempty"`
 	// CheckedAt is when the Hub answered. Wall-clock time, compared with the
 	// clock when the next check is due, so a Mac that slept is not skewed.
 	CheckedAt time.Time `json:"checked_at"`
@@ -164,22 +172,26 @@ type UpdateCheck struct {
 // What an update check can find. Every value but UpdateCurrent is a mark on
 // the model's card; only UpdateAvailable offers Update.
 const (
-	// UpdateCurrent: no file Dessau uses differs from the version on disk.
+	// UpdateCurrent: no file Dessau uses differs from the version on disk,
+	// or the only newer version is a decision model's that no Dessau release
+	// has reviewed, which is never marked (iss-2610042101436891).
 	UpdateCurrent = "current"
 	// UpdateAvailable: a newer version changes a file Dessau uses.
 	UpdateAvailable = "available"
 	// UpdateRunsOwnCode: the newer version's config.json names a model_file,
 	// which Dessau will not run.
 	UpdateRunsOwnCode = "runs_own_code"
-	// UpdateAwaitingReview: a decision model's newer version has not been
-	// reviewed by a Dessau release, so it is not offered until one has.
-	UpdateAwaitingReview = "awaiting_review"
 	// UpdateCannotCheck: the Hub handed out the newer version's config.json
 	// in a form the check could not hold to the hash it lists for it, so
 	// whether that version ships its own code is unknown and it is not
 	// offered (iss-2610042101439623).
 	UpdateCannotCheck = "cannot_check"
 )
+
+// MaxUpdateFiles bounds the files a check names: a card has room for a
+// handful, and a repository that changes a thousand shards should cost the
+// index no more than one that changes a dozen.
+const MaxUpdateFiles = 10
 
 // ErrVersionMoved is SetUpdate's refusal when the model on disk is no longer
 // the version the check compared.
@@ -203,7 +215,7 @@ func sanitizeUpdate(m Model) Model {
 	switch u.Status {
 	case UpdateCurrent:
 		ok = ok && u.Commit == ""
-	case UpdateAvailable, UpdateRunsOwnCode, UpdateAwaitingReview, UpdateCannotCheck:
+	case UpdateAvailable, UpdateRunsOwnCode, UpdateCannotCheck:
 		ok = ok && validCommit(u.Commit) && u.Commit != m.Commit
 	default:
 		ok = false
@@ -216,8 +228,36 @@ func sanitizeUpdate(m Model) Model {
 	if cp.CheckedAt.After(time.Now().Add(24 * time.Hour)) {
 		cp.CheckedAt = time.Time{}
 	}
+	cp.Files, cp.FilesChanged = sanitizeUpdateFiles(cp.Status, cp.Files, cp.FilesChanged)
 	m.Update = &cp
 	return m
+}
+
+// sanitizeUpdateFiles holds the files a check names to what a check writes:
+// none on a version with nothing newer; otherwise plain names only (the rule
+// a recorded version's paths are held to), at most MaxUpdateFiles of them,
+// and a count no smaller than the names it was given. A name dropped here
+// still counts among the files changed; it is only not named. The list
+// returned is a fresh slice, so what the registry holds is never the
+// caller's.
+func sanitizeUpdateFiles(status string, files []string, changed int) ([]string, int) {
+	if status == UpdateCurrent {
+		return nil, 0
+	}
+	changed = max(changed, len(files))
+	var out []string
+	for _, p := range files {
+		if len(out) == MaxUpdateFiles {
+			break
+		}
+		if plainRelPath(p) {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		out = nil
+	}
+	return out, changed
 }
 
 // SetUpdate records what a check found, provided the model on disk is still

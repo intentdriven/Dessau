@@ -11,6 +11,26 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **A model's card names the files a newer version changes.**
+  `impact: additive`. When a check finds a newer version, the card under
+  **My Models** now lists the files it changes, adds or removes — up to ten,
+  then how many more — so Alice can tell a fixed chat template from a new
+  set of weights before she clicks **Update**. The names are shown as plain
+  text whatever HuggingFace calls them
+  ([model updates](docs/model-updates.md#what-the-marks-mean);
+  iss-2610042101436222).
+- **The Statistics tab shows when a program unloaded a model.**
+  `impact: additive`. Dessau recorded each unload a program asked for
+  through the model API, with the kind of caller that asked, but the
+  control panel counted evictions only, so Alice could not see from the
+  panel that Bob's script had unloaded a model. Each model's card now says
+  how many times a program unloaded it, beside its evictions and by kind of
+  caller — on this Mac, with the API key, or a paired client
+  ([request statistics](docs/request-statistics.md#what-is-recorded);
+  iss-2610042100405045).
+
 ### Fixed
 
 - **A Discord answer is no longer cut short at a fixed 1,024 tokens, and one
@@ -97,6 +117,15 @@ GitHub release notes.
   The pin is now checked in the same step as the stop, so a pin saved before
   the stop always keeps the model loaded
   ([self-test](docs/self-test.md); iss-2610042033419572).
+- **A decision model is never marked "newer version awaiting review".**
+  `impact: fix`. The update check marked a decision model's newer version
+  that no Dessau release had reviewed as awaiting review, although the
+  update check was announced as never marking a decision model. Such a
+  version now carries no mark and no **Update**, as a model with nothing
+  newer does; a decision model is still offered, and fetched at, only a
+  version a Dessau release has reviewed. A record left over with the old
+  mark is dropped when Dessau starts, and the next check writes it again
+  (iss-2610042101436891).
 
 ## [0.10.0] - 2026-10-04
 
