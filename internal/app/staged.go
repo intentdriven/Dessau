@@ -655,10 +655,11 @@ func (a *App) dropFallback(repoID string) {
 // removed. It reports whether it did; when it did not, the fallback is held
 // as before and the caller records the failure as any other.
 //
-// It claims the model as a download does, so a Download, a Delete or Close
-// waits for it rather than reaching the folder mid-swap, and it does not
-// start while one of those holds the model: a download in flight replaces
-// the fallback or leaves it held, and a delete removes it.
+// It claims the model as a download does, so a Download is refused as one
+// already in flight, a Delete cancels it and waits, and Close waits for it,
+// rather than any of them reaching the folder mid-swap. It does not start
+// while one of those holds the model: a download in flight leaves the
+// fallback held, and a delete removes it.
 func (a *App) restoreFallback(repoID string) bool {
 	key := dlKey(repoID)
 	a.dlMu.Lock()

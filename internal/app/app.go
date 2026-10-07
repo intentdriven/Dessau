@@ -1767,11 +1767,15 @@ func (a *App) startDownload(repoID, commit string) error {
 				// no load of the new one can end before it is: it goes
 				// once the new version has loaded and answered, and comes
 				// back if that first load fails (iss-2610042101430192).
-				// A version an earlier update held, never confirmed, is
-				// replaced by the one this update replaced.
+				// A version an earlier update already holds stays held: it
+				// is the last one known to have served, and the version
+				// this update replaced never loaded, so that one goes.
 				if dl.staged.Load() {
-					superseded, held = a.fallbacks[dlKey(repoID)]
-					a.fallbacks[dlKey(repoID)] = fallback{aside: st.aside, commit: st.priorCommit, hashes: st.priorHashes}
+					if _, held = a.fallbacks[dlKey(repoID)]; held {
+						superseded = fallback{aside: st.aside}
+					} else {
+						a.fallbacks[dlKey(repoID)] = fallback{aside: st.aside, commit: st.priorCommit, hashes: st.priorHashes}
+					}
 				}
 			})
 			if held {

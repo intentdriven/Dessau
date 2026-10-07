@@ -229,3 +229,48 @@ func TestDeletingAModelRemovesTheCopyHeldAside(t *testing.T) {
 		t.Error("a deleted model came back at the next start")
 	}
 }
+
+// A second update before the first one's version has loaded keeps the copy
+// the first update held: that is the last version known to have served, and
+// the version the second update replaces never loaded. So when the newest
+// version fails its first load too, the version that served comes back.
+func TestASecondUpdateBeforeAnyLoadKeepsTheVersionThatServed(t *testing.T) {
+	const commitV3 = "3333333333333333333333333333333333333333"
+	v3 := map[string][]byte{
+		"config.json":       []byte(`{"model_type":"qwen3","max_position_embeddings":40962,` + cannotLoad + `}`),
+		"model.safetensors": []byte("weights-all-v3"),
+		"tokenizer.json":    []byte(`{"v":1}`),
+	}
+	h := newVersionedHub(t, map[string]map[string][]byte{commitV1: v1Files(), commitV2: v2Files(), commitV3: v3}, commitV1)
+	h.set(func(h *versionedHub) { h.versions[commitV2]["config.json"] = brokenV2Config() })
+	a := newFallbackApp(t, config.NewPaths(t.TempDir()), h)
+	t.Cleanup(func() { a.Close() })
+	updateToV2(t, a, h)
+
+	h.set(func(h *versionedHub) { h.current = commitV3 })
+	a.Registry.SetUpdate("org/repo", commitV2, registry.UpdateCheck{Status: registry.UpdateAvailable, Commit: commitV3, CheckedAt: time.Now()})
+	if err := a.Update("org/repo"); err != nil {
+		t.Fatalf("second Update: %v", err)
+	}
+	waitSettled(t, a)
+	if m, _ := a.Registry.Get("org/repo"); m.Commit != commitV3 {
+		t.Fatalf("the second update was not swapped in: commit %s", m.Commit)
+	}
+	if got := asidesOf(a); len(got) != 1 {
+		t.Fatalf("held aside after two updates: %v, want one copy", got)
+	}
+
+	if err := servable(a); err == nil {
+		t.Fatal("the broken newest version loaded")
+	}
+	waitFor(t, "the version that served to be put back", func() bool {
+		m, err := a.Registry.Get("org/repo")
+		return err == nil && m.Commit == commitV1
+	})
+	if got := filesIn(t, a.Paths.ModelDir("org/repo")); !sameFiles(got, v1Files()) {
+		t.Errorf("the model's folder holds %v, want the version that served", got)
+	}
+	if err := servable(a); err != nil {
+		t.Errorf("the version put back is not served: %v", err)
+	}
+}

@@ -104,8 +104,11 @@ triggered the load is refused, the next one is answered by the old version,
 and the card says the newer version did not load, with the newer version
 still offered. The old version is kept aside across a restart of Dessau too,
 but Dessau no longer knows which version it was, so after a restart the
-version put back shows as version unknown. Removing the model removes the
-old version with it.
+version put back shows as version unknown. Until that first load, both
+versions take up disk space, however long the model goes unused. A second
+update before the first load keeps the version that last served aside, not
+the one that never loaded. Removing the model removes the old version with
+it.
 
 What Dessau learned about the old files goes with them: the measured context
 window, whether the model calls tools, and a recorded failure to load. What
