@@ -92,7 +92,7 @@ func runOnce(t *testing.T, srv selftest.Server) selftest.Run {
 	path := filepath.Join(t.TempDir(), selftest.FileName)
 	r := selftest.New(selftest.Options{
 		Server: srv, Path: path,
-		Tick: 10 * time.Millisecond, Poll: 5 * time.Millisecond, Quiet: time.Millisecond,
+		Tick: 10 * time.Millisecond, Poll: 5 * time.Millisecond, Quiet: time.Millisecond, SelfTestQuiet: time.Millisecond,
 	})
 	r.SetEnabled(true)
 	var runs []selftest.Run
@@ -230,7 +230,7 @@ func TestTheSelfTestDoesNotLoadAModelPinnedAndNotLoaded(t *testing.T) {
 	path := filepath.Join(t.TempDir(), selftest.FileName)
 	r := selftest.New(selftest.Options{
 		Server: srv, Path: path,
-		Tick: 10 * time.Millisecond, Poll: 5 * time.Millisecond, Quiet: time.Millisecond,
+		Tick: 10 * time.Millisecond, Poll: 5 * time.Millisecond, Quiet: time.Millisecond, SelfTestQuiet: time.Millisecond,
 	})
 	r.SetEnabled(true)
 	waitFor(t, "the self-test to measure the unpinned model", func() bool {

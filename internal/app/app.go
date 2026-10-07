@@ -62,7 +62,8 @@ type App struct {
 	ToolProbe *toolprobe.Probe
 	Log       *slog.Logger
 	// idleQuiet is Options.Idle.Quiet: a cadence a test fixed, which a save
-	// must not replace with the configured threshold.
+	// must not replace with the configured thresholds — the context probe's
+	// or the self-test's.
 	idleQuiet time.Duration
 
 	// logLevel is Options.LogLevel: the variable Log's handler reads. Held so
@@ -255,6 +256,8 @@ type Options struct {
 // IdleOptions is the cadence the idle loop and the context probe run at; see
 // Options.Idle. Zero means the default for each.
 type IdleOptions struct {
+	// Quiet, when set, fixes both idle thresholds — the context probe's and
+	// the self-test's — for a test, in place of the configured ones.
 	Tick, Poll, Quiet time.Duration
 	// StepTimeout bounds one of the probe's requests, given the body's size.
 	StepTimeout func(bodyBytes int) time.Duration
@@ -422,6 +425,9 @@ func New(opts Options) (*App, error) {
 		Tick:     opts.Idle.Tick,
 		Poll:     opts.Idle.Poll,
 		Quiet:    opts.Idle.Quiet,
+		// A test's fixed cadence fixes the self-test's threshold as well;
+		// otherwise applyIdleJobs puts the configured one in force below.
+		SelfTestQuiet: opts.Idle.Quiet,
 	})
 	// Staleness is a stored fact: judged now, against what this start put in
 	// force, before anything reads a measurement.

@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/config/config.go"
 remedy: "Raise MaxIdleThresholdSec to 86400 (24 hours), changing the config validation, the panel's Idle threshold field and docs/context-probe.md together, with the three-surfaces test covering the new upper bound."
+resolution: "MaxIdleThresholdSec is 86400 (24 hours): config validation, the panel's Idle threshold field (max=86400) and docs/context-probe.md moved together, the field held to the server's bounds by a test beside the three-surfaces check; confirmed by the maintainer on 2026-10-07."
+impact: additive
 ---
 
 The idle threshold cannot be set above one hour. The context probe and the self-test share idle_threshold_sec, which is held to 60–3600 seconds (MaxIdleThresholdSec in internal/config/config.go, and max="3600" on the panel's Idle threshold field). The maintainer wants these jobs to run only after a long quiet spell, up to 24 hours, so they never load models during an ordinary break in use. Their threshold is already at the 3600 cap.

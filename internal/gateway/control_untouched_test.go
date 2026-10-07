@@ -219,6 +219,28 @@ func TestASaveOfAnUneditedFormIsAccepted(t *testing.T) {
 			stored: func(c config.Config) config.Config { c.MaxResidentBytes = 12 << 30; return c },
 		},
 		{
+			// The top of the idle threshold's range, a day
+			// (iss-2610041948272032).
+			name:   "an idle threshold of a day",
+			stored: func(c config.Config) config.Config { c.IdleThresholdSec = 86400; return c },
+		},
+		{
+			// The self-test's own threshold at both ends of its range, beside
+			// a probe threshold of the operator's own (iss-2610041956214381).
+			name: "a self-test threshold of a day",
+			stored: func(c config.Config) config.Config {
+				c.SelfTestIdleThresholdSec, c.IdleThresholdSec = 86400, 600
+				return c
+			},
+		},
+		{
+			name: "a self-test threshold of a minute",
+			stored: func(c config.Config) config.Config {
+				c.SelfTestIdleThresholdSec = config.MinIdleThresholdSec
+				return c
+			},
+		},
+		{
 			// A figure the panel refused to post until its own ceiling was
 			// removed, and the server always accepted.
 			name:   "a decode concurrency above what the panel used to allow",
@@ -388,9 +410,12 @@ func uneditedFormBody(t *testing.T, stored config.Config) string {
 		"eviction_grace_sec":    shown.EvictionGraceSec,
 		"eviction_max_wait_sec": shown.EvictionMaxWaitSec,
 		"chat_rule":             shown.ChatRule,
-		"statistics":            shown.Statistics,
-		"stats_months":          shown.StatsMonths,
-		"api_unload_off":        shown.APIUnloadOff,
+		// A blank field posts zero, which is what an unset threshold is.
+		"idle_threshold_sec":           shown.IdleThresholdSec,
+		"self_test_idle_threshold_sec": shown.SelfTestIdleThresholdSec,
+		"statistics":                   shown.Statistics,
+		"stats_months":                 shown.StatsMonths,
+		"api_unload_off":               shown.APIUnloadOff,
 		// Typed in megabytes and stored in bytes, so a figure that is not a
 		// whole number of megabytes comes back rounded — which is itself a
 		// value the save has to accept.
