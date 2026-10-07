@@ -369,8 +369,9 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 	// gateway reads the key live (a.Config) so setting one in the control panel
 	// takes effect without a restart.
 	// IdleJobs is the idle loop's run in progress, so a refusal for want of
-	// memory can name a holder that is the server's own idle work.
-	g := gateway.New(gateway.Options{ConfigFunc: a.Config, Pool: a.Pool, Models: a.Registry, Log: log, Stats: a.Stats, ServedWindow: a.ServedWindow, IdleJobs: a.SelfTest.Status})
+	// memory can name a holder that is the server's own idle work; Clients is
+	// the idle loop's count of every client request (iss-2610041945030758).
+	g := gateway.New(gateway.Options{ConfigFunc: a.Config, Pool: a.Pool, Models: a.Registry, Log: log, Stats: a.Stats, ServedWindow: a.ServedWindow, IdleJobs: a.SelfTest.Status, Clients: a.Clients})
 	// The Discord bridge, wired here because it needs the gateway. SetBridge
 	// puts the stored settings in force — which for an install that has never
 	// touched it means off, and nothing is opened.

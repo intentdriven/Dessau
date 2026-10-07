@@ -50,6 +50,11 @@ type App struct {
 	// Probe measures each model's servable context window as a job of that
 	// same loop (itd-2609091301112705); see internal/contextprobe.
 	Probe *contextprobe.Probe
+	// Clients is the idle clock's count of client requests, which the
+	// gateway keeps (gateway.Options.Clients) and the idle loop reads
+	// through selfTestServer.Activity: every client request, whatever it
+	// ended as and wherever its model is now (iss-2610041945030758).
+	Clients *selftest.Clients
 	// ToolProbe asks each model once, at its first serve under this
 	// runtime, whether it calls tools (itd-2609201445423499); see
 	// internal/toolprobe. It is queued by the pool's observer and reaches
@@ -385,6 +390,7 @@ func New(opts Options) (*App, error) {
 		MaxLoadWaitersPerSource: 2,
 	})
 	a.applyStatistics(opts.Config)
+	a.Clients = &selftest.Clients{}
 	a.Probe = contextprobe.New(contextprobe.Options{
 		Sources: probeSources{a},
 		Enabled: func() bool { return a.Config().ContextProbe },

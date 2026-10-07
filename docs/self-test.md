@@ -29,12 +29,14 @@ are.
 
 ## What happens while it is on
 
-Once a minute Dessau asks whether the Mac is idle: no request in flight on
-any model, no request waiting for a model to load, no download running, and
-the last request older than the idle threshold — five minutes unless you
+Once a minute Dessau asks whether the Mac is idle: no request in flight, no
+request waiting for a model to load, no download running, and the last
+request older than the idle threshold. Every client request counts, however
+it ends — one that failed, or whose model has since been unloaded, counts the
+same as one that was answered. The threshold is five minutes unless you
 change it under **Settings → Context probe**, `idle_threshold_sec` in
 `config.json`; the self-test and the [context probe](context-probe.md) share
-it. When it is, Dessau picks the
+it. When the Mac is idle, Dessau picks the
 model measured longest ago — a model never measured comes first, and a model
 measured within the last day is left alone — and runs it through the same
 short set every model gets:

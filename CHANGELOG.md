@@ -11,6 +11,18 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The self-test and the context probe no longer start while a client is
+  still sending requests that fail.** `impact: fix`. The idle check read each
+  loaded model's last request, so a request that never reached a model, or
+  one whose model was unloaded or stopped afterwards, did not count. When
+  Bob's client kept retrying a stuck model and the model was then unloaded,
+  the self-test could start a minute after his last request although the idle
+  threshold was an hour, and load models while he was still trying. Every
+  client request now counts from the moment it arrives until it ends, however
+  it ends ([self-test](docs/self-test.md); iss-2610041945030758).
+
 ## [0.10.0] - 2026-10-04
 
 ### Added

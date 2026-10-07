@@ -1,13 +1,14 @@
 // Package selftest measures Dessau's own models while nobody is using them.
 //
 // When the operator switches it on (config.Config.SelfTest), a loop wakes
-// once a minute and asks whether the Mac is idle: no request in flight on any
-// model, nobody waiting for a load, no download running, and the last request
-// older than a quiet period. When it is, the loop picks the ready model that
-// was tested longest ago — never one tested within the last day — acquires it
-// through the pool's ordinary path, runs the same short set of tests against
-// it, appends one line of figures to a file, and unloads the model if the
-// self-test was what brought it in. Then it goes back to sleep.
+// once a minute and asks whether the Mac is idle: no client request in flight
+// anywhere, nobody waiting for a load, no download running, and the last
+// client request — whatever it ended as, and whether or not its model is still
+// loaded (Clients) — older than a quiet period. When it is, the loop picks the
+// ready model that was tested longest ago — never one tested within the last
+// day — acquires it through the pool's ordinary path, runs the same short set
+// of tests against it, appends one line of figures to a file, and unloads the
+// model if the self-test was what brought it in. Then it goes back to sleep.
 //
 // The set is llama-bench's pair plus what the pool can tell: how long the load
 // took, how fast a long prompt is read (pp512), how fast tokens come out
@@ -125,6 +126,10 @@ type Activity struct {
 	// the run to let go. This is what is left — a client refused over a model
 	// the run is not holding, or one the run would not give up in time.
 	Refusals uint64
+	// Requests is how many client requests are in flight anywhere, and
+	// LastRequest when the last one started or ended (Clients.Snapshot).
+	Requests    int
+	LastRequest time.Time
 }
 
 // ModelActivity is one resident model's share of that view.
@@ -571,8 +576,17 @@ func (r *Runner) heldBy(act Activity, now time.Time) string {
 	if act.Downloading > 0 {
 		return HeldByDownloading
 	}
+	// Every client request, counted at the gateway whatever it ended as and
+	// wherever its model is now (Clients, iss-2610041945030758). Ticks do not
+	// run during a run, so a request in flight here is never the loop's own.
+	if act.Requests > 0 {
+		return HeldByInFlight
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.clientRecentLocked(act.LastRequest, now) {
+		return HeldByRecent
+	}
 	for _, m := range act.Models {
 		if m.InFlight > 0 {
 			return HeldByInFlight
@@ -588,10 +602,28 @@ func (r *Runner) heldBy(act Activity, now time.Time) string {
 	return ""
 }
 
+// clientRecentLocked reports whether the gateway's last client request is
+// within the quiet period. A last request no later than the loop's own most
+// recent release is the loop's own — the context probe drives its model
+// through the gateway — and is discounted the way the pool's stamp of that
+// release is (touched). Callers hold r.mu.
+func (r *Runner) clientRecentLocked(last, now time.Time) bool {
+	if last.IsZero() || now.Sub(last) >= r.opts.Quiet {
+		return false
+	}
+	for _, own := range r.touched {
+		if !last.After(own) {
+			return false
+		}
+	}
+	return true
+}
+
 // quiet reports whether the Mac is idle enough to start a run: nothing in
 // flight, nothing waiting, nothing downloading, and the last request older
-// than the quiet period. A model never used counts as long idle, and a last
-// use that is the self-test's own release is not a request.
+// than the quiet period — the last on any resident model and the last client
+// request the gateway counted, wherever it went. A model never used counts as
+// long idle, and a last use that is the loop's own is not a request.
 func (r *Runner) quiet(act Activity, now time.Time) bool { return r.heldBy(act, now) == "" }
 
 // hold is what the loop itself has taken from the pool right now: the model,
