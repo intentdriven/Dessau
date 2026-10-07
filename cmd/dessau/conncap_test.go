@@ -212,6 +212,23 @@ func TestAListenerAtItsTotalIsRefused(t *testing.T) {
 	h.refuse("192.0.2.3:50001", "the listener already holds its three connections")
 }
 
+// Loopback has a budget of its own on a listener remote peers also reach.
+// Bound to ::, the wildcard listener is dual-stack and the panel's localhost
+// arrives on it as ::1, so if loopback shared the remote total, a machine on
+// the network that filled it would lock the operator out of the panel.
+// Remote peers filling the total do not touch loopback's budget, and loopback
+// filling its own does not touch theirs.
+func TestLoopbackKeepsItsOwnBudgetWhenRemotePeersFillTheListener(t *testing.T) {
+	h := newCapHarness(t, 10, 2)
+	h.admit("192.0.2.1:50001")
+	h.admit("[2001:db8::1]:50001")
+	h.refuse("192.0.2.2:50001", "remote peers already hold the listener's two connections")
+	h.admit("[::1]:50001")
+	h.admit("127.0.0.1:50002")
+	h.refuse("[::1]:50003", "loopback already holds its own two connections")
+	h.refuse("192.0.2.3:50001", "remote peers are still at their total")
+}
+
 // A closed connection frees its slot, on both caps.
 func TestAClosedConnectionFreesItsSlot(t *testing.T) {
 	h := newCapHarness(t, 2, 2)

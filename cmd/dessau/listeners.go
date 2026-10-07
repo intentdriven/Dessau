@@ -123,20 +123,26 @@ func capConns(ln net.Listener, log *slog.Logger) net.Listener {
 // whatever the addresses are. Collapsing to a /64 would instead put every
 // client behind one router's prefix into a single bucket.
 //
-// Loopback peers are held to the total and not to the per-address cap. Every
-// account on this Mac arrives as the one loopback address, so a per-address
-// cap there is a cap on the whole Mac, shared between the operator's own panel
-// and every local client — one busy local client would lock the operator out
-// of the panel. The pool says the same of its own per-source cap: an address
-// is not a client.
+// Loopback peers are not held to the per-address cap. Every account on this
+// Mac arrives as the one loopback address, so a per-address cap there is a cap
+// on the whole Mac, shared between the operator's own panel and every local
+// client — one busy local client would lock the operator out of the panel. The
+// pool says the same of its own per-source cap: an address is not a client.
+//
+// Nor do they share the remote peers' total: loopback has a budget of its own,
+// of the same size. Bound to ::, the wildcard listener is dual-stack and the
+// panel's localhost reaches it as ::1, so a total shared with the network
+// would let a machine on the LAN that fills it lock the operator out of the
+// panel. Each side filling its own budget leaves the other's alone.
 type connCap struct {
 	net.Listener
 	perAddr, total int
 	log            *slog.Logger
 
-	mu     sync.Mutex
-	open   int
-	byAddr map[string]int
+	mu       sync.Mutex
+	open     int // remote connections, held to total
+	loopback int // loopback connections, held to a total of their own
+	byAddr   map[string]int
 
 	refused atomic.Uint64
 	lastLog atomic.Int64 // unix nanoseconds of the last refusal logged
@@ -171,26 +177,32 @@ func (l *connCap) Accept() (net.Conn, error) {
 func (l *connCap) admit(key string, exempt bool) string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if exempt {
+		if l.loopback >= l.total {
+			return "loopback"
+		}
+		l.loopback++
+		return ""
+	}
 	if l.open >= l.total {
 		return "listener"
 	}
-	if !exempt && l.byAddr[key] >= l.perAddr {
+	if l.byAddr[key] >= l.perAddr {
 		return "per-address"
 	}
 	l.open++
-	if !exempt {
-		l.byAddr[key]++
-	}
+	l.byAddr[key]++
 	return ""
 }
 
 func (l *connCap) release(key string, exempt bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.open--
 	if exempt {
+		l.loopback--
 		return
 	}
+	l.open--
 	if l.byAddr[key]--; l.byAddr[key] <= 0 {
 		delete(l.byAddr, key)
 	}

@@ -48,14 +48,20 @@ error. The limits are fixed, not settings.
 | Limit | Figure | Applies to |
 |---|---|---|
 | Per client address | 32 open connections | each address another machine connects from |
-| Per listening address | 512 open connections | everything connecting to that address and port, this Mac included |
+| Per listening address | 512 open connections | everything another machine opens to that address and port |
+| Loopback, per listening address | 512 open connections | everything this Mac opens to that address and port |
 
 A client address is counted whole: two IPv6 addresses in the same network
-prefix are two addresses. Connections from this Mac over loopback count towards
-the 512 and not towards a per-address limit, because every account on this Mac
-arrives from the same loopback address — a limit on it would be shared between
-the control panel and every local client, and one busy client could lock the
-panel out.
+prefix are two addresses. Connections from this Mac over loopback have a 512 of
+their own and no per-address limit. Every account on this Mac arrives from the
+same loopback address, so a per-address limit would be shared between the
+control panel and every local client, and one busy client could lock the panel
+out. And because a bind to `::` also takes this Mac's own `localhost`
+connections, other machines filling their 512 never take loopback's.
+
+The per-address limit guards against a client that opens too many connections
+by mistake. It does not stop a machine on the network that can use many
+addresses, which IPv6 makes free; the 512 is what holds then.
 
 A client that opens more than 32 connections at once from one address, or
 several clients sharing one address behind a router, have the extra connections
