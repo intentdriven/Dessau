@@ -844,3 +844,23 @@ with a switch.
 Verdict proposed: FILE-AS-IS with both switches. Verdict adopted after the two
 reviews: one switch, an ADR the routing had not named, and pins and grace
 protected. Grade: routing survived in part.
+
+## 2026-10-07 — SOTA research on MLX serving performance, routed to seven records
+
+Request: "Conduct SOTA on how to optimise performance of MLX models. What do
+other servers offer that Dessau doesn't (yet)?" The research note stayed in
+the local tier; its gap table was routed.
+
+| part | type | home |
+|---|---|---|
+| Prompt cache with no byte limit | defect (runtime) | iss-2610071035130302 |
+| Twice as many requests admitted as charged | defect (runtime) | iss-2610071035138788 |
+| Batching default never measured here | evidence task | iss-2610071035147427 |
+| MTP speculative decoding | waiting on upstream | iss-2610071035141725 |
+| Per-model compact KV memory | capability | itd-2610071035236103 (draft) |
+| Prompt cache kept on disk across unloads | capability | itd-2610071035237873 (draft) |
+| Structured output to a schema | capability | itd-2610071035233981 (draft) |
+| Vision, embeddings, rerank; mlx-vlm pin bump | held | not filed |
+
+Verdict proposed: SPLIT into four issues and three drafts, with the rest held.
+Verdict adopted: the same, unchanged. Grade: routing survived.
