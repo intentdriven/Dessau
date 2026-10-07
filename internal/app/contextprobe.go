@@ -89,22 +89,29 @@ func (s probeSources) Available() int64 {
 }
 
 // Unload stops a model server for the probe, and never a pinned one
-// (iss-2609211754251373); see unloadUnpinned. A pin saved between the check
-// and the stop is met at the next step's unload.
+// (iss-2609211754251373); see unloadUnpinned.
 func (s probeSources) Unload(repoID string) error {
 	return s.a.unloadUnpinned(repoID, contextprobe.ErrPinned)
 }
 
-// unloadUnpinned is the idle jobs' unload: the pool's Unload, refused with
-// refusal — the job's own ErrPinned — when the model is pinned. The pool's
-// Unload is the operator's and stops whatever it is given, so a pin is each
-// idle job's to honour, and this is the one place they honour it.
+// unloadUnpinned is the idle jobs' unload: the pool's UnloadUnpinned, its
+// pin refusal answered with refusal — the job's own ErrPinned. The pool's
+// Unload is the operator's and stops whatever it is given; UnloadUnpinned
+// reads the pin under the same hold of the pool's lock as the stop, so a pin
+// saved while the job is deciding is never overridden (iss-2610042033419572).
 func (a *App) unloadUnpinned(repoID string, refusal error) error {
-	if a.isPinned(repoID) {
+	beforeIdleUnload(repoID)
+	err := a.Pool.UnloadUnpinned(repoID)
+	if errors.Is(err, runtime.ErrPinned) {
 		return fmt.Errorf("%s: %w", repoID, refusal)
 	}
-	return a.Pool.Unload(repoID)
+	return err
 }
+
+// beforeIdleUnload runs as an idle job's unload is about to reach the pool,
+// outside every lock. It does nothing; it is the seam a test saves a pin
+// through at the last instant a person's save could land before the stop.
+var beforeIdleUnload = func(string) {}
 
 // isPinned reports whether the pool holds the model pinned, whichever way
 // either spelling folds.

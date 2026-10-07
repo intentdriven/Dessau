@@ -2476,6 +2476,21 @@ func (p *Pool) Unload(repoID string) error {
 	return p.unloadLocked(repoID)
 }
 
+// UnloadUnpinned is Unload for the idle jobs, which never stop a pinned
+// model: a pinned one is refused with ErrPinned and nothing changes, and
+// otherwise Unload's rule holds. The pin is read under the same hold of p.mu
+// as the stop, so a pin saved through SetPinned lands either before the check
+// and is honoured, or after the stop (iss-2610042033419572). The operator's
+// Unload keeps its own rule.
+func (p *Pool) UnloadUnpinned(repoID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.isPinnedLocked(repoID) {
+		return fmt.Errorf("%s is pinned: %w", repoID, ErrPinned)
+	}
+	return p.unloadLocked(repoID)
+}
+
 // Remove is Unload for a model that is being deleted. It stops the server
 // under Unload's rule — a busy model is refused and nothing changes — and
 // drops what the pool holds about the model beyond its process: the
@@ -2530,7 +2545,7 @@ func (p *Pool) Release(repoID string, by Caller) error {
 	return nil
 }
 
-// The refusals Release adds to Unload's.
+// The refusals Release adds to Unload's. UnloadUnpinned adds ErrPinned alone.
 var (
 	ErrPinned  = errors.New("the model is pinned")
 	ErrLoading = errors.New("the model is still loading")

@@ -44,6 +44,13 @@ GitHub release notes.
   threshold was an hour, and load models while he was still trying. Every
   client request now counts from the moment it arrives until it ends, however
   it ends ([self-test](docs/self-test.md); iss-2610041945030758).
+- **A model you pin just as the self-test or the context probe unloads it
+  now stays loaded.** `impact: fix`. Both checked the pin and then stopped
+  the model as two separate steps, so a pin saved in the instant between them
+  was overridden: the model was unloaded and left pinned but not in memory.
+  The pin is now checked in the same step as the stop, so a pin saved before
+  the stop always keeps the model loaded
+  ([self-test](docs/self-test.md); iss-2610042033419572).
 
 ## [0.10.0] - 2026-10-04
 
