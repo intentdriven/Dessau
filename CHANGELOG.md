@@ -147,6 +147,18 @@ GitHub release notes.
   version a Dessau release has reviewed. A record left over with the old
   mark is dropped when Dessau starts, and the next check writes it again
   (iss-2610042101436891).
+- **A machine on the network can no longer hold an unlimited number of
+  connections open.** `impact: fix`. Neither port Dessau answers on, nor the
+  pairing call, limited how many connections a peer could keep open at once,
+  so a machine that reconnected in a loop could hold a socket and a goroutine
+  per attempt for as long as it kept trying. Each address and port Dessau
+  listens on now holds at most 512 open connections, and at most 32 from any
+  one client address; a connection over
+  either limit is closed as it arrives, before anything is read from it.
+  Connections from this Mac count towards the 512 only, so the control panel
+  is never locked out by a busy local client
+  ([bind address](docs/bind-address.md#how-many-connections-each-address-may-hold);
+  iss-2609190254516275).
 
 ## [0.10.0] - 2026-10-04
 
