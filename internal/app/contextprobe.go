@@ -239,6 +239,9 @@ func (a *App) AdoptMeasurement(repoID string) error {
 // one. Called off the pool's lock, on the observer's own goroutine.
 func (a *App) recordLoadFailure(repoID string, err error) {
 	if err == nil {
+		// A load that answered is what an update's new version waits for
+		// before the version it replaced is let go.
+		a.dropFallback(repoID)
 		a.ForgetLoadFailure(repoID)
 		return
 	}
@@ -254,6 +257,12 @@ func (a *App) recordLoadFailure(repoID string, err error) {
 		if config.FoldRepoID(res.RepoID) == config.FoldRepoID(repoID) {
 			return
 		}
+	}
+	// A new version that has never loaded failed: the version its update
+	// replaced is put back, and its record carries no failure, since the
+	// failure was not its own (iss-2610042101430192).
+	if a.restoreFallback(repoID) {
+		return
 	}
 	reason := notReady.Reason
 	if reason == "" {

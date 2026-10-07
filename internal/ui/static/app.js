@@ -570,6 +570,7 @@ function updateText(m) {
       case 'refused': return 'The last update failed: the new version did not pass the checks Dessau makes before it starts a model. This version keeps serving.';
       case 'busy': return 'The last update failed: this model was still answering requests when the wait ran out, so it kept serving. Try again when it is quiet.';
       case 'not_offered': return 'The last update failed: the newer version is not one Dessau runs. This version keeps serving.';
+      case 'load': return 'The last update failed: the newer version did not load, so Dessau put this version back. This version keeps serving.';
       default: return '';
     }
   })();
