@@ -4,7 +4,7 @@
 
 > The user's directory is theirs: a tool never creates directories beside the
 > user's projects or anywhere the user did not hand over; session and agent
-> scratch (a worktree, a verifier's copy, an export) goes under ~/.abcd/ keyed
+> scratch (a worktree, a verifier's copy, an export) goes under ~/.abcd.noindex/ keyed
 > on the root-commit SHA, or the checkout's .abcd/.work.local/ tier — see
 > .abcd/development/principles/the-users-directory-is-theirs.md.
 

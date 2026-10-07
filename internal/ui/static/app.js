@@ -570,6 +570,7 @@ function updateText(m) {
       case 'refused': return 'The last update failed: the new version did not pass the checks Dessau makes before it starts a model. This version keeps serving.';
       case 'busy': return 'The last update failed: this model was still answering requests when the wait ran out, so it kept serving. Try again when it is quiet.';
       case 'not_offered': return 'The last update failed: the newer version is not one Dessau runs. This version keeps serving.';
+      case 'load': return 'The last update failed: the newer version did not load, so Dessau put this version back. This version keeps serving.';
       default: return '';
     }
   })();
@@ -581,6 +582,7 @@ function updateText(m) {
       case 'available': return `A newer version is available (${short}).`;
       case 'runs_own_code': return `A newer version (${short}) ships its own code, which Dessau will not run, so it is not offered.`;
       case 'awaiting_review': return `A newer version (${short}) exists and will be offered once a Dessau release has reviewed it.`;
+      case 'cannot_check': return `A newer version (${short}) exists, but HuggingFace did not hand over its configuration in a form Dessau could verify, so Dessau could not tell whether it ships its own code and it is not offered.`;
       default: return '';
     }
   })();
@@ -594,6 +596,7 @@ function updateMark(m) {
     case 'available': return 'newer version';
     case 'runs_own_code': return 'newer version not run';
     case 'awaiting_review': return 'newer version awaiting review';
+    case 'cannot_check': return 'newer version not checked';
     default: return '';
   }
 }

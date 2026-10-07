@@ -11,6 +11,40 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An update that will not load no longer leaves a model without a
+  version to serve.** `impact: fix`. Dessau removed the old version of a
+  model as soon as the new one passed the checks it makes before starting a
+  model, so a new version that passed them and then failed to load left
+  Alice with nothing to fall back to until she downloaded an older version
+  by hand. The old version now stays aside until the new one has loaded and
+  answered a request; if that first load fails, Dessau puts the old version
+  back, the next request is answered by it, and the card says the newer
+  version did not load. The old version is kept aside across a restart too,
+  and goes when the model is removed
+  ([model updates](docs/model-updates.md); iss-2610042101430192).
+- **A newer version that ships its own code is no longer offered when its
+  repository keeps `config.json` in Git LFS.** `impact: fix`. HuggingFace
+  hands such a file to its content CDN, which the update check did not read
+  from, so the check could not see whether the newer version names a
+  `model_file` and marked it as available with **Update** offered; only the
+  update's own checks refused it, after the download. The check now reads the
+  file from the CDN, held to the hash HuggingFace lists for it and sending
+  the CDN no access token, and a version that ships its own code is marked
+  **newer version not run**. One whose `config.json` cannot be held to that
+  hash is marked **newer version not checked**, and is not offered either
+  ([model updates](docs/model-updates.md); iss-2610042101439623).
+- **The self-test and the context probe no longer start while a client is
+  still sending requests that fail.** `impact: fix`. The idle check read each
+  loaded model's last request, so a request that never reached a model, or
+  one whose model was unloaded or stopped afterwards, did not count. When
+  Bob's client kept retrying a stuck model and the model was then unloaded,
+  the self-test could start a minute after his last request although the idle
+  threshold was an hour, and load models while he was still trying. Every
+  client request now counts from the moment it arrives until it ends, however
+  it ends ([self-test](docs/self-test.md); iss-2610041945030758).
+
 ## [0.10.0] - 2026-10-04
 
 ### Added

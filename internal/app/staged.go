@@ -249,8 +249,8 @@ func renameAt(from *os.File, fromName string, to *os.File, toName string) error 
 // being served, and swaps it in only when every file has checked out. A model
 // whose version Dessau never recorded, or that no check has marked, is brought
 // to the repository's current version. A model whose newer version ships its
-// own code, or waits for review, is refused: there is nothing Dessau would
-// run to update it to.
+// own code, waits for review, or could not be checked for code, is refused:
+// there is nothing Dessau knows it would run to update it to.
 func (a *App) Update(repoID string) error {
 	m, err := a.Registry.Get(repoID)
 	if err != nil {
@@ -264,7 +264,7 @@ func (a *App) Update(repoID string) error {
 		switch u.Status {
 		case registry.UpdateAvailable:
 			commit = u.Commit
-		case registry.UpdateRunsOwnCode, registry.UpdateAwaitingReview:
+		case registry.UpdateRunsOwnCode, registry.UpdateAwaitingReview, registry.UpdateCannotCheck:
 			return fmt.Errorf("%s: %w", m.RepoID, ErrUpdateNotOffered)
 		}
 	}
@@ -283,17 +283,20 @@ type stagedVersion struct {
 	pipelineTag string
 	tags        []string
 	answered    bool
-	// aside is where the swap moved the old version, for the caller to
-	// remove once the new record is published.
-	aside string
+	// aside is where the swap moved the old version, held there until the
+	// new version has loaded once (fallback); priorCommit and priorHashes
+	// are the old version's record, for putting it back.
+	aside       string
+	priorCommit string
+	priorHashes map[string]string
 }
 
 // stagedDownload fetches repoID at commit (the current one when empty) into
 // the staging folder, checks it, reads its facts, and swaps it in for the
 // version being served. On success the model is still marked swapping —
 // loads refused — until the caller has published the new record and lifted
-// the mark, and the old version waits aside for the caller to remove
-// (removeAside). On any failure the staging folder is removed and the
+// the mark, and the old version waits aside for the caller to hold until the
+// new one has loaded once (fallback). On any failure the staging folder is removed and the
 // version being served is untouched.
 func (a *App) stagedDownload(ctx context.Context, repoID, commit string, prior registry.Model, onProgress func(hub.Progress)) (stagedVersion, error) {
 	root, err := a.modelsRoot()
@@ -377,11 +380,11 @@ func (a *App) stagedDownload(ctx context.Context, repoID, commit string, prior r
 	// moment their record can be written.
 	out := stagedVersion{snap: snap, bytes: a.measureDir(staging), facts: registry.ReadModelFacts(staging)}
 	out.pipelineTag, out.tags, out.answered = a.repoCategory(ctx, repoID)
-	aside, err := a.swapIn(ctx, root, sorg, repoID)
+	aside, err := a.swapIn(ctx, root, sorg, repoID, name)
 	if err != nil {
 		return fail(err)
 	}
-	out.aside = aside
+	out.aside, out.priorCommit, out.priorHashes = aside, prior.Commit, prior.FileHashes
 	return out, nil
 }
 
@@ -425,14 +428,16 @@ func (a *App) linkUnchanged(root *os.Root, repoID string, prior registry.Model, 
 	return linked
 }
 
-// swapIn moves the staged version in for the one being served. Loads of the
-// model are refused from the start (the swapping mark, which modelSource
-// reads), the model is drained from the pool — requests in flight finish,
-// for up to drainWait — and then the old directory is moved aside and the
-// staged one moved in and checked once more. A failure at any point puts the
-// old directory back and lifts the mark; on success the mark stays for the
+// swapIn moves from, a directory in the model's staging org folder — the
+// staged version, or an old one held aside that is being put back
+// (restoreFallback) — in for the one being served. Loads of the model are
+// refused from the start (the swapping mark, which modelSource reads), the
+// model is drained from the pool — requests in flight finish, for up to
+// drainWait — and then the directory being served is moved aside and from
+// moved in and checked once more. A failure at any point puts the old
+// directory back and lifts the mark; on success the mark stays for the
 // caller to lift with the new record.
-func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoID string) (aside string, err error) {
+func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoID, from string) (aside string, err error) {
 	a.dlMu.Lock()
 	a.swapping[dlKey(repoID)] = true
 	a.dlMu.Unlock()
@@ -536,7 +541,7 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoI
 				"model", repoID, "err", rerr)
 		}
 	}
-	staged, err := sorg.Lstat(name)
+	staged, err := sorg.Lstat(from)
 	if err != nil || !staged.IsDir() {
 		putBack()
 		return "", errors.New("the staged version is not a directory, so it is not moved in")
@@ -544,21 +549,21 @@ func (a *App) swapIn(ctx context.Context, root *os.Root, sorg *stagingOrg, repoI
 	if a.beforeSwapRename != nil {
 		a.beforeSwapRename("in")
 	}
-	if err := renameAt(stagingDir, name, org.dir, name); err != nil {
+	if err := renameAt(stagingDir, from, org.dir, name); err != nil {
 		putBack()
 		return "", fmt.Errorf("move the new version in: %w", err)
 	}
 	// The check below reads the model's folder by its path, so the path must
 	// name the folder just moved in, as well as the held folder holding it.
 	if fi, err := os.Stat(a.Paths.ModelDir(repoID)); !sameDir(org.Root, name, staged) || err != nil || !os.SameFile(fi, staged) {
-		undo(org.dir, name, stagingDir, name)
+		undo(org.dir, name, stagingDir, from)
 		putBack()
 		return "", errors.New("the model's folder changed as the new version was moved in; the update is abandoned")
 	}
 	if err := validateModelDir(a.Paths.ModelDir(repoID)); err != nil {
 		// Not expected — the staged copy was checked — but a check that
 		// fails here puts the old version back rather than serving neither.
-		if rerr := renameAt(org.dir, name, stagingDir, name); rerr != nil {
+		if rerr := renameAt(org.dir, name, stagingDir, from); rerr != nil {
 			a.Log.Error("could not move a failed new version out of the way", "model", repoID, "err", rerr)
 		} else {
 			putBack()
@@ -613,10 +618,145 @@ func asideAttempt(attempt string) int64 {
 	return at
 }
 
-// removeAside removes the old version this attempt's swap left aside. Called
-// after the mark is lifted, so loads are not refused for as long as the
-// removal takes; the folder is this attempt's own, so a later update's swap
-// is never what it removes.
+// fallback is the version an update replaced, held aside in the staging
+// folder until the new version has loaded and answered once. The checks a
+// swap makes are the ones a launch makes before it starts a model server, and
+// a version can pass them all and still fail to load; held aside, the version
+// it replaced is put back then rather than lost (iss-2610042101430192).
+type fallback struct {
+	// aside is where it waits, relative to the models folder.
+	aside string
+	// commit and hashes are its record's version, empty when not known: a
+	// fallback found at start (recoverStaging), whose record the new
+	// version's had already replaced when the process ended.
+	commit string
+	hashes map[string]string
+}
+
+// dropFallback removes the version an update replaced and held aside for
+// repoID, if one is: once the new version has loaded and answered, and when
+// the model is deleted, since the next start would otherwise put it back in
+// the model's place.
+func (a *App) dropFallback(repoID string) {
+	a.dlMu.Lock()
+	fb, ok := a.fallbacks[dlKey(repoID)]
+	delete(a.fallbacks, dlKey(repoID))
+	a.dlMu.Unlock()
+	if ok {
+		a.removeAside(repoID, fb.aside)
+	}
+}
+
+// restoreFallback puts back the version an update replaced once the new one
+// has failed its first load: the same swap an update makes moves the failed
+// version out and the held one in, the record is written for the one put
+// back — its version when this process knows it, version unknown when it
+// was found at start — with why the update failed, and the failed version is
+// removed. It reports whether it did; when it did not, the fallback is held
+// as before and the caller records the failure as any other.
+//
+// It claims the model as a download does, so a Download is refused as one
+// already in flight, a Delete cancels it and waits, and Close waits for it,
+// rather than any of them reaching the folder mid-swap. It does not start
+// while one of those holds the model: a download in flight leaves the
+// fallback held, and a delete removes it.
+func (a *App) restoreFallback(repoID string) bool {
+	key := dlKey(repoID)
+	a.dlMu.Lock()
+	fb, ok := a.fallbacks[key]
+	if _, busy := a.downloads[key]; !ok || busy || a.dlClosed || a.deleting[key] {
+		a.dlMu.Unlock()
+		return false
+	}
+	delete(a.fallbacks, key)
+	ctx, cancel := context.WithCancel(context.Background())
+	dl := &download{repoID: repoID, cancel: cancel, done: make(chan struct{})}
+	a.downloads[key] = dl
+	a.dlWG.Add(1)
+	a.dlMu.Unlock()
+	defer func() {
+		cancel()
+		a.finishDownload(dl, nil)
+		close(dl.done)
+		a.dlWG.Done()
+	}()
+	keep := func(err error) bool {
+		a.finishDownload(dl, func() {
+			if _, held := a.fallbacks[key]; !held {
+				a.fallbacks[key] = fb
+			}
+		})
+		a.Log.Error("the new version of a model did not load, and the version it replaced could not be put back; it stays aside",
+			"model", repoID, "err", err)
+		return false
+	}
+
+	m, err := a.Registry.Get(repoID)
+	if err != nil {
+		return keep(err)
+	}
+	repoID = m.RepoID
+	root, err := a.modelsRoot()
+	if err != nil {
+		return keep(err)
+	}
+	defer root.Close()
+	sorg, err := openStagingOrg(root, repoID)
+	if err != nil {
+		return keep(err)
+	}
+	defer sorg.Close()
+	failed, err := a.swapIn(ctx, root, sorg, repoID, filepath.Base(fb.aside))
+	if err != nil {
+		return keep(err)
+	}
+
+	dest := a.Paths.ModelDir(repoID)
+	bytes, facts := a.measureDir(dest), registry.ReadModelFacts(dest)
+	// The newer version is still offered when the one put back is a version
+	// Dessau knows: it is there to try again, by hand.
+	var update *registry.UpdateCheck
+	if fb.commit != "" && m.Commit != "" && m.Commit != fb.commit {
+		update = &registry.UpdateCheck{Status: registry.UpdateAvailable, Commit: m.Commit, CheckedAt: time.Now()}
+	}
+	var perr error
+	a.finishDownload(dl, func() {
+		perr = a.Registry.Put(registry.Model{
+			RepoID:           repoID,
+			Path:             dest,
+			Bytes:            bytes,
+			ContextLength:    facts.ContextLength,
+			KVChargePerToken: facts.KVChargePerToken,
+			ChatTemplate:     facts.ChatTemplate,
+			QuantizationBits: facts.QuantizationBits,
+			PipelineTag:      m.PipelineTag,
+			Tags:             m.Tags,
+			HubSilent:        m.HubSilent,
+			Commit:           fb.commit,
+			FileHashes:       fb.hashes,
+			Update:           update,
+			UpdateFailed:     registry.UpdateFailedLoad,
+			State:            registry.StateReady,
+			Progress:         100,
+			AddedAt:          m.AddedAt,
+		})
+		delete(a.swapping, key)
+	})
+	if err := sorg.RemoveAll(filepath.Base(failed)); err != nil {
+		a.Log.Warn("could not remove a new version that did not load", "model", repoID, "err", err)
+	}
+	if perr != nil {
+		a.Log.Error("the version an update replaced is back but could not be recorded", "model", repoID, "err", perr)
+	}
+	a.Log.Warn("the new version of a model did not load, so the version it replaced is back", "model", repoID)
+	a.Pool.RefreshCharges()
+	return true
+}
+
+// removeAside removes an old version a swap left aside. Called after the
+// mark is lifted, so loads are not refused for as long as the removal takes;
+// the folder is one attempt's own, so a later update's swap is never what it
+// removes.
 func (a *App) removeAside(repoID, aside string) {
 	if aside == "" {
 		return
@@ -705,42 +845,53 @@ func (a *App) isSwapping(repoID string) bool {
 // aside by a swap the previous process died in the middle of goes back where
 // it was when nothing took its place, and every staged version is removed —
 // a download is never resumed into the staging folder. One that cannot go
-// back is kept (clearStagingKeepingAside). All of it inside a
-// root at the models folder; a link at the staging folder's name, or at an
+// back is kept (clearStagingKeepingAside), and so is one an update finished
+// with that is still held until the new version loads; those are returned,
+// keyed as the in-flight downloads are, for the app to hold. All of it inside
+// a root at the models folder; a link at the staging folder's name, or at an
 // org's inside it, is removed as a link and nothing it names is touched.
-func recoverStaging(models string, log interface {
-	Warn(string, ...any)
-}) {
+func recoverStaging(models string, log stagingLog) map[string]fallback {
+	held := map[string]fallback{}
 	root, err := os.OpenRoot(models)
 	if err != nil {
-		return
+		return held
 	}
 	defer root.Close()
 	fi, err := root.Lstat(stagingDirName)
 	if errors.Is(err, fs.ErrNotExist) {
-		return
+		return held
 	}
 	if err != nil || !fi.IsDir() {
 		if err := root.RemoveAll(stagingDirName); err != nil {
 			log.Warn("could not clear the staging folder", "err", err)
 		}
-		return
+		return held
 	}
-	putBackAside(root, log)
-	clearStagingKeepingAside(root, models, log)
+	putBack := putBackAside(root, log)
+	clearStagingKeepingAside(root, models, log, putBack, held)
+	return held
+}
+
+// stagingLog is what the start's recovery of the staging folder logs to.
+type stagingLog interface {
+	Info(string, ...any)
+	Warn(string, ...any)
 }
 
 // clearStagingKeepingAside removes every staged version and everything else
-// in the staging folder but an old version left aside that could not be put
-// back while nothing the rescan would adopt stands in its model's folder — the
-// rescan's own check, so the two never disagree — that may
-// be the only copy of the model, and an update never removes the last copy.
-// It is kept and named in the log for the person to look at. An aside copy
-// beside a model folder that checks out is what a swap that finished but
-// died before removing it leaves, and goes like everything else. Each org
-// folder is opened and held before anything in it is removed, so a link
+// in the staging folder but two kinds of old version left aside. One that
+// could not be put back while nothing the rescan would adopt stands in its
+// model's folder — the rescan's own check, so the two never disagree — may
+// be the only copy of the model, and an update never removes the last copy:
+// it is kept and named in the log for the person to look at. And the newest
+// complete one beside a model folder that checks out is what an update
+// finished with and held until the new version has loaded once (fallback):
+// it is kept and added to held, unless a copy of that model was put back at
+// this start, which makes it older than the one in place. Any other aside
+// copy beside a model folder that checks out goes like everything else. Each
+// org folder is opened and held before anything in it is removed, so a link
 // planted at its name meanwhile is never followed.
-func clearStagingKeepingAside(root *os.Root, models string, log interface{ Warn(string, ...any) }) {
+func clearStagingKeepingAside(root *os.Root, models string, log stagingLog, putBack map[string]bool, held map[string]fallback) {
 	orgs, err := readDirIn(root, stagingDirName)
 	if err != nil {
 		log.Warn("could not read the staging folder", "err", err)
@@ -764,14 +915,35 @@ func clearStagingKeepingAside(root *os.Root, models string, log interface{ Warn(
 			sorg.Close()
 			continue
 		}
+		isAside := func(e os.DirEntry) (name string, ok bool) {
+			name, _, ok = strings.Cut(e.Name(), asideSuffix)
+			return name, ok && e.IsDir() && e.Type()&fs.ModeSymlink == 0
+		}
+		// The newest aside copy of each model, the one an update held.
+		newest := map[string]string{}
 		for _, e := range entries {
-			if name, _, isAside := strings.Cut(e.Name(), asideSuffix); isAside && e.IsDir() && e.Type()&fs.ModeSymlink == 0 {
+			if name, ok := isAside(e); ok {
+				if cur, seen := newest[name]; !seen || asideAttempt(strings.TrimPrefix(e.Name(), name+asideSuffix)) > asideAttempt(strings.TrimPrefix(cur, name+asideSuffix)) {
+					newest[name] = e.Name()
+				}
+			}
+		}
+		for _, e := range entries {
+			if name, ok := isAside(e); ok {
 				repoID := org.Name() + "/" + name
 				// One whose name gives no model can never go back, and goes.
-				if config.ValidRepoID(repoID) && !registry.ModelDirComplete(filepath.Join(models, filepath.FromSlash(repoID))) {
-					log.Warn("an old version an interrupted update left aside could not be put back, because something else stands in its model's folder; it is kept",
-						"path", filepath.ToSlash(filepath.Join(orgRel, e.Name())))
-					continue
+				if config.ValidRepoID(repoID) {
+					aside := filepath.Join(orgRel, e.Name())
+					switch {
+					case !registry.ModelDirComplete(filepath.Join(models, filepath.FromSlash(repoID))):
+						log.Warn("an old version an interrupted update left aside could not be put back, because something else stands in its model's folder; it is kept",
+							"path", filepath.ToSlash(aside))
+						continue
+					case newest[name] == e.Name() && !putBack[dlKey(repoID)] && registry.ModelDirComplete(filepath.Join(models, aside)):
+						held[dlKey(repoID)] = fallback{aside: aside}
+						log.Info("the version an update replaced is kept aside until the new version has loaded once", "model", repoID)
+						continue
+					}
 				}
 			}
 			if err := sorg.RemoveAll(e.Name()); err != nil {
@@ -785,11 +957,13 @@ func clearStagingKeepingAside(root *os.Root, models string, log interface{ Warn(
 }
 
 // putBackAside moves each old version an interrupted swap left aside back to
-// its model's folder, when nothing stands there.
-func putBackAside(root *os.Root, log interface{ Warn(string, ...any) }) {
+// its model's folder, when nothing stands there, and returns the models it
+// put one back for, keyed as the in-flight downloads are.
+func putBackAside(root *os.Root, log stagingLog) map[string]bool {
+	putBack := map[string]bool{}
 	orgs, err := readDirIn(root, stagingDirName)
 	if err != nil {
-		return
+		return putBack
 	}
 	for _, org := range orgs {
 		orgRel := filepath.Join(stagingDirName, org.Name())
@@ -828,9 +1002,12 @@ func putBackAside(root *os.Root, log interface{ Warn(string, ...any) }) {
 			}
 			if err := root.Rename(aside, destRel(repoID)); err != nil {
 				log.Warn("could not put back a model left aside by an interrupted update", "model", repoID, "err", err)
+				continue
 			}
+			putBack[dlKey(repoID)] = true
 		}
 	}
+	return putBack
 }
 
 // readDirIn lists a directory inside root.

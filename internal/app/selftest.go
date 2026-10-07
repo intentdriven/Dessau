@@ -68,6 +68,7 @@ func (s selfTestServer) Activity() selftest.Activity {
 		Downloading: len(s.a.Downloading()),
 		Refusals:    res.Refusals,
 	}
+	act.Requests, act.LastRequest = s.a.Clients.Snapshot()
 	for _, m := range res.Models {
 		act.Models = append(act.Models, selftest.ModelActivity{
 			RepoID: m.RepoID, InFlight: m.InFlight, LastUsed: m.LastUsed,

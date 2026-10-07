@@ -2,6 +2,8 @@ package hub
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -187,15 +189,103 @@ func TestACheckReadsASmallFileAtTheCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := c.SmallFileAt(context.Background(), up, "config.json", 1<<20)
+	b, err := c.SmallFileAt(context.Background(), up, File{Path: "config.json"}, 1<<20)
 	if err != nil {
 		t.Fatalf("SmallFileAt: %v", err)
 	}
 	if string(b) != `{"model_file":"x.py"}` {
 		t.Errorf("body = %q", b)
 	}
-	if _, err := c.SmallFileAt(context.Background(), up, "config.json", 4); !errors.Is(err, ErrOversizedBody) {
+	if _, err := c.SmallFileAt(context.Background(), up, File{Path: "config.json"}, 4); !errors.Is(err, ErrOversizedBody) {
 		t.Errorf("a body past the bound: err = %v, want ErrOversizedBody", err)
+	}
+}
+
+// lfsSmallFileHub is a Hub that hands config.json to a content CDN, as it
+// does for a file a repository keeps in LFS; the CDN answers with body and
+// records the Authorization header it was sent.
+func lfsSmallFileHub(t *testing.T, body string) (c *Client, cdnAuth func() []string) {
+	t.Helper()
+	var mu sync.Mutex
+	var auths []string
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auths = append(auths, r.Header.Get("Authorization"))
+		mu.Unlock()
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(cdn.Close)
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/org/repo/resolve/"+testCommit+"/config.json" {
+			http.Redirect(w, r, cdn.URL+"/blob", http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(hub.Close)
+	return &Client{BaseURL: hub.URL, HTTP: hub.Client()}, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), auths...)
+	}
+}
+
+func lfsFile(path, body string, size int64) File {
+	sum := sha256.Sum256([]byte(body))
+	f := File{Path: path, Type: "file", Size: size}
+	f.LFS = &struct {
+		OID  string `json:"oid"`
+		Size int64  `json:"size"`
+	}{OID: hex.EncodeToString(sum[:]), Size: size}
+	return f
+}
+
+// A small file the listing says the repository keeps in LFS is read where
+// the Hub hands it, its content CDN, as a download reads it: held to the
+// sha256 the listing gives and to the bound, and never sent the token off
+// the Hub's origin (iss-2610042101439623).
+func TestACheckReadsASmallLFSFileFromTheContentCDN(t *testing.T) {
+	const body = `{"model_file":"x.py"}`
+	c, cdnAuth := lfsSmallFileHub(t, body)
+	up := Upstream{RepoID: "org/repo", Commit: testCommit, Authed: true, token: "hf_secret"}
+	b, err := c.SmallFileAt(context.Background(), up, lfsFile("config.json", body, int64(len(body))), 1<<20)
+	if err != nil {
+		t.Fatalf("SmallFileAt: %v", err)
+	}
+	if string(b) != body {
+		t.Errorf("body = %q", b)
+	}
+	for _, a := range cdnAuth() {
+		if a != "" {
+			t.Errorf("the content CDN was sent Authorization %q", a)
+		}
+	}
+	if _, err := c.SmallFileAt(context.Background(), up, lfsFile("config.json", `{"model_type":"qwen3"}`, int64(len(body))), 1<<20); !errors.Is(err, ErrContentMismatch) {
+		t.Errorf("bytes that are not the listed ones: err = %v, want ErrContentMismatch", err)
+	}
+	if _, err := c.SmallFileAt(context.Background(), up, lfsFile("config.json", body, int64(len(body))), 4); !errors.Is(err, ErrOversizedBody) {
+		t.Errorf("a body past the bound: err = %v, want ErrOversizedBody", err)
+	}
+	before := len(cdnAuth())
+	if _, err := c.SmallFileAt(context.Background(), up, lfsFile("config.json", body, 1<<30), 1<<20); !errors.Is(err, ErrOversizedBody) {
+		t.Errorf("a file listed past the bound: err = %v, want ErrOversizedBody", err)
+	}
+	if len(cdnAuth()) != before {
+		t.Error("a file listed past the bound was fetched")
+	}
+}
+
+// A file the listing keeps in git has no sha256 to hold the CDN's bytes to,
+// so one the Hub hands off its origin is still refused.
+func TestASmallGitFileHandedOffTheHubIsRefused(t *testing.T) {
+	c, cdnAuth := lfsSmallFileHub(t, `{}`)
+	up := Upstream{RepoID: "org/repo", Commit: testCommit}
+	_, err := c.SmallFileAt(context.Background(), up, File{Path: "config.json", OID: testCommit}, 1<<20)
+	if !errors.Is(err, ErrCrossOrigin) {
+		t.Errorf("err = %v, want ErrCrossOrigin", err)
+	}
+	if len(cdnAuth()) != 0 {
+		t.Error("the content CDN was asked for a file the listing keeps in git")
 	}
 }
 

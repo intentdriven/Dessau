@@ -24,6 +24,8 @@ func TestTheCardSaysWhatACheckFound(t *testing.T) {
 			`ships its own code, which Dessau will not run`, `newer version not run`, false},
 		{`{"state":"ready",` + c + `,"update":{"status":"awaiting_review","commit":"2222222222222222222222222222222222222222"}}`,
 			`will be offered once a Dessau release has reviewed it`, `newer version awaiting review`, false},
+		{`{"state":"ready",` + c + `,"update":{"status":"cannot_check","commit":"2222222222222222222222222222222222222222"}}`,
+			`could not tell whether it ships its own code`, `newer version not checked`, false},
 		{`{"state":"ready"}`, `Version unknown`, ``, true},
 		{`{"state":"ready",` + c + `,"updating":42.7,"update":{"status":"available","commit":"2222222222222222222222222222222222222222"}}`,
 			`Updating to the newer version: 42%`, ``, false},
@@ -81,6 +83,7 @@ func TestTheCardSaysWhyTheLastUpdateFailed(t *testing.T) {
 		{`{"state":"ready",` + c + `,"update_failed":"refused"}`, `did not pass the checks`, ``},
 		{`{"state":"ready",` + c + `,"update_failed":"busy"}`, `still answering requests`, ``},
 		{`{"state":"ready",` + c + `,"update_failed":"not_offered"}`, `not one Dessau runs`, ``},
+		{`{"state":"ready",` + c + `,"update_failed":"load"}`, `did not load, so Dessau put this version back`, ``},
 		{`{"state":"ready",` + c + `,` + avail + `,"update_failed":"download"}`, `The last update failed`, `A newer version is available (222222222222).`},
 		{`{"state":"ready","update_failed":"download"}`, `The last update failed`, `Version unknown`},
 	}

@@ -50,6 +50,11 @@ type App struct {
 	// Probe measures each model's servable context window as a job of that
 	// same loop (itd-2609091301112705); see internal/contextprobe.
 	Probe *contextprobe.Probe
+	// Clients is the idle clock's count of client requests, which the
+	// gateway keeps (gateway.Options.Clients) and the idle loop reads
+	// through selfTestServer.Activity: every client request, whatever it
+	// ended as and wherever its model is now (iss-2610041945030758).
+	Clients *selftest.Clients
 	// ToolProbe asks each model once, at its first serve under this
 	// runtime, whether it calls tools (itd-2609201445423499); see
 	// internal/toolprobe. It is queued by the pool's observer and reaches
@@ -156,7 +161,11 @@ type App struct {
 	// one the pool starts model servers with, whose Precheck a staged
 	// version must pass; drainWait bounds the swap's wait for requests in
 	// flight.
-	swapping  map[string]bool
+	swapping map[string]bool
+	// fallbacks holds, for each model whose update has not yet loaded and
+	// answered once, the version it replaced, waiting aside to be put back
+	// should the first load fail (staged.go); guarded by dlMu.
+	fallbacks map[string]fallback
 	launcher  runtime.Launcher
 	drainWait time.Duration
 	// freeSpace says how much room the models folder's volume has; a seam
@@ -271,8 +280,10 @@ func New(opts Options) (*App, error) {
 		return nil, err
 	}
 	// Before the rescan: a model an interrupted update left aside goes back
-	// where the rescan will find it, and staged versions are cleared.
-	recoverStaging(opts.Paths.Models, opts.Log)
+	// where the rescan will find it, and staged versions are cleared. A
+	// version an update replaced, and holds until the new one has loaded
+	// once, is kept and held again.
+	fallbacks := recoverStaging(opts.Paths.Models, opts.Log)
 	// Adopt whatever is already in this account's models directory — what lets
 	// a reinstall pick up models without re-downloading them — and drop any
 	// entry whose model is not there, whatever path the index stored for it.
@@ -322,6 +333,7 @@ func New(opts Options) (*App, error) {
 		updatePause:     updateCheckPause,
 		updateTimeout:   updateCheckRequestTimeout,
 		swapping:        map[string]bool{},
+		fallbacks:       fallbacks,
 		drainWait:       drainWait,
 		freeSpace:       capability.FreeDisk,
 	}
@@ -385,6 +397,7 @@ func New(opts Options) (*App, error) {
 		MaxLoadWaitersPerSource: 2,
 	})
 	a.applyStatistics(opts.Config)
+	a.Clients = &selftest.Clients{}
 	a.Probe = contextprobe.New(contextprobe.Options{
 		Sources: probeSources{a},
 		Enabled: func() bool { return a.Config().ContextProbe },
@@ -1731,6 +1744,8 @@ func (a *App) startDownload(repoID, commit string) error {
 			// words: a repo the Hub is silent about is not asked again at the
 			// next start, and one the Hub was not heard for is.
 			var perr error
+			var superseded fallback
+			var held bool
 			a.finishDownload(dl, func() {
 				perr = a.Registry.Put(registry.Model{
 					RepoID:           repoID,
@@ -1754,9 +1769,23 @@ func (a *App) startDownload(repoID, commit string) error {
 				})
 				// Inside finishDownload's hold of dlMu, where the mark lives.
 				delete(a.swapping, dlKey(repoID))
+				// And the old version is held aside in the same step, so
+				// no load of the new one can end before it is: it goes
+				// once the new version has loaded and answered, and comes
+				// back if that first load fails (iss-2610042101430192).
+				// A version an earlier update already holds stays held: it
+				// is the last one known to have served, and the version
+				// this update replaced never loaded, so that one goes.
+				if dl.staged.Load() {
+					if _, held = a.fallbacks[dlKey(repoID)]; held {
+						superseded = fallback{aside: st.aside}
+					} else {
+						a.fallbacks[dlKey(repoID)] = fallback{aside: st.aside, commit: st.priorCommit, hashes: st.priorHashes}
+					}
+				}
 			})
-			if dl.staged.Load() {
-				a.removeAside(repoID, st.aside)
+			if held {
+				a.removeAside(repoID, superseded.aside)
 			}
 			if perr != nil {
 				// The files are on disk; only the index write failed. Surface it —
@@ -1987,7 +2016,13 @@ func (a *App) Delete(repoID string) error {
 	}
 	// The directory comes from the validated id, never from the registry's
 	// stored path (see Registry.Remove).
-	return a.Registry.Remove(repoID, a.Paths.ModelDir(repoID))
+	if err := a.Registry.Remove(repoID, a.Paths.ModelDir(repoID)); err != nil {
+		return err
+	}
+	// The version an update replaced goes with the model, or the next start
+	// would put it back in the model's place.
+	a.dropFallback(repoID)
+	return nil
 }
 
 // Close shuts the app down.
