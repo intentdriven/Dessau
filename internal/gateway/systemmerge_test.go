@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -782,9 +781,12 @@ func TestPlainCompletionsAreNeverMerged(t *testing.T) {
 
 // Go repairs an invalid UTF-8 byte sequence into U+FFFD when it decodes a JSON
 // string, and re-encodes it as valid UTF-8. Merging such a message would hand
-// the model characters the client never sent, while relaying it passes the
-// same bytes through untouched — so it is relayed. Only raw bytes can show
-// this: every JSON decoder between here and the assertion would repair them.
+// the model characters the client never sent. On the network path the body is
+// now refused before merging is reached, because the model server cannot
+// decode such bytes either (iss-2610042036094209); so neither a merged nor a
+// relayed copy reaches it. The merge's own refusal of such content is held by
+// TestMergeSystemMessagesRefusesShapesItCannotRebuild, for the bridge's path,
+// which merges a body it did not read from the network.
 func TestMergingRefusesInvalidUTF8InSystemContent(t *testing.T) {
 	srv, upstream := newRecordingGateway(t, mergingOn, false)
 
@@ -800,16 +802,11 @@ func TestMergingRefusesInvalidUTF8InSystemContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
-
-	raw := upstream.rawBody()
-	if !bytes.Contains(raw, []byte{0xff, 0xfe}) {
-		t.Errorf("the model server received %q; the invalid bytes were repaired rather than relayed through", raw)
-	}
-	if bytes.Contains(raw, []byte(`a\ufffd`)) || bytes.Contains(raw, []byte(`\n\nAnswer briefly.`)) {
-		t.Errorf("the request was merged despite content merging cannot re-encode: %q", raw)
+	if raw := upstream.rawBody(); raw != nil {
+		t.Errorf("the model server received %q; a body that is not valid UTF-8 must not reach it, merged or not", raw)
 	}
 }
 
@@ -829,6 +826,7 @@ func TestMergeSystemMessagesRefusesShapesItCannotRebuild(t *testing.T) {
 		{"a system message after the first carrying another field", `[{"role":"user","content":"hi"},{"role":"system","content":"a"},{"role":"system","content":"b","name":"house-rules"}]`},
 		{"a system message after the first with a case-variant of content", `[{"role":"system","content":"a"},{"role":"user","content":"hi"},{"role":"system","content":"b","Content":"c"}]`},
 		{"the first system message's content is not a string", `[{"role":"system","content":[{"type":"text","text":"a"}],"name":"x"},{"role":"system","content":"b"}]`},
+		{"system content that is not valid UTF-8", `[{"role":"system","content":"a` + "\xff\xfe" + `b"},{"role":"user","content":"hi"},{"role":"system","content":"Answer briefly."}]`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -4,8 +4,9 @@
 to the model server, changing only the fields listed under
 [What Dessau changes in a request it passes on](#what-dessau-changes-in-a-request-it-passes-on).
 Two fields are refused instead, and a request carrying either goes no further;
-so is a request with nothing to answer, a `prompt` that is not a string, one
-that asks for an empty answer, or one whose `stop` is not text.
+so is a request whose body is not valid UTF-8, one with nothing to answer, a
+`prompt` that is not a string, one that asks for an empty answer, or one whose
+`stop` is not text.
 
 ## The refused fields
 
@@ -50,6 +51,21 @@ The request is refused before a model is chosen: no model is loaded and none
 is evicted for it, the model server never receives it, and the answer carries
 none of the [response headers](response-headers.md). Every client receives
 the same message, with or without the API key.
+
+## A body that is not valid UTF-8
+
+A request body must be valid UTF-8 text, as JSON sent between systems is. A
+body holding any byte sequence that is not — a stray byte, a character cut
+short, an over-long or surrogate encoding — anywhere in it, inside a message
+or a key alike, is refused with **400** and the message
+`request body is not valid UTF-8`. The model server takes such a body and
+then fails to decode it, dropping the connection without an answer. Text in
+any script, accents, CJK and emoji included, is valid UTF-8 and is passed on
+as usual; so is a character written as a JSON escape (`\u00e9`).
+
+The check is of the body's encoding as a whole: it reads no field, and the
+message carries none of the body. Like the refusals above, it comes before a
+model is chosen, so nothing is loaded or evicted for the request.
 
 ## Nothing to answer
 
