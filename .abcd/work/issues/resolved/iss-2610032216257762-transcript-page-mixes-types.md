@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "docs/transcript.md"
 remedy: "Keep the how-to and the bridge and debug-logging rules on the page; move the recording field and the icons to the models-list reference, linking back."
+resolution: "The recording field and the icons moved to the models-list reference (Recording); docs/transcript.md keeps the how-to with the bridge and debug-logging rules and links there"
+impact: internal
 ---
 
 docs/transcript.md mixes Diátaxis types: a how-to (Mark a model), reference (the recording field and the icons) and explanation (the bridge and what the mark does not cover). It did before this change too.

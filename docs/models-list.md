@@ -193,6 +193,22 @@ same answer.
 relayed to the model exactly as sent and answered as the model answers it;
 nothing on the completions path reads the field.
 
+## Recording
+
+`recording` says whether a conversation with the model is written to a
+transcript on the Mac that runs the server. Dessau keeps no transcript, so it
+is `false` for every model. It is on every entry, to every client — with or
+without an API key, on the LAN as on this Mac — so the fact reaches everyone
+before a model is chosen. A model [marked as keeping no
+transcript](transcript.md) carries the same value; the mark governs the
+Discord bridge and debug logging, not this field.
+
+| Where | What it shows |
+|---|---|
+| Dessau Chat's model picker | An icon beside each model, struck through while a conversation with it is not written down, labelled in words for a screen reader. |
+| The control panel's model cards | The same icon. |
+| Any other OpenAI-compatible client | Nothing: it reads a model's name and was not written to show this field, which is published for every client to read. |
+
 ## The context figure
 
 `context_length` and `max_model_len` always carry the same number, as a JSON

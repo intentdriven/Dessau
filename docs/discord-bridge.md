@@ -118,6 +118,9 @@ field.
   model can spend the whole limit thinking, and then the bot says that the
   model reached its length limit before it wrote an answer, rather than that
   it answered with nothing.
+- The bot reads a message once, when it is sent, and never reads an edit. A
+  mention of the bot or a question added to a message by editing it is not
+  answered; send it again as a new message.
 - The bridge holds a limited number of conversations and answers a small
   number of requests at once. It keeps up to 64 conversations of 32 turns, a
   turn up to 16 KiB — every message Discord delivers fits whole — and 8 MiB of

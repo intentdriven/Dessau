@@ -27,21 +27,10 @@ first request the model ever serves after it is downloaded; the panel draws a
 row for it, marked *not on this Mac*, so it can be cleared from the form that
 shows it.
 
-## What a client is told
-
-Every client that asks the server for its models is told, for each one,
-whether a conversation with it is recorded: the `recording` field on every
-entry of the [models list](models-list.md), present with or without an API
-key, on the LAN as on this Mac. Dessau keeps no transcript, so it is `false`
-for every model. Dessau Chat reads it and shows an icon beside each model in
-its picker, struck through while a conversation with the model is not written
-down, labelled in words for a screen reader, so the state is visible before
-the model is chosen. The control panel's model cards carry the same icon.
-
-An ordinary OpenAI-compatible client reads a model's name and displays none of
-this. Dessau cannot make software show something it was not written to show;
-what it can do is publish the fact where every client can read it, and show it
-in its own client and panel.
+Every client is told whether a conversation with a model is recorded,
+through the models list's `recording` field and the icon Dessau Chat and the
+control panel draw from it; [the models list](models-list.md#recording)
+describes both.
 
 ## Over the Discord bridge
 
