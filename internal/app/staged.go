@@ -727,6 +727,7 @@ func (a *App) restoreFallback(repoID string) bool {
 			Bytes:            bytes,
 			ContextLength:    facts.ContextLength,
 			KVChargePerToken: facts.KVChargePerToken,
+			KVBytesPerToken:  facts.KVBytesPerToken,
 			ChatTemplate:     facts.ChatTemplate,
 			QuantizationBits: facts.QuantizationBits,
 			PipelineTag:      m.PipelineTag,

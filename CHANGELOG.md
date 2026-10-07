@@ -28,6 +28,18 @@ GitHub release notes.
 
 ### Fixed
 
+- **The conversations a model remembers between requests no longer grow
+  past its memory charge.** `impact: fix`. A model's server keeps the
+  caches of recent prompts so that the next turn of a conversation is not
+  read again, and it kept up to ten of them with no limit on their size: a
+  model serving Alice's, Bob's and Carol's long conversations could hold
+  several windows of cache that the memory budget never counted. What it
+  keeps is now held, all together, to one served window of the cache's own
+  size. A model whose configuration does not say what its cache costs keeps
+  none between requests. Dessau works out the new figure when it starts, so
+  a model downloaded earlier gains it at the next start
+  ([why there is a memory budget](docs/memory-budget-explained.md);
+  iss-2610071035130302).
 - **An update that will not load no longer leaves a model without a
   version to serve.** `impact: fix`. Dessau removed the old version of a
   model as soon as the new one passed the checks it makes before starting a

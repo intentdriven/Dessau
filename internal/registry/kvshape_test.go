@@ -116,9 +116,15 @@ func TestKVBytesPerTokenReadsTheConfigurationsShape(t *testing.T) {
 			if c.latent {
 				factor = 7
 			}
-			if got, want := ReadModelFacts(dir).KVChargePerToken, c.want*factor; got != want {
+			facts := ReadModelFacts(dir)
+			if got, want := facts.KVChargePerToken, c.want*factor; got != want {
 				t.Errorf("KVChargePerToken = %d, want %d (%d from the configuration, times %d)",
 					got, want, c.want, factor)
+			}
+			// And the arithmetic itself, uncharged, beside it: what the
+			// model server's prompt cache is bounded by.
+			if got := facts.KVBytesPerToken; got != c.want {
+				t.Errorf("KVBytesPerToken = %d, want %d, the configuration's own figure", got, c.want)
 			}
 		})
 	}

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/Dessau/internal/capability"
 	"github.com/intentdriven/Dessau/internal/config"
 	"github.com/intentdriven/Dessau/internal/registry"
 )
@@ -49,7 +50,21 @@ type Spec struct {
 	// carries it, so the launch after this one is back at INFO with nothing to
 	// remember (adr-2609201008477513).
 	DebugLog bool
+	// KVBytesPerToken and ServedContext bound the prompt cache the server
+	// keeps between requests: their product, one served window of real
+	// cache for one sequence, is what the cache may hold
+	// (promptCacheBytes). They are the pool's resolved figures
+	// (ResolvedModel), and either being zero or less means the bound is not
+	// known, which keeps no prompt cache at all.
+	KVBytesPerToken int64
+	ServedContext   int64
 }
+
+// promptCacheBytesFlag is Dessau's own flag, read and removed by serve.py
+// before the server's argument parser sees the rest. It is not the pinned
+// server's --prompt-cache-bytes, which 0.32.0 applies only as a trim on its
+// batched path and never hands to the prompt cache's constructor.
+const promptCacheBytesFlag = "--dessau-prompt-cache-bytes"
 
 // DebugLogMaxBytes bounds what one armed run of a model server writes to its
 // log. At DEBUG the server writes every request body and every response, so
@@ -422,6 +437,31 @@ func refuseModelCode(spec Spec, owner int) error {
 	}
 }
 
+// promptCacheEntries is how many prompts' caches the model server keeps
+// between requests: the pinned server's own default, passed explicitly.
+const promptCacheEntries = 10
+
+// promptCacheBytes is the most the model server's prompt cache may hold: one
+// served window of real cache for one sequence (iss-2610071035130302).
+//
+// The charge already reserves a window of charged cache — the real figure
+// times a safety factor — for every sequence the server may decode, so a
+// prompt cache held to one real window is counted inside what the model is
+// charged, on the margin that factor leaves, and the charge is not raised.
+// Without a bound the pinned server keeps ten entries of any size, and each
+// can be a whole window: several long conversations held several windows the
+// charge does not count.
+//
+// A model whose real figure or window is not known is charged the flat
+// figure, which reserves no cache at all (capability.LoadCostOf). Its prompt
+// cache is bounded within that charge too — at nothing, so its server keeps
+// no cache between requests rather than one without a limit. That costs
+// such a model the reuse of a conversation's earlier turns; a guess at a
+// figure would be worse, as it would be for the charge.
+func promptCacheBytes(spec Spec) int64 {
+	return capability.MulSaturating(spec.KVBytesPerToken, spec.ServedContext)
+}
+
 // launchArgs is the model server's whole command line, spec by spec.
 //
 // It is a function of the Spec alone, and the one thing the Spec says about
@@ -445,11 +485,17 @@ func launchArgs(spec Spec) []string {
 	// main(), handler and argument parser, served on Spec.Socket instead of a
 	// TCP port. Only the Go gateway faces the network, so it alone enforces
 	// auth and rewrites requests; the launcher's own refusals sit behind it.
+	//
+	// The prompt-cache bound follows the socket, where serve.py takes it by
+	// position, and the entry count is spelled out rather than left to the
+	// server's default, so a release that moved it would not move the cache.
 	args := []string{
 		"-I", "-u", "-c", serveScript,
 		"--dessau-socket", spec.Socket,
+		promptCacheBytesFlag, strconv.FormatInt(promptCacheBytes(spec), 10),
 		"--model", spec.ModelPath,
 		"--log-level", level,
+		"--prompt-cache-size", strconv.Itoa(promptCacheEntries),
 	}
 	args = append(args, samplingArgs(spec.Sampling)...)
 	if spec.DecodeConcurrency > 1 {

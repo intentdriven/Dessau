@@ -49,6 +49,11 @@ type ResolvedModel struct {
 	// KVChargePerToken is what one token of that window is charged against the
 	// budget (registry.Model.KVChargePerToken).
 	KVChargePerToken int64
+	// KVBytesPerToken is what one token of that window really costs, without
+	// the charge's safety factor (registry.Model.KVBytesPerToken). It is not
+	// charged: it bounds the prompt cache the model server keeps between
+	// requests (Spec.KVBytesPerToken). Zero means it is not known.
+	KVBytesPerToken int64
 }
 
 // Upstream is a ready model server the gateway can proxy to.
@@ -1399,6 +1404,8 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 		DecodeConcurrency: p.opts.DecodeConcurrency,
 		Sampling:          sampling,
 		DebugLog:          debugLog,
+		KVBytesPerToken:   m.KVBytesPerToken,
+		ServedContext:     m.ServedContext,
 	})
 	if err != nil {
 		return nil, p.launchFailedLocked(repoID, err)

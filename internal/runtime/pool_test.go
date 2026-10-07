@@ -39,7 +39,7 @@ func (s *fakeSource) Resolve(repoID string) (ResolvedModel, error) {
 		m := ResolvedModel{Path: "/models/" + id, Bytes: size}
 		for factID, f := range s.facts {
 			if strings.EqualFold(factID, repoID) {
-				m.ServedContext, m.KVChargePerToken = f.ServedContext, f.KVChargePerToken
+				m.ServedContext, m.KVChargePerToken, m.KVBytesPerToken = f.ServedContext, f.KVChargePerToken, f.KVBytesPerToken
 			}
 		}
 		return m, nil
