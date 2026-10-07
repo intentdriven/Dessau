@@ -13,6 +13,17 @@ GitHub release notes.
 
 ### Fixed
 
+- **A Discord answer is no longer cut short at a fixed 1,024 tokens, and one
+  that reaches its limit says so.** `impact: fix`. The bridge asked every
+  model for at most 1,024 tokens whatever window it was served at, so a long
+  answer stopped mid-sentence without a word, and a reasoning model could
+  spend all of it thinking and be reported as having answered with nothing.
+  An answer may now take half the model's served window, the conversation
+  sent with it keeping the other half. When the model still stops on length,
+  the bot says so in a message of its own after the answer, or, when nothing
+  of the answer was written, says that the model reached its length limit
+  before it wrote one ([Discord bridge](docs/discord-bridge.md);
+  iss-2610041945020793).
 - **An update that will not load no longer leaves a model without a
   version to serve.** `impact: fix`. Dessau removed the old version of a
   model as soon as the new one passed the checks it makes before starting a

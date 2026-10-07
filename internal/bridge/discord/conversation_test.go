@@ -55,6 +55,38 @@ func TestAConversationIsTrimmedToTheServedWindow(t *testing.T) {
 	}
 }
 
+// The answer is sized from the model's served window, as the history is,
+// rather than held to a fixed figure (iss-2610041945020793): a reasoning
+// model spent a fixed 1,024 tokens thinking and every answer stopped there,
+// whatever the window. The history keeps its share all the same — the answer
+// never takes more than half — and the two together are still a request the
+// gateway admits.
+func TestTheAnswerIsSizedFromTheServedWindow(t *testing.T) {
+	const fixedCap = 1024
+	turns := []turn{{Role: roleUser, Content: "hello"}}
+	for _, served := range []int64{32_768, 65_536, 262_144} {
+		body, err := buildRequest("a-model", turns, served)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var req request
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatal(err)
+		}
+		if req.MaxTokens <= fixedCap {
+			t.Errorf("a model served at %d tokens is asked for an answer of %d, no more than the "+
+				"fixed %d the bridge used to ask for whatever the window", served, req.MaxTokens, fixedCap)
+		}
+		if int64(req.MaxTokens) > served/2 {
+			t.Errorf("a model served at %d tokens is asked for an answer of %d, more than half the "+
+				"window, which would leave the history less than the answer", served, req.MaxTokens)
+		}
+		if judged := int64(len(body)/bytesPerToken) + int64(req.MaxTokens); judged > served {
+			t.Errorf("the request would be judged at %d tokens against a window of %d", judged, served)
+		}
+	}
+}
+
 // A single message too large for the window on its own is truncated rather
 // than refused: refusing would leave that person unable to say anything at all
 // in that channel.

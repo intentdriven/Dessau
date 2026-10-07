@@ -600,3 +600,122 @@ func TestASlashCommandIsAnsweredWhileTheChannelIsBusy(t *testing.T) {
 	}
 	close(hold)
 }
+
+// finishing is recording with the stream's last event carrying a
+// finish_reason, as the gateway relays it: an empty delta and the reason the
+// model stopped.
+func finishing(t *testing.T, f *fakeDiscord, reason string, pieces ...string) (*Bridge, func() []request) {
+	t.Helper()
+	var mu sync.Mutex
+	var asked []request
+	opts := f.options(time.Now)
+	opts.Ask = func(ctx context.Context, req gateway.AskRequest) error {
+		var body request
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return err
+		}
+		mu.Lock()
+		asked = append(asked, body)
+		mu.Unlock()
+		for _, p := range pieces {
+			payload, _ := json.Marshal(map[string]any{
+				"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"content": p}, "finish_reason": nil}},
+			})
+			req.OnEvent(payload)
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": reason}},
+		})
+		req.OnEvent(payload)
+		return nil
+	}
+	b := New(opts)
+	t.Cleanup(func() { _ = b.Close() })
+	return b, func() []request {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]request(nil), asked...)
+	}
+}
+
+// postedWithin collects every message the bot posted into the channel within
+// a quiet moment.
+func postedWithin(f *fakeDiscord) []string {
+	var texts []string
+	deadline := time.After(quiet)
+	for {
+		select {
+		case c := <-f.calls:
+			if c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/channels/"+channelID+"/messages") {
+				text, _ := c.Body["content"].(string)
+				texts = append(texts, text)
+			}
+		case <-deadline:
+			return texts
+		}
+	}
+}
+
+// An answer the gateway reports as stopped on length says so, in a message
+// of its own after the answer, so Alice does not take a reply cut
+// mid-sentence for the whole of it (iss-2610041945020793). The notice is the
+// bridge's, not the model's: it is not kept in the history the next message
+// sends.
+func TestAnAnswerThatStopsOnLengthSaysSo(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, asked := finishing(t, f, "length", "the answer was going to say **that")
+	connected(t, f, b)
+
+	f.message("tell me everything", false, false)
+	first := answered(t, f, b)
+	if got, _ := first.Body["content"].(string); !strings.Contains(got, "the answer was going") {
+		t.Fatalf("the bot posted %q first, want the model's answer", got)
+	}
+	posted := postedWithin(f)
+	if len(posted) != 1 || posted[0] != stoppedOnLength {
+		t.Fatalf("after an answer that stopped on length the bot posted %q, want the one notice %q",
+			posted, stoppedOnLength)
+	}
+
+	f.message("go on", false, false)
+	answered(t, f, b)
+	got := asked()
+	if len(got) != 2 {
+		t.Fatalf("the gateway was asked %d times, want twice", len(got))
+	}
+	for _, m := range got[1].Messages {
+		if strings.Contains(m.Content, stoppedOnLength) {
+			t.Errorf("the notice was sent to the model as part of the history: %q", m.Content)
+		}
+	}
+}
+
+// An answer whose length ran out before any of it was written — a reasoning
+// model can spend the whole of it thinking — says that, rather than that the
+// model answered with nothing.
+func TestAnAnswerAllReasoningSaysItStoppedOnLength(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, _ := finishing(t, f, "length")
+	connected(t, f, b)
+
+	f.message("hello", false, false)
+	call := answered(t, f, b)
+	if got, _ := call.Body["content"].(string); got != stoppedBeforeAnswering {
+		t.Errorf("an answer that ran out of length before it began was reported as %q, want %q",
+			got, stoppedBeforeAnswering)
+	}
+}
+
+// The notice comes from the finish_reason the gateway returns, not from a
+// guess: an answer the model ended itself carries none, however it ends.
+func TestAnAnswerThatStopsOnItsOwnCarriesNoNotice(t *testing.T) {
+	f := newFakeDiscord(t)
+	b, _ := finishing(t, f, "stop", "an answer that ends with **that")
+	connected(t, f, b)
+
+	f.message("hello", false, false)
+	answered(t, f, b)
+	if posted := postedWithin(f); len(posted) != 0 {
+		t.Errorf("after an answer the model ended itself the bot also posted %q", posted)
+	}
+}
