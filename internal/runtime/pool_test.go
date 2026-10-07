@@ -291,14 +291,14 @@ func TestAcquireLaunchesAndReturnsReadyUpstream(t *testing.T) {
 	}
 }
 
-// The per-model semaphore bounds in-flight requests to 2x DecodeConcurrency, so a
+// The per-model semaphore bounds in-flight requests to DecodeConcurrency, so a
 // burst cannot swamp one mlx-lm server's memory. Past the cap, Acquire blocks
 // until a slot frees rather than admitting the request.
 func TestAcquireBoundsPerModelConcurrency(t *testing.T) {
 	l := newFakeLauncher()
 	src := &fakeSource{models: map[string]int64{"org/m": 1 << 20}}
-	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30, DecodeConcurrency: 1})
-	// cap = 2 * DecodeConcurrency = 2.
+	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30, DecodeConcurrency: 2})
+	// cap = DecodeConcurrency = 2.
 
 	r1, rel1, err := p.Acquire(context.Background(), "org/m")
 	if err != nil {
@@ -340,9 +340,9 @@ func TestAcquireBoundsPerModelConcurrency(t *testing.T) {
 func TestAcquireRejectsBeyondQueueDepth(t *testing.T) {
 	l := newFakeLauncher()
 	src := &fakeSource{models: map[string]int64{"org/m": 1 << 20}}
-	// cap(sem) = 2*DecodeConcurrency = 2; MaxQueueDepth = 2; so maxInFlight = 4.
+	// cap(sem) = DecodeConcurrency = 2; MaxQueueDepth = 2; so maxInFlight = 4.
 	p := newTestPool(t, l, src, PoolOptions{
-		MaxResidentBytes: 1 << 30, DecodeConcurrency: 1, MaxQueueDepth: 2,
+		MaxResidentBytes: 1 << 30, DecodeConcurrency: 2, MaxQueueDepth: 2,
 	})
 
 	// Two active slots, held for the duration.

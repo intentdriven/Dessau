@@ -11,6 +11,21 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **A model runs no more requests at once than its memory is charged for.**
+  `impact: breaking`. Each model is charged one served window of attention
+  cache per batched request, but its server was handed twice that many
+  requests at once, so two long conversations on one model could build twice
+  the cache the memory budget had set aside. A model now runs as many
+  requests at once as **Settings → Batched requests** says, and the next
+  waits its turn: at the default of one, when Alice and Bob ask the same
+  model together, Bob's answer starts when Alice's ends. Raise **Batched
+  requests** on a Mac that serves several clients at once
+  ([getting started](docs/getting-started.md);
+  [why there is a memory budget](docs/memory-budget-explained.md);
+  iss-2610071035138788).
+
 ### Fixed
 
 - **An update that will not load no longer leaves a model without a

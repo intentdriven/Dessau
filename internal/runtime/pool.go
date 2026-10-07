@@ -373,11 +373,13 @@ type entry struct {
 	debugLog bool
 
 	// sem bounds how many requests run against this one model server at once. Its
-	// capacity is a small multiple of the server's --decode-concurrency: mlx-lm
-	// batches only that many decodes, and each extra in-flight sequence holds its
-	// own KV cache. On a unified-memory Mac an unbounded burst is a direct path to
-	// a GPU-memory blowup that crashes the server and every request with it, so
-	// excess requests queue on this channel instead.
+	// capacity is the server's decode concurrency, which is exactly how many
+	// sequences the budget charges this model's cache for (chargeLocked): each
+	// in-flight sequence holds its own KV cache, so admitting more than were
+	// charged lets the model grow past what the budget reserved. On a
+	// unified-memory Mac that is a direct path to a GPU-memory blowup that
+	// crashes the server and every request with it, so excess requests queue on
+	// this channel instead.
 	sem chan struct{}
 
 	// soft are the preemptible holds on this model: the id release uses to
@@ -1369,9 +1371,10 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 		loadedAt:  p.opts.now(),
 		lastUsed:  p.opts.now(),
 		ready:     make(chan struct{}),
-		// Allow twice the decode batch size in flight: enough to keep mlx-lm's
-		// batching full without letting an unbounded burst exhaust GPU memory.
-		sem: make(chan struct{}, 2*p.opts.DecodeConcurrency),
+		// Admit what is charged: chargeLocked reserves one served window of
+		// cache per decode slot, so no more requests than that run at once
+		// (iss-2610071035138788). The rest wait on the queue.
+		sem: make(chan struct{}, p.opts.DecodeConcurrency),
 	}
 
 	var sampling config.Sampling

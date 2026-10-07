@@ -196,12 +196,14 @@ func TestAResidentOnlyAcquireNeverLoads(t *testing.T) {
 	if n := len(l.launched); n != 0 {
 		t.Errorf("a resident-only acquire launched %d model server(s)", n)
 	}
-	// Held ordinarily, the model is there to be acquired resident-only.
+	// Loaded ordinarily, the model is there to be acquired resident-only. The
+	// loading request is served first, as the probe's always is: at one
+	// decode slot a second request waits for the first to finish.
 	_, release, err := p.Acquire(context.Background(), "org/a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer release()
+	release()
 	_, release2, err := p.Acquire(WithResidentOnly(context.Background()), "org/a")
 	if err != nil {
 		t.Fatalf("a resident-only acquire of a resident model was refused: %v", err)

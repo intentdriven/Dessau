@@ -36,7 +36,8 @@ any figure you type at its word.
 A loaded model is charged three things: its weights, a fifth of them again for
 the working set a running model needs whatever the prompt is, and the attention
 cache the window it is served at costs — once for every sequence its server may
-decode at once.
+decode at once. No more requests run on a model at once than it is charged
+for; the next waits for one in progress to finish.
 
 The cache is the term that decides which models can share this Mac. It grows
 with the prompt, and what it costs per token is a property of the architecture

@@ -2,8 +2,11 @@ package runtime
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/Dessau/internal/capability"
 )
@@ -244,5 +247,92 @@ func TestTheSameModelLoadsAtAWindowThatFits(t *testing.T) {
 	}
 	if got := p.Resident(); len(got) != 1 || got[0].Charge != 120+400*2 {
 		t.Errorf("Resident() = %+v, want the model charged its weights and two windows", got)
+	}
+}
+
+// The charge covers every request the pool admits to a model at once. A model
+// is charged one served window of cache per batched request, so the pool must
+// let no more requests run against it than it charged for: two long requests
+// admitted on a one-sequence charge can build twice the cache the budget
+// reserved (iss-2610071035138788). The request past the charge waits for a
+// running one to finish rather than running beside it.
+func TestTheChargeCoversEveryRequestThePoolAdmits(t *testing.T) {
+	for _, sequences := range []int{1, 2, 3} {
+		t.Run(fmt.Sprintf("%d batched requests", sequences), func(t *testing.T) {
+			const size, kv, window = 100, 1, 100
+			l := newFakeLauncher()
+			src := &fakeSource{
+				models: map[string]int64{"org/m": size},
+				facts: map[string]ResolvedModel{
+					"org/m": {Bytes: size, ServedContext: window, KVChargePerToken: kv},
+				},
+			}
+			p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30, DecodeConcurrency: sequences})
+
+			// Take every request the pool admits at once; the first one it
+			// will not admit before its deadline marks the limit.
+			var releases []func()
+			defer func() {
+				for _, release := range releases {
+					release()
+				}
+			}()
+			for len(releases) <= 4*sequences {
+				ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+				_, release, err := p.Acquire(ctx, "org/m")
+				cancel()
+				if err != nil {
+					if !errors.Is(err, context.DeadlineExceeded) {
+						t.Fatalf("Acquire: %v", err)
+					}
+					break
+				}
+				releases = append(releases, release)
+			}
+			admitted := len(releases)
+			if admitted == 0 {
+				t.Fatal("the pool admitted no request at all")
+			}
+
+			got := p.Resident()
+			if len(got) != 1 {
+				t.Fatalf("Resident() = %+v, want the one model", got)
+			}
+			covered := capability.LoadCostOf(capability.Load{
+				DiskBytes: size, KVChargePerToken: kv, Window: window, Sequences: int64(admitted),
+			})
+			if got[0].Charge < covered {
+				t.Errorf("%d requests ran at once on a charge of %d, but their caches need %d: the charge covers %d",
+					admitted, got[0].Charge, covered, sequences)
+			}
+			if admitted != sequences {
+				t.Errorf("%d requests ran at once, want the %d the charge covers", admitted, sequences)
+			}
+
+			// The next request waits for a running one, and runs once it ends.
+			done := make(chan error, 1)
+			go func() {
+				_, release, err := p.Acquire(context.Background(), "org/m")
+				if err == nil {
+					release()
+				}
+				done <- err
+			}()
+			select {
+			case err := <-done:
+				t.Fatalf("a request past the charge ran beside the others (err %v)", err)
+			case <-time.After(100 * time.Millisecond):
+			}
+			releases[0]()
+			releases = releases[1:]
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("the waiting request, once a slot freed: %v", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("the waiting request did not run after a running one ended")
+			}
+		})
 	}
 }
