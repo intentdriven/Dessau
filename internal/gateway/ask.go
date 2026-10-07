@@ -46,6 +46,9 @@ import (
 // adr-2609061610102325 already made.
 func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 	started := time.Now()
+	// Counted for the idle clock like a request over the network
+	// (Options.Clients).
+	defer g.clients.Begin()()
 	cfg := g.cfg()
 	obs := g.observe(cfg.Statistics, started)
 	obs.sourced(req.Source)

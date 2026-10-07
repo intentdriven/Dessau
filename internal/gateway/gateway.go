@@ -105,6 +105,11 @@ type Options struct {
 	// Nil means no idle job ever holds anything, and every such refusal is
 	// the plain sentence.
 	IdleJobs func() selftest.Status
+	// Clients is the idle clock's count of client requests: every request
+	// to the completion routes and every Ask is counted from its start to
+	// its end, whatever it ends as (iss-2610041945030758). Nil counts
+	// nothing.
+	Clients *selftest.Clients
 }
 
 // Gateway routes OpenAI requests to model servers.
@@ -125,6 +130,8 @@ type Gateway struct {
 	transcriptOn func() bool
 	// idleJobs is Options.IdleJobs, never nil.
 	idleJobs func() selftest.Status
+	// clients is Options.Clients; nil counts nothing.
+	clients *selftest.Clients
 }
 
 // New builds a Gateway.
@@ -159,6 +166,7 @@ func New(opts Options) *Gateway {
 		servedWindow: served,
 		transcriptOn: transcriptOn,
 		idleJobs:     idleJobs,
+		clients:      opts.Clients,
 	}
 }
 
@@ -696,6 +704,9 @@ func (g *Gateway) completions(w http.ResponseWriter, r *http.Request, chat bool)
 	// and the only definition under which time to first token means what a
 	// client thinks it means.
 	started := time.Now()
+	// Counted for the idle clock from here to the handler's return, whatever
+	// the request ends as (Options.Clients).
+	defer g.clients.Begin()()
 	cfg := g.cfg()
 	obs := g.observe(cfg.Statistics, started)
 	defer obs.finish(r.Context())

@@ -37,7 +37,12 @@ type fakeServer struct {
 	downloading int
 	// foreign is an in-flight request the self-test is not holding, on the
 	// model named, standing in for a client's.
-	foreign     string
+	foreign string
+	// requests and lastRequest are the gateway's count of client requests
+	// (Clients), which no resident model need show: one still uploading its
+	// body, or one whose model has left the pool since it ended.
+	requests    int
+	lastRequest time.Time
 	acquired    []string
 	unloaded    []string
 	concurrency int
@@ -164,7 +169,8 @@ func (s *fakeServer) Acquire(ctx context.Context, id string) (Upstream, func(), 
 func (s *fakeServer) Activity() Activity {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	act := Activity{Waiting: s.waiting, Downloading: s.downloading, Refusals: s.refusals}
+	act := Activity{Waiting: s.waiting, Downloading: s.downloading, Refusals: s.refusals,
+		Requests: s.requests, LastRequest: s.lastRequest}
 	for id := range s.resident {
 		n := s.inFlight[id]
 		if s.foreign == id {
@@ -577,6 +583,13 @@ func TestNothingRunsWhileTheMacIsBusy(t *testing.T) {
 		{"a load waiting", func(s *fakeServer) { s.waiting = 1 }},
 		{"a download running", func(s *fakeServer) { s.downloading = 1 }},
 		{"a recent request", func(s *fakeServer) { s.resident["org/b"] = true; s.lastUsed["org/b"] = time.Now() }},
+		// The gateway's count, which no resident model shows: a request in
+		// flight for longer than the quiet period, as one waiting on a wedged
+		// model is, and one that ended a moment ago on a model since gone — a
+		// wedged one unloaded after its client's requests ended unreachable
+		// (iss-2610041945030758).
+		{"a long client request no model shows", func(s *fakeServer) { s.requests = 1; s.lastRequest = time.Now().Add(-2 * time.Hour) }},
+		{"a client request that ended on a model since gone", func(s *fakeServer) { s.lastRequest = time.Now() }},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := newFakeServer(t, "org/a", "org/b")
@@ -953,6 +966,66 @@ func TestTheSelfTestsOwnRunDoesNotCountAsARecentRequest(t *testing.T) {
 	t.Cleanup(r.Close)
 	r.SetEnabled(true)
 	waitFor(t, "both resident models measured despite a one-hour quiet period", func() bool { return len(runsIn(t, r)) == 2 })
+}
+
+// gatewayJob stands in for the context probe, the job that drives its model
+// through the gateway: every run moves the gateway's client clock, the way
+// the probe's own requests do.
+type gatewayJob struct {
+	srv  *fakeServer
+	runs atomic.Int64
+}
+
+func (j *gatewayJob) Name() string                       { return "gateway" }
+func (j *gatewayJob) Due(_ []string, _ time.Time) string { return "org/a" }
+func (j *gatewayJob) Parks() bool                        { return false }
+func (j *gatewayJob) Run(_ *Session, _ string) {
+	j.srv.mu.Lock()
+	j.srv.lastRequest = time.Now()
+	j.srv.mu.Unlock()
+	j.runs.Add(1)
+}
+
+// A job's own requests through the gateway are not a client's: the clock they
+// moved does not keep the next tick from starting, as the pool's stamp of the
+// self-test's own release does not.
+func TestAJobsOwnGatewayRequestsDoNotCountAsARecentRequest(t *testing.T) {
+	srv := newFakeServer(t, "org/a")
+	job := &gatewayJob{srv: srv}
+	r := New(Options{
+		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Hour,
+		Jobs: []Job{job}, SelfTest: func() bool { return false },
+	})
+	t.Cleanup(r.Close)
+	r.SetEnabled(true)
+	waitFor(t, "the job to run again despite a one-hour quiet period", func() bool { return job.runs.Load() >= 2 })
+}
+
+// A client request after the loop's own run is a client's: the clock moving
+// past the run's end holds the next tick.
+func TestAClientRequestAfterARunHoldsTheNextTick(t *testing.T) {
+	srv := newFakeServer(t, "org/a")
+	job := &gatewayJob{srv: srv}
+	r := New(Options{
+		Server: srv, Path: filepath.Join(t.TempDir(), FileName),
+		Tick: 5 * time.Millisecond, Poll: 2 * time.Millisecond, Quiet: time.Hour,
+		Jobs: []Job{job}, SelfTest: func() bool { return false },
+	})
+	t.Cleanup(r.Close)
+	r.SetEnabled(true)
+	waitFor(t, "the job's first run", func() bool { return job.runs.Load() >= 1 })
+	r.SetEnabled(false)
+	time.Sleep(2 * time.Millisecond)
+	srv.mu.Lock()
+	srv.lastRequest = time.Now()
+	srv.mu.Unlock()
+	before := job.runs.Load()
+	r.SetEnabled(true)
+	waitFor(t, "the next tick to be held by the client's request", func() bool { return r.Status().HeldBy == HeldByRecent })
+	if got := job.runs.Load(); got != before {
+		t.Errorf("the job ran %d more times after a client's request", got-before)
+	}
 }
 
 // With eviction grace off, a client whose load finds no room is refused at
