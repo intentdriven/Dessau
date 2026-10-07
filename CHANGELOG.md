@@ -79,6 +79,13 @@ GitHub release notes.
   says, and keeps nothing
   ([request fields](docs/request-fields.md#a-body-that-is-not-valid-utf-8);
   iss-2610042036094209).
+- **A model you pin just as the self-test or the context probe unloads it
+  now stays loaded.** `impact: fix`. Both checked the pin and then stopped
+  the model as two separate steps, so a pin saved in the instant between them
+  was overridden: the model was unloaded and left pinned but not in memory.
+  The pin is now checked in the same step as the stop, so a pin saved before
+  the stop always keeps the model loaded
+  ([self-test](docs/self-test.md); iss-2610042033419572).
 
 ## [0.10.0] - 2026-10-04
 
