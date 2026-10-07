@@ -341,14 +341,19 @@ function graceWaitHint(graceValue, maxWaitValue, defaults) {
     + 'protection. Raise the maximum to at least the protection.';
 }
 
-// intervalWords puts an interval into words, in minutes where the figure is a
-// whole number of them and in seconds otherwise — rounding 90 seconds to
-// "1.5 minutes" would state a figure the server does not hold. Empty for an
-// interval the panel was not told, so whatever is written from it says nothing
-// rather than naming a figure nobody sent.
+// intervalWords puts an interval into words, in hours where the figure is a
+// whole number of them, in minutes where it is a whole number of those, and
+// in seconds otherwise — rounding 90 seconds to "1.5 minutes" would state a
+// figure the server does not hold. Empty for an interval the panel was not
+// told, so whatever is written from it says nothing rather than naming a
+// figure nobody sent.
 function intervalWords(sec) {
   if (!sec) return '';
   if (sec % 60 !== 0) return `${sec} second${sec === 1 ? '' : 's'}`;
+  if (sec % 3600 === 0) {
+    const hours = sec / 3600;
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
   const minutes = sec / 60;
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
@@ -361,25 +366,28 @@ function blankIsSentence(sec) {
   return words ? ` Blank is ${words}.` : '';
 }
 
-// idleThresholdWords is how long this Mac must have gone unasked before it
-// counts as idle, in the words the status prose reads it in. It is the
-// threshold in force — the setting where one is set, the server's default
-// where it is not, which is config.EffectiveIdleThresholdSec on the Go side —
-// and never a figure the panel holds a copy of (iss-2609190201317726). Told
-// neither, it names the setting instead of a number: the sentences this goes
-// into run on either side of it, so it cannot simply vanish the way the
-// sentence beside the field does.
-function idleThresholdWords(state) {
+// selfTestIdleWords is how long this Mac must have gone unasked before the
+// self-test counts it as idle, in the words the status prose reads it in. It
+// is the self-test's own threshold in force — its setting where one is set,
+// the server's default for it where it is not, which is
+// config.EffectiveSelfTestIdleThresholdSec on the Go side — and never the
+// context probe's, nor a figure the panel holds a copy of
+// (iss-2609190201317726, iss-2610041956214381). Told neither, it names the
+// setting instead of a number: the sentences this goes into run on either
+// side of it, so it cannot simply vanish the way the sentence beside the
+// field does.
+function selfTestIdleWords(state) {
   const s = state || {};
   const c = s.config || {};
   const d = s.defaults || {};
-  return intervalWords(c.idle_threshold_sec || d.idle_threshold_sec) || 'the idle threshold';
+  return intervalWords(c.self_test_idle_threshold_sec || d.self_test_idle_threshold_sec)
+    || 'the self-test idle threshold';
 }
 
 // renderIdleProse fills the figure in the Self-test hint, which is prose about
 // the threshold in force rather than a hint about what a blank field means.
 function renderIdleProse(state) {
-  $('selfTestIdleFigure').textContent = idleThresholdWords(state);
+  $('selfTestIdleFigure').textContent = selfTestIdleWords(state);
 }
 
 // renderDefaults says, on the settings fields themselves, what leaving one
@@ -396,6 +404,9 @@ function renderDefaults(defaults) {
   $('setGraceWait').placeholder = d.eviction_max_wait_sec ? String(d.eviction_max_wait_sec) : '';
   $('setIdleThreshold').placeholder = d.idle_threshold_sec ? String(d.idle_threshold_sec) : '';
   $('idleThresholdDefault').textContent = blankIsSentence(d.idle_threshold_sec);
+  $('setSelfTestIdleThreshold').placeholder = d.self_test_idle_threshold_sec
+    ? String(d.self_test_idle_threshold_sec) : '';
+  $('selfTestIdleThresholdDefault').textContent = blankIsSentence(d.self_test_idle_threshold_sec);
   $('setUpdateCheckInterval').placeholder = d.update_check_interval_hours ? String(d.update_check_interval_hours) : '';
   // In hours, which is how the field is typed; blankIsSentence speaks in
   // seconds and minutes.
@@ -471,6 +482,7 @@ function renderModels() {
     const tools = m.state === 'ready' ? toolCallText(m) : '';
     const failed = m.state === 'ready' ? loadFailureText(m) : '';
     const update = updateText(m);
+    const updateFiles = updateFilesText(m);
     const mark = updateMark(m);
     if (mark) pill += `<span class="pill update">${escapeHtml(mark)}</span>`;
 
@@ -482,6 +494,7 @@ function renderModels() {
         ${measured ? `<div class="info measured">${escapeHtml(measured)}</div>` : ''}
         ${tools ? `<div class="info toolcalls">${escapeHtml(tools)}</div>` : ''}
         ${update ? `<div class="info update">${escapeHtml(update)}</div>` : ''}
+        ${updateFiles ? `<div class="info update">${escapeHtml(updateFiles)}</div>` : ''}
         ${m.updating != null
           ? `<div class="bar"><i style="width:${Number(m.updating) || 0}%"></i></div>` : ''}
         ${m.state === 'downloading'
@@ -581,7 +594,6 @@ function updateText(m) {
     switch (u.status) {
       case 'available': return `A newer version is available (${short}).`;
       case 'runs_own_code': return `A newer version (${short}) ships its own code, which Dessau will not run, so it is not offered.`;
-      case 'awaiting_review': return `A newer version (${short}) exists and will be offered once a Dessau release has reviewed it.`;
       case 'cannot_check': return `A newer version (${short}) exists, but HuggingFace did not hand over its configuration in a form Dessau could verify, so Dessau could not tell whether it ships its own code and it is not offered.`;
       default: return '';
     }
@@ -595,10 +607,23 @@ function updateMark(m) {
   switch ((m.update || {}).status) {
     case 'available': return 'newer version';
     case 'runs_own_code': return 'newer version not run';
-    case 'awaiting_review': return 'newer version awaiting review';
     case 'cannot_check': return 'newer version not checked';
     default: return '';
   }
+}
+
+// updateFilesText names the files the newer version a check found changes,
+// beside the line that says it exists: the names the check recorded, and how
+// many more it changes. The names are HuggingFace's, so the card escapes the
+// line like every other (iss-2610042101436222). Empty where no newer version
+// is shown, or where the check could not tell which files changed.
+function updateFilesText(m) {
+  if (updateMark(m) === '') return '';
+  const u = m.update || {};
+  const files = Array.isArray(u.files) ? u.files.map(String) : [];
+  if (files.length === 0) return '';
+  const more = Math.max(0, Math.floor(Number(u.files_changed) || 0) - files.length);
+  return `Files it changes: ${files.join(', ')}${more ? ` and ${more} more` : ''}.`;
 }
 
 // updateOffered says whether the card carries Update: a ready model not
@@ -1176,11 +1201,11 @@ function postureLines(state) {
 
   // The self-test loads models on its own while the Mac is idle, which is a
   // thing that can be on; the page says so from the setting, which applies
-  // the moment it is saved. The interval it names is the threshold in force,
-  // off the snapshot: the setting where one is set, the served default where
-  // it is not, and never a figure written into this page (iss-2609190201317726).
-  const idleFor = intervalWords(c.idle_threshold_sec || (state.defaults || {}).idle_threshold_sec)
-    || 'the idle threshold';
+  // the moment it is saved. The interval it names is the self-test's own
+  // threshold in force, off the snapshot: its setting where one is set, the
+  // served default where it is not, and never a figure written into this page
+  // (iss-2609190201317726, iss-2610041956214381).
+  const idleFor = selfTestIdleWords(state);
   const selfTest = c.self_test
     ? `The self-test is on: while nothing has asked this Mac for a model for ${idleFor} and ` +
       'nothing is downloading, Dessau loads one of its models at a time where it fits beside ' +
@@ -1189,7 +1214,7 @@ function postureLines(state) {
       'hold no prompt and no answer.'
     : 'The self-test is off: Dessau loads no model on its own.';
   lines.push({ id: 'selftest', heading: 'Self-test', text: selfTest,
-    reads: ['config.self_test', 'config.idle_threshold_sec', 'defaults.idle_threshold_sec'] });
+    reads: ['config.self_test', 'config.self_test_idle_threshold_sec', 'defaults.self_test_idle_threshold_sec'] });
 
   return lines;
 }
@@ -1461,6 +1486,7 @@ function renderSettings() {
   $('setUpdateCheck').checked = !!c.update_check_enabled;
   $('setUpdateCheckInterval').value = c.update_check_interval_hours || '';
   $('setSelfTest').checked = !!c.self_test;
+  $('setSelfTestIdleThreshold').value = c.self_test_idle_threshold_sec || '';
   $('setStats').checked = !!c.statistics;
   $('setStatsMonths').value = c.stats_months;
   // Typed in megabytes and stored in bytes, which is how every other size in
@@ -2057,6 +2083,7 @@ $('setUpdateCheck').addEventListener('change', () => { settingsTouched = true; }
 $('setUpdateCheckInterval').addEventListener('input', () => { settingsTouched = true; });
 $('setIdleThreshold').addEventListener('input', () => { settingsTouched = true; });
 $('setSelfTest').addEventListener('change', () => { settingsTouched = true; });
+$('setSelfTestIdleThreshold').addEventListener('input', () => { settingsTouched = true; });
 $('setStats').addEventListener('change', () => { settingsTouched = true; });
 $('setGrace').addEventListener('change', () => { settingsTouched = true; });
 $('setAdvertise').addEventListener('change', () => { settingsTouched = true; });
@@ -2191,6 +2218,8 @@ $('settingsForm').addEventListener('submit', async (e) => {
     // Blank posts zero, which the server reads as daily.
     update_check_interval_hours: parseInt($('setUpdateCheckInterval').value, 10) || 0,
     self_test:          $('setSelfTest').checked,
+    // Blank posts zero, which the server reads as the self-test's default.
+    self_test_idle_threshold_sec: parseInt($('setSelfTestIdleThreshold').value, 10) || 0,
     statistics:         $('setStats').checked,
     stats_months:       parseInt($('setStatsMonths').value, 10) || 6,
     stats_max_bytes:    (parseInt($('setStatsMB').value, 10) || 200) * 1024 * 1024,
@@ -2309,7 +2338,7 @@ function selfTestHint(on, measured, idleFor) {
 function renderSelfTest(view) {
   const on = !!(view && view.enabled);
   const latest = (view && view.latest) || [];
-  $('selftestHint').textContent = selfTestHint(on, latest.length > 0, idleThresholdWords(state));
+  $('selftestHint').textContent = selfTestHint(on, latest.length > 0, selfTestIdleWords(state));
   $('selftestBody').hidden = latest.length === 0;
   const rows = $('selftestRows');
   rows.replaceChildren();
@@ -2431,10 +2460,38 @@ function modelStatsCard(m) {
     m.loads ? `loaded ${m.loads}×` : null,
     m.failed_loads ? `${m.failed_loads} failed to load` : null,
     m.evictions ? `evicted ${m.evictions}×` : null,
+    releasedText(m.released) || null,
     m.last_load_ms ? `last load ${millis(m.last_load_ms)}` : null,
   ].filter(Boolean).join(' · ');
   return `<div class="statcard"><div class="name">${escapeHtml(m.model || '—')}</div>` +
     `<div class="figures">${figures}</div></div>`;
+}
+
+// releasedText says how many times programs unloaded a model through the model
+// API, and which kinds of caller asked, from the counts Go keeps by kind
+// (iss-2610042100405045). A release is a removal and not an eviction, so it
+// stands beside the evictions rather than in them. The kinds are the
+// recorder's fixed words, put in the panel's own; one it does not know is
+// shown as that and never by its name. Empty when no program unloaded it.
+function releasedText(released) {
+  const words = {
+    this_mac: 'on this Mac',
+    api_key: 'with the API key',
+    paired_client: 'by a paired client',
+  };
+  const counts = new Map();
+  let total = 0;
+  for (const [kind, raw] of Object.entries(released || {})) {
+    const n = Math.floor(Number(raw) || 0);
+    if (n <= 0) continue;
+    const said = Object.hasOwn(words, kind) ? words[kind] : 'by a caller of no recorded kind';
+    counts.set(said, (counts.get(said) || 0) + n);
+    total += n;
+  }
+  if (total === 0) return '';
+  const order = [...Object.values(words), 'by a caller of no recorded kind'];
+  const parts = order.filter((said) => counts.has(said)).map((said) => `${counts.get(said)} ${said}`);
+  return `unloaded by a program ${total}× (${parts.join(', ')})`;
 }
 
 // requestRow is the whole of one row of the request table: a pure function of

@@ -264,7 +264,7 @@ func (a *App) Update(repoID string) error {
 		switch u.Status {
 		case registry.UpdateAvailable:
 			commit = u.Commit
-		case registry.UpdateRunsOwnCode, registry.UpdateAwaitingReview, registry.UpdateCannotCheck:
+		case registry.UpdateRunsOwnCode, registry.UpdateCannotCheck:
 			return fmt.Errorf("%s: %w", m.RepoID, ErrUpdateNotOffered)
 		}
 	}
@@ -727,6 +727,7 @@ func (a *App) restoreFallback(repoID string) bool {
 			Bytes:            bytes,
 			ContextLength:    facts.ContextLength,
 			KVChargePerToken: facts.KVChargePerToken,
+			KVBytesPerToken:  facts.KVBytesPerToken,
 			ChatTemplate:     facts.ChatTemplate,
 			QuantizationBits: facts.QuantizationBits,
 			PipelineTag:      m.PipelineTag,

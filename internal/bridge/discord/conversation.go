@@ -310,10 +310,18 @@ type request struct {
 	Stream    bool   `json:"stream"`
 }
 
-// answerTokens is how much of a window is left for the answer. It is also the
-// max_tokens the request asks for, so the figure the gateway judges the
-// request by is the figure this bridge reserved.
-const answerTokens = 1024
+// answerDivisor is what the window is divided by for the answer: half of it
+// is kept for the answer, the other half being the history's. The answer's
+// half is also the max_tokens the request asks for, so the figure the gateway
+// judges the request by is the figure this bridge reserved.
+//
+// SIZED FROM THE WINDOW, NOT FIXED (iss-2610041945020793). A fixed 1,024
+// stopped every long answer at the same place whatever the model was served
+// at, and a reasoning model could spend all of it thinking and write nothing.
+// Half is the split this function already fell back to for a window too small
+// for the fixed figure; it gives the answer room in proportion to the window
+// and never squeezes the history below what the answer takes.
+const answerDivisor = 2
 
 // defaultWindow is the window assumed for a model this Mac cannot report one
 // for. Deliberately small: the cost of assuming too little is a shorter
@@ -357,10 +365,7 @@ func buildRequest(model string, turns []turn, served int64) ([]byte, error) {
 	if window <= 0 {
 		window = defaultWindow
 	}
-	answer := answerTokens
-	if int64(answer) > window/2 {
-		answer = int(window / 2)
-	}
+	answer := int(window / answerDivisor)
 	budget := (window - int64(answer)) * bytesPerToken
 
 	for start := 0; start < len(turns); start++ {

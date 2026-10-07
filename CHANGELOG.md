@@ -11,8 +11,95 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **A model's card names the files a newer version changes.**
+  `impact: additive`. When a check finds a newer version, the card under
+  **My Models** now lists the files it changes, adds or removes — up to ten,
+  then how many more — so Alice can tell a fixed chat template from a new
+  set of weights before she clicks **Update**. The names are shown as plain
+  text whatever HuggingFace calls them
+  ([model updates](docs/model-updates.md#what-the-marks-mean);
+  iss-2610042101436222).
+- **The Statistics tab shows when a program unloaded a model.**
+  `impact: additive`. Dessau recorded each unload a program asked for
+  through the model API, with the kind of caller that asked, but the
+  control panel counted evictions only, so Alice could not see from the
+  panel that Bob's script had unloaded a model. Each model's card now says
+  how many times a program unloaded it, beside its evictions and by kind of
+  caller — on this Mac, with the API key, or a paired client
+  ([request statistics](docs/request-statistics.md#what-is-recorded);
+  iss-2610042100405045).
+### Changed
+
+- **The idle threshold can be set up to 24 hours.** `impact: additive`. The
+  threshold the context probe waits for, `idle_threshold_sec`, stopped at one
+  hour, so Alice could not keep idle work to a long quiet spell such as the
+  night. It now takes anything from 60 seconds to 86,400 seconds (24 hours),
+  in `config.json` and in the **Idle threshold** field under **Settings →
+  Context probe** alike; the default is unchanged
+  ([context probe](docs/context-probe.md); iss-2610041948272032).
+- **The self-test waits for an idle threshold of its own, four hours unless
+  set.** `impact: breaking`. The self-test shared `idle_threshold_sec` with
+  the context probe, so out of the box it loaded and benchmarked a model five
+  minutes after the last request — an ordinary pause in Bob's use of the
+  server. It now waits for `self_test_idle_threshold_sec`, 4 hours unless
+  set, from 60 seconds to 86,400 (24 hours), in `config.json` and in
+  **Self-test idle threshold** under **Settings → Self-test** alike; the
+  panel's self-test lines name that threshold. `idle_threshold_sec` is the
+  context probe's alone and keeps its five-minute default. A Mac that had
+  set `idle_threshold_sec` to hold the self-test back should set the new
+  setting too: nothing is carried across
+  ([self-test](docs/self-test.md); iss-2610041956214381).
+
 ### Fixed
 
+- **A client's request no longer waits behind the tool-call check.** `impact: fix`.
+  When Bob's request arrives on a model while Dessau is asking it whether it
+  can call tools, the check stops and lets the model go at once, and asks
+  again once the model is quiet, so Bob is answered without waiting for the
+  check's own answer (iss-2610071035138788).
+
+- **A Discord answer is no longer cut short at a fixed 1,024 tokens, and one
+  that reaches its limit says so.** `impact: fix`. The bridge asked every
+  model for at most 1,024 tokens whatever window it was served at, so a long
+  answer stopped mid-sentence without a word, and a reasoning model could
+  spend all of it thinking and be reported as having answered with nothing.
+  An answer may now take half the model's served window, the conversation
+  sent with it keeping the other half. When the model still stops on length,
+  the bot says so in a message of its own after the answer, or, when nothing
+  of the answer was written, says that the model reached its length limit
+  before it wrote one ([Discord bridge](docs/discord-bridge.md);
+  iss-2610041945020793).
+### Changed
+
+- **A model runs no more requests at once than its memory is charged for.**
+  `impact: breaking`. Each model is charged one served window of attention
+  cache per batched request, but its server was handed twice that many
+  requests at once, so two long conversations on one model could build twice
+  the cache the memory budget had set aside. A model now runs as many
+  requests at once as **Settings → Batched requests** says, and the next
+  waits its turn: at the default of one, when Alice and Bob ask the same
+  model together, Bob's answer starts when Alice's ends. Raise **Batched
+  requests** on a Mac that serves several clients at once
+  ([getting started](docs/getting-started.md);
+  [why there is a memory budget](docs/memory-budget-explained.md);
+  iss-2610071035138788).
+
+### Fixed
+
+- **The conversations a model remembers between requests no longer grow
+  past its memory charge.** `impact: fix`. A model's server keeps the
+  caches of recent prompts so that the next turn of a conversation is not
+  read again, and it kept up to ten of them with no limit on their size: a
+  model serving Alice's, Bob's and Carol's long conversations could hold
+  several windows of cache that the memory budget never counted. What it
+  keeps is now held, all together, to one served window of the cache's own
+  size. A model whose configuration does not say what its cache costs keeps
+  none between requests. Dessau works out the new figure when it starts, so
+  a model downloaded earlier gains it at the next start
+  ([why there is a memory budget](docs/memory-budget-explained.md);
+  iss-2610071035130302).
 - **An update that will not load no longer leaves a model without a
   version to serve.** `impact: fix`. Dessau removed the old version of a
   model as soon as the new one passed the checks it makes before starting a
@@ -35,6 +122,22 @@ GitHub release notes.
   **newer version not run**. One whose `config.json` cannot be held to that
   hash is marked **newer version not checked**, and is not offered either
   ([model updates](docs/model-updates.md); iss-2610042101439623).
+- **The access token goes to no host but HuggingFace's own, on any redirect
+  a download or the update check follows.** `impact: fix`. The update check
+  dropped the token on the hop that left HuggingFace's origin but sent it
+  again on a hop that came back, so a host along the way could choose a
+  request made with Alice's token; a download relied on Go's own rule, which
+  keeps the token on a redirect to HuggingFace's host at another port or to a
+  subdomain of it. Both now go through one redirect rule: once a redirect
+  leaves HuggingFace's origin, no later hop carries the token, and a redirect
+  from https to plain http is refused rather than followed
+  (iss-2610071200187548, iss-2610071200187920).
+- **A refusal from HuggingFace's content CDN is no longer worded as
+  HuggingFace refusing the access token.** `impact: fix`. When the update
+  check read a `config.json` from the content CDN and the CDN refused it, the
+  error advised about the access token in Settings, which the CDN is never
+  sent. It now names the content CDN that answered and gives no token advice
+  (iss-2610071200183905).
 - **The self-test and the context probe no longer start while a client is
   still sending requests that fail.** `impact: fix`. The idle check read each
   loaded model's last request, so a request that never reached a model, or
@@ -44,6 +147,53 @@ GitHub release notes.
   threshold was an hour, and load models while he was still trying. Every
   client request now counts from the moment it arrives until it ends, however
   it ends ([self-test](docs/self-test.md); iss-2610041945030758).
+- **A model loaded just as its tool-call probe found it gone is now asked.**
+  `impact: fix`. When Alice's request loaded a model at the moment Dessau's
+  tool-call probe found that model not yet held, the probe dropped the model
+  and the new load's report with it, so the card read **Tool calls: not
+  measured** until the model was next loaded. Dessau now asks the model once
+  its turn comes round again
+  ([context probe](docs/context-probe.md#whether-the-model-calls-tools);
+  iss-2610032231045098).
+- **A request whose body is not valid UTF-8 is refused with a 400 instead of
+  failing with a 502.** `impact: fix`. Dessau passed such a body on to the
+  model server unchanged, which failed to decode it and dropped the
+  connection, so Carol's client was told only that the gateway had a bad
+  answer from upstream. The body is now checked to be valid UTF-8 before
+  anything else is asked of it, and refused with
+  `request body is not valid UTF-8`; text in any script, emoji included, is
+  passed on as before. The check reads the body's encoding, not what any field
+  says, and keeps nothing
+  ([request fields](docs/request-fields.md#a-body-that-is-not-valid-utf-8);
+  iss-2610042036094209).
+- **A model you pin just as the self-test or the context probe unloads it
+  now stays loaded.** `impact: fix`. Both checked the pin and then stopped
+  the model as two separate steps, so a pin saved in the instant between them
+  was overridden: the model was unloaded and left pinned but not in memory.
+  The pin is now checked in the same step as the stop, so a pin saved before
+  the stop always keeps the model loaded
+  ([self-test](docs/self-test.md); iss-2610042033419572).
+- **A decision model is never marked "newer version awaiting review".**
+  `impact: fix`. The update check marked a decision model's newer version
+  that no Dessau release had reviewed as awaiting review, although the
+  update check was announced as never marking a decision model. Such a
+  version now carries no mark and no **Update**, as a model with nothing
+  newer does; a decision model is still offered, and fetched at, only a
+  version a Dessau release has reviewed. A record left over with the old
+  mark is dropped when Dessau starts, and the next check writes it again
+  (iss-2610042101436891).
+- **A machine on the network can no longer hold an unlimited number of
+  connections open.** `impact: fix`. Neither port Dessau answers on, nor the
+  pairing call, limited how many connections a peer could keep open at once,
+  so a machine that reconnected in a loop could hold a socket and a goroutine
+  per attempt for as long as it kept trying. Each address and port Dessau
+  listens on now holds at most 512 open connections, and at most 32 from any
+  one client address; a connection over
+  either limit is closed as it arrives, before anything is read from it.
+  Connections from this Mac count towards the 512 only, so the control panel
+  is never locked out by a busy local client
+  ([bind address](docs/bind-address.md#how-many-connections-each-address-may-hold);
+  iss-2609190254516275).
 
 ## [0.10.0] - 2026-10-04
 

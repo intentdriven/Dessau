@@ -72,6 +72,14 @@ type Model struct {
 	// does not say enough to work it out, and such a model is charged the flat
 	// figure instead.
 	KVChargePerToken int64 `json:"kv_charge_per_token,omitempty"`
+	// KVBytesPerToken is the same configuration's arithmetic without the
+	// safety factor (capability.KVShape.BytesPerToken): the real cache one
+	// token costs. The model server's prompt cache is bounded by one served
+	// window of it (iss-2610071035130302). Zero means the figure is not
+	// known — the configuration does not say, or the charge beside it is
+	// zero — and such a model's server keeps no prompt cache. Never above
+	// the charge.
+	KVBytesPerToken int64 `json:"kv_bytes_per_token,omitempty"`
 	// PipelineTag and Tags are what HuggingFace says this model is: the repo's
 	// pipeline tag ("text-generation", "automatic-speech-recognition") and its
 	// tags, recorded from the Hub when the model was downloaded.
@@ -156,6 +164,14 @@ type UpdateCheck struct {
 	// Commit is the newer upstream commit the check found; empty when the
 	// version on disk is current.
 	Commit string `json:"commit,omitempty"`
+	// Files names the files the newer version changes — changed, added or
+	// removed, documentation never — in order, at most MaxUpdateFiles of
+	// them; FilesChanged is how many it changes in all, so the card can say
+	// how many more there are (iss-2610042101436222). Both are empty when
+	// the version on disk is current, or when the record holds no hashes to
+	// compare against and which files changed is not known.
+	Files        []string `json:"files,omitempty"`
+	FilesChanged int      `json:"files_changed,omitempty"`
 	// CheckedAt is when the Hub answered. Wall-clock time, compared with the
 	// clock when the next check is due, so a Mac that slept is not skewed.
 	CheckedAt time.Time `json:"checked_at"`
@@ -164,22 +180,26 @@ type UpdateCheck struct {
 // What an update check can find. Every value but UpdateCurrent is a mark on
 // the model's card; only UpdateAvailable offers Update.
 const (
-	// UpdateCurrent: no file Dessau uses differs from the version on disk.
+	// UpdateCurrent: no file Dessau uses differs from the version on disk,
+	// or the only newer version is a decision model's that no Dessau release
+	// has reviewed, which is never marked (iss-2610042101436891).
 	UpdateCurrent = "current"
 	// UpdateAvailable: a newer version changes a file Dessau uses.
 	UpdateAvailable = "available"
 	// UpdateRunsOwnCode: the newer version's config.json names a model_file,
 	// which Dessau will not run.
 	UpdateRunsOwnCode = "runs_own_code"
-	// UpdateAwaitingReview: a decision model's newer version has not been
-	// reviewed by a Dessau release, so it is not offered until one has.
-	UpdateAwaitingReview = "awaiting_review"
 	// UpdateCannotCheck: the Hub handed out the newer version's config.json
 	// in a form the check could not hold to the hash it lists for it, so
 	// whether that version ships its own code is unknown and it is not
 	// offered (iss-2610042101439623).
 	UpdateCannotCheck = "cannot_check"
 )
+
+// MaxUpdateFiles bounds the files a check names: a card has room for a
+// handful, and a repository that changes a thousand shards should cost the
+// index no more than one that changes a dozen.
+const MaxUpdateFiles = 10
 
 // ErrVersionMoved is SetUpdate's refusal when the model on disk is no longer
 // the version the check compared.
@@ -203,7 +223,7 @@ func sanitizeUpdate(m Model) Model {
 	switch u.Status {
 	case UpdateCurrent:
 		ok = ok && u.Commit == ""
-	case UpdateAvailable, UpdateRunsOwnCode, UpdateAwaitingReview, UpdateCannotCheck:
+	case UpdateAvailable, UpdateRunsOwnCode, UpdateCannotCheck:
 		ok = ok && validCommit(u.Commit) && u.Commit != m.Commit
 	default:
 		ok = false
@@ -216,8 +236,36 @@ func sanitizeUpdate(m Model) Model {
 	if cp.CheckedAt.After(time.Now().Add(24 * time.Hour)) {
 		cp.CheckedAt = time.Time{}
 	}
+	cp.Files, cp.FilesChanged = sanitizeUpdateFiles(cp.Status, cp.Files, cp.FilesChanged)
 	m.Update = &cp
 	return m
+}
+
+// sanitizeUpdateFiles holds the files a check names to what a check writes:
+// none on a version with nothing newer; otherwise plain names only (the rule
+// a recorded version's paths are held to), at most MaxUpdateFiles of them,
+// and a count no smaller than the names it was given. A name dropped here
+// still counts among the files changed; it is only not named. The list
+// returned is a fresh slice, so what the registry holds is never the
+// caller's.
+func sanitizeUpdateFiles(status string, files []string, changed int) ([]string, int) {
+	if status == UpdateCurrent {
+		return nil, 0
+	}
+	changed = max(changed, len(files))
+	var out []string
+	for _, p := range files {
+		if len(out) == MaxUpdateFiles {
+			break
+		}
+		if plainRelPath(p) {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		out = nil
+	}
+	return out, changed
 }
 
 // SetUpdate records what a check found, provided the model on disk is still
@@ -583,6 +631,12 @@ func Open(path string) (*Registry, error) {
 		// and it decides how much of this Mac's memory a load is charged.
 		if !plausibleKVChargePerToken(m.KVChargePerToken) {
 			m.KVChargePerToken = 0
+		}
+		// And the real figure beside it, which bounds the prompt cache the
+		// model server keeps: held to the same bound, and to the charge it
+		// is never above, checked after the charge itself was.
+		if !plausibleKVBytesPerToken(m.KVBytesPerToken, m.KVChargePerToken) {
+			m.KVBytesPerToken = 0
 		}
 		// The category is persisted too, so a hand-edited or planted index can
 		// carry an unbounded tag list straight to the LAN with no download in
@@ -1008,6 +1062,7 @@ func (r *Registry) Rescan(modelsDir string) error {
 				Bytes:            size,
 				ContextLength:    facts.ContextLength,
 				KVChargePerToken: facts.KVChargePerToken,
+				KVBytesPerToken:  facts.KVBytesPerToken,
 				ChatTemplate:     facts.ChatTemplate,
 				QuantizationBits: facts.QuantizationBits,
 				State:            StateReady,
@@ -1032,6 +1087,7 @@ func (r *Registry) Rescan(modelsDir string) error {
 			// next startup rescan rather than only on a re-download.
 			existing.ContextLength = m.ContextLength
 			existing.KVChargePerToken = m.KVChargePerToken
+			existing.KVBytesPerToken = m.KVBytesPerToken
 			existing.ChatTemplate = m.ChatTemplate
 			existing.QuantizationBits = m.QuantizationBits
 			// The category is deliberately NOT re-derived. It is the Hub's
@@ -1173,6 +1229,7 @@ func ModelDirComplete(dir string) bool {
 type ModelFacts struct {
 	ContextLength    int64
 	KVChargePerToken int64
+	KVBytesPerToken  int64
 	ChatTemplate     bool
 	QuantizationBits int
 }
@@ -1196,6 +1253,7 @@ func factsFrom(dir string, cfg map[string]any) ModelFacts {
 	return ModelFacts{
 		ContextLength:    contextLengthFrom(cfg),
 		KVChargePerToken: kvChargePerTokenFrom(cfg),
+		KVBytesPerToken:  kvBytesPerTokenFrom(cfg),
 		ChatTemplate:     hasChatTemplate(dir),
 		QuantizationBits: quantizationBitsFrom(cfg),
 	}
@@ -1454,6 +1512,20 @@ func kvChargePerTokenFrom(cfg map[string]any) int64 {
 	return n
 }
 
+// kvBytesPerTokenFrom is the real cache one token costs, from the same shape
+// as the charge and without its safety factor: what bounds the model
+// server's prompt cache (iss-2610071035130302). A configuration whose charge
+// is not believed yields nothing here either, because such a model is
+// charged the flat figure, which reserves no cache for the prompt cache to
+// be bounded within.
+func kvBytesPerTokenFrom(cfg map[string]any) int64 {
+	n := kvShapeFrom(cfg).BytesPerToken()
+	if !plausibleKVBytesPerToken(n, kvChargePerTokenFrom(cfg)) {
+		return 0
+	}
+	return n
+}
+
 // kvShapeFrom reads the shape itself, leaving the arithmetic and its own
 // bounds to capability.
 func kvShapeFrom(cfg map[string]any) capability.KVShape {
@@ -1568,6 +1640,14 @@ func configNumber(level map[string]any, key string) (int64, bool) {
 // the registry: on a scan, and again when one is read back from the index.
 func plausibleKVChargePerToken(n int64) bool {
 	return n >= 0 && n <= MaxKVChargePerToken
+}
+
+// plausibleKVBytesPerToken is the bound applied wherever a real cache figure
+// enters the registry: the charge's own bound, and the charge itself, which
+// is that figure times a safety factor and so never below it. A figure with
+// no charge beside it is not believed either.
+func plausibleKVBytesPerToken(n, charge int64) bool {
+	return plausibleKVChargePerToken(n) && (n == 0 || n <= charge)
 }
 
 // CheckShards reports an error unless every weight shard named by

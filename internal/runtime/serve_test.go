@@ -27,7 +27,8 @@ import (
 // APIHandler takes the response generator first and reads allowed_origins
 // off its cli_args). Its own run() is the TCP server the launcher must never
 // reach, so it leaves a marker and exits. Its handler answers a POST with the
-// model and the keys it was given, so a test can see what reached it.
+// model and the keys it was given, and a GET with the bounds its prompt
+// cache was built with, so a test can see what reached it.
 const standInServer = `
 import argparse, json, os, sys
 from http.server import BaseHTTPRequestHandler
@@ -36,8 +37,9 @@ def get_system_fingerprint():
     return "stand-in"
 
 class LRUPromptCache:
-    def __init__(self, size):
-        self.size = size
+    def __init__(self, max_size=10, max_bytes=1 << 63):
+        self.max_size = max_size
+        self.max_bytes = max_bytes
 
 class ModelProvider:
     def __init__(self, cli_args):
@@ -46,6 +48,7 @@ class ModelProvider:
 class ResponseGenerator:
     def __init__(self, model_provider, prompt_cache):
         self.model_provider = model_provider
+        self.prompt_cache = prompt_cache
     @property
     def cli_args(self):
         return self.model_provider.cli_args
@@ -72,7 +75,9 @@ class APIHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        self._reply(200, {"status": "ok"})
+        cache = self.response_generator.prompt_cache
+        self._reply(200, {"status": "ok",
+                          "prompt_cache": {"max_size": cache.max_size, "max_bytes": cache.max_bytes}})
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length"))
@@ -409,5 +414,108 @@ func TestTheLauncherRefusesAFileInItsSocketsPlace(t *testing.T) {
 	}
 	if b, err := os.ReadFile(sock); err != nil || string(b) != "not a socket" {
 		t.Errorf("the file in the socket's place was not left as it was: %q, %v", b, err)
+	}
+}
+
+// The bound the launcher is handed reaches the prompt cache's constructor as
+// its max_bytes, with the entry count the launch spells out
+// (iss-2610071035130302). Without it the pinned server builds the cache with
+// its default of 2^63 bytes, which is no bound at all.
+func TestTheLauncherBoundsThePromptCache(t *testing.T) {
+	paths := standInRuntime(t)
+	t.Setenv("STANDIN_TCP_MARKER", filepath.Join(t.TempDir(), "tcp"))
+	sock := privateSocket(t)
+	l := &ExecLauncher{Paths: paths, LogDir: paths.Logs}
+	p, err := l.Launch(context.Background(), Spec{
+		RepoID: "org/name", ModelPath: plainModelDir(t), Socket: sock,
+		KVBytesPerToken: 1000, ServedContext: 4096,
+	})
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), stopBound)
+		defer cancel()
+		_ = p.Stop(ctx)
+	}()
+
+	c := &http.Client{Transport: childTransport(sock), Timeout: 5 * time.Second}
+	var got struct {
+		PromptCache struct {
+			MaxSize int64 `json:"max_size"`
+			// Unsigned: the server's own default is 2^63, one past int64.
+			MaxBytes uint64 `json:"max_bytes"`
+		} `json:"prompt_cache"`
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		resp, err := c.Get(childBaseURL + "/health")
+		if err == nil {
+			ok := resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&got) == nil
+			resp.Body.Close()
+			if ok {
+				break
+			}
+		}
+		select {
+		case <-p.Done():
+			b, _ := os.ReadFile(filepath.Join(paths.Logs, logFileName("org/name")))
+			t.Fatalf("the launcher exited before it answered (%v); its log:\n%s", p.Err(), b)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the launcher never answered on its socket")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got.PromptCache.MaxBytes != 1000*4096 {
+		t.Errorf("the prompt cache was built with max_bytes %d, want %d", got.PromptCache.MaxBytes, 1000*4096)
+	}
+	if got.PromptCache.MaxSize != 10 {
+		t.Errorf("the prompt cache was built with max_size %d, want 10", got.PromptCache.MaxSize)
+	}
+}
+
+// A launch whose bound is missing or is not a whole number of bytes is
+// refused before the launcher binds, rather than served with the pinned
+// server's unbounded default: the Go side always passes one, and the
+// launcher is the last thing between a bad one and the constructor.
+func TestTheLauncherRefusesAMissingOrMalformedPromptCacheBound(t *testing.T) {
+	paths := standInRuntime(t)
+	t.Setenv("STANDIN_TCP_MARKER", filepath.Join(t.TempDir(), "tcp"))
+	for name, value := range map[string]string{
+		"missing":      "",
+		"negative":     "-1",
+		"not a number": "lots",
+		"fractional":   "1.5",
+		"signed":       "+5",
+		"non-ASCII":    "١٢",
+		"empty":        "<empty>",
+		"past 2^63":    "9223372036854775808",
+		"far past it":  strings.Repeat("9", 5000),
+	} {
+		t.Run(name, func(t *testing.T) {
+			sock := privateSocket(t)
+			argv := launchArgs(Spec{ModelPath: plainModelDir(t), Socket: sock, KVBytesPerToken: 10, ServedContext: 10})
+			i := indexOf(argv, promptCacheBytesFlag)
+			if i < 0 {
+				t.Fatalf("no %s to tamper with: %v", promptCacheBytesFlag, argv)
+			}
+			switch value {
+			case "":
+				argv = append(argv[:i:i], argv[i+2:]...)
+			case "<empty>":
+				argv[i+1] = ""
+			default:
+				argv[i+1] = value
+			}
+			out := runLauncherExpectingRefusal(t, paths, argv)
+			if !strings.Contains(out, "prompt cache") {
+				t.Errorf("the refusal does not say why:\n%s", out)
+			}
+			if _, err := os.Lstat(sock); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("a socket was bound for a refused launch: %v", err)
+			}
+		})
 	}
 }

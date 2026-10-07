@@ -435,8 +435,10 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 	// the listing gives no usable hash for is checked on length alone, so for
 	// those this hole is wider than the reason it exists — iss-2609190151179403.
 	// TestDownloadFollowsTheHubsRedirectToItsContentCDN holds the hole open for
-	// the case that needs it.
-	resp, err := c.httpClient().Do(httpReq)
+	// the case that needs it. doContent is the content fetch's redirect policy,
+	// shared with the update check: the token goes nowhere but the Hub's origin
+	// and an https Hub is never left for plain http.
+	resp, err := c.doContent(httpReq)
 	if err != nil {
 		return false, fmt.Errorf("download %s: %w", f.Path, err)
 	}
@@ -469,7 +471,7 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		// that sent a Range can mean that: a 416 to a plain GET is a server
 		// error, and retrying it would recurse forever.
 		if resumeAt == 0 {
-			return false, apiError(resp, u)
+			return false, c.contentError(resp, u)
 		}
 		if err := root.Remove(part); err != nil && !os.IsNotExist(err) {
 			return false, err
@@ -477,7 +479,7 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		tr.addCompleted(-resumeAt)
 		return c.downloadFile(ctx, req, token, root, f, tr)
 	default:
-		return false, apiError(resp, u)
+		return false, c.contentError(resp, u)
 	}
 
 	// O_NOFOLLOW: refuse to write through a symlink planted at the .part path,

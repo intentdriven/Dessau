@@ -72,3 +72,34 @@ func TestAnUnusableIdleThresholdIsRepairedOnLoad(t *testing.T) {
 		t.Errorf("the repair was not reported: %v", notices.Repaired)
 	}
 }
+
+// The idle threshold reaches a whole day (iss-2610041948272032): an operator
+// who wants the context probe to run only after a long quiet spell can say
+// so, up to 24 hours, and not a second past it. A file carrying the day loads
+// as it is, with nothing repaired.
+func TestTheIdleThresholdReachesADay(t *testing.T) {
+	if MaxIdleThresholdSec != 86400 {
+		t.Fatalf("MaxIdleThresholdSec = %d, want 86400 (24 hours)", MaxIdleThresholdSec)
+	}
+	c := Default()
+	c.IdleThresholdSec = 86400
+	if err := c.Validate(); err != nil {
+		t.Errorf("idle_threshold_sec=86400 was refused: %v", err)
+	}
+	c.IdleThresholdSec = 86401
+	if err := c.Validate(); err == nil {
+		t.Error("idle_threshold_sec=86401 was accepted")
+	}
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"host":"127.0.0.1","port":8080,"idle_threshold_sec":86400}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, notices, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.IdleThresholdSec != 86400 || len(notices.Repaired) != 0 {
+		t.Errorf("a day loaded as %d with repairs %v, want it kept as it is", loaded.IdleThresholdSec, notices.Repaired)
+	}
+}

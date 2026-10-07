@@ -251,6 +251,15 @@ Scope-condition dispositions:
   evidence: cmd/dessau/main.go:338 — "a, err := app.New(app.Options{Paths: paths, Config: cfg, Log: log, Bind: plan, LogLevel: appLog.Level})"
 <!-- abcd-review-end receipt=rcp-c60839654fc3 -->
 
+2026-10-07 — Criterion 9's mark is withdrawn by the maintainer's decision of
+2026-10-07 (iss-2610042101436891): the press release stands, and a decision
+model is never marked. The update check records a decision model's newer
+version that no Dessau release has reviewed as nothing to offer, which the
+panel shows with no mark and no Update; the `awaiting_review` status is gone
+from the check, the registry and the panel. A reviewed version is still the
+only one a decision model is offered or fetched at. iss-2610042101435880 is
+moot (wontfix). The criterion's text above is left as shipped.
+
 ## Grounds
 
 - pursued: fixes to chat templates, settings and quantisations land on HuggingFace silently, so Alice serves stale builds without knowing; shown wrong if, over a month of daily checks, no model she uses changes in a file Dessau reads. And the only way to update today, downloading again, can leave a half-old, half-new model, which a safe one-click update fixes; shown wrong if no one ever re-downloads a changed model.

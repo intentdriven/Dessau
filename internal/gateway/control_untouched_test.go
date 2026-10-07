@@ -219,6 +219,28 @@ func TestASaveOfAnUneditedFormIsAccepted(t *testing.T) {
 			stored: func(c config.Config) config.Config { c.MaxResidentBytes = 12 << 30; return c },
 		},
 		{
+			// The top of the idle threshold's range, a day
+			// (iss-2610041948272032).
+			name:   "an idle threshold of a day",
+			stored: func(c config.Config) config.Config { c.IdleThresholdSec = 86400; return c },
+		},
+		{
+			// The self-test's own threshold at both ends of its range, beside
+			// a probe threshold of the operator's own (iss-2610041956214381).
+			name: "a self-test threshold of a day",
+			stored: func(c config.Config) config.Config {
+				c.SelfTestIdleThresholdSec, c.IdleThresholdSec = 86400, 600
+				return c
+			},
+		},
+		{
+			name: "a self-test threshold of a minute",
+			stored: func(c config.Config) config.Config {
+				c.SelfTestIdleThresholdSec = config.MinIdleThresholdSec
+				return c
+			},
+		},
+		{
 			// A figure the panel refused to post until its own ceiling was
 			// removed, and the server always accepted.
 			name:   "a decode concurrency above what the panel used to allow",
@@ -233,6 +255,13 @@ func TestASaveOfAnUneditedFormIsAccepted(t *testing.T) {
 				}
 				return c
 			},
+		},
+		{
+			// The model API's unload route turned off: a switch with no
+			// validation rule today, which a later rule must not turn into
+			// a refusal of every other save (iss-2610042100409263).
+			name:   "the model API's unload route turned off",
+			stored: func(c config.Config) config.Config { c.APIUnloadOff = true; return c },
 		},
 		{
 			name: "per-model settings on a model this Mac has not downloaded",
@@ -274,6 +303,40 @@ func TestASaveOfAnUneditedFormIsAccepted(t *testing.T) {
 					stored.Host, got.Host, stored.BindMode, got.BindMode)
 			}
 		})
+	}
+}
+
+// Changing another setting is accepted while the model API's unload route is
+// turned off, and the save keeps it off: the switch is never a reason to
+// refuse a save that did not touch it (iss-2610042100409263).
+func TestASaveOfAnotherSettingKeepsTheUnloadRouteOff(t *testing.T) {
+	stored := config.Default()
+	stored.APIUnloadOff = true
+	if err := stored.Validate(); err != nil {
+		t.Fatalf("the premise: a configuration the load path accepts: %v", err)
+	}
+	srv, a := newTestControlApp(t, stored)
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(uneditedFormBody(t, stored)), &body); err != nil {
+		t.Fatal(err)
+	}
+	body["idle_timeout_sec"] = stored.IdleTimeoutSec + 60
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := postJSON(t, srv, "/api/settings", string(b))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("a save of another setting was refused with %d: %s", resp.StatusCode, refusalText(t, resp))
+	}
+	got := a.Config()
+	if !got.APIUnloadOff {
+		t.Error("the save turned the model API's unload route back on")
+	}
+	if got.IdleTimeoutSec != stored.IdleTimeoutSec+60 {
+		t.Errorf("idle_timeout_sec = %d, want the posted %d", got.IdleTimeoutSec, stored.IdleTimeoutSec+60)
 	}
 }
 
@@ -347,8 +410,12 @@ func uneditedFormBody(t *testing.T, stored config.Config) string {
 		"eviction_grace_sec":    shown.EvictionGraceSec,
 		"eviction_max_wait_sec": shown.EvictionMaxWaitSec,
 		"chat_rule":             shown.ChatRule,
-		"statistics":            shown.Statistics,
-		"stats_months":          shown.StatsMonths,
+		// A blank field posts zero, which is what an unset threshold is.
+		"idle_threshold_sec":           shown.IdleThresholdSec,
+		"self_test_idle_threshold_sec": shown.SelfTestIdleThresholdSec,
+		"statistics":                   shown.Statistics,
+		"stats_months":                 shown.StatsMonths,
+		"api_unload_off":               shown.APIUnloadOff,
 		// Typed in megabytes and stored in bytes, so a figure that is not a
 		// whole number of megabytes comes back rounded — which is itself a
 		// value the save has to accept.

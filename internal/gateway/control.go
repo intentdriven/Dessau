@@ -511,6 +511,11 @@ type Defaults struct {
 	// (iss-2609190146152463).
 	IdleThresholdSec int `json:"idle_threshold_sec"`
 
+	// SelfTestIdleThresholdSec is the self-test's own idle threshold for a
+	// panel whose field is blank, stated on the field, beside it and in the
+	// self-test's status prose (iss-2610041956214381).
+	SelfTestIdleThresholdSec int `json:"self_test_idle_threshold_sec"`
+
 	// UpdateCheckIntervalHours is how often the update check runs for a
 	// panel whose interval field is blank: daily.
 	UpdateCheckIntervalHours int `json:"update_check_interval_hours"`
@@ -555,6 +560,8 @@ func (c *Control) snapshot() State {
 			EvictionGraceSec:   config.DefaultEvictionGraceSec,
 			EvictionMaxWaitSec: config.DefaultEvictionMaxWaitSec,
 			IdleThresholdSec:   config.DefaultIdleThresholdSec,
+
+			SelfTestIdleThresholdSec: config.DefaultSelfTestIdleThresholdSec,
 
 			UpdateCheckIntervalHours: config.DefaultUpdateCheckIntervalHours,
 		},

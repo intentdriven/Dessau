@@ -36,3 +36,37 @@ func TestAReleaseRecordsTheKindOfCaller(t *testing.T) {
 		t.Errorf("a release counted as %d evictions: only making room for another model is one", got)
 	}
 }
+
+// The per-model counters the Statistics tab draws count each release by the
+// kind of caller that asked, beside the evictions and apart from them, so the
+// panel can show what Go records (iss-2610042100405045).
+func TestTheCountersCountReleasesByKindOfCaller(t *testing.T) {
+	r := New(Options{})
+	r.SetEnabled(true)
+
+	r.Released("org/a", CallerThisMac)
+	r.Released("org/a", CallerThisMac)
+	r.Released("org/a", CallerPairedClient)
+	r.Released("org/a", "sk-a-key-in-the-wrong-place")
+	r.Removed("org/a", ReasonEvicted)
+	r.Removed("org/a", ReasonUnloaded)
+
+	got := r.Summary()[0]
+	want := map[string]int{CallerThisMac: 2, CallerPairedClient: 1, "": 1}
+	if len(got.Released) != len(want) {
+		t.Fatalf("Released = %v, want %v", got.Released, want)
+	}
+	for k, n := range want {
+		if got.Released[k] != n {
+			t.Errorf("Released[%q] = %d, want %d", k, got.Released[k], n)
+		}
+	}
+	if got.Evictions != 1 {
+		t.Errorf("Evictions = %d, want the one eviction alone", got.Evictions)
+	}
+	// What Summary hands out is a copy: the caller cannot reach the counts.
+	got.Released[CallerThisMac] = 99
+	if again := r.Summary()[0].Released[CallerThisMac]; again != 2 {
+		t.Errorf("a caller's write reached the recorder's counts: %d", again)
+	}
+}

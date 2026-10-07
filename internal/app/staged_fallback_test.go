@@ -139,11 +139,14 @@ func TestANewVersionThatFailsItsFirstLoadPutsTheOldOneBack(t *testing.T) {
 	if err := servable(a); err != nil {
 		t.Errorf("the old version put back is not served: %v", err)
 	}
+	// The failed version is removed just after the record is written, so
+	// wait for the staging folder to empty rather than look once.
+	waitFor(t, "the staging folder to empty after the old version went back", func() bool {
+		entries, _ := os.ReadDir(filepath.Join(a.stagingRoot(), "org"))
+		return len(entries) == 0
+	})
 	if got := asidesOf(a); len(got) != 0 {
 		t.Errorf("left aside after the old version went back: %v", got)
-	}
-	if entries, _ := os.ReadDir(filepath.Join(a.stagingRoot(), "org")); len(entries) != 0 {
-		t.Errorf("the failed new version was left in the staging folder: %d entries", len(entries))
 	}
 }
 
@@ -256,9 +259,9 @@ func TestASecondUpdateBeforeAnyLoadKeepsTheVersionThatServed(t *testing.T) {
 	if m, _ := a.Registry.Get("org/repo"); m.Commit != commitV3 {
 		t.Fatalf("the second update was not swapped in: commit %s", m.Commit)
 	}
-	if got := asidesOf(a); len(got) != 1 {
-		t.Fatalf("held aside after two updates: %v, want one copy", got)
-	}
+	// The second update's own aside copy is removed just after the download
+	// mark is cleared, outside the lock, so wait for it rather than look once.
+	waitFor(t, "one copy to be held after two updates", func() bool { return len(asidesOf(a)) == 1 })
 
 	if err := servable(a); err == nil {
 		t.Fatal("the broken newest version loaded")

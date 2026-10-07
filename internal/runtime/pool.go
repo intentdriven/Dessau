@@ -49,6 +49,11 @@ type ResolvedModel struct {
 	// KVChargePerToken is what one token of that window is charged against the
 	// budget (registry.Model.KVChargePerToken).
 	KVChargePerToken int64
+	// KVBytesPerToken is what one token of that window really costs, without
+	// the charge's safety factor (registry.Model.KVBytesPerToken). It is not
+	// charged: it bounds the prompt cache the model server keeps between
+	// requests (Spec.KVBytesPerToken). Zero means it is not known.
+	KVBytesPerToken int64
 }
 
 // Upstream is a ready model server the gateway can proxy to.
@@ -373,11 +378,13 @@ type entry struct {
 	debugLog bool
 
 	// sem bounds how many requests run against this one model server at once. Its
-	// capacity is a small multiple of the server's --decode-concurrency: mlx-lm
-	// batches only that many decodes, and each extra in-flight sequence holds its
-	// own KV cache. On a unified-memory Mac an unbounded burst is a direct path to
-	// a GPU-memory blowup that crashes the server and every request with it, so
-	// excess requests queue on this channel instead.
+	// capacity is the server's decode concurrency, which is exactly how many
+	// sequences the budget charges this model's cache for (chargeLocked): each
+	// in-flight sequence holds its own KV cache, so admitting more than were
+	// charged lets the model grow past what the budget reserved. On a
+	// unified-memory Mac that is a direct path to a GPU-memory blowup that
+	// crashes the server and every request with it, so excess requests queue on
+	// this channel instead.
 	sem chan struct{}
 
 	// soft are the preemptible holds on this model: the id release uses to
@@ -1369,9 +1376,10 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 		loadedAt:  p.opts.now(),
 		lastUsed:  p.opts.now(),
 		ready:     make(chan struct{}),
-		// Allow twice the decode batch size in flight: enough to keep mlx-lm's
-		// batching full without letting an unbounded burst exhaust GPU memory.
-		sem: make(chan struct{}, 2*p.opts.DecodeConcurrency),
+		// Admit what is charged: chargeLocked reserves one served window of
+		// cache per decode slot, so no more requests than that run at once
+		// (iss-2610071035138788). The rest wait on the queue.
+		sem: make(chan struct{}, p.opts.DecodeConcurrency),
 	}
 
 	var sampling config.Sampling
@@ -1396,6 +1404,8 @@ func (p *Pool) startLocked(repoID string, waited time.Duration, adm admission, c
 		DecodeConcurrency: p.opts.DecodeConcurrency,
 		Sampling:          sampling,
 		DebugLog:          debugLog,
+		KVBytesPerToken:   m.KVBytesPerToken,
+		ServedContext:     m.ServedContext,
 	})
 	if err != nil {
 		return nil, p.launchFailedLocked(repoID, err)
@@ -2476,6 +2486,21 @@ func (p *Pool) Unload(repoID string) error {
 	return p.unloadLocked(repoID)
 }
 
+// UnloadUnpinned is Unload for the idle jobs, which never stop a pinned
+// model: a pinned one is refused with ErrPinned and nothing changes, and
+// otherwise Unload's rule holds. The pin is read under the same hold of p.mu
+// as the stop, so a pin saved through SetPinned lands either before the check
+// and is honoured, or after the stop (iss-2610042033419572). The operator's
+// Unload keeps its own rule.
+func (p *Pool) UnloadUnpinned(repoID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.isPinnedLocked(repoID) {
+		return fmt.Errorf("%s is pinned: %w", repoID, ErrPinned)
+	}
+	return p.unloadLocked(repoID)
+}
+
 // Remove is Unload for a model that is being deleted. It stops the server
 // under Unload's rule — a busy model is refused and nothing changes — and
 // drops what the pool holds about the model beyond its process: the
@@ -2530,7 +2555,7 @@ func (p *Pool) Release(repoID string, by Caller) error {
 	return nil
 }
 
-// The refusals Release adds to Unload's.
+// The refusals Release adds to Unload's. UnloadUnpinned adds ErrPinned alone.
 var (
 	ErrPinned  = errors.New("the model is pinned")
 	ErrLoading = errors.New("the model is still loading")

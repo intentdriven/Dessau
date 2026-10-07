@@ -137,3 +137,34 @@ func TestStateCarriesTheFigureAnUnsetIdleThresholdResolvesTo(t *testing.T) {
 			got, config.DefaultIdleThresholdSec)
 	}
 }
+
+// The self-test's own threshold is served the same way, for the same reason:
+// its field is blank for the default, and the panel names the figure that
+// stands for from the server rather than from a copy (iss-2610041956214381).
+func TestStateCarriesTheFigureAnUnsetSelfTestThresholdResolvesTo(t *testing.T) {
+	_, srv := newBudgetControl(t, config.Default(), 128*gb, nil)
+
+	if got := stateOf(t, srv).Defaults.SelfTestIdleThresholdSec; got != config.DefaultSelfTestIdleThresholdSec {
+		t.Errorf("defaults.self_test_idle_threshold_sec = %d, want the server's own default %d",
+			got, config.DefaultSelfTestIdleThresholdSec)
+	}
+}
+
+// A save that does not name the self-test's threshold leaves it alone.
+func TestASaveThatDoesNotNameTheSelfTestThresholdLeavesItAlone(t *testing.T) {
+	c := config.Default()
+	c.SelfTestIdleThresholdSec = 7200
+	srv, a := newTestControlApp(t, c)
+	resp, err := http.Post(srv.URL+"/api/settings", "application/json", bytes.NewReader([]byte(`{"idle_threshold_sec":600}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("save = %d", resp.StatusCode)
+	}
+	if got := a.Config(); got.SelfTestIdleThresholdSec != 7200 || got.IdleThresholdSec != 600 {
+		t.Errorf("after a save of the probe's threshold: self-test %d, probe %d; want 7200 and 600",
+			got.SelfTestIdleThresholdSec, got.IdleThresholdSec)
+	}
+}

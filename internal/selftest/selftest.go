@@ -4,7 +4,9 @@
 // once a minute and asks whether the Mac is idle: no client request in flight
 // anywhere, nobody waiting for a load, no download running, and the last
 // client request — whatever it ended as, and whether or not its model is still
-// loaded (Clients) — older than a quiet period. When it is, the loop picks the
+// loaded (Clients) — older than a quiet period: the self-test's own
+// (SelfTestQuiet, four hours unless set), apart from the one the other jobs
+// wait for (Quiet). When it is, the loop picks the
 // ready model that was tested longest ago — never one tested within the last
 // day — acquires it through the pool's ordinary path, runs the same short set
 // of tests against it, appends one line of figures to a file, and unloads the
@@ -216,8 +218,13 @@ const (
 	// DefaultTick is how often the loop asks whether the Mac is idle.
 	DefaultTick = time.Minute
 	// DefaultQuiet is how long the last request must be in the past before
-	// the Mac counts as idle.
+	// the Mac counts as idle for a job (the context probe's threshold).
 	DefaultQuiet = 5 * time.Minute
+	// DefaultSelfTestQuiet is how long it must be in the past before the
+	// self-test's own set runs: longer, because loading and benchmarking a
+	// model five minutes after the last request lands in an ordinary pause
+	// in use (iss-2610041956214381).
+	DefaultSelfTestQuiet = 4 * time.Hour
 	// DefaultRetest is how long a model's result stands before it is measured
 	// again.
 	DefaultRetest = 24 * time.Hour
@@ -239,6 +246,9 @@ type Options struct {
 	Log  *slog.Logger
 
 	Tick, Quiet, Retest, Poll, RequestTimeout time.Duration
+	// SelfTestQuiet is the quiet period the self-test's own set waits for;
+	// Quiet is the one every job waits for. Zero means DefaultSelfTestQuiet.
+	SelfTestQuiet time.Duration
 	// MaxBytes is the results file's cap; zero means DefaultMaxBytes.
 	MaxBytes int64
 	// Jobs are the other kinds of run the loop schedules, asked in order at
@@ -302,6 +312,9 @@ func New(opts Options) *Runner {
 	}
 	if opts.Quiet <= 0 {
 		opts.Quiet = DefaultQuiet
+	}
+	if opts.SelfTestQuiet <= 0 {
+		opts.SelfTestQuiet = DefaultSelfTestQuiet
 	}
 	if opts.Retest <= 0 {
 		opts.Retest = DefaultRetest
@@ -376,8 +389,8 @@ func (r *Runner) Close() {
 	r.file.close()
 }
 
-// SetQuiet changes the idle threshold in force, so a saved setting applies
-// to the next tick rather than the next start.
+// SetQuiet changes the idle threshold the jobs wait for, so a saved setting
+// applies to the next tick rather than the next start.
 func (r *Runner) SetQuiet(d time.Duration) {
 	if d <= 0 {
 		return
@@ -385,6 +398,25 @@ func (r *Runner) SetQuiet(d time.Duration) {
 	r.mu.Lock()
 	r.opts.Quiet = d
 	r.mu.Unlock()
+}
+
+// SetSelfTestQuiet changes the idle threshold the self-test's own set waits
+// for, the way SetQuiet does the jobs'.
+func (r *Runner) SetSelfTestQuiet(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	r.mu.Lock()
+	r.opts.SelfTestQuiet = d
+	r.mu.Unlock()
+}
+
+// Thresholds reports the idle thresholds in force: the one the jobs wait
+// for, and the self-test's own.
+func (r *Runner) Thresholds() (job, selfTest time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.opts.Quiet, r.opts.SelfTestQuiet
 }
 
 // Status reports what the loop is doing.
@@ -516,7 +548,9 @@ func (r *Runner) tick(ctx context.Context) {
 		return
 	}
 	r.roomFound(model)
-	if held := r.heldBy(act, now); held != "" {
+	// The self-test's own set waits for its own threshold, a job for the
+	// jobs' (iss-2610041956214381).
+	if held := r.heldBy(act, now, job == nil); held != "" {
 		r.setStatus(func(st *Status) { st.HeldBy, st.Due = held, model })
 		return
 	}
@@ -568,8 +602,11 @@ func (r *Runner) roomFound(model string) {
 }
 
 // heldBy names what keeps a due run from starting, or "" when the Mac is
-// idle. It is quiet's answer with its reason.
-func (r *Runner) heldBy(act Activity, now time.Time) string {
+// idle. It is quiet's answer with its reason. The quiet period is the
+// self-test's own (SelfTestQuiet) for the self-test's set, and the jobs'
+// (Quiet) for a job: one idea of what counts as use, two thresholds for how
+// long ago it must have been.
+func (r *Runner) heldBy(act Activity, now time.Time, selfTest bool) string {
 	if act.Waiting > 0 {
 		return HeldByWaiting
 	}
@@ -587,14 +624,18 @@ func (r *Runner) heldBy(act Activity, now time.Time) string {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.clientRecentLocked(act.LastRequest, now) {
+	wait := r.opts.Quiet
+	if selfTest {
+		wait = r.opts.SelfTestQuiet
+	}
+	if r.clientRecentLocked(act.LastRequest, now, wait) {
 		return HeldByRecent
 	}
 	for _, m := range act.Models {
 		if m.InFlight > 0 {
 			return HeldByInFlight
 		}
-		if m.LastUsed.IsZero() || now.Sub(m.LastUsed) >= r.opts.Quiet {
+		if m.LastUsed.IsZero() || now.Sub(m.LastUsed) >= wait {
 			continue
 		}
 		if own, ok := r.touched[config.FoldRepoID(m.RepoID)]; ok && !m.LastUsed.After(own) {
@@ -606,12 +647,12 @@ func (r *Runner) heldBy(act Activity, now time.Time) string {
 }
 
 // clientRecentLocked reports whether the gateway's last client request is
-// within the quiet period. A last request no later than the loop's own most
+// within the quiet period wait. A last request no later than the loop's own most
 // recent release is the loop's own — the context probe drives its model
 // through the gateway — and is discounted the way the pool's stamp of that
 // release is (touched). Callers hold r.mu.
-func (r *Runner) clientRecentLocked(last, now time.Time) bool {
-	if last.IsZero() || now.Sub(last) >= r.opts.Quiet {
+func (r *Runner) clientRecentLocked(last, now time.Time, wait time.Duration) bool {
+	if last.IsZero() || now.Sub(last) >= wait {
 		return false
 	}
 	for _, own := range r.touched {
@@ -626,8 +667,12 @@ func (r *Runner) clientRecentLocked(last, now time.Time) bool {
 // flight, nothing waiting, nothing downloading, and the last request older
 // than the quiet period — the last on any resident model and the last client
 // request the gateway counted, wherever it went. A model never used counts as
-// long idle, and a last use that is the loop's own is not a request.
-func (r *Runner) quiet(act Activity, now time.Time) bool { return r.heldBy(act, now) == "" }
+// long idle, and a last use that is the loop's own is not a request. The
+// quiet period is the self-test's own when selfTest is set, the jobs'
+// otherwise.
+func (r *Runner) quiet(act Activity, now time.Time, selfTest bool) bool {
+	return r.heldBy(act, now, selfTest) == ""
+}
 
 // hold is what the loop itself has taken from the pool right now: the model,
 // how many acquisitions it holds on it (one for the single tests, the decode

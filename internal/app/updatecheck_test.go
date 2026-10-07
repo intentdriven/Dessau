@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -261,6 +262,51 @@ func TestAChangedWeightMarksTheModel(t *testing.T) {
 	}
 }
 
+// A check records which files the newer version changes — changed, added and
+// removed alike, documentation never — so the card can name them
+// (iss-2610042101436222).
+func TestACheckRecordsTheFilesTheNewerVersionChanges(t *testing.T) {
+	recorded := recordedFiles()
+	recorded["old.json"] = hConfig
+	files := recordedFiles()
+	files["config.json"] = hConfig2
+	files["model.safetensors"] = hWeight2
+	files["README.md"] = hReadme2
+	files["tokenizer.json"] = hConfig2
+	h := newCheckFakeHub(t, map[string]upstreamRepo{"org/m": {commit: newer, files: files, config: `{"model_type":"qwen3"}`}})
+	a, _ := newCheckApp(t, h, true, map[string]map[string]string{"org/m": recorded})
+	a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
+	u := update(t, a, "org/m")
+	want := []string{"config.json", "model.safetensors", "old.json", "tokenizer.json"}
+	if u == nil || u.Status != registry.UpdateAvailable || strings.Join(u.Files, ",") != strings.Join(want, ",") || u.FilesChanged != len(want) {
+		t.Errorf("Update = %+v, want available naming %v of %d", u, want, len(want))
+	}
+}
+
+// The list a check records is bounded: past MaxUpdateFiles names it keeps the
+// first in order and counts the rest, so a repository that changes a thousand
+// shards costs the index a dozen names.
+func TestTheChangedFilesAreBoundedAndCounted(t *testing.T) {
+	recorded := recordedFiles()
+	files := recordedFiles()
+	n := registry.MaxUpdateFiles + 12
+	for i := 0; i < n; i++ {
+		p := fmt.Sprintf("model-%05d.safetensors", i)
+		recorded[p] = hWeights
+		files[p] = hWeight2
+	}
+	h := newCheckFakeHub(t, map[string]upstreamRepo{"org/m": {commit: newer, files: files}})
+	a, _ := newCheckApp(t, h, true, map[string]map[string]string{"org/m": recorded})
+	a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
+	u := update(t, a, "org/m")
+	if u == nil || len(u.Files) != registry.MaxUpdateFiles || u.FilesChanged != n {
+		t.Fatalf("Update = %+v, want %d names of %d", u, registry.MaxUpdateFiles, n)
+	}
+	if u.Files[0] != "model-00000.safetensors" || u.Files[registry.MaxUpdateFiles-1] != fmt.Sprintf("model-%05d.safetensors", registry.MaxUpdateFiles-1) {
+		t.Errorf("the names kept are not the first in order: %v", u.Files)
+	}
+}
+
 // A newer version whose config.json names its own code is marked as one
 // Dessau will not run (criterion 8); one that does not is offered.
 func TestANewerVersionThatShipsCodeIsMarkedAsOneDessauWillNotRun(t *testing.T) {
@@ -306,12 +352,12 @@ func TestAnUnrecordedFileIsAddedOnlyWhenItIsNotOnDisk(t *testing.T) {
 func TestAnUnreachableHubLeavesMarksAsTheyWere(t *testing.T) {
 	h := newCheckFakeHub(t, nil)
 	a, logs := newCheckApp(t, h, true, map[string]map[string]string{"org/a": recordedFiles(), "org/b": recordedFiles()})
-	mark := registry.UpdateCheck{Status: registry.UpdateAvailable, Commit: newer, CheckedAt: time.Now().Add(-48 * time.Hour)}
+	mark := registry.UpdateCheck{Status: registry.UpdateAvailable, Commit: newer, Files: []string{"model.safetensors"}, FilesChanged: 1, CheckedAt: time.Now().Add(-48 * time.Hour)}
 	a.Registry.SetUpdate("org/a", onDisk, mark)
 	h.srv.Close()
 
 	a.updateCheckTickAt(context.Background(), time.Now())
-	if u := update(t, a, "org/a"); u == nil || *u != mark {
+	if u := update(t, a, "org/a"); u == nil || !reflect.DeepEqual(*u, mark) {
 		t.Errorf("the mark changed: %+v", u)
 	}
 	if u := update(t, a, "org/b"); u != nil {
@@ -383,23 +429,29 @@ func TestARoundStopsWhenTheHubsBudgetRunsLow(t *testing.T) {
 	}
 }
 
-// A decision model's newer version is marked as one that will be offered once
-// reviewed, and offered once a Dessau release has reviewed it (criterion 9).
-func TestADecisionModelWaitsForAReviewedVersion(t *testing.T) {
+// A decision model is never marked (iss-2610042101436891, the maintainer's
+// decision of 2026-10-07 withdrawing criterion 9's mark): a newer version no
+// Dessau release has reviewed is recorded as nothing to offer, which carries no
+// mark and no Update, while a reviewed one is offered as any newer version is.
+func TestADecisionModelIsNeverMarkedAwaitingReview(t *testing.T) {
 	files := recordedFiles()
 	files["model.safetensors"] = hWeight2
-	for reviewed, want := range map[string]string{
-		"":    registry.UpdateAwaitingReview,
-		newer: registry.UpdateAvailable,
+	for reviewed, want := range map[string]registry.UpdateCheck{
+		"":    {Status: registry.UpdateCurrent},
+		newer: {Status: registry.UpdateAvailable, Commit: newer},
 	} {
 		h := newCheckFakeHub(t, map[string]upstreamRepo{"org/decide": {commit: newer, files: files}})
 		a, _ := newCheckApp(t, h, true, map[string]map[string]string{"org/decide": recordedFiles()})
 		a.reviewed = func(id string) (bool, []string) {
 			return id == "org/decide", []string{onDisk, reviewed}
 		}
-		a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
-		if u := update(t, a, "org/decide"); u == nil || u.Status != want || u.Commit != newer {
-			t.Errorf("reviewed %q: Update = %+v, want %s", reviewed, u, want)
+		round := a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
+		u := update(t, a, "org/decide")
+		if u == nil || u.Status != want.Status || u.Commit != want.Commit {
+			t.Errorf("reviewed %q: Update = %+v, want status %q commit %q", reviewed, u, want.Status, want.Commit)
+		}
+		if marked := want.Status != registry.UpdateCurrent; (round.Marked == 1) != marked {
+			t.Errorf("reviewed %q: the round marked %d models, want marked = %v", reviewed, round.Marked, marked)
 		}
 	}
 }

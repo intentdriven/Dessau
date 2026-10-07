@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"time"
+	"unicode/utf8"
 
 	"github.com/intentdriven/Dessau/internal/runtime"
 	"github.com/intentdriven/Dessau/internal/stats"
@@ -57,6 +58,13 @@ func (g *Gateway) Ask(ctx context.Context, req AskRequest) error {
 	if len(req.Body) > maxRequestBody {
 		obs.failed(stats.ClassClientError)
 		return &AskError{detail: "the request is larger than this server will read", public: genericRefusal}
+	}
+	// The same encoding check the network route makes. The bridge marshals
+	// Go strings and so never builds an invalid body, but Ask holds itself
+	// to everything a network request is held to.
+	if !utf8.Valid(req.Body) {
+		obs.failed(stats.ClassGatewayError)
+		return &AskError{detail: invalidUTF8Refusal, public: genericRefusal}
 	}
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(req.Body, &payload); err != nil {

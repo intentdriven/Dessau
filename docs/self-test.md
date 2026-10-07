@@ -31,13 +31,21 @@ are.
 
 Once a minute Dessau asks whether the Mac is idle: no request in flight, no
 request waiting for a model to load, no download running, and the last
-request older than the idle threshold. Every client request the server
-admits counts, however it ends — one that failed, or whose model has since
-been unloaded, counts the same as one that was answered. A request turned
-away for a missing or wrong key, or from an unpaired client, does not count. The threshold is five minutes unless you
-change it under **Settings → Context probe**, `idle_threshold_sec` in
-`config.json`; the self-test and the [context probe](context-probe.md) share
-it. When the Mac is idle, Dessau picks the
+request older than the self-test's idle threshold. Every client request the
+server admits counts, however it ends — one that failed, or whose model has
+since been unloaded, counts the same as one that was answered. A request
+turned away for a missing or wrong key, or from an unpaired client, does not
+count.
+
+The self-test's idle threshold is its own: 4 hours unless you change it in
+**Self-test idle threshold** under **Settings → Self-test**, or as
+`self_test_idle_threshold_sec` in `config.json`, in seconds — anything from
+60 (1 minute) to 86,400 (24 hours). Loading and measuring a model is work a
+short pause in use should not set off, so it waits for a long quiet spell.
+The [context probe](context-probe.md) waits for a threshold of its own,
+`idle_threshold_sec`, and changing one leaves the other as it is.
+
+When the Mac is idle, Dessau picks the
 model measured longest ago — a model never measured comes first, and a model
 measured within the last day is left alone — and runs it through the same
 short set every model gets:
@@ -54,6 +62,10 @@ short set every model gets:
 
 The names are [llama-bench](https://github.com/ggml-org/llama.cpp/tree/master/tools/llama-bench)'s,
 so a figure here can be set beside a published one.
+
+The set is a chat benchmark, so the self-test measures only models that can
+chat. A model that cannot, such as a decision model or an OCR model, is
+passed over and never loaded for it (see [chat models](chat-models.md)).
 
 When the set is done Dessau writes one line to the results file and, if the
 self-test was what loaded the model, unloads it again; a model that was

@@ -197,13 +197,16 @@ func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, 
 	ed := newEditor(s.rest, msg.ChannelID, msg.ID, s.bridge.now)
 
 	started := time.Now()
-	var answer string
+	var answer, finish string
 	askErr := s.bridge.opts.Ask(ctx, gateway.AskRequest{
 		Model:  model,
 		Body:   body,
 		Source: stats.SourceBridge,
 		OnEvent: func(payload []byte) {
-			delta := deltaText(payload)
+			delta, reason := deltaText(payload)
+			if reason != "" {
+				finish = reason
+			}
 			if delta == "" {
 				return
 			}
@@ -239,8 +242,18 @@ func (s *session) answer(ctx context.Context, conv *conversation, msg incoming, 
 		s.bridge.log.Debug("could not finish a bridged answer",
 			"bridge", bridgeName, "channel", numericID(msg.ChannelID), "err", err)
 	}
+	// What the gateway said, not a guess at it (iss-2610041945020793): only a
+	// stream whose finish_reason is "length" is reported as cut, so an answer
+	// the model ended itself is never followed by a notice. The notice is not
+	// kept in the history; it is the bridge talking, not the model.
+	stoppedLong := askErr == nil && finish == finishLength
 	if answer != "" {
 		conv.append(turn{Role: roleAssistant, Content: answer})
+		if stoppedLong && ed.wrote() {
+			s.say(ctx, msg.ChannelID, msg.ID, stoppedOnLength)
+		}
+	} else if stoppedLong {
+		s.say(ctx, msg.ChannelID, msg.ID, stoppedBeforeAnswering)
 	} else if askErr == nil {
 		s.say(ctx, msg.ChannelID, msg.ID, "The model answered with nothing.")
 	}
@@ -266,6 +279,18 @@ const genericProblem = "Something went wrong answering that."
 // stillAnswering is what somebody is told when they send a second message
 // into a channel whose answer is still being written.
 const stillAnswering = "I am still answering your last message here."
+
+// stoppedOnLength is posted after an answer the gateway reported as stopped
+// on length (iss-2610041945020793), so a reply cut mid-sentence is not taken
+// for the whole of it. It is a message of its own rather than text added to
+// the answer, so an answer that stopped inside a code block or an unclosed
+// emphasis does not swallow it.
+const stoppedOnLength = "The answer reached its length limit and stops there."
+
+// stoppedBeforeAnswering is said instead of "the model answered with nothing"
+// when the length ran out before any of the answer was written — a reasoning
+// model can spend the whole of it thinking.
+const stoppedBeforeAnswering = "The model reached its length limit before it wrote an answer."
 
 // publicRefusal is what may be repeated to whoever asked.
 func publicRefusal(err error) string {
@@ -296,28 +321,36 @@ func (s *session) say(ctx context.Context, channelID, replyTo, text string) {
 	}
 }
 
-// deltaText reads the generated text out of one streamed event.
+// finishLength is the finish_reason of an answer that stopped because it
+// reached the max_tokens it was asked for.
+const finishLength = "length"
+
+// deltaText reads the generated text out of one streamed event, and the
+// reason the model stopped when the event carries one.
 //
 // This is the other half of what the bridge is admitted to read: the answer it
 // is posting. It reads the delta's text and the non-streamed field beside it
 // (some servers send the whole piece rather than a delta on the first event),
-// and nothing else in the event.
-func deltaText(payload []byte) string {
+// and the choice's finish_reason — not content, but the gateway's word on why
+// the answer ended — and nothing else in the event.
+func deltaText(payload []byte) (text, finish string) {
 	var ev struct {
 		Choices []struct {
 			Delta struct {
 				Content string `json:"content"`
 			} `json:"delta"`
-			Text string `json:"text"`
+			Text         string `json:"text"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 	}
 	if json.Unmarshal(payload, &ev) != nil || len(ev.Choices) == 0 {
-		return ""
+		return "", ""
 	}
-	if c := ev.Choices[0].Delta.Content; c != "" {
-		return c
+	c := ev.Choices[0]
+	if c.Delta.Content != "" {
+		return c.Delta.Content, c.FinishReason
 	}
-	return ev.Choices[0].Text
+	return c.Text, c.FinishReason
 }
 
 // defaultModel is the model a channel starts on: the first the server offers
