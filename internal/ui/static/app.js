@@ -2445,10 +2445,38 @@ function modelStatsCard(m) {
     m.loads ? `loaded ${m.loads}×` : null,
     m.failed_loads ? `${m.failed_loads} failed to load` : null,
     m.evictions ? `evicted ${m.evictions}×` : null,
+    releasedText(m.released) || null,
     m.last_load_ms ? `last load ${millis(m.last_load_ms)}` : null,
   ].filter(Boolean).join(' · ');
   return `<div class="statcard"><div class="name">${escapeHtml(m.model || '—')}</div>` +
     `<div class="figures">${figures}</div></div>`;
+}
+
+// releasedText says how many times programs unloaded a model through the model
+// API, and which kinds of caller asked, from the counts Go keeps by kind
+// (iss-2610042100405045). A release is a removal and not an eviction, so it
+// stands beside the evictions rather than in them. The kinds are the
+// recorder's fixed words, put in the panel's own; one it does not know is
+// shown as that and never by its name. Empty when no program unloaded it.
+function releasedText(released) {
+  const words = {
+    this_mac: 'on this Mac',
+    api_key: 'with the API key',
+    paired_client: 'by a paired client',
+  };
+  const counts = new Map();
+  let total = 0;
+  for (const [kind, raw] of Object.entries(released || {})) {
+    const n = Math.floor(Number(raw) || 0);
+    if (n <= 0) continue;
+    const said = Object.hasOwn(words, kind) ? words[kind] : 'by a caller of no recorded kind';
+    counts.set(said, (counts.get(said) || 0) + n);
+    total += n;
+  }
+  if (total === 0) return '';
+  const order = [...Object.values(words), 'by a caller of no recorded kind'];
+  const parts = order.filter((said) => counts.has(said)).map((said) => `${counts.get(said)} ${said}`);
+  return `unloaded by a program ${total}× (${parts.join(', ')})`;
 }
 
 // requestRow is the whole of one row of the request table: a pure function of

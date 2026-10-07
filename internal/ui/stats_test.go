@@ -1,13 +1,56 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/Dessau/internal/stats"
 )
+
+// A model a program unloaded through the model API is shown on its card in the
+// Statistics tab beside its evictions, with the kind of caller that asked, from
+// the counters Go publishes (iss-2610042100405045). The card is drawn from
+// stats.ModelCounters as the server marshals it, so a renamed field fails
+// here rather than leaving the panel reading nothing.
+func TestTheStatisticsCardShowsReleasesBesideEvictions(t *testing.T) {
+	card := func(m stats.ModelCounters) string {
+		t.Helper()
+		b, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return evalPanel(t, "modelStatsCard("+string(b)+")",
+			"modelStatsCard", "releasedText", "generationRate", "millis")
+	}
+	got := card(stats.ModelCounters{
+		Model: "org/a", Evictions: 2,
+		Released: map[string]int{stats.CallerThisMac: 2, stats.CallerAPIKey: 1, stats.CallerPairedClient: 1, "": 1},
+	})
+	want := "evicted 2× · unloaded by a program 5× (2 on this Mac, 1 with the API key, 1 by a paired client, 1 by a caller of no recorded kind)"
+	if !strings.Contains(got, want) {
+		t.Errorf("the card reads %q, want it to say %q", got, want)
+	}
+	if got := card(stats.ModelCounters{Model: "org/a", Evictions: 1}); strings.Contains(got, "unloaded by a program") {
+		t.Errorf("a model no program unloaded says one did: %q", got)
+	}
+	// Every kind of caller Go may record has words of its own on the card.
+	for _, kind := range stats.CallerKinds() {
+		got := card(stats.ModelCounters{Model: "org/a", Released: map[string]int{kind: 1}})
+		if !strings.Contains(got, "unloaded by a program 1×") || strings.Contains(got, "no recorded kind") {
+			t.Errorf("the caller kind %q has no words on the card: %q", kind, got)
+		}
+	}
+	// A kind the panel does not know is shown as one, never by its name.
+	got = card(stats.ModelCounters{Model: "org/a", Released: map[string]int{"<b>x</b>": 1}})
+	if strings.Contains(got, "<b>") || !strings.Contains(got, "1 by a caller of no recorded kind") {
+		t.Errorf("an unknown caller kind reads %q", got)
+	}
+}
 
 // The request table's one piece of real logic is what each cell says, so it
 // lives in a pure function a test can lift out of app.js and evaluate. What is
@@ -172,7 +215,7 @@ func TestEveryRecordedFigureReachesThePanel(t *testing.T) {
 	for _, field := range []string{
 		"prompt_tokens", "completion_tokens", "first_token_ms", "duration_ms",
 		"queue_wait_ms", "load_wait_ms", "streamed", "model", "class", "at",
-		"loads", "failed_loads", "evictions", "last_load_ms",
+		"loads", "failed_loads", "evictions", "released", "last_load_ms",
 		"last_first_token_ms", "last_duration_ms", "last_completion_tokens",
 		"by_class", "requests", "rollups",
 	} {

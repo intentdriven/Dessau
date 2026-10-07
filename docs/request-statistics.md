@@ -40,9 +40,16 @@ of it, field by field, in
 Alongside those, Dessau counts per model how many requests each outcome
 accounted for, how many tokens went in and came out altogether, how many
 times the model loaded and how many times it failed to, how long the last
-load took, how many times it was evicted to make room for another, and the
-last request's own timings. It also keeps a per-minute total of requests and
-tokens for the last day.
+load took, how many times it was evicted to make room for another, how many
+times a program unloaded it through the [model API](unload-reference.md) and
+which kind of caller asked, and the last request's own timings. It also keeps
+a per-minute total of requests and tokens for the last day.
+
+Each model's card on the Statistics tab shows an unload a program asked for
+beside its evictions, not among them, since it made no room for anything:
+**evicted 2× · unloaded by a program 3× (2 on this Mac, 1 by a paired
+client)**. The kinds are a program on this Mac, a program elsewhere with the
+API key, and a paired client — never the key itself, and never which client.
 
 The Statistics tab shows the most recent thousand requests one by one, and the
 totals for the last hour and the last day, which reach back further than a

@@ -21,6 +21,15 @@ GitHub release notes.
   text whatever HuggingFace calls them
   ([model updates](docs/model-updates.md#what-the-marks-mean);
   iss-2610042101436222).
+- **The Statistics tab shows when a program unloaded a model.**
+  `impact: additive`. Dessau recorded each unload a program asked for
+  through the model API, with the kind of caller that asked, but the
+  control panel counted evictions only, so Alice could not see from the
+  panel that Bob's script had unloaded a model. Each model's card now says
+  how many times a program unloaded it, beside its evictions and by kind of
+  caller — on this Mac, with the API key, or a paired client
+  ([request statistics](docs/request-statistics.md#what-is-recorded);
+  iss-2610042100405045).
 
 ### Fixed
 
