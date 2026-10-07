@@ -37,6 +37,9 @@ type fakeSources struct {
 	// lastYield is the yield the last acquisition carried, as the app's
 	// adapter would hand it to the pool.
 	lastYield func()
+	// beforeAcquire, when set, runs at the start of each Acquire, outside
+	// the lock; an error it returns is Acquire's answer.
+	beforeAcquire func(repoID string) error
 }
 
 func newSources(srv *mlxtest.Server) *fakeSources {
@@ -53,6 +56,11 @@ func (s *fakeSources) Resident(repoID string) (bool, int) {
 }
 
 func (s *fakeSources) Acquire(ctx context.Context, repoID string) (Upstream, func(), error) {
+	if s.beforeAcquire != nil {
+		if err := s.beforeAcquire(repoID); err != nil {
+			return Upstream{}, nil, err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.loaded {
@@ -449,5 +457,41 @@ func TestAFailedSaveIsLoggedAsHeldForTheSession(t *testing.T) {
 	}
 	if strings.Contains(out, "recorded nothing") || strings.Contains(out, "could not record") {
 		t.Errorf("the log says the verdict was not recorded, which is not what happened:\n%s", out)
+	}
+}
+
+// A load that lands while the head of the queue is being served is not lost
+// (iss-2610032231045098). The pool refuses the probe's resident-only hold
+// because another caller's load has the model; that load finishes and the
+// observer queues the model again before the queue is done with its head.
+// The Enqueue finds the model still queued, but the probe it asks for comes
+// after the attempt that failed, so the model is probed again rather than
+// dropped with the failed attempt.
+func TestALoadDuringTheHeadsGoneProbeIsProbedAgain(t *testing.T) {
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: "/models/org/m", ToolCall: true})
+	t.Cleanup(srv.Close)
+	src := newSources(srv)
+	p := newProbe(t, src)
+	var once sync.Once
+	src.beforeAcquire = func(repoID string) error {
+		var err error
+		once.Do(func() {
+			// The other caller's load finishes and modelLoaded queues the
+			// model, before the pool's refusal reaches the queue.
+			p.Enqueue(repoID)
+			err = ErrGone
+		})
+		return err
+	}
+	p.Enqueue("org/m")
+	waitFor(t, "the queue to drain", func() bool { return len(p.Queued()) == 0 })
+	if src.verdict("org/m") == nil {
+		t.Fatal("the model was queued again while its gone probe was in progress, and was never probed")
+	}
+	if srv.Completions() != 1 {
+		t.Errorf("the probe sent %d requests, want exactly one", srv.Completions())
+	}
+	if acquired, held := src.counts(); acquired != 1 || held != 0 {
+		t.Errorf("acquired %d times, holding %d; want one acquisition, released", acquired, held)
 	}
 }
