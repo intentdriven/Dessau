@@ -50,7 +50,12 @@ you are serving.
   a README, a licence or other Markdown is not counted as newer.
 - **A newer version that ships its own code is named as such.** If the newer
   version's `config.json` names a `model_file`, Dessau records that it will not
-  run that version.
+  run that version. A repository that keeps `config.json` in Git LFS has it
+  handed to HuggingFace's content CDN; the check reads it there and holds it
+  to the hash HuggingFace lists for it, as a download does, and sends the CDN
+  no access token. If the file cannot be held to that hash — the bytes differ,
+  HuggingFace lists no hash it can check, or the file is larger than 1 MiB —
+  Dessau records that it could not check that version, and does not offer it.
 
 ## What the marks mean
 
@@ -60,6 +65,7 @@ Each model's card under **My Models** says what the last check found:
 | --- | --- | --- |
 | **newer version** | A newer version changes a file the model server reads. | Offered |
 | **newer version not run** | The newer version ships its own code, which Dessau does not run. | Not offered |
+| **newer version not checked** | A newer version exists, but its `config.json` could not be checked against the hash HuggingFace lists, so whether it ships its own code is unknown. The next check tries again. | Not offered |
 | Version unknown | Dessau did not record which version it downloaded, so it cannot tell whether a newer one exists. | Offered: it fetches the current version and records it |
 | Nothing | The last check found nothing newer, or checks are off. | Not offered |
 

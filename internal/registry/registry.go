@@ -174,6 +174,11 @@ const (
 	// UpdateAwaitingReview: a decision model's newer version has not been
 	// reviewed by a Dessau release, so it is not offered until one has.
 	UpdateAwaitingReview = "awaiting_review"
+	// UpdateCannotCheck: the Hub handed out the newer version's config.json
+	// in a form the check could not hold to the hash it lists for it, so
+	// whether that version ships its own code is unknown and it is not
+	// offered (iss-2610042101439623).
+	UpdateCannotCheck = "cannot_check"
 )
 
 // ErrVersionMoved is SetUpdate's refusal when the model on disk is no longer
@@ -198,7 +203,7 @@ func sanitizeUpdate(m Model) Model {
 	switch u.Status {
 	case UpdateCurrent:
 		ok = ok && u.Commit == ""
-	case UpdateAvailable, UpdateRunsOwnCode, UpdateAwaitingReview:
+	case UpdateAvailable, UpdateRunsOwnCode, UpdateAwaitingReview, UpdateCannotCheck:
 		ok = ok && validCommit(u.Commit) && u.Commit != m.Commit
 	default:
 		ok = false

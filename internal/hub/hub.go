@@ -10,6 +10,8 @@ package hub
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -261,7 +263,9 @@ func (c *Client) refuseOffOrigin(req *http.Request, via []*http.Request) error {
 // blob id the listing gives, a hash of their content too; one the listing gives
 // no usable hash for is checked on length alone, so for those the exception is
 // wider than that justification — iss-2609190151179403 holds the question of
-// narrowing it to files the tree gave a hash for.
+// narrowing it to files the tree gave a hash for. SmallFileAt's read of a
+// file the listing keeps in LFS takes the same exception, through doContent,
+// and only for a file the listing gave a sha256 for.
 func (c *Client) do(req *http.Request) (*http.Response, error) {
 	hc := *c.httpClient()
 	hc.CheckRedirect = c.refuseOffOrigin
@@ -376,11 +380,23 @@ func (c *Client) FilesAt(ctx context.Context, up Upstream) ([]File, error) {
 
 // SmallFileAt reads one small file of the repository at the commit Latest
 // found, under the token choice it made, refusing a body past max with
-// ErrOversizedBody. It goes through do, so the answer comes from the Hub's
-// own origin or not at all: it is for a file the repository keeps in git,
-// such as config.json, never for weights the Hub hands to its content CDN.
-func (c *Client) SmallFileAt(ctx context.Context, up Upstream, file string, max int64) ([]byte, error) {
-	u, err := c.ResolveURL(up.RepoID, up.Commit, file)
+// ErrOversizedBody. f is the file as the listing at that commit gives it.
+//
+// A file the repository keeps in git goes through do, so the answer comes
+// from the Hub's own origin or not at all. One the listing says it keeps in
+// LFS, such as a config.json some repositories store there, the Hub hands to
+// its content CDN on another host by design, and it is read there as a
+// download reads it: what anchors those bytes is the sha256 the listing
+// stated for them, and a body that is not those bytes is refused with
+// ErrContentMismatch (iss-2610042101439623). An LFS entry the listing gives
+// no sha256 for is read as a git file is, so off the Hub's origin it is
+// refused. The token never leaves the Hub's origin on the CDN hop.
+func (c *Client) SmallFileAt(ctx context.Context, up Upstream, f File, max int64) ([]byte, error) {
+	lfs := f.LFS != nil && isHex(f.LFS.OID, 64)
+	if lfs && f.LFS.Size > max {
+		return nil, fmt.Errorf("%s of %s is listed at %d bytes, longer than %d: %w", f.Path, up.RepoID, f.LFS.Size, max, ErrOversizedBody)
+	}
+	u, err := c.ResolveURL(up.RepoID, up.Commit, f.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -388,9 +404,14 @@ func (c *Client) SmallFileAt(ctx context.Context, up Upstream, file string, max 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.do(req)
+	var resp *http.Response
+	if lfs {
+		resp, err = c.doContent(req)
+	} else {
+		resp, err = c.do(req)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("read %s of %s: %w", file, up.RepoID, err)
+		return nil, fmt.Errorf("read %s of %s: %w", f.Path, up.RepoID, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -398,12 +419,38 @@ func (c *Client) SmallFileAt(ctx context.Context, up Upstream, file string, max 
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if err != nil {
-		return nil, fmt.Errorf("read %s of %s: %w", file, up.RepoID, err)
+		return nil, fmt.Errorf("read %s of %s: %w", f.Path, up.RepoID, err)
 	}
 	if int64(len(b)) > max {
-		return nil, fmt.Errorf("%s of %s is longer than %d bytes: %w", file, up.RepoID, max, ErrOversizedBody)
+		return nil, fmt.Errorf("%s of %s is longer than %d bytes: %w", f.Path, up.RepoID, max, ErrOversizedBody)
+	}
+	if lfs {
+		sum := sha256.Sum256(b)
+		if got := hex.EncodeToString(sum[:]); !strings.EqualFold(got, f.LFS.OID) {
+			return nil, fmt.Errorf("%s of %s: got sha256:%s, expected sha256:%s: %w", f.Path, up.RepoID, got, f.LFS.OID, ErrContentMismatch)
+		}
 	}
 	return b, nil
+}
+
+// doContent issues a request for an LFS object's content, which the Hub
+// answers with a redirect to its content CDN. Unlike do it follows that hop
+// off the Hub's origin — the caller holds what arrives to the sha256 the
+// listing gave — but it drops the access token from any hop that leaves the
+// origin, which a pre-signed CDN URL does not need, and keeps the hop limit.
+// It runs on a shallow copy of the client, as do does.
+func (c *Client) doContent(req *http.Request) (*http.Response, error) {
+	hc := *c.httpClient()
+	hc.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxRedirects)
+		}
+		if !sameOrigin(c.baseURL(), next.URL.String()) {
+			next.Header.Del("Authorization")
+		}
+		return nil
+	}
+	return hc.Do(req)
 }
 
 // APIError is a non-2xx response from the Hub.
@@ -805,6 +852,10 @@ func (c *Client) nextPage(pageURL, link string) (string, error) {
 // the Hub's own origin. One class, so a caller asks one question of all of
 // them.
 var ErrCrossOrigin = errors.New("the answer did not come from the hub's origin")
+
+// ErrContentMismatch is SmallFileAt's refusal of a body that is not the bytes
+// the listing's sha256 describes.
+var ErrContentMismatch = errors.New("the content does not match the hash the hub lists for it")
 
 // sameOrigin reports whether target has the same scheme and host as base. A
 // parse failure or missing host counts as different, i.e. refuse it.

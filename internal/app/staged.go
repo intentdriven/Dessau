@@ -249,8 +249,8 @@ func renameAt(from *os.File, fromName string, to *os.File, toName string) error 
 // being served, and swaps it in only when every file has checked out. A model
 // whose version Dessau never recorded, or that no check has marked, is brought
 // to the repository's current version. A model whose newer version ships its
-// own code, or waits for review, is refused: there is nothing Dessau would
-// run to update it to.
+// own code, waits for review, or could not be checked for code, is refused:
+// there is nothing Dessau knows it would run to update it to.
 func (a *App) Update(repoID string) error {
 	m, err := a.Registry.Get(repoID)
 	if err != nil {
@@ -264,7 +264,7 @@ func (a *App) Update(repoID string) error {
 		switch u.Status {
 		case registry.UpdateAvailable:
 			commit = u.Commit
-		case registry.UpdateRunsOwnCode, registry.UpdateAwaitingReview:
+		case registry.UpdateRunsOwnCode, registry.UpdateAwaitingReview, registry.UpdateCannotCheck:
 			return fmt.Errorf("%s: %w", m.RepoID, ErrUpdateNotOffered)
 		}
 	}
