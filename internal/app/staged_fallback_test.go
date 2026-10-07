@@ -256,9 +256,9 @@ func TestASecondUpdateBeforeAnyLoadKeepsTheVersionThatServed(t *testing.T) {
 	if m, _ := a.Registry.Get("org/repo"); m.Commit != commitV3 {
 		t.Fatalf("the second update was not swapped in: commit %s", m.Commit)
 	}
-	if got := asidesOf(a); len(got) != 1 {
-		t.Fatalf("held aside after two updates: %v, want one copy", got)
-	}
+	// The second update's own aside copy is removed just after the download
+	// mark is cleared, outside the lock, so wait for it rather than look once.
+	waitFor(t, "one copy to be held after two updates", func() bool { return len(asidesOf(a)) == 1 })
 
 	if err := servable(a); err == nil {
 		t.Fatal("the broken newest version loaded")
