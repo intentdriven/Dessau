@@ -578,7 +578,10 @@ func (r *Runner) heldBy(act Activity, now time.Time) string {
 	}
 	// Every client request, counted at the gateway whatever it ended as and
 	// wherever its model is now (Clients, iss-2610041945030758). Ticks do not
-	// run during a run, so a request in flight here is never the loop's own.
+	// run during a run, so a request in flight here is almost never the
+	// loop's own: a probe step that timed out can leave its gateway handler
+	// running past the run, which holds the next job for one threshold, as
+	// the pool's own release already did.
 	if act.Requests > 0 {
 		return HeldByInFlight
 	}

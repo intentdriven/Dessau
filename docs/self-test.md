@@ -31,9 +31,10 @@ are.
 
 Once a minute Dessau asks whether the Mac is idle: no request in flight, no
 request waiting for a model to load, no download running, and the last
-request older than the idle threshold. Every client request counts, however
-it ends — one that failed, or whose model has since been unloaded, counts the
-same as one that was answered. The threshold is five minutes unless you
+request older than the idle threshold. Every client request the server
+admits counts, however it ends — one that failed, or whose model has since
+been unloaded, counts the same as one that was answered. A request turned
+away for a missing or wrong key, or from an unpaired client, does not count. The threshold is five minutes unless you
 change it under **Settings → Context probe**, `idle_threshold_sec` in
 `config.json`; the self-test and the [context probe](context-probe.md) share
 it. When the Mac is idle, Dessau picks the
