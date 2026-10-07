@@ -383,23 +383,29 @@ func TestARoundStopsWhenTheHubsBudgetRunsLow(t *testing.T) {
 	}
 }
 
-// A decision model's newer version is marked as one that will be offered once
-// reviewed, and offered once a Dessau release has reviewed it (criterion 9).
-func TestADecisionModelWaitsForAReviewedVersion(t *testing.T) {
+// A decision model is never marked (iss-2610042101436891, the maintainer's
+// decision of 2026-10-07 withdrawing criterion 9's mark): a newer version no
+// Dessau release has reviewed is recorded as nothing to offer, which carries no
+// mark and no Update, while a reviewed one is offered as any newer version is.
+func TestADecisionModelIsNeverMarkedAwaitingReview(t *testing.T) {
 	files := recordedFiles()
 	files["model.safetensors"] = hWeight2
-	for reviewed, want := range map[string]string{
-		"":    registry.UpdateAwaitingReview,
-		newer: registry.UpdateAvailable,
+	for reviewed, want := range map[string]registry.UpdateCheck{
+		"":    {Status: registry.UpdateCurrent},
+		newer: {Status: registry.UpdateAvailable, Commit: newer},
 	} {
 		h := newCheckFakeHub(t, map[string]upstreamRepo{"org/decide": {commit: newer, files: files}})
 		a, _ := newCheckApp(t, h, true, map[string]map[string]string{"org/decide": recordedFiles()})
 		a.reviewed = func(id string) (bool, []string) {
 			return id == "org/decide", []string{onDisk, reviewed}
 		}
-		a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
-		if u := update(t, a, "org/decide"); u == nil || u.Status != want || u.Commit != newer {
-			t.Errorf("reviewed %q: Update = %+v, want %s", reviewed, u, want)
+		round := a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
+		u := update(t, a, "org/decide")
+		if u == nil || u.Status != want.Status || u.Commit != want.Commit {
+			t.Errorf("reviewed %q: Update = %+v, want status %q commit %q", reviewed, u, want.Status, want.Commit)
+		}
+		if marked := want.Status != registry.UpdateCurrent; (round.Marked == 1) != marked {
+			t.Errorf("reviewed %q: the round marked %d models, want marked = %v", reviewed, round.Marked, marked)
 		}
 	}
 }

@@ -39,8 +39,9 @@ var errChecksOff = errors.New("update checks were turned off")
 
 // ReviewedBuilds says whether a model is a decision model, and which upstream
 // commits of it a Dessau release has reviewed. A decision model is offered an
-// update only to a reviewed commit (itd-2610030656210408). Nil means no model
-// is a decision model.
+// update only to a reviewed commit (itd-2610030656210408), and a newer one
+// that is not reviewed is never marked (iss-2610042101436891). Nil means no
+// model is a decision model.
 type ReviewedBuilds func(repoID string) (decision bool, reviewed []string)
 
 // UpdateRound is what one round of update checks did.
@@ -268,7 +269,11 @@ func (a *App) checkOne(ctx context.Context, m registry.Model) (registry.UpdateCh
 					return registry.UpdateCheck{Status: registry.UpdateAvailable, Commit: up.Commit}, nil
 				}
 			}
-			return registry.UpdateCheck{Status: registry.UpdateAwaitingReview, Commit: up.Commit}, nil
+			// Nothing to offer, and a decision model is never marked: the
+			// 'awaiting review' mark is withdrawn (iss-2610042101436891), so
+			// the check records what it records for a version with nothing
+			// newer, which carries no mark and no Update.
+			return registry.UpdateCheck{Status: registry.UpdateCurrent}, nil
 		}
 	}
 	return registry.UpdateCheck{Status: registry.UpdateAvailable, Commit: up.Commit}, nil

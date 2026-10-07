@@ -52,6 +52,15 @@ GitHub release notes.
   its turn comes round again
   ([context probe](docs/context-probe.md#whether-the-model-calls-tools);
   iss-2610032231045098).
+- **A decision model is never marked "newer version awaiting review".**
+  `impact: fix`. The update check marked a decision model's newer version
+  that no Dessau release had reviewed as awaiting review, although the
+  update check was announced as never marking a decision model. Such a
+  version now carries no mark and no **Update**, as a model with nothing
+  newer does; a decision model is still offered, and fetched at, only a
+  version a Dessau release has reviewed. A record left over with the old
+  mark is dropped when Dessau starts, and the next check writes it again
+  (iss-2610042101436891).
 
 ## [0.10.0] - 2026-10-04
 

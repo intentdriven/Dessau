@@ -276,7 +276,8 @@ func TestAPlantedCheckIsHeldToWhatACheckWrites(t *testing.T) {
 	  {"repo_id":"org/a","state":"ready","commit":"` + aCommit + `","update":{"status":"<b>new</b>","commit":"` + aCommit + `","checked_at":"2026-10-03T12:00:00Z"}},
 	  {"repo_id":"org/b","state":"ready","commit":"` + aCommit + `","update":{"status":"available","commit":"main","checked_at":"2026-10-03T12:00:00Z"}},
 	  {"repo_id":"org/c","state":"ready","commit":"` + aCommit + `","update":{"status":"current","checked_at":"2999-01-01T00:00:00Z"}},
-	  {"repo_id":"org/d","state":"ready","update":{"status":"current","checked_at":"2026-10-03T12:00:00Z"}}
+	  {"repo_id":"org/d","state":"ready","update":{"status":"current","checked_at":"2026-10-03T12:00:00Z"}},
+	  {"repo_id":"org/e","state":"ready","commit":"` + aCommit + `","update":{"status":"awaiting_review","commit":"fedcba9876543210fedcba9876543210fedcba98","checked_at":"2026-10-03T12:00:00Z"}}
 	]`
 	if err := os.WriteFile(path, []byte(planted), 0o600); err != nil {
 		t.Fatal(err)
@@ -285,7 +286,9 @@ func TestAPlantedCheckIsHeldToWhatACheckWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"org/a", "org/b", "org/d"} {
+	// org/e is the mark a decision model once carried, which no check writes
+	// any more (iss-2610042101436891).
+	for _, id := range []string{"org/a", "org/b", "org/d", "org/e"} {
 		if m, _ := r.Get(id); m.Update != nil {
 			t.Errorf("%s: a planted check was kept: %+v", id, m.Update)
 		}

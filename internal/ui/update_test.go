@@ -7,9 +7,12 @@ import (
 )
 
 // The card says what the last check found, in words: a newer version, one
-// Dessau will not run, one waiting for review, a version never recorded, and
-// an update under way; and Update appears exactly where there is something
-// Dessau would run to update to (itd-2610030857275099 criteria 4, 7, 8, 9).
+// Dessau will not run, a version never recorded, and an update under way; and
+// Update appears exactly where there is something Dessau would run to update
+// to (itd-2610030857275099 criteria 4, 7, 8). A decision model is never
+// marked: the 'awaiting review' mark criterion 9 gave one is withdrawn
+// (iss-2610042101436891), so a record still carrying it shows nothing and
+// offers no Update.
 func TestTheCardSaysWhatACheckFound(t *testing.T) {
 	const c = `"commit":"1111111111111111111111111111111111111111"`
 	cases := []struct {
@@ -23,7 +26,7 @@ func TestTheCardSaysWhatACheckFound(t *testing.T) {
 		{`{"state":"ready",` + c + `,"update":{"status":"runs_own_code","commit":"2222222222222222222222222222222222222222"}}`,
 			`ships its own code, which Dessau will not run`, `newer version not run`, false},
 		{`{"state":"ready",` + c + `,"update":{"status":"awaiting_review","commit":"2222222222222222222222222222222222222222"}}`,
-			`will be offered once a Dessau release has reviewed it`, `newer version awaiting review`, false},
+			``, ``, false},
 		{`{"state":"ready",` + c + `,"update":{"status":"cannot_check","commit":"2222222222222222222222222222222222222222"}}`,
 			`could not tell whether it ships its own code`, `newer version not checked`, false},
 		{`{"state":"ready"}`, `Version unknown`, ``, true},

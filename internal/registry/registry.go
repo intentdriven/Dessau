@@ -164,16 +164,15 @@ type UpdateCheck struct {
 // What an update check can find. Every value but UpdateCurrent is a mark on
 // the model's card; only UpdateAvailable offers Update.
 const (
-	// UpdateCurrent: no file Dessau uses differs from the version on disk.
+	// UpdateCurrent: no file Dessau uses differs from the version on disk,
+	// or the only newer version is a decision model's that no Dessau release
+	// has reviewed, which is never marked (iss-2610042101436891).
 	UpdateCurrent = "current"
 	// UpdateAvailable: a newer version changes a file Dessau uses.
 	UpdateAvailable = "available"
 	// UpdateRunsOwnCode: the newer version's config.json names a model_file,
 	// which Dessau will not run.
 	UpdateRunsOwnCode = "runs_own_code"
-	// UpdateAwaitingReview: a decision model's newer version has not been
-	// reviewed by a Dessau release, so it is not offered until one has.
-	UpdateAwaitingReview = "awaiting_review"
 	// UpdateCannotCheck: the Hub handed out the newer version's config.json
 	// in a form the check could not hold to the hash it lists for it, so
 	// whether that version ships its own code is unknown and it is not
@@ -203,7 +202,7 @@ func sanitizeUpdate(m Model) Model {
 	switch u.Status {
 	case UpdateCurrent:
 		ok = ok && u.Commit == ""
-	case UpdateAvailable, UpdateRunsOwnCode, UpdateAwaitingReview, UpdateCannotCheck:
+	case UpdateAvailable, UpdateRunsOwnCode, UpdateCannotCheck:
 		ok = ok && validCommit(u.Commit) && u.Commit != m.Commit
 	default:
 		ok = false

@@ -398,11 +398,11 @@ func TestAnUpdateClearsFileFactsAndKeepsSettings(t *testing.T) {
 	}
 }
 
-// Update offers nothing for a version Dessau would not run, one waiting for
-// review, or one whose code a check could not tell.
+// Update offers nothing for a version Dessau would not run, or one whose code
+// a check could not tell.
 func TestUpdateIsRefusedWhereNoneIsOffered(t *testing.T) {
 	a, _ := newStagedApp(t)
-	for _, status := range []string{registry.UpdateRunsOwnCode, registry.UpdateAwaitingReview, registry.UpdateCannotCheck} {
+	for _, status := range []string{registry.UpdateRunsOwnCode, registry.UpdateCannotCheck} {
 		a.Registry.SetUpdate("org/repo", commitV1, registry.UpdateCheck{Status: status, Commit: commitV2, CheckedAt: time.Now()})
 		if err := a.Update("org/repo"); !errors.Is(err, ErrUpdateNotOffered) {
 			t.Errorf("%s: err = %v, want ErrUpdateNotOffered", status, err)
