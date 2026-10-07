@@ -139,11 +139,14 @@ func TestANewVersionThatFailsItsFirstLoadPutsTheOldOneBack(t *testing.T) {
 	if err := servable(a); err != nil {
 		t.Errorf("the old version put back is not served: %v", err)
 	}
+	// The failed version is removed just after the record is written, so
+	// wait for the staging folder to empty rather than look once.
+	waitFor(t, "the staging folder to empty after the old version went back", func() bool {
+		entries, _ := os.ReadDir(filepath.Join(a.stagingRoot(), "org"))
+		return len(entries) == 0
+	})
 	if got := asidesOf(a); len(got) != 0 {
 		t.Errorf("left aside after the old version went back: %v", got)
-	}
-	if entries, _ := os.ReadDir(filepath.Join(a.stagingRoot(), "org")); len(entries) != 0 {
-		t.Errorf("the failed new version was left in the staging folder: %d entries", len(entries))
 	}
 }
 
