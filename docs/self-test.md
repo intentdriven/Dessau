@@ -55,6 +55,10 @@ short set every model gets:
 The names are [llama-bench](https://github.com/ggml-org/llama.cpp/tree/master/tools/llama-bench)'s,
 so a figure here can be set beside a published one.
 
+The set is a chat benchmark, so the self-test measures only models that can
+chat. A model that cannot, such as a decision model or an OCR model, is
+passed over and never loaded for it (see [chat models](chat-models.md)).
+
 When the set is done Dessau writes one line to the results file and, if the
 self-test was what loaded the model, unloads it again; a model that was
 already in memory is left there. The self-test never unloads a

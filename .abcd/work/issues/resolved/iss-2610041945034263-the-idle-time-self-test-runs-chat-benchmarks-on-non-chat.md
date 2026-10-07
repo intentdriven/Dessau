@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/selftest/selftest.go"
 remedy: "The maintainer decides whether non-chat models are self-tested at all: either skip every model that cannot chat, as Load now does (iss-2610031010371709), or give decision models their own short test through /v1/systemone once itd-2610030656210408 lands; record the choice in docs/self-test.md."
+resolution: "The self-test skips models that cannot chat (since a0264236); docs/self-test.md now says so, and a decision-model test is seeded as iss-2610071209008023"
+impact: internal
 ---
 
 The idle-time self-test runs chat benchmarks on non-chat models. At 18:45 on 2026-10-04 it loaded mlx-community/clef-4bit, a decision model that cannot chat, to run pp512, tg128 and tg128xN through chat completions. Its previous self-test record for that model reads 'yielded'. A chat benchmark says nothing useful about a model that answers typed decisions, and it costs a cold load of a large model. Nothing records whether non-chat models (decision models, OCR models) should be self-tested at all.
