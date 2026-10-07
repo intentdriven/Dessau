@@ -26,8 +26,14 @@ import (
 // fakeHub serves a minimal model repo.
 func fakeHub(t *testing.T) *httptest.Server {
 	t.Helper()
+	return fakeHubWithConfig(t, `{"model_type":"qwen3","max_position_embeddings":40960}`)
+}
+
+// fakeHubWithConfig is fakeHub serving the model configuration given.
+func fakeHubWithConfig(t *testing.T, modelConfig string) *httptest.Server {
+	t.Helper()
 	files := map[string][]byte{
-		"config.json":       []byte(`{"model_type":"qwen3","max_position_embeddings":40960}`),
+		"config.json":       []byte(modelConfig),
 		"model.safetensors": make([]byte, 2048),
 		"tokenizer.json":    []byte(`{}`),
 	}

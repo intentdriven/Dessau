@@ -72,6 +72,14 @@ type Model struct {
 	// does not say enough to work it out, and such a model is charged the flat
 	// figure instead.
 	KVChargePerToken int64 `json:"kv_charge_per_token,omitempty"`
+	// KVBytesPerToken is the same configuration's arithmetic without the
+	// safety factor (capability.KVShape.BytesPerToken): the real cache one
+	// token costs. The model server's prompt cache is bounded by one served
+	// window of it (iss-2610071035130302). Zero means the figure is not
+	// known — the configuration does not say, or the charge beside it is
+	// zero — and such a model's server keeps no prompt cache. Never above
+	// the charge.
+	KVBytesPerToken int64 `json:"kv_bytes_per_token,omitempty"`
 	// PipelineTag and Tags are what HuggingFace says this model is: the repo's
 	// pipeline tag ("text-generation", "automatic-speech-recognition") and its
 	// tags, recorded from the Hub when the model was downloaded.
@@ -624,6 +632,12 @@ func Open(path string) (*Registry, error) {
 		if !plausibleKVChargePerToken(m.KVChargePerToken) {
 			m.KVChargePerToken = 0
 		}
+		// And the real figure beside it, which bounds the prompt cache the
+		// model server keeps: held to the same bound, and to the charge it
+		// is never above, checked after the charge itself was.
+		if !plausibleKVBytesPerToken(m.KVBytesPerToken, m.KVChargePerToken) {
+			m.KVBytesPerToken = 0
+		}
 		// The category is persisted too, so a hand-edited or planted index can
 		// carry an unbounded tag list straight to the LAN with no download in
 		// between. Bound words read back exactly as words from the Hub are.
@@ -1048,6 +1062,7 @@ func (r *Registry) Rescan(modelsDir string) error {
 				Bytes:            size,
 				ContextLength:    facts.ContextLength,
 				KVChargePerToken: facts.KVChargePerToken,
+				KVBytesPerToken:  facts.KVBytesPerToken,
 				ChatTemplate:     facts.ChatTemplate,
 				QuantizationBits: facts.QuantizationBits,
 				State:            StateReady,
@@ -1072,6 +1087,7 @@ func (r *Registry) Rescan(modelsDir string) error {
 			// next startup rescan rather than only on a re-download.
 			existing.ContextLength = m.ContextLength
 			existing.KVChargePerToken = m.KVChargePerToken
+			existing.KVBytesPerToken = m.KVBytesPerToken
 			existing.ChatTemplate = m.ChatTemplate
 			existing.QuantizationBits = m.QuantizationBits
 			// The category is deliberately NOT re-derived. It is the Hub's
@@ -1213,6 +1229,7 @@ func ModelDirComplete(dir string) bool {
 type ModelFacts struct {
 	ContextLength    int64
 	KVChargePerToken int64
+	KVBytesPerToken  int64
 	ChatTemplate     bool
 	QuantizationBits int
 }
@@ -1236,6 +1253,7 @@ func factsFrom(dir string, cfg map[string]any) ModelFacts {
 	return ModelFacts{
 		ContextLength:    contextLengthFrom(cfg),
 		KVChargePerToken: kvChargePerTokenFrom(cfg),
+		KVBytesPerToken:  kvBytesPerTokenFrom(cfg),
 		ChatTemplate:     hasChatTemplate(dir),
 		QuantizationBits: quantizationBitsFrom(cfg),
 	}
@@ -1494,6 +1512,20 @@ func kvChargePerTokenFrom(cfg map[string]any) int64 {
 	return n
 }
 
+// kvBytesPerTokenFrom is the real cache one token costs, from the same shape
+// as the charge and without its safety factor: what bounds the model
+// server's prompt cache (iss-2610071035130302). A configuration whose charge
+// is not believed yields nothing here either, because such a model is
+// charged the flat figure, which reserves no cache for the prompt cache to
+// be bounded within.
+func kvBytesPerTokenFrom(cfg map[string]any) int64 {
+	n := kvShapeFrom(cfg).BytesPerToken()
+	if !plausibleKVBytesPerToken(n, kvChargePerTokenFrom(cfg)) {
+		return 0
+	}
+	return n
+}
+
 // kvShapeFrom reads the shape itself, leaving the arithmetic and its own
 // bounds to capability.
 func kvShapeFrom(cfg map[string]any) capability.KVShape {
@@ -1608,6 +1640,14 @@ func configNumber(level map[string]any, key string) (int64, bool) {
 // the registry: on a scan, and again when one is read back from the index.
 func plausibleKVChargePerToken(n int64) bool {
 	return n >= 0 && n <= MaxKVChargePerToken
+}
+
+// plausibleKVBytesPerToken is the bound applied wherever a real cache figure
+// enters the registry: the charge's own bound, and the charge itself, which
+// is that figure times a safety factor and so never below it. A figure with
+// no charge beside it is not believed either.
+func plausibleKVBytesPerToken(n, charge int64) bool {
+	return plausibleKVChargePerToken(n) && (n == 0 || n <= charge)
 }
 
 // CheckShards reports an error unless every weight shard named by

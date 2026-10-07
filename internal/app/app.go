@@ -1523,6 +1523,7 @@ func (s modelSource) Resolve(repoID string) (runtime.ResolvedModel, error) {
 		Bytes:            m.Bytes,
 		ServedContext:    window,
 		KVChargePerToken: m.KVChargePerToken,
+		KVBytesPerToken:  m.KVBytesPerToken,
 	}, nil
 }
 
@@ -1759,6 +1760,7 @@ func (a *App) startDownload(repoID, commit string) error {
 					Bytes:            bytes,
 					ContextLength:    facts.ContextLength,
 					KVChargePerToken: facts.KVChargePerToken,
+					KVBytesPerToken:  facts.KVBytesPerToken,
 					ChatTemplate:     facts.ChatTemplate,
 					QuantizationBits: facts.QuantizationBits,
 					PipelineTag:      pipelineTag,

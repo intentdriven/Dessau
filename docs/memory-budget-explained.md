@@ -36,16 +36,22 @@ any figure you type at its word.
 A loaded model is charged three things: its weights, a fifth of them again for
 the working set a running model needs whatever the prompt is, and the attention
 cache the window it is served at costs — once for every sequence its server may
-decode at once.
+decode at once. No more requests run on a model at once than it is charged
+for; the next waits for one in progress to finish.
 
 The cache is the term that decides which models can share this Mac. It grows
 with the prompt, and what it costs per token is a property of the architecture
 rather than of the model's size: measured on a 128 GB Mac, four models between
 18 GB and 45 GB of weights ranged from 12 KB to 353 KB per token, a thirtyfold
-spread, and the largest of them was not the most expensive. The model server
-also keeps a prompt's cache after the answer is sent, and caches stack across
-requests, so the charge is what the model may come to hold rather than what it
-holds the moment it loads.
+spread, and the largest of them was not the most expensive. The charge is what
+the model may come to hold rather than what it holds the moment it loads.
+
+The model server also keeps prompts' caches after their answers are sent, so
+that the next turn of a conversation is not read again from the start. Those
+kept caches do not stack beyond one window per model: Dessau holds them, all
+together, to one served window of cache at the configuration's own figure,
+before the multiplier described below. They are counted inside the charge
+rather than added to it, on the strength of that multiplier's margin.
 
 The figure per token is read from the model's own configuration: how many of
 its layers attend over the whole prompt, and what one layer's entry costs. That
@@ -54,7 +60,8 @@ than it, because a server keeps more than the raw cache — so Dessau multiplies
 it: five times for a model that caches keys and values per head, seven for one
 that caches a compressed latent, each the top of what its own kind was measured
 holding. A model whose configuration cannot be read is charged the flat figure
-instead: its weights plus a fifth.
+instead: its weights plus a fifth. That figure sets nothing aside for a cache,
+so such a model's server keeps no prompt's cache once the answer is sent.
 
 ## The window is the operator's, and it is the same window twice
 

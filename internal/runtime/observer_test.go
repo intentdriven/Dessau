@@ -312,7 +312,7 @@ func TestAcquireSeparatesTheLoadWaitFromTheQueueWait(t *testing.T) {
 	l.loadDelay = 80 * time.Millisecond
 	src := &fakeSource{models: map[string]int64{"org/m": 1 << 20}}
 	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 1 << 30, DecodeConcurrency: 1})
-	// cap(sem) = 2 * DecodeConcurrency = 2.
+	// cap(sem) = DecodeConcurrency = 1.
 
 	up, rel1, err := p.Acquire(context.Background(), "org/m")
 	if err != nil {
@@ -325,12 +325,7 @@ func TestAcquireSeparatesTheLoadWaitFromTheQueueWait(t *testing.T) {
 		t.Errorf("the first request is reported as queueing for %v; nothing was ahead of it", up.Waits.QueueWait)
 	}
 
-	_, rel2, err := p.Acquire(context.Background(), "org/m")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Both slots are taken; the third request queues until one frees.
+	// The one slot is taken; the second request queues until it frees.
 	type result struct {
 		up  *Upstream
 		rel func()
@@ -341,7 +336,7 @@ func TestAcquireSeparatesTheLoadWaitFromTheQueueWait(t *testing.T) {
 		u, rel, err := p.Acquire(context.Background(), "org/m")
 		done <- result{u, rel, err}
 	}()
-	waitInFlight(t, p, "org/m", 3)
+	waitInFlight(t, p, "org/m", 2)
 	time.Sleep(60 * time.Millisecond)
 	rel1()
 
@@ -350,7 +345,6 @@ func TestAcquireSeparatesTheLoadWaitFromTheQueueWait(t *testing.T) {
 		t.Fatal(got.err)
 	}
 	defer got.rel()
-	defer rel2()
 	if got.up.Waits.QueueWait < 50*time.Millisecond {
 		t.Errorf("the queued request is reported as waiting %v for a slot, want at least the 60ms it waited",
 			got.up.Waits.QueueWait)

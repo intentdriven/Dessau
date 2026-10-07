@@ -11,7 +11,8 @@ interpreter with -c under -I (internal/runtime/launcher.go launchArgs), so no
 module from the working directory, the model directory or a PYTHONPATH is
 imported in its place or in mlx_lm's.
 
-Usage: python -I -u -c <this> --dessau-socket PATH [mlx_lm.server flags...]
+Usage: python -I -u -c <this> --dessau-socket PATH --dessau-prompt-cache-bytes N
+       [mlx_lm.server flags...]
 
 What it adds to the server, as defence behind the gateway's own checks:
 
@@ -22,7 +23,9 @@ What it adds to the server, as defence behind the gateway's own checks:
     server hands to load() -- is refused, by the key's presence whatever its
     value, as the gateway refuses them;
   * a launch naming a draft model, an adapter or remote tokenizer code is
-    refused, and no origin is allowed cross-origin access.
+    refused, and no origin is allowed cross-origin access;
+  * the prompt cache kept between requests holds no more than N bytes, and a
+    launch with no N, or one that is not a whole number, is refused.
 """
 
 import io
@@ -34,6 +37,9 @@ import stat
 import sys
 
 SOCKET_FLAG = "--dessau-socket"
+PROMPT_CACHE_BYTES_FLAG = "--dessau-prompt-cache-bytes"
+# The largest bound the Go side can pass (an int64).
+MAX_PROMPT_CACHE_BYTES = (1 << 63) - 1
 
 # The fields the pinned server reads as an instruction to load something the
 # request names. Kept in step with internal/gateway's loadFields.
@@ -53,6 +59,25 @@ def _take_socket(argv):
     if len(argv) < 2 or argv[0] != SOCKET_FLAG:
         _fail("the first argument must be " + SOCKET_FLAG + " PATH")
     return argv[1], argv[2:]
+
+
+def _take_prompt_cache_bytes(argv):
+    """The most the prompt cache may hold, in bytes: a whole number from 0.
+
+    Without it the pinned server builds its prompt cache with no byte limit
+    (2**63), so a missing or malformed value refuses the launch rather than
+    serving unbounded (iss-2610071035130302).
+    """
+    if len(argv) < 2 or argv[0] != PROMPT_CACHE_BYTES_FLAG:
+        _fail("the prompt cache has no bound: the second argument must be " + PROMPT_CACHE_BYTES_FLAG + " N")
+    value = argv[1]
+    if not (value.isascii() and value.isdigit()):
+        _fail("the prompt cache bound is not a whole number of bytes")
+    # The length first: int() refuses a string of more than a few thousand
+    # digits with its own error rather than this launcher's.
+    if len(value) > len(str(MAX_PROMPT_CACHE_BYTES)) or int(value) > MAX_PROMPT_CACHE_BYTES:
+        _fail("the prompt cache bound is out of range")
+    return int(value), argv[2:]
 
 
 def _check_private_dir(path):
@@ -139,7 +164,7 @@ def _handler_class(base, model):
     return Handler
 
 
-def _serve(server, path, model_provider):
+def _serve(server, path, prompt_cache_bytes, model_provider):
     cli = model_provider.cli_args
     if getattr(cli, "draft_model", None) is not None:
         _fail("a draft model is not loaded")
@@ -151,7 +176,10 @@ def _serve(server, path, model_provider):
         _fail("no model to serve")
     cli.allowed_origins = []
 
-    prompt_cache = server.LRUPromptCache(cli.prompt_cache_size)
+    # Bounded in bytes as well as entries: the pinned server's own run()
+    # passes the entry count alone, and its --prompt-cache-bytes never
+    # reaches this constructor.
+    prompt_cache = server.LRUPromptCache(cli.prompt_cache_size, max_bytes=prompt_cache_bytes)
     generator = server.ResponseGenerator(model_provider, prompt_cache)
     handler = _handler_class(server.APIHandler, cli.model)
     fingerprint = server.get_system_fingerprint()
@@ -178,6 +206,7 @@ def _serve(server, path, model_provider):
 
 def main():
     path, rest = _take_socket(sys.argv[1:])
+    prompt_cache_bytes, rest = _take_prompt_cache_bytes(rest)
     _check_private_dir(path)
 
     from mlx_lm import server
@@ -185,7 +214,7 @@ def main():
     def run(host, port, model_provider, server_class=None, handler_class=None):
         # The server's main() parses its flags and builds its model provider,
         # then calls this in place of its own run(), which would bind TCP.
-        _serve(server, path, model_provider)
+        _serve(server, path, prompt_cache_bytes, model_provider)
 
     server.run = run
     sys.argv = ["mlx_lm.server"] + rest

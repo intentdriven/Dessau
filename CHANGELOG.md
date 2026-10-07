@@ -71,6 +71,35 @@ GitHub release notes.
   of the answer was written, says that the model reached its length limit
   before it wrote one ([Discord bridge](docs/discord-bridge.md);
   iss-2610041945020793).
+### Changed
+
+- **A model runs no more requests at once than its memory is charged for.**
+  `impact: breaking`. Each model is charged one served window of attention
+  cache per batched request, but its server was handed twice that many
+  requests at once, so two long conversations on one model could build twice
+  the cache the memory budget had set aside. A model now runs as many
+  requests at once as **Settings → Batched requests** says, and the next
+  waits its turn: at the default of one, when Alice and Bob ask the same
+  model together, Bob's answer starts when Alice's ends. Raise **Batched
+  requests** on a Mac that serves several clients at once
+  ([getting started](docs/getting-started.md);
+  [why there is a memory budget](docs/memory-budget-explained.md);
+  iss-2610071035138788).
+
+### Fixed
+
+- **The conversations a model remembers between requests no longer grow
+  past its memory charge.** `impact: fix`. A model's server keeps the
+  caches of recent prompts so that the next turn of a conversation is not
+  read again, and it kept up to ten of them with no limit on their size: a
+  model serving Alice's, Bob's and Carol's long conversations could hold
+  several windows of cache that the memory budget never counted. What it
+  keeps is now held, all together, to one served window of the cache's own
+  size. A model whose configuration does not say what its cache costs keeps
+  none between requests. Dessau works out the new figure when it starts, so
+  a model downloaded earlier gains it at the next start
+  ([why there is a memory budget](docs/memory-budget-explained.md);
+  iss-2610071035130302).
 - **An update that will not load no longer leaves a model without a
   version to serve.** `impact: fix`. Dessau removed the old version of a
   model as soon as the new one passed the checks it makes before starting a

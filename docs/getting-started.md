@@ -98,7 +98,8 @@ and nothing is unloaded to fit a lowered figure. See
 does and does not account for.
 
 **Settings → Batched requests** is how many requests one model server answers
-at once: one by default. Each batched request holds its own attention cache, and
+at once: one by default. A request beyond that waits for one in progress to
+finish. Each batched request holds its own attention cache, and
 a model with no served context of its own is served at the largest window the
 budget has room for per request, so one is the setting that gives each model
 its widest window. Raise it on a Mac that serves several clients at once, and
