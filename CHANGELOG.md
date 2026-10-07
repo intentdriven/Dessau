@@ -24,6 +24,17 @@ GitHub release notes.
   version did not load. The old version is kept aside across a restart too,
   and goes when the model is removed
   ([model updates](docs/model-updates.md); iss-2610042101430192).
+- **A newer version that ships its own code is no longer offered when its
+  repository keeps `config.json` in Git LFS.** `impact: fix`. HuggingFace
+  hands such a file to its content CDN, which the update check did not read
+  from, so the check could not see whether the newer version names a
+  `model_file` and marked it as available with **Update** offered; only the
+  update's own checks refused it, after the download. The check now reads the
+  file from the CDN, held to the hash HuggingFace lists for it and sending
+  the CDN no access token, and a version that ships its own code is marked
+  **newer version not run**. One whose `config.json` cannot be held to that
+  hash is marked **newer version not checked**, and is not offered either
+  ([model updates](docs/model-updates.md); iss-2610042101439623).
 
 ## [0.10.0] - 2026-10-04
 

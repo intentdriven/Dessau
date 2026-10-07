@@ -582,6 +582,7 @@ function updateText(m) {
       case 'available': return `A newer version is available (${short}).`;
       case 'runs_own_code': return `A newer version (${short}) ships its own code, which Dessau will not run, so it is not offered.`;
       case 'awaiting_review': return `A newer version (${short}) exists and will be offered once a Dessau release has reviewed it.`;
+      case 'cannot_check': return `A newer version (${short}) exists, but HuggingFace did not hand over its configuration in a form Dessau could verify, so Dessau could not tell whether it ships its own code and it is not offered.`;
       default: return '';
     }
   })();
@@ -595,6 +596,7 @@ function updateMark(m) {
     case 'available': return 'newer version';
     case 'runs_own_code': return 'newer version not run';
     case 'awaiting_review': return 'newer version awaiting review';
+    case 'cannot_check': return 'newer version not checked';
     default: return '';
   }
 }

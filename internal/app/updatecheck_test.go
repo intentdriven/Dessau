@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -512,23 +514,83 @@ func TestAnUnrecordedConfigIsReadWhenTheVersionMoves(t *testing.T) {
 	}
 }
 
-// A config.json the repository keeps in LFS is handed to the Hub's content
-// CDN, which a check does not read from; the newer version is offered rather
-// than the model counted unreachable at every check, and the update's own
-// Precheck is what refuses one that names a model_file.
-func TestAConfigOnTheContentCDNDoesNotStopTheCheck(t *testing.T) {
-	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"model_type":"qwen3"}`)
-	}))
-	defer cdn.Close()
+// lfsConfigCheck runs one check of a model whose newer config.json the Hub
+// hands to a content CDN that answers with serve; listed is the hash the
+// listing gives for it, a sha256 for a file the repository keeps in LFS.
+func lfsConfigCheck(t *testing.T, listed string, serve http.HandlerFunc) (*registry.UpdateCheck, UpdateRound) {
+	t.Helper()
+	cdn := httptest.NewServer(serve)
+	t.Cleanup(cdn.Close)
 	files := recordedFiles()
-	files["config.json"] = hConfig2
+	files["config.json"] = listed
 	h := newCheckFakeHub(t, map[string]upstreamRepo{"org/m": {commit: newer, files: files}})
 	h.cdn = cdn.URL
 	a, _ := newCheckApp(t, h, true, map[string]map[string]string{"org/m": recordedFiles()})
 	round := a.CheckForUpdates(context.Background(), a.updateCheckDue(time.Now()))
-	if u := update(t, a, "org/m"); u == nil || u.Status != registry.UpdateAvailable {
+	return update(t, a, "org/m"), round
+}
+
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
+// A config.json the repository keeps in LFS is handed to the Hub's content
+// CDN; the check reads it there, held to the sha256 the listing gives, so a
+// newer version that ships its own code is named as one and never offered
+// (iss-2610042101439623).
+func TestAConfigInLFSThatNamesCodeIsNotOffered(t *testing.T) {
+	const body = `{"model_type":"qwen3","model_file":"modeling.py"}`
+	u, round := lfsConfigCheck(t, sha256Hex(body), func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, body)
+	})
+	if u == nil || u.Status != registry.UpdateRunsOwnCode {
+		t.Errorf("Update = %+v (round %+v), want runs_own_code", u, round)
+	}
+}
+
+// One that names no code is offered as any other newer version is.
+func TestAConfigInLFSThatNamesNoCodeIsOffered(t *testing.T) {
+	const body = `{"model_type":"qwen3"}`
+	u, round := lfsConfigCheck(t, sha256Hex(body), func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, body)
+	})
+	if u == nil || u.Status != registry.UpdateAvailable {
 		t.Errorf("Update = %+v (round %+v), want available", u, round)
+	}
+}
+
+// Bytes from the CDN that are not the ones the listing describes say nothing
+// about the newer version's code: it is marked as one Dessau could not
+// check, and not offered.
+func TestAConfigFromTheCDNThatIsNotTheListedOneIsNotOffered(t *testing.T) {
+	u, round := lfsConfigCheck(t, sha256Hex(`{"model_type":"qwen3","model_file":"modeling.py"}`),
+		func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"model_type":"qwen3"}`) })
+	if u == nil || u.Status != registry.UpdateCannotCheck {
+		t.Errorf("Update = %+v (round %+v), want cannot_check", u, round)
+	}
+}
+
+// A CDN that does not answer leaves the model as a Hub that does not answer
+// does: no mark, so nothing is offered, and the next interval asks again.
+func TestAConfigTheCDNDoesNotServeIsNotOffered(t *testing.T) {
+	u, round := lfsConfigCheck(t, sha256Hex(`{"model_type":"qwen3"}`), func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	})
+	if u != nil || round.Unreachable != 1 {
+		t.Errorf("Update = %+v (round %+v), want no mark and the model counted unreachable", u, round)
+	}
+}
+
+// A config.json the listing keeps in git, so with no sha256, that the Hub
+// hands off its own origin anyway has nothing to hold those bytes to: the
+// newer version is marked as one Dessau could not check, and not offered.
+func TestAGitConfigHandedOffTheHubIsNotOffered(t *testing.T) {
+	u, round := lfsConfigCheck(t, hConfig2, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"model_type":"qwen3"}`)
+	})
+	if u == nil || u.Status != registry.UpdateCannotCheck {
+		t.Errorf("Update = %+v (round %+v), want cannot_check", u, round)
 	}
 }
 

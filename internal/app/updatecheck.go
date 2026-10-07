@@ -233,13 +233,22 @@ func (a *App) checkOne(ctx context.Context, m registry.Model) (registry.UpdateCh
 		if !a.Config().UpdateCheck {
 			return registry.UpdateCheck{}, errChecksOff
 		}
-		b, err := a.Hub.SmallFileAt(ctx, up, "config.json", maxCheckedConfig)
+		listed := hub.File{Path: "config.json"}
+		for _, f := range files {
+			if f.Path == "config.json" {
+				listed = f
+				break
+			}
+		}
+		b, err := a.Hub.SmallFileAt(ctx, up, listed, maxCheckedConfig)
 		switch {
-		case errors.Is(err, hub.ErrCrossOrigin):
-			// A config.json the repository keeps in LFS is served from the
-			// Hub's content CDN, which a check does not read from. The
-			// newer version is offered; the update's own Precheck refuses
-			// it if it names a model_file.
+		case errors.Is(err, hub.ErrCrossOrigin), errors.Is(err, hub.ErrContentMismatch), errors.Is(err, hub.ErrOversizedBody):
+			// The Hub answered, but with a config.json the check cannot
+			// hold to the hash it lists — handed off its origin with no
+			// sha256 to check, not the listed bytes, or past the bound —
+			// so whether the newer version names a model_file is unknown,
+			// and it is not offered (iss-2610042101439623).
+			return registry.UpdateCheck{Status: registry.UpdateCannotCheck, Commit: up.Commit}, nil
 		case err != nil:
 			return registry.UpdateCheck{}, err
 		default:
