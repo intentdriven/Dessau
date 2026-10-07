@@ -36,6 +36,33 @@ accounts on this one out.
 The control panel is loopback-only under every choice, so what a machine
 elsewhere reaches is the model API and not the panel.
 
+## How many connections each address may hold
+
+Every address and port Dessau listens on — the ordinary port and the port
+paired clients use, on loopback and on the address the bind adds — holds at
+most 512 open connections, and at most 32 from any one client address. A
+connection over either limit is closed as soon as it arrives, before Dessau
+reads anything from it; the client sees the connection close, not an HTTP
+error. The limits are fixed, not settings.
+
+| Limit | Figure | Applies to |
+|---|---|---|
+| Per client address | 32 open connections | each address another machine connects from |
+| Per listening address | 512 open connections | everything connecting to that address and port, this Mac included |
+
+A client address is counted whole: two IPv6 addresses in the same network
+prefix are two addresses. Connections from this Mac over loopback count towards
+the 512 and not towards a per-address limit, because every account on this Mac
+arrives from the same loopback address — a limit on it would be shared between
+the control panel and every local client, and one busy client could lock the
+panel out.
+
+A client that opens more than 32 connections at once from one address, or
+several clients sharing one address behind a router, have the extra connections
+closed. A closed connection frees its place straight away. Refusals are counted
+in the log at the debug level, at most one line a second, and the line never
+names the address that was refused.
+
 ## The private-network choice
 
 Dessau reads this Mac's own interfaces and selects the address that sits on a

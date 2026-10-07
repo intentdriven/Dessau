@@ -418,6 +418,13 @@ func runServer(lns []net.Listener, plan bind.Plan, paths config.Paths, cfg confi
 
 	srv := listenerServer(withLogging(mux, log), requestReadTimeout)
 
+	// Every plain listener is capped before it serves, the loopback one
+	// included: one address may hold so many connections and the listener so
+	// many in all (iss-2609190254516275). The TLS listeners were capped
+	// beneath their TLS layer in acquireTLSBind.
+	for i, ln := range lns {
+		lns[i] = capConns(ln, log)
+	}
 	for _, ln := range lns {
 		log.Info("serving", "addr", ln.Addr().String(), "ui", panelURL(cfg))
 	}

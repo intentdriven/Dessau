@@ -44,7 +44,9 @@ func acquireTLSBind(plan bind.Plan, cfg config.Config, id *pairing.Identity, reg
 			log.Error("could not listen for paired clients", "addr", addr, "err", err)
 			continue
 		}
-		out = append(out, tls.NewListener(ln, tlsCfg))
+		// Capped beneath the TLS layer, so a connection over a cap is closed
+		// before a handshake byte is read (iss-2609190254516275).
+		out = append(out, tls.NewListener(capConns(ln, log), tlsCfg))
 	}
 	return out
 }

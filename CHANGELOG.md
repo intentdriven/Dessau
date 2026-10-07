@@ -52,6 +52,18 @@ GitHub release notes.
   its turn comes round again
   ([context probe](docs/context-probe.md#whether-the-model-calls-tools);
   iss-2610032231045098).
+- **A machine on the network can no longer hold an unlimited number of
+  connections open.** `impact: fix`. Neither port Dessau answers on, nor the
+  pairing call, limited how many connections a peer could keep open at once,
+  so a machine that reconnected in a loop could hold a socket and a goroutine
+  per attempt for as long as it kept trying. Each address and port Dessau
+  listens on now holds at most 512 open connections, and at most 32 from any
+  one client address; a connection over
+  either limit is closed as it arrives, before anything is read from it.
+  Connections from this Mac count towards the 512 only, so the control panel
+  is never locked out by a busy local client
+  ([bind address](docs/bind-address.md#how-many-connections-each-address-may-hold);
+  iss-2609190254516275).
 
 ## [0.10.0] - 2026-10-04
 
