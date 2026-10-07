@@ -673,6 +673,110 @@ func TestDownloadFollowsTheHubsRedirectToItsContentCDN(t *testing.T) {
 	}
 }
 
+// cdnRedirectingHub serves repo the way the Hub does, handing its one LFS
+// file, model.safetensors, to wherever cdnURL names when it is asked for it;
+// newServer starts the Hub (plain or TLS).
+func cdnRedirectingHub(t *testing.T, repo map[string][]byte, newServer func(http.Handler) *httptest.Server, cdnURL func(name string) string) *httptest.Server {
+	t.Helper()
+	const lfsFile = "model.safetensors"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/org/repo/tree/main", func(w http.ResponseWriter, r *http.Request) {
+		var entries []File
+		for p, b := range repo {
+			e := File{Path: p, Size: int64(len(b)), OID: gitBlobID(b)}
+			if p == lfsFile {
+				e.LFS = &struct {
+					OID  string `json:"oid"`
+					Size int64  `json:"size"`
+				}{OID: sha256Hex(b), Size: int64(len(b))}
+			}
+			entries = append(entries, e)
+		}
+		json.NewEncoder(w).Encode(entries)
+	})
+	mux.HandleFunc("/org/repo/resolve/main/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/org/repo/resolve/main/")
+		body, ok := repo[name]
+		if !ok {
+			http.Error(w, "no such file", http.StatusNotFound)
+			return
+		}
+		if name == lfsFile {
+			http.Redirect(w, r, cdnURL(name), http.StatusFound)
+			return
+		}
+		w.Write(body)
+	})
+	mux.HandleFunc("/returned/", func(w http.ResponseWriter, r *http.Request) {
+		if a := r.Header.Get("Authorization"); a != "" {
+			t.Errorf("the hop back to the Hub after leaving it was sent Authorization %q", a)
+		}
+		w.Write(repo[strings.TrimPrefix(r.URL.Path, "/returned/")])
+	})
+	srv := newServer(atCommit(mux))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// A download sends the access token to no host but the Hub's origin. A CDN on
+// the Hub's own host at another port is a different origin, which net/http's
+// own stripping lets the token through to, and once the chain has left the
+// origin the token stays off the hop that returns to it
+// (iss-2610071200187920).
+func TestADownloadSendsTheTokenNowhereButTheHubsOrigin(t *testing.T) {
+	repo := standardRepo()
+	var hubURL string
+	var cdnHits atomic.Int32
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cdnHits.Add(1)
+		if a := r.Header.Get("Authorization"); a != "" {
+			t.Errorf("the content CDN on the Hub's host at another port was sent Authorization %q", a)
+		}
+		http.Redirect(w, r, hubURL+"/returned/"+strings.TrimPrefix(r.URL.Path, "/cdn/"), http.StatusFound)
+	}))
+	defer cdn.Close()
+	srv := cdnRedirectingHub(t, repo, httptest.NewServer, func(name string) string { return cdn.URL + "/cdn/" + name })
+	hubURL = srv.URL
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	c.SetToken("hf_secret")
+	dest := t.TempDir()
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: dest}); err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if n := cdnHits.Load(); n != 1 {
+		t.Fatalf("the CDN was asked %d times, want 1", n)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, "model.safetensors"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, repo["model.safetensors"]) {
+		t.Error("the weights did not land intact")
+	}
+}
+
+// A download from an https Hub refuses a hop to plain http, as the update
+// check's content fetch does (iss-2610071200187920).
+func TestADownloadRefusesARedirectFromHTTPSToHTTP(t *testing.T) {
+	repo := standardRepo()
+	var plainHits atomic.Int32
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		plainHits.Add(1)
+		w.Write(repo[strings.TrimPrefix(r.URL.Path, "/cdn/")])
+	}))
+	defer plain.Close()
+	srv := cdnRedirectingHub(t, repo, httptest.NewTLSServer, func(name string) string { return plain.URL + "/cdn/" + name })
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	if _, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: t.TempDir()}); err == nil {
+		t.Error("Download followed a redirect from https to http")
+	}
+	if n := plainHits.Load(); n != 0 {
+		t.Errorf("the plain-http host was asked %d times", n)
+	}
+}
+
 // A download is bounded by what the Hub said the file is. A tree entry that
 // declares ten bytes against a body that streams tens of megabytes must be
 // refused at the boundary, before the surplus is written: peak disk during a

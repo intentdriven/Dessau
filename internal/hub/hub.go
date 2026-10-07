@@ -216,7 +216,7 @@ func (c *Client) newTokenRequest(ctx context.Context, method, u, token string) (
 	return req, nil
 }
 
-// maxRedirects is the hop limit refuseOffOrigin re-imposes. Setting
+// maxRedirects is the hop limit refuseOffOrigin and followContent re-impose. Setting
 // CheckRedirect replaces net/http's own default of 10, so it is spelled here
 // rather than inherited.
 const maxRedirects = 10
@@ -415,7 +415,12 @@ func (c *Client) SmallFileAt(ctx context.Context, up Upstream, f File, max int64
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, apiError(resp, u)
+		err := apiError(resp, u)
+		var ae *APIError
+		if final := resp.Request; final != nil && final.URL != nil && !sameOrigin(c.baseURL(), final.URL.String()) && errors.As(err, &ae) {
+			ae.ContentHost = final.URL.Host
+		}
+		return nil, err
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if err != nil {
@@ -433,24 +438,52 @@ func (c *Client) SmallFileAt(ctx context.Context, up Upstream, f File, max int64
 	return b, nil
 }
 
-// doContent issues a request for an LFS object's content, which the Hub
-// answers with a redirect to its content CDN. Unlike do it follows that hop
-// off the Hub's origin — the caller holds what arrives to the sha256 the
-// listing gave — but it drops the access token from any hop that leaves the
-// origin, which a pre-signed CDN URL does not need, and keeps the hop limit.
-// It runs on a shallow copy of the client, as do does.
+// doContent issues a request for a file's content, which the Hub answers for
+// an LFS object with a redirect to its content CDN. It is the one way this
+// package fetches content — a download's every file, and SmallFileAt's read
+// of a file the listing keeps in LFS — and it runs under followContent rather
+// than refuseOffOrigin: it follows the hop off the Hub's origin, because the
+// caller holds what arrives to a hash the listing gave. It runs on a shallow
+// copy of the client, as do does.
 func (c *Client) doContent(req *http.Request) (*http.Response, error) {
 	hc := *c.httpClient()
-	hc.CheckRedirect = func(next *http.Request, via []*http.Request) error {
-		if len(via) >= maxRedirects {
-			return fmt.Errorf("stopped after %d redirects", maxRedirects)
-		}
-		if !sameOrigin(c.baseURL(), next.URL.String()) {
-			next.Header.Del("Authorization")
-		}
-		return nil
-	}
+	hc.CheckRedirect = c.followContent
 	return hc.Do(req)
+}
+
+// followContent is the redirect policy of doContent. It keeps the hop limit,
+// refuses a hop to anything but https when the Hub's base URL is https, and
+// drops the access token from every hop once any hop of the chain is off the
+// Hub's origin, which a pre-signed CDN URL does not need.
+//
+// net/http's own stripping is not enough on either count. It keeps the token
+// on a hop to the Hub's host at another port or to a subdomain of it, which
+// are other origins. And each hop's headers are copied afresh from the first
+// request, so a token deleted on the hop that leaves the origin comes back on
+// a hop that returns to it — a host off the origin would choose which
+// authenticated Hub request is made — unless it is deleted on every hop after
+// (iss-2610071200187548, iss-2610071200187920).
+func (c *Client) followContent(next *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	}
+	base := c.baseURL()
+	if b, err := url.Parse(base); err != nil || strings.EqualFold(b.Scheme, "https") {
+		if !strings.EqualFold(next.URL.Scheme, "https") {
+			return fmt.Errorf("redirected from https to %s://%s — refusing to follow it", next.URL.Scheme, next.URL.Host)
+		}
+	}
+	left := !sameOrigin(base, next.URL.String())
+	for _, r := range via {
+		if left {
+			break
+		}
+		left = !sameOrigin(base, r.URL.String())
+	}
+	if left {
+		next.Header.Del("Authorization")
+	}
+	return nil
 }
 
 // APIError is a non-2xx response from the Hub.
@@ -463,9 +496,20 @@ type APIError struct {
 	// 401, exactly as it answers one for a gated repository, so what a 401
 	// means depends on it (iss-2610030913177383).
 	TokenSent bool
+	// ContentHost is the host that answered when it is off the Hub's origin:
+	// the content CDN a file was handed to, which is never sent the token, so
+	// its refusal says nothing about the token (iss-2610071200183905).
+	ContentHost string
 }
 
 func (e *APIError) Error() string {
+	if e.ContentHost != "" {
+		switch e.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return fmt.Sprintf("huggingface's content CDN at %s refused %s (HTTP %d)", e.ContentHost, e.URL, e.StatusCode)
+		}
+		return fmt.Sprintf("huggingface's content CDN at %s returned HTTP %d for %s: %s", e.ContentHost, e.StatusCode, e.URL, e.Body)
+	}
 	switch e.StatusCode {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		if e.TokenSent {

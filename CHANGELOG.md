@@ -35,6 +35,22 @@ GitHub release notes.
   **newer version not run**. One whose `config.json` cannot be held to that
   hash is marked **newer version not checked**, and is not offered either
   ([model updates](docs/model-updates.md); iss-2610042101439623).
+- **The access token goes to no host but HuggingFace's own, on any redirect
+  a download or the update check follows.** `impact: fix`. The update check
+  dropped the token on the hop that left HuggingFace's origin but sent it
+  again on a hop that came back, so a host along the way could choose a
+  request made with Alice's token; a download relied on Go's own rule, which
+  keeps the token on a redirect to HuggingFace's host at another port or to a
+  subdomain of it. Both now go through one redirect rule: once a redirect
+  leaves HuggingFace's origin, no later hop carries the token, and a redirect
+  from https to plain http is refused rather than followed
+  (iss-2610071200187548, iss-2610071200187920).
+- **A refusal from HuggingFace's content CDN is no longer worded as
+  HuggingFace refusing the access token.** `impact: fix`. When the update
+  check read a `config.json` from the content CDN and the CDN refused it, the
+  error advised about the access token in Settings, which the CDN is never
+  sent. It now names the content CDN that answered and gives no token advice
+  (iss-2610071200183905).
 - **The self-test and the context probe no longer start while a client is
   still sending requests that fail.** `impact: fix`. The idle check read each
   loaded model's last request, so a request that never reached a model, or

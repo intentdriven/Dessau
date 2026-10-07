@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -327,5 +328,116 @@ func TestAnUpstreamNeverFormatsItsToken(t *testing.T) {
 		if got := fmt.Sprintf(verb, up); strings.Contains(got, "hf_secret") {
 			t.Errorf("%s formats the token: %s", verb, got)
 		}
+	}
+}
+
+// Once a content fetch's redirect chain has left the Hub's origin, the token
+// stays off every later hop, including one that returns to the Hub: a host
+// off the origin chooses the next hop, and must not be able to pick an
+// authenticated Hub request (iss-2610071200187548).
+func TestAContentFetchSendsNoTokenBackToTheHubAfterLeavingIt(t *testing.T) {
+	const body = `{"model_type":"qwen3"}`
+	var mu sync.Mutex
+	var cdnAuth, returnAuth []string
+	var hubURL string
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		cdnAuth = append(cdnAuth, r.Header.Get("Authorization"))
+		mu.Unlock()
+		http.Redirect(w, r, hubURL+"/returned", http.StatusFound)
+	}))
+	t.Cleanup(cdn.Close)
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/org/repo/resolve/" + testCommit + "/config.json":
+			http.Redirect(w, r, cdn.URL+"/blob", http.StatusFound)
+		case "/returned":
+			mu.Lock()
+			returnAuth = append(returnAuth, r.Header.Get("Authorization"))
+			mu.Unlock()
+			fmt.Fprint(w, body)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(hub.Close)
+	hubURL = hub.URL
+	c := &Client{BaseURL: hub.URL, HTTP: hub.Client()}
+	up := Upstream{RepoID: "org/repo", Commit: testCommit, Authed: true, token: "hf_secret"}
+	if _, err := c.SmallFileAt(context.Background(), up, lfsFile("config.json", body, int64(len(body))), 1<<20); err != nil {
+		t.Fatalf("SmallFileAt: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(cdnAuth) != 1 || len(returnAuth) != 1 {
+		t.Fatalf("hops made: CDN %d, back to the Hub %d; want 1 each", len(cdnAuth), len(returnAuth))
+	}
+	if cdnAuth[0] != "" {
+		t.Errorf("the content CDN was sent Authorization %q", cdnAuth[0])
+	}
+	if returnAuth[0] != "" {
+		t.Errorf("the hop back to the Hub after leaving it was sent Authorization %q", returnAuth[0])
+	}
+}
+
+// A content fetch from an https Hub refuses a hop to plain http rather than
+// carry a gated repository's file unencrypted (iss-2610071200187548).
+func TestAContentFetchRefusesARedirectFromHTTPSToHTTP(t *testing.T) {
+	const body = `{"model_type":"qwen3"}`
+	var plainHits atomic.Int32
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		plainHits.Add(1)
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(plain.Close)
+	hub := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, plain.URL+"/blob", http.StatusFound)
+	}))
+	t.Cleanup(hub.Close)
+	c := &Client{BaseURL: hub.URL, HTTP: hub.Client()}
+	up := Upstream{RepoID: "org/repo", Commit: testCommit}
+	if _, err := c.SmallFileAt(context.Background(), up, lfsFile("config.json", body, int64(len(body))), 1<<20); err == nil {
+		t.Error("SmallFileAt followed a redirect from https to http")
+	}
+	if n := plainHits.Load(); n != 0 {
+		t.Errorf("the plain-http host was asked %d times", n)
+	}
+}
+
+// A refusal from the content CDN names the CDN and gives no advice about the
+// access token, which the CDN was never sent; one from the Hub's own origin
+// keeps it (iss-2610071200183905).
+func TestACDNRefusalIsNotWordedAsTheHubRefusingTheToken(t *testing.T) {
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "denied", http.StatusForbidden)
+	}))
+	t.Cleanup(cdn.Close)
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/org/repo/resolve/"+testCommit+"/config.json" {
+			http.Redirect(w, r, cdn.URL+"/blob", http.StatusFound)
+			return
+		}
+		http.Error(w, "denied", http.StatusForbidden)
+	}))
+	t.Cleanup(hub.Close)
+	c := &Client{BaseURL: hub.URL, HTTP: hub.Client()}
+	up := Upstream{RepoID: "org/repo", Commit: testCommit, Authed: true, token: "hf_secret"}
+
+	_, err := c.SmallFileAt(context.Background(), up, lfsFile("config.json", "{}", 2), 1<<20)
+	if err == nil {
+		t.Fatal("a 403 from the content CDN was read as a file")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "token") {
+		t.Errorf("a CDN refusal gives token advice: %s", msg)
+	}
+	cdnHost := strings.TrimPrefix(cdn.URL, "http://")
+	if !strings.Contains(msg, "content CDN") || !strings.Contains(msg, cdnHost) {
+		t.Errorf("a CDN refusal does not name the CDN at %s: %s", cdnHost, msg)
+	}
+
+	_, err = c.SmallFileAt(context.Background(), up, File{Path: "other.json"}, 1<<20)
+	if err == nil || !strings.Contains(err.Error(), "access token") {
+		t.Errorf("a refusal from the Hub's origin lost its token advice: %v", err)
 	}
 }
