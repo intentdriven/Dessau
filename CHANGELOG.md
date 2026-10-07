@@ -68,6 +68,17 @@ GitHub release notes.
   its turn comes round again
   ([context probe](docs/context-probe.md#whether-the-model-calls-tools);
   iss-2610032231045098).
+- **A request whose body is not valid UTF-8 is refused with a 400 instead of
+  failing with a 502.** `impact: fix`. Dessau passed such a body on to the
+  model server unchanged, which failed to decode it and dropped the
+  connection, so Carol's client was told only that the gateway had a bad
+  answer from upstream. The body is now checked to be valid UTF-8 before
+  anything else is asked of it, and refused with
+  `request body is not valid UTF-8`; text in any script, emoji included, is
+  passed on as before. The check reads the body's encoding, not what any field
+  says, and keeps nothing
+  ([request fields](docs/request-fields.md#a-body-that-is-not-valid-utf-8);
+  iss-2610042036094209).
 
 ## [0.10.0] - 2026-10-04
 

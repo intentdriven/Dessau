@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/intentdriven/Dessau/internal/capability"
 	"github.com/intentdriven/Dessau/internal/config"
@@ -686,6 +687,10 @@ const maxStreamLine = maxResponseBody
 // headers took, never more.
 const BodyReadTimeout = 30 * time.Second
 
+// invalidUTF8Refusal is the refusal of a body that is not valid UTF-8. It
+// names the encoding and nothing of what the body carried.
+const invalidUTF8Refusal = "request body is not valid UTF-8"
+
 // handleChatCompletions is handleCompletions for the chat route, which holds
 // a conversation: the route itself says so, rather than a comparison of the
 // path a later alias route could slip past (iss-2610031010371709).
@@ -732,6 +737,20 @@ func (g *Gateway) completions(w http.ResponseWriter, r *http.Request, chat bool)
 	}
 	// Body is in hand; the multi-minute generation phase must not be bounded.
 	_ = rc.SetReadDeadline(time.Time{})
+
+	// JSON exchanged between systems is UTF-8 (RFC 8259, section 8.1), and
+	// Go's decoder does not hold a RawMessage to it: invalid bytes inside a
+	// string are kept as they came and json.Marshal forwards them, so the
+	// model server fails to decode the body on its handler thread and the
+	// client sees a 502 (iss-2610042036094209). This is a check of the
+	// body's encoding as a whole, like the syntax check below it: it names
+	// no field, reads no prompt for what it says, and keeps nothing, and the
+	// refusal carries none of the body.
+	if !utf8.Valid(raw) {
+		obs.failed(stats.ClassClientError)
+		writeError(w, http.StatusBadRequest, invalidUTF8Refusal)
+		return
+	}
 
 	// Decode into raw messages, not a fully-materialized map: the gateway only
 	// rewrites the "model" field, so parsing the entire prompt (the messages array
