@@ -49,7 +49,9 @@ minutes unless you change it, in the same section) and nothing is
 downloading, Dessau measures the first model that has no current
 measurement, one model at a time. A model you download later is measured
 the next time the Mac is idle. In `config.json` the switch is
-`"context_probe": true` and the threshold `"idle_threshold_sec"`.
+`"context_probe": true` and the threshold `idle_threshold_sec`, in seconds:
+anything from 60 (1 minute) to 86,400 (24 hours), or leave it out for the
+default.
 
 ## Which models it measures
 

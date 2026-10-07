@@ -213,3 +213,20 @@ func TestTheIdleThresholdInStatusProseIsFilledFromTheServer(t *testing.T) {
 		t.Errorf("the Self-test hint with the test off reads %q, and a test that is off runs at no interval", got)
 	}
 }
+
+// The Idle threshold field spans exactly the server's bounds, a minute to a
+// day (iss-2610041948272032). Narrower would wedge a stored value the panel
+// cannot post back (TestNoSettingsControlIsNarrowerThanValidate); wider would
+// offer a figure the save then refuses.
+func TestTheIdleThresholdFieldSpansTheServersBounds(t *testing.T) {
+	tag := fieldTag(t, settingsPane(t, readPanelMarkup(t)), "setIdleThreshold")
+	if got, want := attr(tag, "min"), strconv.Itoa(config.MinIdleThresholdSec); got != want {
+		t.Errorf("setIdleThreshold has min=%q, want the server's %s", got, want)
+	}
+	if got, want := attr(tag, "max"), strconv.Itoa(config.MaxIdleThresholdSec); got != want {
+		t.Errorf("setIdleThreshold has max=%q, want the server's %s", got, want)
+	}
+	if got := attr(tag, "max"); got != "86400" {
+		t.Errorf("setIdleThreshold has max=%q, want 86400 (24 hours)", got)
+	}
+}

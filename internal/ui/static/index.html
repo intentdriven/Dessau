@@ -521,10 +521,11 @@
         probe page</a> says what the figure means and what it costs.</p>
       <label>
         <span>Idle threshold (seconds)</span>
-        <input id="setIdleThreshold" type="number" step="1" min="60" max="3600">
+        <input id="setIdleThreshold" type="number" step="1" min="60" max="86400">
       </label>
       <p class="hint">How long the last request must be in the past before the Mac counts as idle,
-        for the context probe and the self-test alike.<span id="idleThresholdDefault"></span></p>
+        for the context probe and the self-test alike: from 60 seconds to 86,400 seconds
+        (24 hours).<span id="idleThresholdDefault"></span></p>
     </fieldset>
 
     <fieldset class="group">

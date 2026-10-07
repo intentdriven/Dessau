@@ -1179,12 +1179,13 @@ func (c *Config) sanitizeLogLevel() []string {
 }
 
 // The idle threshold's bounds: a minute is the shortest quiet a loop that
-// ticks once a minute can tell from noise, and an hour is past the point where
-// an idle job would never run on a Mac that is used at all.
+// ticks once a minute can tell from noise, and a day is the longest quiet an
+// operator may ask for, so an idle job can be kept to the night on a Mac that
+// is used all day (iss-2610041948272032).
 const (
 	DefaultIdleThresholdSec = 300
 	MinIdleThresholdSec     = 60
-	MaxIdleThresholdSec     = 3600
+	MaxIdleThresholdSec     = 86400
 )
 
 // EffectiveIdleThresholdSec is the idle threshold in force: the setting, or

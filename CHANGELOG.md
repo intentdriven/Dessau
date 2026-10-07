@@ -11,6 +11,16 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **The idle threshold can be set up to 24 hours.** `impact: additive`. The
+  threshold the context probe waits for, `idle_threshold_sec`, stopped at one
+  hour, so Alice could not keep idle work to a long quiet spell such as the
+  night. It now takes anything from 60 seconds to 86,400 seconds (24 hours),
+  in `config.json` and in the **Idle threshold** field under **Settings →
+  Context probe** alike; the default is unchanged
+  ([context probe](docs/context-probe.md); iss-2610041948272032).
+
 ### Fixed
 
 - **An update that will not load no longer leaves a model without a
