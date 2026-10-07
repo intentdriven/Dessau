@@ -38,6 +38,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/intentdriven/Dessau/internal/config"
@@ -132,6 +133,11 @@ type Options struct {
 // ErrGone is returned by Run for a model that is not loaded: the probe
 // never loads one.
 var ErrGone = errors.New("the model is not loaded")
+
+// ErrYielded is returned by Run when a client's request arrived on the model
+// while the probe held it: the probe abandoned its request and let the model
+// go rather than keep the client waiting, and recorded nothing.
+var ErrYielded = errors.New("a client's request arrived on the model, so the probe let it go")
 
 // Probe is the job and its queue.
 type Probe struct {
@@ -287,6 +293,11 @@ func (p *Probe) serve(model string) (finished bool) {
 	case err == nil, p.ctx.Err() != nil:
 	case errors.Is(err, ErrGone):
 		p.opts.Log.Debug("tool-call probe dropped: the model is no longer loaded; it is queued again at its next serve", "model", model)
+	case errors.Is(err, ErrYielded):
+		// A client wanted the model: the probe is asked again once the model
+		// falls quiet, after the models behind it have had their turn.
+		p.opts.Log.Debug("tool-call probe gave way to a client; it is tried again when the model falls quiet", "model", model)
+		return false
 	default:
 		// The server did not answer, or a client's load took the model
 		// from under the probe: no evidence either way, and the model is
@@ -352,7 +363,38 @@ func (p *Probe) Run(ctx context.Context, model string) (*registry.ToolCalling, e
 		return nil, err
 	}
 	defer release()
+	// A client's request on the model gets in ahead of the probe: the pool
+	// admits as many requests per model as it charges for, one by default,
+	// so a client arriving now would otherwise wait for the probe's whole
+	// answer. The pool counts a request in flight before it waits for a
+	// place, so anything beyond the probe's own hold is a client's, and the
+	// probe abandons its request and lets the model go, as the self-test's
+	// run does.
+	var yielded atomic.Bool
+	watching := make(chan struct{})
+	defer close(watching)
+	go func() {
+		tick := time.NewTicker(p.opts.Poll)
+		defer tick.Stop()
+		for {
+			select {
+			case <-watching:
+				return
+			case <-runCtx.Done():
+				return
+			case <-tick.C:
+				if _, inFlight := p.opts.Sources.Resident(model); inFlight > 1 {
+					yielded.Store(true)
+					preempt()
+					return
+				}
+			}
+		}
+	}()
 	can, err := p.request(runCtx, up)
+	if yielded.Load() {
+		return nil, ErrYielded
+	}
 	if err != nil {
 		return nil, err
 	}

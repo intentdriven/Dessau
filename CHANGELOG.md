@@ -54,6 +54,12 @@ GitHub release notes.
 
 ### Fixed
 
+- **A client's request no longer waits behind the tool-call check.** `impact: fix`.
+  When Bob's request arrives on a model while Dessau is asking it whether it
+  can call tools, the check stops and lets the model go at once, and asks
+  again once the model is quiet, so Bob is answered without waiting for the
+  check's own answer (iss-2610071035138788).
+
 - **A Discord answer is no longer cut short at a fixed 1,024 tokens, and one
   that reaches its limit says so.** `impact: fix`. The bridge asked every
   model for at most 1,024 tokens whatever window it was served at, so a long

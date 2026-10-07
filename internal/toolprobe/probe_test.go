@@ -495,3 +495,45 @@ func TestALoadDuringTheHeadsGoneProbeIsProbedAgain(t *testing.T) {
 		t.Errorf("acquired %d times, holding %d; want one acquisition, released", acquired, held)
 	}
 }
+
+// A client that arrives on the model while the probe holds it is not kept
+// waiting behind the probe's request: the pool admits as many requests per
+// model as it charges for, one by default, so the probe would otherwise make
+// the client wait for its whole answer. The probe sees a request in flight
+// beside its own hold, abandons its request and lets the model go, and the
+// model stays queued to be asked again once it falls quiet.
+func TestAClientArrivingDuringTheProbeIsNotKeptWaiting(t *testing.T) {
+	srv := mlxtest.Start(mlxtest.Options{ModelArg: "/models/org/m", ToolCall: true, ResponseDelay: 3 * time.Second})
+	t.Cleanup(srv.Close)
+	src := newSources(srv)
+	p := newProbe(t, src)
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		_, err := p.Run(context.Background(), "org/m")
+		done <- err
+	}()
+	waitFor(t, "the probe to hold the model", func() bool { _, held := src.counts(); return held == 1 })
+	src.mu.Lock()
+	src.inFlight = 2 // the probe's own hold and a client's request
+	src.mu.Unlock()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrYielded) {
+			t.Errorf("Run = %v, want ErrYielded", err)
+		}
+		if waited := time.Since(start); waited > 2*time.Second {
+			t.Errorf("the probe let the model go after %v; a client waited for its whole answer", waited)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the probe never let the model go while a client waited")
+	}
+	if _, held := src.counts(); held != 0 {
+		t.Error("still holding the model after yielding to a client")
+	}
+	if saved := src.verdict("org/m"); saved != nil {
+		t.Errorf("a probe that yielded recorded %+v", saved)
+	}
+}
