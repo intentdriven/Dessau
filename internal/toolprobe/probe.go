@@ -146,6 +146,13 @@ type Probe struct {
 	queue []string
 	// running says the drain goroutine is up.
 	running bool
+	// again says the model at the head was queued again after the last
+	// look its probe's outcome rests on (iss-2610032231045098): a load that
+	// finished while the attempt was under way, which that attempt cannot
+	// have seen. Enqueue sets it, serve clears it before each look at the
+	// model, and dequeue reads it, moving the head to the back rather than
+	// dropping it. One flag is enough because only the head is ever served.
+	again bool
 }
 
 // New builds a Probe. It starts nothing until the first Enqueue.
@@ -175,8 +182,11 @@ func New(opts Options) *Probe {
 }
 
 // Enqueue queues one probe of the model and reports whether it was added: a
-// model already queued, or in progress, is not queued again. The queue is
-// drained one model at a time on the probe's own goroutine.
+// model already queued, or in progress, is not queued again. A model in
+// progress is still asked again once its probe is done, when the probe was
+// already past its last look at the model: that probe cannot have seen the
+// load being reported. The queue is drained one model at a time on the
+// probe's own goroutine.
 func (p *Probe) Enqueue(repoID string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -184,8 +194,11 @@ func (p *Probe) Enqueue(repoID string) bool {
 		return false
 	}
 	key := config.FoldRepoID(repoID)
-	for _, q := range p.queue {
+	for i, q := range p.queue {
 		if config.FoldRepoID(q) == key {
+			if i == 0 {
+				p.again = true
+			}
 			return false
 		}
 	}
@@ -246,6 +259,11 @@ func (p *Probe) drain() {
 func (p *Probe) serve(model string) (finished bool) {
 	deadline := time.Now().Add(p.opts.MaxQuietWait)
 	for {
+		// A load reported before this look is one the look sees: it asks
+		// for nothing more than the probe already under way.
+		p.mu.Lock()
+		p.again = false
+		p.mu.Unlock()
 		loaded, inFlight := p.opts.Sources.Resident(model)
 		if !loaded {
 			p.opts.Log.Debug("tool-call probe dropped: the model is no longer loaded; it is queued again at its next serve", "model", model)
@@ -283,6 +301,7 @@ func (p *Probe) serve(model string) (finished bool) {
 func (p *Probe) requeue(model string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.again = false
 	key := config.FoldRepoID(model)
 	for i, q := range p.queue {
 		if config.FoldRepoID(q) == key {
@@ -292,13 +311,22 @@ func (p *Probe) requeue(model string) {
 	}
 }
 
+// dequeue removes the finished model from the queue, unless it was queued
+// again while its probe was past its last look (again): then it goes to the
+// back, where that Enqueue would have put it.
 func (p *Probe) dequeue(model string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	again := p.again
+	p.again = false
 	key := config.FoldRepoID(model)
 	for i, q := range p.queue {
 		if config.FoldRepoID(q) == key {
-			p.queue = append(p.queue[:i], p.queue[i+1:]...)
+			if again {
+				p.queue = append(append(p.queue[:i:i], p.queue[i+1:]...), q)
+			} else {
+				p.queue = append(p.queue[:i], p.queue[i+1:]...)
+			}
 			return
 		}
 	}

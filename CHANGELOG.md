@@ -44,6 +44,14 @@ GitHub release notes.
   threshold was an hour, and load models while he was still trying. Every
   client request now counts from the moment it arrives until it ends, however
   it ends ([self-test](docs/self-test.md); iss-2610041945030758).
+- **A model loaded just as its tool-call probe found it gone is now asked.**
+  `impact: fix`. When Alice's request loaded a model at the moment Dessau's
+  tool-call probe found that model not yet held, the probe dropped the model
+  and the new load's report with it, so the card read **Tool calls: not
+  measured** until the model was next loaded. Dessau now asks the model once
+  its turn comes round again
+  ([context probe](docs/context-probe.md#whether-the-model-calls-tools);
+  iss-2610032231045098).
 
 ## [0.10.0] - 2026-10-04
 
