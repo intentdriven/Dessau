@@ -221,7 +221,10 @@ func instructionText(fields map[string]json.RawMessage) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if !utf8.Valid(raw) {
+	// Invalid bytes, or an escape that decodes to no character (a lone
+	// surrogate), would come back from the decode as U+FFFD: content the
+	// client never sent.
+	if !utf8.Valid(raw) || loneSurrogateEscape(raw) {
 		return "", false
 	}
 	// A pointer tells JSON null apart from an empty string: null is the

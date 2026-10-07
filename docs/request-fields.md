@@ -61,7 +61,10 @@ or a key alike, is refused with **400** and the message
 `request body is not valid UTF-8`. The model server takes such a body and
 then fails to decode it, dropping the connection without an answer. Text in
 any script, accents, CJK and emoji included, is valid UTF-8 and is passed on
-as usual; so is a character written as a JSON escape (`\u00e9`).
+as usual; so is a character written as a JSON escape (`\u00e9`). The check is
+of the bytes, so an escape for half of a surrogate pair (`\ud800`) is plain
+ASCII to it and is passed on as written, except where a field's own rule
+refuses it (`stop`, below).
 
 The check is of the body's encoding as a whole: it reads no field, and the
 message carries none of the body. Like the refusals above, it comes before a

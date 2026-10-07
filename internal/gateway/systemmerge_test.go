@@ -827,6 +827,9 @@ func TestMergeSystemMessagesRefusesShapesItCannotRebuild(t *testing.T) {
 		{"a system message after the first with a case-variant of content", `[{"role":"system","content":"a"},{"role":"user","content":"hi"},{"role":"system","content":"b","Content":"c"}]`},
 		{"the first system message's content is not a string", `[{"role":"system","content":[{"type":"text","text":"a"}],"name":"x"},{"role":"system","content":"b"}]`},
 		{"system content that is not valid UTF-8", `[{"role":"system","content":"a` + "\xff\xfe" + `b"},{"role":"user","content":"hi"},{"role":"system","content":"Answer briefly."}]`},
+		// Valid UTF-8 bytes, but the escape decodes to no character: merging
+		// would rewrite it to U+FFFD, a character the client never sent.
+		{"system content carrying a lone surrogate escape", `[{"role":"system","content":"a\ud800"},{"role":"user","content":"hi"},{"role":"system","content":"b"}]`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
