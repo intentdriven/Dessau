@@ -78,7 +78,7 @@ models with is not installed yet, checks the new version's own files, refusing
 one that ships its own code, and leaves the rest to the check every model has
 before it starts. Only then does it swap the two: it waits for requests
 already being answered by the model to finish, moves the new version in, and
-removes the old one. While it waits, a new request for that model is answered
+keeps the old one aside. While it waits, a new request for that model is answered
 at once with `503`, since a model in steady use would otherwise never fall
 idle and the update would never land; a client that is told why reads that the
 model is being updated and to try again in a moment. The wait lasts at most
@@ -90,9 +90,25 @@ stops, a version that ships its own code, or a disk without room for both
 versions at once — the new version is removed and the old one keeps serving,
 unchanged. The model's card then says why on its version line — a file that
 did not download or match, no room on the disk, a version that did not pass
-the checks, a model still answering requests when the wait ran out, or a
-version Dessau does not run — until an update succeeds. A file both versions
+the checks, a model still answering requests when the wait ran out, a
+version Dessau does not run, or a newer version that did not load — until an
+update succeeds. A file both versions
 share is not fetched again.
+
+The old version stays aside until the new one has loaded and answered a
+request, since a version can pass every check and still fail to load. The
+first request for the model after an update loads the new version: once it
+answers, the old version is removed. If that first load fails instead, Dessau
+puts the old version back and removes the new one; the request that
+triggered the load is refused, the next one is answered by the old version,
+and the card says the newer version did not load, with the newer version
+still offered. The old version is kept aside across a restart of Dessau too,
+but Dessau no longer knows which version it was, so after a restart the
+version put back shows as version unknown. Until that first load, both
+versions take up disk space, however long the model goes unused. A second
+update before the first load keeps the version that last served aside, not
+the one that never loaded. Removing the model removes the old version with
+it.
 
 What Dessau learned about the old files goes with them: the measured context
 window, whether the model calls tools, and a recorded failure to load. What

@@ -11,6 +11,20 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An update that will not load no longer leaves a model without a
+  version to serve.** `impact: fix`. Dessau removed the old version of a
+  model as soon as the new one passed the checks it makes before starting a
+  model, so a new version that passed them and then failed to load left
+  Alice with nothing to fall back to until she downloaded an older version
+  by hand. The old version now stays aside until the new one has loaded and
+  answered a request; if that first load fails, Dessau puts the old version
+  back, the next request is answered by it, and the card says the newer
+  version did not load. The old version is kept aside across a restart too,
+  and goes when the model is removed
+  ([model updates](docs/model-updates.md); iss-2610042101430192).
+
 ## [0.10.0] - 2026-10-04
 
 ### Added

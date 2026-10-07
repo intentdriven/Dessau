@@ -81,6 +81,7 @@ func TestTheCardSaysWhyTheLastUpdateFailed(t *testing.T) {
 		{`{"state":"ready",` + c + `,"update_failed":"refused"}`, `did not pass the checks`, ``},
 		{`{"state":"ready",` + c + `,"update_failed":"busy"}`, `still answering requests`, ``},
 		{`{"state":"ready",` + c + `,"update_failed":"not_offered"}`, `not one Dessau runs`, ``},
+		{`{"state":"ready",` + c + `,"update_failed":"load"}`, `did not load, so Dessau put this version back`, ``},
 		{`{"state":"ready",` + c + `,` + avail + `,"update_failed":"download"}`, `The last update failed`, `A newer version is available (222222222222).`},
 		{`{"state":"ready","update_failed":"download"}`, `The last update failed`, `Version unknown`},
 	}
