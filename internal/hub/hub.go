@@ -415,12 +415,7 @@ func (c *Client) SmallFileAt(ctx context.Context, up Upstream, f File, max int64
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		err := apiError(resp, u)
-		var ae *APIError
-		if final := resp.Request; final != nil && final.URL != nil && !sameOrigin(c.baseURL(), final.URL.String()) && errors.As(err, &ae) {
-			ae.ContentHost = final.URL.Host
-		}
-		return nil, err
+		return nil, c.contentError(resp, u)
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if err != nil {
@@ -1138,6 +1133,18 @@ func HasWeights(files []File) bool {
 		}
 	}
 	return false
+}
+
+// contentError is apiError for a content fetch, which may have been answered
+// off the Hub's origin: a refusal from the content CDN names the CDN, so it
+// is not worded as the Hub refusing a token the CDN was never sent.
+func (c *Client) contentError(resp *http.Response, u string) error {
+	err := apiError(resp, u)
+	var ae *APIError
+	if final := resp.Request; final != nil && final.URL != nil && !sameOrigin(c.baseURL(), final.URL.String()) && errors.As(err, &ae) {
+		ae.ContentHost = final.URL.Host
+	}
+	return err
 }
 
 func apiError(resp *http.Response, u string) error {

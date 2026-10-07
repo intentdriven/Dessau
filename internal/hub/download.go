@@ -471,7 +471,7 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		// that sent a Range can mean that: a 416 to a plain GET is a server
 		// error, and retrying it would recurse forever.
 		if resumeAt == 0 {
-			return false, apiError(resp, u)
+			return false, c.contentError(resp, u)
 		}
 		if err := root.Remove(part); err != nil && !os.IsNotExist(err) {
 			return false, err
@@ -479,7 +479,7 @@ func (c *Client) downloadFile(ctx context.Context, req DownloadRequest, token st
 		tr.addCompleted(-resumeAt)
 		return c.downloadFile(ctx, req, token, root, f, tr)
 	default:
-		return false, apiError(resp, u)
+		return false, c.contentError(resp, u)
 	}
 
 	// O_NOFOLLOW: refuse to write through a symlink planted at the .part path,

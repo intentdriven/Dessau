@@ -777,6 +777,32 @@ func TestADownloadRefusesARedirectFromHTTPSToHTTP(t *testing.T) {
 	}
 }
 
+// A download the content CDN refuses names the CDN and gives no token
+// advice, as the update check's read does: the CDN was never sent the token
+// (iss-2610071200183905).
+func TestADownloadTheCDNRefusesIsNotWordedAsATokenProblem(t *testing.T) {
+	repo := standardRepo()
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "denied", http.StatusForbidden)
+	}))
+	defer cdn.Close()
+	srv := cdnRedirectingHub(t, repo, httptest.NewServer, func(name string) string { return cdn.URL + "/cdn/" + name })
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	c.SetToken("hf_secret")
+	_, err := c.Download(context.Background(), DownloadRequest{RepoID: "org/repo", Dest: t.TempDir()})
+	if err == nil {
+		t.Fatal("a download the CDN refused succeeded")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "token") {
+		t.Errorf("a CDN refusal gives token advice: %s", msg)
+	}
+	if host := strings.TrimPrefix(cdn.URL, "http://"); !strings.Contains(msg, "content CDN") || !strings.Contains(msg, host) {
+		t.Errorf("a CDN refusal does not name the CDN at %s: %s", host, msg)
+	}
+}
+
 // A download is bounded by what the Hub said the file is. A tree entry that
 // declares ten bytes against a body that streams tens of megabytes must be
 // refused at the boundary, before the surplus is written: peak disk during a
