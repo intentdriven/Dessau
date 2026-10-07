@@ -11,6 +11,17 @@ GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **A model's card names the files a newer version changes.**
+  `impact: additive`. When a check finds a newer version, the card under
+  **My Models** now lists the files it changes, adds or removes — up to ten,
+  then how many more — so Alice can tell a fixed chat template from a new
+  set of weights before she clicks **Update**. The names are shown as plain
+  text whatever HuggingFace calls them
+  ([model updates](docs/model-updates.md#what-the-marks-mean);
+  iss-2610042101436222).
+
 ### Fixed
 
 - **An update that will not load no longer leaves a model without a

@@ -298,6 +298,39 @@ func TestAPlantedCheckIsHeldToWhatACheckWrites(t *testing.T) {
 	}
 }
 
+// The files a check names are held to what a check writes: plain names only,
+// at most MaxUpdateFiles of them, a count no smaller than the list, and none
+// on a version with nothing newer (iss-2610042101436222).
+func TestAPlantedFileListIsHeldToWhatACheckWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	const newer = "fedcba9876543210fedcba9876543210fedcba98"
+	var many []string
+	for i := 0; i < MaxUpdateFiles+5; i++ {
+		many = append(many, fmt.Sprintf("%q", fmt.Sprintf("shard-%02d.safetensors", i)))
+	}
+	planted := `[
+	  {"repo_id":"org/a","state":"ready","commit":"` + aCommit + `","update":{"status":"available","commit":"` + newer + `","files":["config.json","<img src=x onerror=alert(1)>.json","../up.json"],"files_changed":1,"checked_at":"2026-10-03T12:00:00Z"}},
+	  {"repo_id":"org/b","state":"ready","commit":"` + aCommit + `","update":{"status":"available","commit":"` + newer + `","files":[` + strings.Join(many, ",") + `],"files_changed":-4,"checked_at":"2026-10-03T12:00:00Z"}},
+	  {"repo_id":"org/c","state":"ready","commit":"` + aCommit + `","update":{"status":"current","files":["config.json"],"files_changed":1,"checked_at":"2026-10-03T12:00:00Z"}}
+	]`
+	if err := os.WriteFile(path, []byte(planted), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := r.Get("org/a"); m.Update == nil || strings.Join(m.Update.Files, ",") != "config.json" || m.Update.FilesChanged != 3 {
+		t.Errorf("org/a: Update = %+v, want config.json alone named of 3", m.Update)
+	}
+	if m, _ := r.Get("org/b"); m.Update == nil || len(m.Update.Files) != MaxUpdateFiles || m.Update.FilesChanged != MaxUpdateFiles+5 {
+		t.Errorf("org/b: Update = %+v, want %d names of %d", m.Update, MaxUpdateFiles, MaxUpdateFiles+5)
+	}
+	if m, _ := r.Get("org/c"); m.Update == nil || m.Update.Files != nil || m.Update.FilesChanged != 0 {
+		t.Errorf("org/c: a current version names files: %+v", m.Update)
+	}
+}
+
 // The rule the model server loads code by, applied to the bytes of a
 // config.json a check fetched rather than to a file on disk.
 func TestAConfigThatNamesModelCodeIsRecognisedFromItsBytes(t *testing.T) {

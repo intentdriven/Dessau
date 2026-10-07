@@ -471,6 +471,7 @@ function renderModels() {
     const tools = m.state === 'ready' ? toolCallText(m) : '';
     const failed = m.state === 'ready' ? loadFailureText(m) : '';
     const update = updateText(m);
+    const updateFiles = updateFilesText(m);
     const mark = updateMark(m);
     if (mark) pill += `<span class="pill update">${escapeHtml(mark)}</span>`;
 
@@ -482,6 +483,7 @@ function renderModels() {
         ${measured ? `<div class="info measured">${escapeHtml(measured)}</div>` : ''}
         ${tools ? `<div class="info toolcalls">${escapeHtml(tools)}</div>` : ''}
         ${update ? `<div class="info update">${escapeHtml(update)}</div>` : ''}
+        ${updateFiles ? `<div class="info update">${escapeHtml(updateFiles)}</div>` : ''}
         ${m.updating != null
           ? `<div class="bar"><i style="width:${Number(m.updating) || 0}%"></i></div>` : ''}
         ${m.state === 'downloading'
@@ -597,6 +599,20 @@ function updateMark(m) {
     case 'cannot_check': return 'newer version not checked';
     default: return '';
   }
+}
+
+// updateFilesText names the files the newer version a check found changes,
+// beside the line that says it exists: the names the check recorded, and how
+// many more it changes. The names are HuggingFace's, so the card escapes the
+// line like every other (iss-2610042101436222). Empty where no newer version
+// is shown, or where the check could not tell which files changed.
+function updateFilesText(m) {
+  if (updateMark(m) === '') return '';
+  const u = m.update || {};
+  const files = Array.isArray(u.files) ? u.files.map(String) : [];
+  if (files.length === 0) return '';
+  const more = Math.max(0, Math.floor(Number(u.files_changed) || 0) - files.length);
+  return `Files it changes: ${files.join(', ')}${more ? ` and ${more} more` : ''}.`;
 }
 
 // updateOffered says whether the card carries Update: a ready model not

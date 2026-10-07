@@ -69,6 +69,15 @@ Each model's card under **My Models** says what the last check found:
 | Version unknown | Dessau did not record which version it downloaded, so it cannot tell whether a newer one exists. | Offered: it fetches the current version and records it |
 | Nothing | The last check found nothing newer, or checks are off. | Not offered |
 
+Beside any of the three marks, the card names the files the newer version
+changes — files it changes, adds or removes, never its documentation — up to
+ten of them sorted by name, and says how many more there are: **Files it
+changes: config.json, tokenizer.json and 12 more.** The names are shown as
+plain text; a name made of anything but letters, digits and `._+-/` is counted
+in the figure but not shown. A model whose download recorded its version
+without each file's hash has no files named, since there is nothing to compare
+them with.
+
 Click **Update** to fetch the newer version. The card shows how far it has
 come, and **Cancel update** stops it; the model keeps answering requests
 meanwhile.
