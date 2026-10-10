@@ -118,23 +118,33 @@ a redesign requirement that needs a fetched subresource to render.
 
 ## Scope Conditions
 
-- **No build step, no framework, and nothing fetched to render.** The panel stays <!-- cond: cond-2609201007368809 -->
-  plain markup, stylesheet and script under `internal/ui/static`, served from the
-  embedded file system. The property that holds this is testable and is stated as
-  such: the page renders and every control works with this Mac offline. The
-  documentation links the panel already carries out to the forge stay as links an
-  operator clicks — they are navigation, not subresources — and a link is the only
-  form an outbound host may take. Answers Open Question 1 with option A
-  (DECISIONS.md, 2026-09-20).
+- **No build step and nothing fetched to render; Preact and htm vendored.** The panel <!-- cond: cond-2609201007368809 -->
+  stays plain markup, stylesheet and script under `internal/ui/static`, served
+  from the embedded file system, plus two vendored files, Preact and htm, under
+  `internal/ui/static/vendor/`, each pinned to its recorded source hash. The
+  property that holds this is testable and is stated as such: the page renders
+  and every control works with this Mac offline. The documentation links the
+  panel already carries out to the forge stay as links an operator clicks — they
+  are navigation, not subresources — and a link is the only form an outbound host
+  may take. Answers Open Question 1 with option A (DECISIONS.md, 2026-09-20). The
+  vendored renderer is the trigger spc-2609201321051342 section (E) wrote down,
+  fired by each Settings group's live "what is in force" line; the maintainer
+  signed off the dependency (DECISIONS.md, 2026-10-10, from
+  lab-261009093853-9fed999).
 - **The resources block stays at the head of the Models tab.** The placement <!-- cond: cond-2609201007367668 -->
   decided at interview on 2026-09-09 (itd-2609091903463596) is re-affirmed rather
   than re-opened: the redesign does not move it to a tab of its own, however it
   reorganises everything else.
-- **The tabs are the panel's seven, by name: My Models, Find Models, Statistics, <!-- cond: cond-2609201007367077 -->
-  Connect, Clients, Posture, Settings.** The redesign re-homes controls within and
-  between these; it adds no eighth tab and removes none. The usage dashboard is
-  the **Statistics** tab — there is no Usage tab — and the posture page
-  (itd-2609081718534201) is inside the scope of what is reorganised.
+- **The tabs are the panel's seven, by name, and an Overview the panel opens on: <!-- cond: cond-2609201007367077 -->
+  Overview, My Models, Find Models, Statistics, Connect, Clients, Posture,
+  Settings.** Overview is the one tab added, a read-only summary of live state
+  (health, memory, what is loaded, connections, recent changes) that changes no
+  setting; the redesign re-homes controls within and between the other seven and
+  removes none. The usage dashboard is the **Statistics** tab — there is no Usage
+  tab — and the posture page (itd-2609081718534201) is inside the scope of what is
+  reorganised. Overview was added by the maintainer on 2026-10-10
+  (DECISIONS.md, from lab-261009093853-9fed999); the spec's information
+  architecture is re-planned to carry it.
 - **The as-you-type refusal is not this intent's to build.** It is <!-- cond: cond-2609201007367883 -->
   itd-2609200823520756, the sibling this intent `builds_on`. What this intent owes
   it is the place the message goes: a per-field error slot beside each control,
