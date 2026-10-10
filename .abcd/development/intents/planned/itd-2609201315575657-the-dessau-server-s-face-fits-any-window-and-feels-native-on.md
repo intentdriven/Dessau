@@ -147,11 +147,14 @@ trigger for vendoring Preact+htm.
   removal of `alert()` — is itd-2609100519003748 and its spec, and is not
   respecified here. That intent lands first; this one follows as its own lane
   and takes the arrangement it delivers as given.
-- **The renderer trigger is written down, not exercised.** The hand-managed <!-- cond: cond-2609201321052790 -->
-  re-render stays for this intent. Vendoring Preact and htm (roughly 4 kB, still
-  no build step and nothing fetched) is pre-committed for the moment the
-  hand-written exceptions to the settings-touched lock reach three, or a live
-  per-model row needs an editable field — whichever comes first.
+- **The renderer trigger is exercised by the panel intent, not here.** The <!-- cond: cond-2609201321052790 -->
+  trigger fired on 2026-10-10: the planned panel intent's live line at the head
+  of each Settings group passes the third hand-written exception to the
+  settings-touched lock, and the maintainer signed off vendoring Preact and htm
+  (roughly 4 kB, still no build step and nothing fetched). The panel intent
+  lands first and vendors them; this intent takes the vendored renderer as
+  given, as it takes the rest of that intent's arrangement, and adds no
+  renderer of its own.
 - **The chat client is out of scope.** Dessau Chat is the Swift client and is <!-- cond: cond-2609201321058953 -->
   governed by its own records; someone using it never sees the server's surfaces.
   Nothing here changes the client, and no styling crosses between them beyond
