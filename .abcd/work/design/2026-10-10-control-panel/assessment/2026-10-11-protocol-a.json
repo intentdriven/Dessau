@@ -1,0 +1,895 @@
+{
+  "schema": "abcd.design-assessment/1",
+  "tool": {
+    "name": "design-assess",
+    "version": "0.1.0"
+  },
+  "exportedAt": "2026-10-11T11:33:57.277Z",
+  "run": {
+    "id": "dessau-panel-2026-10",
+    "title": "Dessau control panel",
+    "question": "Which design should the redesigned control panel follow?",
+    "brief": "Dessau is a Mac menu-bar app that downloads AI models and serves them to your home network. Alice opens its control panel in a browser to see whether everything is all right, manage her models, share the server with Bob's laptop and Carol's iPad, and change settings. The second round asked for larger text, a card-based layout and current design practice, and for the good idea in an earlier design (pick a model, see everything about it) without its faults: confusing, too small, not intuitive.",
+    "repo": "intentdriven/Dessau",
+    "intent": "itd-2609100519003748",
+    "judge": "product thinker",
+    "protocol": {
+      "arm": "A",
+      "newPairs": 25,
+      "repeats": 5,
+      "finalists": 3
+    },
+    "rounds": [
+      {
+        "round": 1,
+        "brief": "First round: five directions from the written brief.",
+        "verdict": "Rejected as a whole by the maintainer: \"None of them are great.\" Design 5 \"goes in the right direction but is confusing, too small, and not intuitive enough.\""
+      },
+      {
+        "round": 2,
+        "brief": "Larger text, a card-based layout, current design practice; keep design 5's idea and fix its faults.",
+        "verdict": null
+      }
+    ],
+    "variants": [
+      {
+        "id": "m01",
+        "title": "1 · Native sidebar",
+        "round": 1,
+        "parent": null,
+        "file": "../dessau-mockup-1-native-sidebar.html",
+        "label": "H"
+      },
+      {
+        "id": "m02",
+        "title": "2 · Ops console",
+        "round": 1,
+        "parent": null,
+        "file": "../dessau-mockup-2-ops-console.html",
+        "label": "E"
+      },
+      {
+        "id": "m03",
+        "title": "3 · Calm editorial",
+        "round": 1,
+        "parent": null,
+        "file": "../dessau-mockup-3-calm-editorial.html",
+        "label": "F"
+      },
+      {
+        "id": "m04",
+        "title": "4 · Bauhaus cards",
+        "round": 1,
+        "parent": null,
+        "file": "../dessau-mockup-4-bauhaus-cards.html",
+        "label": "C"
+      },
+      {
+        "id": "m05",
+        "title": "5 · Master–detail",
+        "round": 1,
+        "parent": null,
+        "file": "../dessau-mockup-5-master-detail.html",
+        "label": "D"
+      },
+      {
+        "id": "m06",
+        "title": "6 · Model cards with a side sheet",
+        "round": 2,
+        "parent": "m05",
+        "file": "../dessau-mockup-6-model-cards-sheet.html",
+        "label": "J"
+      },
+      {
+        "id": "m07",
+        "title": "7 · Bento home",
+        "round": 2,
+        "parent": "m05",
+        "file": "../dessau-mockup-7-bento-home.html",
+        "label": "G"
+      },
+      {
+        "id": "m08",
+        "title": "8 · Tahoe glass",
+        "round": 2,
+        "parent": "m05",
+        "file": "../dessau-mockup-8-tahoe-glass.html",
+        "label": "A"
+      },
+      {
+        "id": "m09",
+        "title": "9 · Questions first",
+        "round": 2,
+        "parent": "m05",
+        "file": "../dessau-mockup-9-questions-first.html",
+        "label": "B"
+      },
+      {
+        "id": "m10",
+        "title": "10 · Two-pane cards (5 redone)",
+        "round": 2,
+        "parent": "m05",
+        "file": "../dessau-mockup-10-two-pane-cards.html",
+        "label": "I"
+      }
+    ]
+  },
+  "criteria": [
+    {
+      "id": "fit",
+      "name": "Fits the brief",
+      "hint": "Does what the panel is for: is all well, models, sharing, settings."
+    },
+    {
+      "id": "find",
+      "name": "Easy to find things",
+      "hint": "You can tell where to go for a task without hunting."
+    },
+    {
+      "id": "clear",
+      "name": "Clear what matters",
+      "hint": "The most important thing on each screen stands out."
+    },
+    {
+      "id": "read",
+      "name": "Comfortable to read",
+      "hint": "Text size, contrast and spacing are easy on the eye."
+    },
+    {
+      "id": "looks",
+      "name": "Looks right",
+      "hint": "Feels like a finished, trustworthy Mac product."
+    }
+  ],
+  "firstImpressions": {
+    "m08": "good",
+    "m09": "maybe",
+    "m04": "no",
+    "m05": "maybe",
+    "m02": "maybe",
+    "m03": "no",
+    "m07": "good",
+    "m01": "maybe",
+    "m10": "good",
+    "m06": "maybe"
+  },
+  "judgements": [
+    {
+      "left": "m09",
+      "right": "m02",
+      "result": "left",
+      "winner": "m09",
+      "repeatOf": null,
+      "reason": "larger text",
+      "ms": 46860,
+      "at": "2026-10-11T11:27:40.908Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m07",
+      "right": "m03",
+      "result": "left",
+      "winner": "m07",
+      "repeatOf": null,
+      "reason": "visual appeal; larger text",
+      "ms": 11116,
+      "at": "2026-10-11T11:27:52.025Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m05",
+      "right": "m06",
+      "result": "right",
+      "winner": "m06",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 5385,
+      "at": "2026-10-11T11:27:57.411Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m10",
+      "right": "m04",
+      "result": "left",
+      "winner": "m10",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 2217,
+      "at": "2026-10-11T11:27:59.629Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m01",
+      "right": "m08",
+      "result": "right",
+      "winner": "m08",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 2007,
+      "at": "2026-10-11T11:28:01.637Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m10",
+      "right": "m03",
+      "result": "left",
+      "winner": "m10",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 1833,
+      "at": "2026-10-11T11:28:03.470Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m04",
+      "right": "m09",
+      "result": "right",
+      "winner": "m09",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 2051,
+      "at": "2026-10-11T11:28:05.522Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m08",
+      "right": "m05",
+      "result": "left",
+      "winner": "m08",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 1155,
+      "at": "2026-10-11T11:28:06.678Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m02",
+      "right": "m07",
+      "result": "right",
+      "winner": "m07",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 2641,
+      "at": "2026-10-11T11:28:09.321Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m06",
+      "right": "m01",
+      "result": "left",
+      "winner": "m06",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 2829,
+      "at": "2026-10-11T11:28:12.151Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m04",
+      "right": "m10",
+      "result": "right",
+      "winner": "m10",
+      "repeatOf": 3,
+      "reason": "",
+      "ms": 1502,
+      "at": "2026-10-11T11:28:13.654Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m01",
+      "right": "m02",
+      "result": "right",
+      "winner": "m02",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 2486,
+      "at": "2026-10-11T11:28:16.141Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m09",
+      "right": "m04",
+      "result": "left",
+      "winner": "m09",
+      "repeatOf": 6,
+      "reason": "",
+      "ms": 1457,
+      "at": "2026-10-11T11:28:17.598Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m08",
+      "right": "m07",
+      "result": "left",
+      "winner": "m08",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 899,
+      "at": "2026-10-11T11:28:18.498Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m03",
+      "right": "m06",
+      "result": "right",
+      "winner": "m06",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 1410,
+      "at": "2026-10-11T11:28:19.910Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m10",
+      "right": "m05",
+      "result": "left",
+      "winner": "m10",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 5712,
+      "at": "2026-10-11T11:28:25.623Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m05",
+      "right": "m08",
+      "result": "right",
+      "winner": "m08",
+      "repeatOf": 7,
+      "reason": "",
+      "ms": 1501,
+      "at": "2026-10-11T11:28:27.124Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m09",
+      "right": "m06",
+      "result": "right",
+      "winner": "m06",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 5026,
+      "at": "2026-10-11T11:28:32.151Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m02",
+      "right": "m03",
+      "result": "left",
+      "winner": "m02",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 4453,
+      "at": "2026-10-11T11:28:36.605Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m05",
+      "right": "m10",
+      "result": "right",
+      "winner": "m10",
+      "repeatOf": 15,
+      "reason": "",
+      "ms": 1441,
+      "at": "2026-10-11T11:28:38.046Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m07",
+      "right": "m01",
+      "result": "left",
+      "winner": "m07",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 2290,
+      "at": "2026-10-11T11:28:40.337Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m08",
+      "right": "m06",
+      "result": "left",
+      "winner": "m08",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 1051,
+      "at": "2026-10-11T11:28:41.390Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m01",
+      "right": "m03",
+      "result": "left",
+      "winner": "m01",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 1272,
+      "at": "2026-10-11T11:28:42.663Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m07",
+      "right": "m09",
+      "result": "left",
+      "winner": "m07",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 27974,
+      "at": "2026-10-11T11:29:10.638Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m06",
+      "right": "m03",
+      "result": "left",
+      "winner": "m06",
+      "repeatOf": 14,
+      "reason": "",
+      "ms": 1342,
+      "at": "2026-10-11T11:29:11.981Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m04",
+      "right": "m05",
+      "result": "right",
+      "winner": "m05",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 1371,
+      "at": "2026-10-11T11:29:13.353Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m10",
+      "right": "m07",
+      "result": "right",
+      "winner": "m07",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 4155,
+      "at": "2026-10-11T11:29:17.509Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m05",
+      "right": "m02",
+      "result": "left",
+      "winner": "m05",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 19859,
+      "at": "2026-10-11T11:29:37.369Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m01",
+      "right": "m04",
+      "result": "left",
+      "winner": "m01",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 988,
+      "at": "2026-10-11T11:29:38.357Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    },
+    {
+      "left": "m09",
+      "right": "m10",
+      "result": "right",
+      "winner": "m10",
+      "repeatOf": null,
+      "reason": "",
+      "ms": 4637,
+      "at": "2026-10-11T11:29:42.995Z",
+      "view": {
+        "viewport": "desktop",
+        "scheme": "auto",
+        "flip": false,
+        "tall": false
+      }
+    }
+  ],
+  "finalists": [
+    "m08",
+    "m07",
+    "m06"
+  ],
+  "finalistsFromRanking": [
+    "m08",
+    "m07",
+    "m06"
+  ],
+  "ratings": {
+    "m08": {
+      "scores": {
+        "looks": 7,
+        "read": 6,
+        "clear": 6,
+        "find": 4,
+        "fit": 6
+      },
+      "reason": "appears most polished, Mac like. Sidebar useful, but needs to be toggable; buttons don't feel native"
+    },
+    "m07": {
+      "scores": {
+        "fit": 6,
+        "find": 4,
+        "clear": 6,
+        "read": 6,
+        "looks": 4
+      },
+      "reason": "menu bar breaks on phone"
+    },
+    "m06": {
+      "scores": {
+        "looks": 5,
+        "read": 6,
+        "clear": 6,
+        "find": 6,
+        "fit": 6
+      },
+      "reason": "overall simplicity; works on phone well"
+    }
+  },
+  "pins": [],
+  "decision": {
+    "chosen": "m08",
+    "topRanked": "m08",
+    "overridden": false,
+    "reason": "",
+    "verdict": ""
+  },
+  "ranking": [
+    {
+      "rank": 1,
+      "id": "m08",
+      "strength": 3.103,
+      "lo": 1.472,
+      "hi": 3.661,
+      "rankRange": [
+        1,
+        3
+      ],
+      "wins": 5,
+      "losses": 0,
+      "ties": 0,
+      "tag": "good",
+      "meanScore": 5.8
+    },
+    {
+      "rank": 2,
+      "id": "m07",
+      "strength": 1.874,
+      "lo": 0.735,
+      "hi": 2.749,
+      "rankRange": [
+        1,
+        4
+      ],
+      "wins": 5,
+      "losses": 1,
+      "ties": 0,
+      "tag": "good",
+      "meanScore": 5.2
+    },
+    {
+      "rank": 3,
+      "id": "m06",
+      "strength": 1.392,
+      "lo": 0.357,
+      "hi": 2.087,
+      "rankRange": [
+        2,
+        5
+      ],
+      "wins": 5,
+      "losses": 1,
+      "ties": 0,
+      "tag": "maybe",
+      "meanScore": 5.8
+    },
+    {
+      "rank": 4,
+      "id": "m10",
+      "strength": 1.227,
+      "lo": 0.329,
+      "hi": 2.324,
+      "rankRange": [
+        2,
+        5
+      ],
+      "wins": 6,
+      "losses": 1,
+      "ties": 0,
+      "tag": "good",
+      "meanScore": null
+    },
+    {
+      "rank": 5,
+      "id": "m09",
+      "strength": -0.116,
+      "lo": -1.044,
+      "hi": 0.762,
+      "rankRange": [
+        4,
+        8
+      ],
+      "wins": 3,
+      "losses": 3,
+      "ties": 0,
+      "tag": "maybe",
+      "meanScore": null
+    },
+    {
+      "rank": 6,
+      "id": "m05",
+      "strength": -0.338,
+      "lo": -1.383,
+      "hi": 0.471,
+      "rankRange": [
+        5,
+        8
+      ],
+      "wins": 2,
+      "losses": 5,
+      "ties": 0,
+      "tag": "maybe",
+      "meanScore": null
+    },
+    {
+      "rank": 7,
+      "id": "m02",
+      "strength": -0.798,
+      "lo": -2.24,
+      "hi": 0.557,
+      "rankRange": [
+        4,
+        9
+      ],
+      "wins": 2,
+      "losses": 3,
+      "ties": 0,
+      "tag": "maybe",
+      "meanScore": null
+    },
+    {
+      "rank": 8,
+      "id": "m01",
+      "strength": -1.033,
+      "lo": -2.05,
+      "hi": 0.182,
+      "rankRange": [
+        5,
+        9
+      ],
+      "wins": 2,
+      "losses": 4,
+      "ties": 0,
+      "tag": "maybe",
+      "meanScore": null
+    },
+    {
+      "rank": 9,
+      "id": "m03",
+      "strength": -2.485,
+      "lo": -3.112,
+      "hi": -1.139,
+      "rankRange": [
+        7,
+        10
+      ],
+      "wins": 0,
+      "losses": 6,
+      "ties": 0,
+      "tag": "no",
+      "meanScore": null
+    },
+    {
+      "rank": 10,
+      "id": "m04",
+      "strength": -2.671,
+      "lo": -3.256,
+      "hi": -1.527,
+      "rankRange": [
+        8,
+        10
+      ],
+      "wins": 0,
+      "losses": 6,
+      "ties": 0,
+      "tag": "no",
+      "meanScore": null
+    }
+  ],
+  "consistency": {
+    "repeats": {
+      "agree": 5,
+      "total": 5,
+      "flips": []
+    },
+    "triads": {
+      "loops": 0,
+      "triples": 13,
+      "max": 40,
+      "zeta": 1
+    }
+  },
+  "timing": {
+    "startedAt": "2026-10-11T11:23:46.309Z",
+    "steps": {
+      "criteria": {
+        "start": "2026-10-11T11:23:46.309Z",
+        "end": "2026-10-11T11:25:47.701Z"
+      },
+      "overview": {
+        "start": "2026-10-11T11:25:47.701Z",
+        "end": "2026-10-11T11:26:54.047Z"
+      },
+      "pairs": {
+        "start": "2026-10-11T11:26:54.047Z",
+        "end": "2026-10-11T11:29:45.034Z"
+      },
+      "finalists": {
+        "start": "2026-10-11T11:29:45.034Z",
+        "end": "2026-10-11T11:33:14.613Z"
+      },
+      "result": {
+        "start": "2026-10-11T11:33:14.613Z"
+      }
+    },
+    "secondsByStep": {
+      "criteria": 121,
+      "overview": 66,
+      "pairs": 171,
+      "finalists": 210
+    },
+    "totalSeconds": 568
+  },
+  "method": "Bradley-Terry (MM, one drawn game per item against an average item as a prior); 90% ranges from 500 bootstrap resamples of the judgements; circular triads on the majority graph."
+}

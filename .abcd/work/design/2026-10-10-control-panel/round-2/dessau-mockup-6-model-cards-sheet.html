@@ -1,0 +1,1458 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Dessau Server</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'><rect width='1024' height='1024' fill='%2317181d'/><polygon points='302,132 472,472 132,472' fill='%23F5C518'/><rect x='552' y='132' width='340' height='340' fill='%23B4B6BB'/><rect x='132' y='552' width='340' height='340' fill='%232B5DAA'/><circle cx='722' cy='722' r='170' fill='%23E63329'/></svg>">
+<style>
+/* Mockup 6 — model cards and a detail sheet.
+   The direct fix of mockup 5: every model is a large card; picking one slides
+   a sheet in from the right (the whole screen when narrow) holding everything
+   about it as stacked cards. One accent, neutrals, the triad only in the mark
+   and the three statuses (ready a blue square, working a yellow triangle,
+   failed a red circle; idle an empty ring). */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f2f2f7;
+  --card: #ffffff;
+  --card-2: #f6f6f9;
+  --field: #ffffff;
+  --fill: rgba(118, 118, 128, .12);
+  --fill-2: rgba(118, 118, 128, .2);
+  --fill-3: rgba(118, 118, 128, .32);
+  --ink: #1d1d1f;
+  --ink-2: #3c3c43;
+  --ink-3: #5f5f64;
+  --line: rgba(60, 60, 67, .12);
+  --line-2: rgba(60, 60, 67, .34);
+  --control-edge: #8a8a8f;
+  --accent: #0062cc;
+  --accent-ink: #ffffff;
+  --accent-text: #0062cc;
+  --accent-soft: rgba(0, 98, 204, .1);
+  --ready: #2B5DAA;
+  --working: #F5C518;
+  --failed: #E63329;
+  --st-edge: transparent;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 3px 12px rgba(0, 0, 0, .05);
+  --shadow-hi: 0 2px 6px rgba(0, 0, 0, .06), 0 16px 36px rgba(0, 0, 0, .11);
+  --scrim: rgba(20, 20, 24, .34);
+  --r-xl: 24px;
+  --r-lg: 18px;
+  --r-md: 14px;
+  --r-sm: 10px;
+  --pad: clamp(20px, 1.2rem + .6vw, 28px);
+  --gap: clamp(16px, .8rem + .8vw, 24px);
+  --fs-body: clamp(1.0625rem, 1rem + .22vw, 1.1875rem);
+  --fs-small: clamp(.9375rem, .91rem + .12vw, 1rem);
+  --fs-cap: .875rem;
+  --fs-title: clamp(1.25rem, 1.12rem + .45vw, 1.5rem);
+  --fs-h2: clamp(1.75rem, 1.4rem + 1.3vw, 2.5rem);
+  --fs-fig: clamp(2rem, 1.45rem + 2.2vw, 3.5rem);
+  --fs-fig-m: clamp(1.75rem, 1.5rem + .9vw, 2.25rem);
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, "Helvetica Neue", sans-serif;
+  --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", system-ui, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111113;
+    --card: #1f1f22;
+    --card-2: #28282c;
+    --field: #161618;
+    --fill: rgba(118, 118, 128, .24);
+    --fill-2: rgba(118, 118, 128, .34);
+    --fill-3: rgba(118, 118, 128, .48);
+    --ink: #f5f5f7;
+    --ink-2: #d1d1d6;
+    --ink-3: #a5a5ac;
+    --line: rgba(255, 255, 255, .09);
+    --line-2: rgba(255, 255, 255, .26);
+    --control-edge: #76767c;
+    --accent: #1a6fd8;
+    --accent-text: #5aa9ff;
+    --accent-soft: rgba(70, 150, 255, .17);
+    --st-edge: rgba(255, 255, 255, .85);
+    --shadow: 0 0 0 1px rgba(255, 255, 255, .06);
+    --shadow-hi: 0 0 0 1px rgba(255, 255, 255, .12), 0 16px 36px rgba(0, 0, 0, .5);
+    --scrim: rgba(0, 0, 0, .55);
+  }
+}
+/* The Mac's own accent where the browser exposes it. Text in the accent is
+   darkened (light) or lightened (dark) so it keeps its contrast. */
+@supports (color: AccentColor) {
+  :root { --accent: AccentColor; --accent-ink: AccentColorText; --accent-text: color-mix(in srgb, AccentColor 78%, #000); --accent-soft: color-mix(in srgb, AccentColor 12%, transparent); }
+  @media (prefers-color-scheme: dark) { :root { --accent-text: color-mix(in srgb, AccentColor 58%, #fff); --accent-soft: color-mix(in srgb, AccentColor 22%, transparent); } }
+}
+@media (prefers-contrast: more) {
+  :root { --ink-2: var(--ink); --ink-3: var(--ink); --line: var(--line-2); --shadow: 0 0 0 1.5px var(--line-2); }
+}
+
+/* ── Base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 170px; scroll-padding-bottom: 32px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 var(--fs-body)/1.5 var(--sans); -webkit-font-smoothing: antialiased; font-feature-settings: "tnum" 1; overflow-x: hidden; }
+h1, h2, h3, h4, p, ol, ul, dl, dd, figure { margin: 0; }
+ol, ul { padding: 0; list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--accent-text); text-underline-offset: .18em; }
+code { font-family: var(--mono); font-size: .9em; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.ic { width: 24px; height: 24px; flex: none; }
+.st { width: 20px; height: 20px; flex: none; color: var(--ink-3); vertical-align: -4px; }
+.prose { max-width: 68ch; }
+.muted { color: var(--ink-2); }
+
+/* ── Header and the five places ───────────────────────────────────── */
+.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 95%, transparent); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1320px; margin: 0 auto; padding: 12px clamp(16px, 3vw, 40px); display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "brand status" "places places"; align-items: center; gap: 10px 16px; }
+.brand { grid-area: brand; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand .logo { width: 36px; height: 36px; flex: none; }
+.brand h1 { font: 700 clamp(1.0625rem, 1rem + .3vw, 1.25rem)/1.2 var(--display); letter-spacing: -.01em; white-space: nowrap; }
+.brand p { font-size: var(--fs-cap); color: var(--ink-3); white-space: nowrap; }
+.pill { grid-area: status; justify-self: end; display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px 0 12px; border-radius: 999px; border: 0; background: var(--card); box-shadow: var(--shadow); font-weight: 600; font-size: var(--fs-small); cursor: pointer; white-space: nowrap; }
+.pill:hover { box-shadow: var(--shadow-hi); }
+.pill .short { display: none; }
+@media (max-width: 420px) { .pill .long { display: none; } .pill .short { display: inline; } .brand p { display: none; } }
+
+.places { grid-area: places; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.places::-webkit-scrollbar { display: none; }
+.place { flex: none; display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 18px; border: 0; border-radius: 14px; background: none; color: var(--ink-2); font-weight: 600; font-size: var(--fs-body); cursor: pointer; }
+.place:hover { background: var(--fill); color: var(--ink); }
+.place[aria-selected="true"] { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+.place[aria-selected="true"] .ic { color: var(--accent-text); }
+.place .badge { min-width: 26px; height: 26px; padding: 0 8px; border-radius: 999px; background: var(--fill-2); font-size: var(--fs-cap); display: inline-grid; place-items: center; }
+@media (min-width: 1200px) {
+  .top-in { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "brand places status"; }
+  .places { justify-content: center; }
+}
+/* Narrow: the places become a bar along the bottom, where a thumb is. */
+@media (max-width: 819px) {
+  html { scroll-padding-top: 96px; scroll-padding-bottom: 110px; }
+  body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .top-in { grid-template-areas: "brand status"; padding-top: 10px; padding-bottom: 10px; }
+  .places { grid-area: auto; overflow: visible; position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; justify-content: space-around; gap: 0; padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--card) 90%, transparent); -webkit-backdrop-filter: saturate(170%) blur(20px); backdrop-filter: saturate(170%) blur(20px); border-top: 1px solid var(--line); }
+  .place { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 2px; padding: 6px 2px; min-height: 60px; font-size: var(--fs-cap); border-radius: 12px; }
+  .place[aria-selected="true"] { box-shadow: none; background: var(--accent-soft); color: var(--accent-text); }
+  .place .badge { display: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .places { background: var(--card); } }
+@media (prefers-reduced-transparency: reduce) { .places, .top { background: var(--card) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; } }
+
+/* ── Page ─────────────────────────────────────────────────────────── */
+main { max-width: 1320px; margin: 0 auto; padding: clamp(20px, 3vw, 40px) clamp(16px, 3vw, 40px) 64px; container-type: inline-size; container-name: page; }
+.pane-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: var(--gap); }
+.pane-head h2 { font: 700 var(--fs-h2)/1.1 var(--display); letter-spacing: -.025em; }
+.pane-head h2:focus { outline: none; }
+.pane-head h2:focus-visible { outline: 3px solid var(--accent); }
+.pane-head p { color: var(--ink-2); margin-top: 8px; max-width: 64ch; }
+.seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 16px; background: var(--fill); margin-bottom: var(--gap); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
+.seg [role=tab], .seg button { flex: none; min-height: 44px; padding: 0 20px; border: 0; border-radius: 12px; background: none; font-weight: 600; font-size: var(--fs-small); color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+.seg [aria-selected="true"], .seg [aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.seg [role=tab]:hover:not([aria-selected="true"]), .seg button:hover:not([aria-pressed="true"]) { color: var(--ink); background: var(--fill); }
+
+/* ── Cards ────────────────────────────────────────────────────────── */
+.card { position: relative; background: var(--card); border-radius: var(--r-xl); padding: var(--pad); box-shadow: var(--shadow); min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.card h3 { font: 650 var(--fs-title)/1.25 var(--display); letter-spacing: -.012em; }
+.card > .eyebrow, .eyebrow { font-size: var(--fs-cap); font-weight: 650; color: var(--ink-3); letter-spacing: .02em; }
+.card h3.eyebrow { font: 650 var(--fs-small)/1.4 var(--sans); color: var(--ink-2); letter-spacing: 0; }
+.is-target { cursor: pointer; transition: box-shadow .2s, transform .2s; }
+.is-target:hover { box-shadow: var(--shadow-hi); transform: translateY(-2px); }
+.is-target:active { transform: translateY(0) scale(.995); }
+/* The heading's button stretches over the card: the whole card is one target,
+   and the real buttons on it sit above that layer. */
+.stretch { all: unset; cursor: pointer; overflow-wrap: anywhere; }
+.stretch::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-xl); }
+.stretch:focus-visible { outline: none; }
+.stretch:focus-visible::after { outline: 3px solid var(--accent); outline-offset: 3px; }
+.lift { position: relative; z-index: 2; }
+.grid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+.fig { font: 700 var(--fs-fig)/1 var(--display); letter-spacing: -.03em; }
+.fig small { font-size: .42em; font-weight: 600; letter-spacing: 0; color: var(--ink-2); margin-left: .2em; }
+.fig-m { font: 700 var(--fs-fig-m)/1.05 var(--display); letter-spacing: -.02em; }
+.go { margin-top: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--accent-text); font-weight: 600; font-size: var(--fs-small); }
+.go .ic { width: 18px; height: 18px; }
+.state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; font-weight: 600; }
+.state .note { font-weight: 400; color: var(--ink-2); }
+.tag { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; border-radius: 999px; background: var(--fill); font-size: var(--fs-cap); font-weight: 600; color: var(--ink-2); }
+.tag .st { width: 16px; height: 16px; color: var(--accent-text); }
+.tag-upd { background: var(--accent-soft); color: var(--ink); }
+
+/* ── Buttons ──────────────────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px; border: 0; border-radius: 12px; background: var(--fill); color: var(--ink); font-weight: 600; font-size: var(--fs-small); cursor: pointer; text-decoration: none; white-space: nowrap; transition: background .15s, transform .1s, filter .15s; }
+.btn:hover { background: var(--fill-2); }
+.btn:active { transform: scale(.97); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.strong { background: var(--ink); color: var(--card); }
+.btn.plain { background: none; color: var(--accent-text); padding: 0 12px; }
+.btn.plain:hover { background: var(--accent-soft); }
+.btn.big { min-height: 52px; padding: 0 26px; font-size: var(--fs-body); border-radius: 14px; }
+.btn .ic { width: 20px; height: 20px; }
+.btn[aria-disabled="true"] { opacity: .6; cursor: progress; }
+.acts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+/* "More": the card's secondary actions, behind a disclosure. */
+.more { position: relative; }
+.more > summary { list-style: none; }
+.more > summary::-webkit-details-marker { display: none; }
+.more[open] > summary { background: var(--fill-2); }
+.menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; min-width: 250px; padding: 8px; border-radius: 16px; background: var(--card); box-shadow: 0 0 0 1px var(--line), 0 18px 40px rgba(0, 0, 0, .18); display: grid; gap: 2px; }
+.menu button { all: unset; box-sizing: border-box; display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 10px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.menu button:hover { background: var(--fill); }
+.menu button:focus-visible { outline: 3px solid var(--accent); outline-offset: 0; }
+.mcard:has(.more[open]) { z-index: 5; }
+
+/* ── Meters ───────────────────────────────────────────────────────── */
+.meter { height: 16px; border-radius: 999px; background: var(--fill-2); display: flex; gap: 3px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--accent); }
+.meter i:nth-child(2) { background: color-mix(in srgb, var(--accent) 62%, var(--card)); }
+.meter i:nth-child(3) { background: color-mix(in srgb, var(--accent) 38%, var(--card)); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: var(--fs-small); color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend b { width: 14px; height: 14px; border-radius: 4px; background: var(--accent); flex: none; }
+.legend span:nth-child(2) b { background: color-mix(in srgb, var(--accent) 62%, var(--card)); }
+.legend span:nth-child(3) b { background: color-mix(in srgb, var(--accent) 38%, var(--card)); }
+.legend .free b { background: var(--fill-2); }
+.progress { height: 10px; border-radius: 999px; background: var(--fill-2); overflow: hidden; }
+.progress i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+
+/* ── Overview bento ───────────────────────────────────────────────── */
+.bento { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); }
+.hero { gap: 16px; padding: clamp(24px, 1.4rem + 1.4vw, 40px); }
+.hero .lead-st { display: flex; align-items: center; gap: 14px; }
+.hero .lead-st .st { width: 40px; height: 40px; }
+.hero h3 { font: 700 var(--fs-fig)/1.05 var(--display); letter-spacing: -.03em; }
+.hero p { font-size: clamp(1.125rem, 1rem + .5vw, 1.375rem); color: var(--ink-2); max-width: 46ch; line-height: 1.45; }
+.hero p strong { color: var(--ink); }
+.hero .when { font-size: var(--fs-small); color: var(--ink-3); }
+.rows { display: grid; gap: 4px; }
+.row-btn { all: unset; box-sizing: border-box; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; min-height: 64px; padding: 10px 14px; margin: 0 -14px; border-radius: 14px; cursor: pointer; }
+.row-btn:hover { background: var(--fill); }
+.row-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 0; }
+.row-btn .nm { font-weight: 600; overflow-wrap: anywhere; }
+.row-btn .sm { grid-column: 2; font-size: var(--fs-small); color: var(--ink-2); }
+.row-btn .r { grid-row: 1 / 3; grid-column: 3; font-weight: 650; }
+.row-btn .st { grid-row: 1 / 3; }
+.events { display: grid; gap: 14px; }
+.events li { display: grid; grid-template-columns: 3.4em 20px minmax(0, 1fr); gap: 12px; align-items: start; }
+.events time { color: var(--ink-3); font-size: var(--fs-small); padding-top: 2px; }
+.events .st { margin-top: 3px; }
+.empty-state { display: grid; gap: 8px; justify-items: start; padding: 8px 0; color: var(--ink-2); }
+.empty-state strong { color: var(--ink); }
+@container page (min-width: 700px) {
+  .bento { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .b-hero { grid-column: span 6; } .b-mem { grid-column: span 3; } .b-req { grid-column: span 3; }
+  .b-ready { grid-column: span 6; } .b-dev { grid-column: span 3; } .b-reach { grid-column: span 3; }
+  .b-upd { grid-column: span 6; } .b-log { grid-column: span 6; }
+}
+@container page (min-width: 1040px) {
+  .bento { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .b-hero { grid-column: span 8; } .b-mem { grid-column: span 4; }
+  .b-ready { grid-column: span 5; } .b-req { grid-column: span 3; } .b-dev { grid-column: span 4; }
+  .b-upd { grid-column: span 4; } .b-log { grid-column: span 5; } .b-reach { grid-column: span 3; }
+}
+
+/* ── My Models ────────────────────────────────────────────────────── */
+.roll { margin-bottom: var(--gap); }
+.roll .figs { display: flex; flex-wrap: wrap; gap: 16px clamp(24px, 4vw, 56px); }
+.roll .figs div { display: grid; gap: 2px; }
+.roll .figs span { font-size: var(--fs-small); color: var(--ink-2); font-weight: 500; }
+.mcard { gap: 10px; container-type: inline-size; }
+.mcard .org { font-size: var(--fs-cap); color: var(--ink-3); font-weight: 600; margin-top: 4px; }
+.mcard h3 { font-size: clamp(1.3125rem, 1.15rem + .5vw, 1.5rem); margin-top: -6px; }
+.mcard .desc { color: var(--ink-2); }
+.mcard .note { font-size: var(--fs-small); color: var(--ink-2); }
+.mcard .foot { margin-top: auto; padding-top: 14px; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; }
+.mcard .mem { display: grid; gap: 0; }
+.mcard .mem span { font-size: var(--fs-small); color: var(--ink-2); }
+.mcard.is-failed { box-shadow: var(--shadow), inset 0 0 0 2px color-mix(in srgb, var(--failed) 70%, transparent); }
+.add-card { border: 2px dashed var(--line-2); background: transparent; box-shadow: none; align-items: flex-start; justify-content: center; min-height: 220px; }
+.add-card .ic-big { width: 52px; height: 52px; border-radius: 16px; background: var(--accent-soft); color: var(--accent-text); display: grid; place-items: center; }
+
+/* ── Sheets ───────────────────────────────────────────────────────── */
+dialog.sheet { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(660px, 100vw); max-width: 100vw; height: 100%; max-height: 100%; padding: 0; border: 0; border-radius: 28px 0 0 28px; background: var(--bg); color: var(--ink); box-shadow: -20px 0 60px rgba(0, 0, 0, .24); overflow: hidden; }
+dialog.sheet[open] { display: flex; flex-direction: column; }
+dialog.sheet::backdrop { background: var(--scrim); }
+.sh-form { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.sh-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px clamp(16px, 3vw, 28px); border-bottom: 1px solid var(--line); background: var(--bg); }
+.sh-bar .crumb { font-size: var(--fs-small); color: var(--ink-3); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sh-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: clamp(20px, 3vw, 32px) clamp(16px, 3vw, 28px) 40px; display: flex; flex-direction: column; gap: 16px; scroll-padding: 24px 0 40px; }
+.sh-head { display: grid; gap: 10px; padding-bottom: 8px; }
+.sh-head .org { font-size: var(--fs-small); color: var(--ink-3); font-weight: 600; }
+.sh-head h2 { font: 700 clamp(1.75rem, 1.4rem + 1.2vw, 2.25rem)/1.12 var(--display); letter-spacing: -.025em; overflow-wrap: anywhere; }
+.sh-head h2:focus { outline: none; }
+.sh-head h2:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.sh-head .desc { color: var(--ink-2); font-size: clamp(1.0625rem, 1rem + .3vw, 1.25rem); }
+.sh-head .state { padding: 12px 16px; border-radius: 14px; background: var(--card); box-shadow: var(--shadow); }
+.sh-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px clamp(16px, 3vw, 28px) calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--card); }
+.sh-foot .msg { flex: 1 1 260px; display: flex; gap: 10px; align-items: flex-start; font-size: var(--fs-small); font-weight: 500; }
+.sh-foot .msg .st { margin-top: 2px; }
+.kv { display: grid; gap: 12px; }
+.kv div { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; }
+.kv dt { color: var(--ink-2); }
+.kv dd { font-weight: 650; text-align: right; }
+.stack { height: 18px; border-radius: 999px; background: var(--fill-2); display: flex; overflow: hidden; gap: 3px; }
+.stack i { display: block; height: 100%; }
+.stack .w { background: var(--accent); }
+.stack .c { background: color-mix(in srgb, var(--accent) 45%, var(--card)); }
+.files { display: grid; gap: 4px; padding: 8px; border-radius: 14px; background: var(--card-2); }
+.files li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; font-size: var(--fs-small); }
+.files li code { overflow-wrap: anywhere; }
+.files li span { color: var(--ink-2); white-space: nowrap; }
+pre.code { margin: 0; padding: 16px; border-radius: 14px; background: var(--card-2); font: 400 .9375rem/1.6 var(--mono); overflow-x: auto; white-space: pre; tab-size: 2; }
+.confirm { display: grid; gap: 12px; padding: 16px; border-radius: 16px; background: var(--card-2); box-shadow: inset 0 0 0 1.5px var(--line-2); }
+.danger h3 { color: var(--ink); }
+.card.is-error { box-shadow: var(--shadow), inset 0 0 0 2px color-mix(in srgb, var(--failed) 70%, transparent); }
+.h-st { display: flex; align-items: center; gap: 10px; }
+.h-st .st { width: 24px; height: 24px; }
+@media (max-width: 720px) { dialog.sheet { width: 100vw; border-radius: 0; box-shadow: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  dialog.sheet[open] { animation: sheet-in .34s cubic-bezier(.2, .9, .25, 1); }
+  dialog.sheet[open]::backdrop { animation: fade-in .25s ease-out; }
+  @keyframes sheet-in { from { transform: translateX(48px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+}
+html:has(dialog[open]) { overflow: hidden; }
+
+/* ── Form fields ──────────────────────────────────────────────────── */
+.form { display: grid; gap: 22px; }
+.field { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.f-label { font-weight: 600; padding: 0; }
+.f-hint { color: var(--ink-2); font-size: var(--fs-small); }
+.f-input { width: 100%; max-width: 440px; min-height: 50px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--control-edge); background: var(--field); color: var(--ink); font-size: var(--fs-body); }
+select.f-input { appearance: none; -webkit-appearance: none; padding-right: 44px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: right 22px center, right 16px center; background-size: 6px 6px; background-repeat: no-repeat; }
+.f-input::placeholder { color: var(--ink-3); opacity: 1; }
+.f-input:hover { border-color: var(--ink-3); }
+.f-input:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.has-err .f-input { border-color: var(--failed); box-shadow: 0 0 0 1px var(--failed); }
+.f-err { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; font-size: var(--fs-small); padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--failed) 9%, var(--card)); max-width: 440px; }
+.f-err .st { margin-top: 1px; }
+.field-toggle { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 16px; }
+.f-text { display: grid; gap: 4px; }
+.switch { appearance: none; -webkit-appearance: none; box-sizing: content-box; width: 52px; height: 32px; margin: 0; border: 6px solid transparent; background-clip: padding-box; border-radius: 999px; background-color: var(--control-edge); position: relative; cursor: pointer; transition: background-color .2s; }
+.switch::before { content: ""; position: absolute; top: 2px; left: 2px; width: 28px; height: 28px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .2s; }
+.switch:checked { background-color: var(--accent); }
+.switch:checked::before { transform: translateX(20px); }
+.switch:focus-visible { outline-offset: -3px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--fill); cursor: pointer; font-weight: 500; font-size: var(--fs-small); }
+.chip:hover { background: var(--fill-2); }
+.chip input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.chip:has(input:checked) { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
+.chip:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+.adv { border-radius: 14px; }
+.adv > summary { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; margin-left: -12px; border-radius: 12px; color: var(--accent-text); font-weight: 600; cursor: pointer; list-style: none; }
+.adv > summary::-webkit-details-marker { display: none; }
+.adv > summary::before { content: ""; width: 8px; height: 8px; border-right: 2.4px solid currentColor; border-bottom: 2.4px solid currentColor; transform: rotate(-45deg); transition: transform .2s; margin-right: 4px; }
+.adv[open] > summary::before { transform: rotate(45deg); }
+.adv > summary:hover { background: var(--accent-soft); }
+.adv-n { color: var(--ink-3); font-weight: 500; }
+.adv-body { display: grid; gap: 22px; padding: 14px 0 4px; }
+
+/* ── Settings ─────────────────────────────────────────────────────── */
+.scard { gap: 10px; min-height: 230px; }
+.scard .s-ic { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--fill); color: var(--ink-2); margin-bottom: 4px; }
+.scard .now { font-size: var(--fs-body); }
+.scard .now .st { margin-right: 6px; }
+.s-err { display: flex; gap: 10px; align-items: flex-start; font-size: var(--fs-small); font-weight: 500; }
+.s-err .st { margin-top: 2px; }
+.inforce { display: grid; gap: 4px; }
+.inforce p:last-child { font-size: clamp(1.0625rem, 1rem + .35vw, 1.25rem); font-weight: 600; }
+
+/* ── Statistics ───────────────────────────────────────────────────── */
+.kpis { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); margin-bottom: var(--gap); }
+.kpi { gap: 6px; }
+.kpi .sub { color: var(--ink-2); font-size: var(--fs-small); }
+.stats { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); }
+@container page (min-width: 900px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stats .wide { grid-column: 1 / -1; } }
+.chart { min-height: 260px; }
+.chart svg { display: block; }
+.c-grid { stroke: var(--line); stroke-width: 1; }
+.c-axis { fill: var(--ink-3); font: 500 14px var(--sans); }
+.c-area { fill: var(--accent-soft); }
+.c-line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; }
+.c-pt { fill: var(--card); stroke: var(--accent); stroke-width: 2.5; }
+.pm { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.pm .card { box-shadow: none; background: var(--card-2); padding: 20px; gap: 8px; }
+.pm h4 { font-size: var(--fs-body); font-weight: 650; overflow-wrap: anywhere; }
+.pm .bar { height: 8px; border-radius: 999px; background: var(--fill-2); overflow: hidden; }
+.pm .bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.pm dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pm dt { font-size: var(--fs-cap); color: var(--ink-3); font-weight: 600; }
+.pm dd { font-weight: 650; font-size: var(--fs-small); }
+
+/* ── Find, Connect, Clients, Posture ──────────────────────────────── */
+.search { position: relative; margin-bottom: 8px; }
+.search .ic { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
+.search input { width: 100%; min-height: 60px; padding: 0 20px 0 54px; border-radius: 18px; border: 1px solid var(--control-edge); background: var(--card); font-size: clamp(1.125rem, 1rem + .4vw, 1.3125rem); box-shadow: var(--shadow); }
+.search input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.count { color: var(--ink-2); font-size: var(--fs-small); margin: 0 0 var(--gap) 4px; }
+.res .size { display: flex; align-items: baseline; gap: 8px; }
+.res .fit { display: flex; gap: 10px; align-items: flex-start; color: var(--ink-2); font-size: var(--fs-small); }
+.res .fit .ic { width: 20px; height: 20px; color: var(--ink-3); }
+.res h3 { overflow-wrap: anywhere; font-size: var(--fs-body); }
+.res .meta { color: var(--ink-2); font-size: var(--fs-small); }
+.res .acts { margin-top: auto; padding-top: 6px; }
+.skel { border-radius: 8px; background: var(--fill); height: 1.1em; }
+.skel.w60 { width: 60%; } .skel.w40 { width: 40%; } .skel.w80 { width: 80%; } .skel.h2 { height: 2.4em; width: 35%; } .skel.btn-s { height: 44px; width: 130px; border-radius: 12px; }
+@media (prefers-reduced-motion: no-preference) {
+  .skel { background: linear-gradient(90deg, var(--fill) 0%, var(--fill-2) 50%, var(--fill) 100%); background-size: 200% 100%; animation: shimmer 1.1s linear infinite; }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+}
+.url { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.url code { flex: 1 1 280px; min-width: 0; font: 600 clamp(1.125rem, 1rem + .6vw, 1.5rem)/1.3 var(--mono); padding: 14px 18px; border-radius: 14px; background: var(--card-2); overflow-wrap: anywhere; }
+.fp { font: 600 var(--fs-body)/1.5 var(--mono); letter-spacing: .04em; overflow-wrap: anywhere; }
+.facts { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.fact .ans { font: 650 clamp(1.125rem, 1.05rem + .35vw, 1.3125rem)/1.35 var(--display); }
+.fact .why { color: var(--ink-2); font-size: var(--fs-small); }
+.dev .seen { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.dev .acts { margin-top: auto; padding-top: 6px; }
+.dev.revoked { opacity: .7; }
+.split { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); margin-top: var(--gap); }
+@container page (min-width: 900px) { .split { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 60; max-width: calc(100vw - 32px); padding: 12px 20px; border-radius: 999px; background: var(--ink); color: var(--card); font-weight: 600; font-size: var(--fs-small); box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
+@media (max-width: 819px) { .toast { bottom: calc(92px + env(safe-area-inset-bottom)); } }
+
+@media (forced-colors: active) {
+  .card, .btn, .pill, .place, .chip, .menu, .f-input, .seg { border: 1px solid CanvasText; }
+  .place[aria-selected="true"], .seg [aria-selected="true"] { outline: 2px solid Highlight; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  .is-target:hover, .is-target:active, .btn:active { transform: none; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <!-- Status shapes borrow the mark's forms: ready a blue square, working a
+       yellow triangle, failed a red circle; idle an empty ring. Each always
+       sits beside its word, so colour is never the only signal. -->
+  <symbol id="s-ready" viewBox="0 0 20 20"><rect x="2" y="2" width="16" height="16" rx="3.5" fill="#2B5DAA" style="stroke:var(--st-edge,transparent);stroke-width:1.6"/><path d="m6 10.2 2.7 2.7L14.2 7.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="s-working" viewBox="0 0 20 20"><path d="M10 2.2 18.4 17H1.6Z" fill="#F5C518" stroke="#6b5400" stroke-width="1.4" stroke-linejoin="round"/><circle cx="6.6" cy="13.4" r="1.2" fill="#3a2d00"/><circle cx="10" cy="13.4" r="1.2" fill="#3a2d00"/><circle cx="13.4" cy="13.4" r="1.2" fill="#3a2d00"/></symbol>
+  <symbol id="s-failed" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8.2" fill="#E63329" style="stroke:var(--st-edge,transparent);stroke-width:1.6"/><path d="M10 5.6v5.4" stroke="#fff" stroke-width="2.3" stroke-linecap="round"/><circle cx="10" cy="14.2" r="1.35" fill="#fff"/></symbol>
+  <symbol id="s-idle" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.2" fill="none" stroke="currentColor" stroke-width="2.2" opacity=".75"/></symbol>
+  <symbol id="s-update" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 14V6.6M6.8 9.6 10 6.4l3.2 3.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-overview" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="3" width="8" height="10" rx="2"/><rect x="13" y="3" width="8" height="6" rx="2"/><rect x="13" y="11" width="8" height="10" rx="2"/><rect x="3" y="15" width="8" height="6" rx="2"/></g></symbol>
+  <symbol id="i-models" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></g></symbol>
+  <symbol id="i-find" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></g></symbol>
+  <symbol id="i-stats" viewBox="0 0 24 24"><path d="M4 20V11M10 20V5M16 20v-6M21.5 20h-19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M8 15.5a5.6 5.6 0 0 1 8 0"/><circle cx="12" cy="18.6" r="1.3" fill="currentColor"/><path d="M2 9.5a14.4 14.4 0 0 1 20 0"/></g></symbol>
+  <symbol id="i-connect" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></g></symbol>
+  <symbol id="i-clients" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="2.5" y="5" width="13" height="10" rx="1.5"/><path d="M1 18.5h17"/><rect x="17" y="8" width="5.5" height="11" rx="1.2"/></g></symbol>
+  <symbol id="i-posture" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8 7.5 9.5 4.4-1.5 7.5-4.9 7.5-9.5V6L12 3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h9M18 6h2M4 12h3M12 12h8M4 18h11M20 18h0"/><circle cx="15.5" cy="6" r="2.2"/><circle cx="9.5" cy="12" r="2.2"/><circle cx="17.5" cy="18" r="2.2"/></g></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="5.5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="18.5" cy="12" r="1.9"/></g></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></g></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></g></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4.5 5.5h15a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17.5h-1A1.5 1.5 0 0 1 3 16V7a1.5 1.5 0 0 1 1.5-1.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5"/><path d="M4 16.5v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></g></symbol>
+  <symbol id="i-memory" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="5" y="5" width="14" height="14" rx="2.5"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2.5V5M15 2.5V5M9 19v2.5M15 19v2.5M2.5 9H5M2.5 15H5M19 9h2.5M19 15h2.5"/></g></symbol>
+  <symbol id="i-tick" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="m8 12.3 2.8 2.8L16.3 9.4"/></g></symbol>
+</svg>
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true">
+      <polygon points="302,132 472,472 132,472" fill="#F5C518"/>
+      <rect x="552" y="132" width="340" height="340" fill="#B4B6BB"/>
+      <rect x="132" y="552" width="340" height="340" fill="#2B5DAA"/>
+      <circle cx="722" cy="722" r="170" fill="#E63329"/>
+    </svg>
+      <div>
+        <h1>Dessau Server</h1>
+        <p>Local MLX models, served to your network</p>
+      </div>
+    </div>
+    <button class="pill" id="pill" type="button"></button>
+    <div class="places" id="places" role="tablist" aria-label="Places in the control panel">
+      <button class="place" role="tab" id="t-overview" aria-controls="p-overview" aria-selected="true" tabindex="0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-overview"/></svg><span>Overview</span></button>
+      <button class="place" role="tab" id="t-models" aria-controls="p-models" aria-selected="false" tabindex="-1"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-models"/></svg><span>Models</span><span class="badge" id="mbadge">5</span></button>
+      <button class="place" role="tab" id="t-stats" aria-controls="p-stats" aria-selected="false" tabindex="-1"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-stats"/></svg><span>Statistics</span></button>
+      <button class="place" role="tab" id="t-sharing" aria-controls="p-sharing" aria-selected="false" tabindex="-1"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-share"/></svg><span>Sharing</span></button>
+      <button class="place" role="tab" id="t-settings" aria-controls="p-settings" aria-selected="false" tabindex="-1"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-settings"/></svg><span>Settings</span></button>
+    </div>
+  </div>
+</header>
+
+<div class="sr" role="status" aria-live="polite" id="live"></div>
+
+<main id="main">
+
+  <!-- ═══ Overview ═══ -->
+  <section id="p-overview" role="tabpanel" aria-labelledby="t-overview">
+    <div class="pane-head">
+      <div>
+        <h2 tabindex="-1">Overview</h2>
+        <p>Read from the server as it is now. Nothing on this page changes a setting.</p>
+      </div>
+    </div>
+    <div class="bento" id="bento"></div>
+  </section>
+
+  <!-- ═══ Models: My Models · Find Models ═══ -->
+  <section id="p-models" role="tabpanel" aria-labelledby="t-models" hidden>
+    <div class="seg" role="tablist" aria-label="Models" id="sub-models">
+      <button role="tab" id="t-mymodels" aria-controls="p-mymodels" aria-selected="true" tabindex="0">My Models</button>
+      <button role="tab" id="t-find" aria-controls="p-find" aria-selected="false" tabindex="-1">Find Models</button>
+    </div>
+
+    <section id="p-mymodels" role="tabpanel" aria-labelledby="t-mymodels">
+      <div class="pane-head">
+        <div>
+          <h2 tabindex="-1">My Models</h2>
+          <p>Every model on this Mac. Open a card to see everything about that model.</p>
+        </div>
+        <button class="btn" type="button" data-go="models:find"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plus"/></svg>Find Models</button>
+      </div>
+      <section class="card roll" aria-labelledby="roll-h" id="roll"></section>
+      <div class="grid" id="mgrid"></div>
+    </section>
+
+    <section id="p-find" role="tabpanel" aria-labelledby="t-find" hidden>
+      <div class="pane-head">
+        <div>
+          <h2 tabindex="-1">Find Models</h2>
+          <p>Searching the <code>mlx-community</code> organisation on HuggingFace. Type a repository id in full, such as <code>alice/Bonsai-27B-mlx-4bit</code>, to fetch that exact model.</p>
+        </div>
+      </div>
+      <section class="card" style="margin-bottom:var(--gap)" aria-labelledby="fit-h">
+        <p class="eyebrow">This Mac</p>
+        <h3 id="fit-h" class="fig-m">This Mac can run models up to about 40&nbsp;GB.</h3>
+        <p class="muted prose">64 GB of unified memory and a 48 GB budget for models, with room left for the context a model serves. Smaller models can run side by side.</p>
+      </section>
+      <form class="search" role="search" id="findForm">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-find"/></svg>
+        <label class="sr" for="findInput">Search MLX models</label>
+        <input id="findInput" type="search" value="gemma 3" placeholder="Search models, for example qwen3" autocomplete="off" aria-describedby="findCount">
+      </form>
+      <p class="count" id="findCount" aria-live="polite"></p>
+      <div class="grid" id="findList" aria-busy="false"></div>
+    </section>
+  </section>
+
+  <!-- ═══ Statistics ═══ -->
+  <section id="p-stats" role="tabpanel" aria-labelledby="t-stats" hidden>
+    <div class="pane-head">
+      <div>
+        <h2 tabindex="-1">Statistics</h2>
+        <p>Recorded on this Mac. Counts and timings only: no prompt, no answer and no client address is kept, so none can be shown.</p>
+      </div>
+      <div class="seg" role="group" aria-label="Range" style="margin:0">
+        <button type="button" aria-pressed="false" data-range="7">7 days</button>
+        <button type="button" aria-pressed="true" data-range="30">30 days</button>
+        <button type="button" aria-pressed="false" data-range="90">90 days</button>
+      </div>
+    </div>
+    <div class="kpis">
+      <div class="card kpi"><p class="eyebrow">Requests</p><p class="fig" id="kReq">18,402</p><p class="sub" id="kRange">in the last 30 days</p></div>
+      <div class="card kpi"><p class="eyebrow">Tokens written</p><p class="fig">6.1<small>M</small></p><p class="sub">41.3 M read from prompts</p></div>
+      <div class="card kpi"><p class="eyebrow">First token, typically</p><p class="fig">0.41<small>s</small></p><p class="sub">1.18 s for the slowest tenth</p></div>
+      <div class="card kpi"><p class="eyebrow">Refused or failed</p><p class="fig">0.6<small>%</small></p><p class="sub">112 requests</p></div>
+    </div>
+    <div class="stats">
+      <section class="card wide" aria-labelledby="chartH">
+        <h3 id="chartH">Requests per day</h3>
+        <div class="chart" id="chart" role="img" aria-labelledby="chartH chartDesc"></div>
+        <p class="f-hint" id="chartDesc"></p>
+      </section>
+      <section class="card wide" aria-labelledby="pmH">
+        <h3 id="pmH">Each model, over the same days</h3>
+        <div class="pm" id="pm"></div>
+      </section>
+      <section class="card" aria-labelledby="stH">
+        <h3 id="stH">This morning&rsquo;s self-test</h3>
+        <p class="muted">Each model is tested once a day after 30 minutes of quiet.</p>
+        <dl class="kv">
+          <div><dt>Qwen3-8B-4bit, 07:12</dt><dd>loads in 2.3 s · 68 tok/s</dd></div>
+          <div><dt>gemma-3-12b-it-4bit, 06:40</dt><dd>loads in 4.1 s · 34 tok/s</dd></div>
+          <div><dt>Llama-3.2-3B-Instruct-4bit, 06:21</dt><dd>loads in 1.1 s · 121 tok/s</dd></div>
+        </dl>
+      </section>
+      <section class="card" aria-labelledby="storeH">
+        <h3 id="storeH">Where the records are kept</h3>
+        <p class="prose">Records take <strong>38.6 MB</strong> of the 512 MB allowed, in 37 files in your Dessau data folder. The oldest is from 3 September 2026; records are kept for 6 months.</p>
+        <div id="clearBox" class="acts" style="margin-top:auto"><button class="btn" type="button" data-clear="ask">Clear records…</button></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ═══ Sharing: Connect · Clients · Posture ═══ -->
+  <section id="p-sharing" role="tabpanel" aria-labelledby="t-sharing" hidden>
+    <div class="seg" role="tablist" aria-label="Sharing" id="sub-sharing">
+      <button role="tab" id="t-connect" aria-controls="p-connect" aria-selected="true" tabindex="0">Connect</button>
+      <button role="tab" id="t-clients" aria-controls="p-clients" aria-selected="false" tabindex="-1">Clients</button>
+      <button role="tab" id="t-posture" aria-controls="p-posture" aria-selected="false" tabindex="-1">Posture</button>
+    </div>
+
+    <section id="p-connect" role="tabpanel" aria-labelledby="t-connect">
+      <div class="pane-head"><div><h2 tabindex="-1">Connect</h2><p>Dessau speaks the OpenAI API, so anything that talks to ChatGPT can talk to this Mac. Point it here.</p></div></div>
+      <section class="card" aria-labelledby="urlH">
+        <p class="eyebrow">Base URL</p>
+        <h3 id="urlH" class="sr">Base URL</h3>
+        <div class="url"><code>http://alices-mac.local:8080/v1</code><button class="btn primary big" type="button" data-copy="http://alices-mac.local:8080/v1"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-copy"/></svg>Copy</button></div>
+        <p class="f-hint">Also answering at <code>http://192.0.2.24:8080/v1</code>, and on this Mac at <code>http://127.0.0.1:8080/v1</code>.</p>
+      </section>
+      <div class="split">
+        <section class="card" aria-labelledby="keyH">
+          <h3 id="keyH">API key</h3>
+          <p class="state"><svg class="st" viewBox="0 0 20 20" aria-hidden="true"><use href="#s-ready"/></svg>Set. Every request on port 8080 must send it.</p>
+          <p class="fp">sk-dessau-••••••••3f9a</p>
+          <div class="acts" style="margin-top:auto"><button class="btn" type="button" data-copy="sk-dessau-example-key-3f9a">Copy key</button><button class="btn plain" type="button" data-group="a">Change it in Settings</button></div>
+        </section>
+        <section class="card" aria-labelledby="exH">
+          <h3 id="exH">Try it</h3>
+          <div class="seg" role="group" aria-label="Example language" style="margin:0;align-self:flex-start">
+            <button type="button" aria-pressed="true" data-code="curl">curl</button>
+            <button type="button" aria-pressed="false" data-code="py">Python</button>
+          </div>
+<pre class="code" id="code-curl">curl http://alices-mac.local:8080/v1/chat/completions \
+  -H "Authorization: Bearer $DESSAU_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "mlx-community/Qwen3-8B-4bit",
+       "messages": [{"role": "user", "content": "Hello"}]}'</pre>
+<pre class="code" id="code-py" hidden>import os
+from openai import OpenAI
+
+client = OpenAI(base_url="http://alices-mac.local:8080/v1",
+                api_key=os.environ["DESSAU_KEY"])
+reply = client.chat.completions.create(
+    model="mlx-community/gemma-3-12b-it-4bit",
+    messages=[{"role": "user", "content": "Hello"}])
+print(reply.choices[0].message.content)</pre>
+        </section>
+      </div>
+    </section>
+
+    <section id="p-clients" role="tabpanel" aria-labelledby="t-clients" hidden>
+      <div class="pane-head"><div><h2 tabindex="-1">Clients</h2><p>Chat apps paired with this server. A paired app proves itself with a key of its own and never sends the API key. Anything that reaches this server can pair, so revoke what you do not recognise.</p></div></div>
+      <section class="card" style="margin-bottom:var(--gap)" aria-labelledby="fpH">
+        <h3 id="fpH">This server&rsquo;s fingerprint</h3>
+        <p class="fp">SHA256 3F9A 7C21 B04E 66D8 91AF 2C5B 0E73 D4A9</p>
+        <p class="f-hint prose">Compare it with the fingerprint the chat app shows. If the two differ, the app is talking to something else.</p>
+      </section>
+      <div class="grid" id="devs"></div>
+    </section>
+
+    <section id="p-posture" role="tabpanel" aria-labelledby="t-posture" hidden>
+      <div class="pane-head"><div><h2 tabindex="-1">Posture</h2><p>What this server exposes and to whom, as Dessau sees it now, and where its view stops. Nothing here is a warning, and nothing here changes a setting.</p></div></div>
+      <div class="facts">
+        <section class="card fact"><p class="eyebrow">Who can reach the API</p><p class="ans">Anyone on your network, on port 8080.</p><p class="why">Bound to every network interface. Dessau cannot see your router or firewall.</p></section>
+        <section class="card fact"><p class="eyebrow">Whether a key is needed</p><p class="ans">Every request on port 8080 must send the API key.</p><p class="why">A blank key would let anyone on your network use the server.</p></section>
+        <section class="card fact"><p class="eyebrow">Who can pair a chat app</p><p class="ans">Anything that reaches port 8081.</p><p class="why">Pairing is first come; 4 apps are paired now.</p></section>
+        <section class="card fact"><p class="eyebrow">How it is found</p><p class="ans">Announced over Bonjour as alices-mac.local.</p><p class="why">Announcing is how a server is found, never what it allows.</p></section>
+        <section class="card fact"><p class="eyebrow">Who can open this panel</p><p class="ans">Only someone at this Mac.</p><p class="why">Bob and Carol reach the API, never the panel.</p></section>
+        <section class="card fact"><p class="eyebrow">What is recorded</p><p class="ans">Counts and timings, on this Mac.</p><p class="why">Anyone who can open this panel can read them.</p></section>
+        <section class="card fact"><p class="eyebrow">Whether conversations are kept</p><p class="ans">No model keeps a transcript.</p><p class="why">Debug logging is off for every model.</p></section>
+        <section class="card fact"><p class="eyebrow">What leaves this Mac</p><p class="ans">Model names, to HuggingFace, once a day.</p><p class="why">For the update check. The Discord bridge is off.</p></section>
+      </div>
+    </section>
+  </section>
+
+  <!-- ═══ Settings ═══ -->
+  <section id="p-settings" role="tabpanel" aria-labelledby="t-settings" hidden>
+    <div class="pane-head">
+      <div>
+        <h2 tabindex="-1">Settings</h2>
+        <p>Grouped by what you want to do. Each card says what is in force right now; open one to change it.</p>
+      </div>
+    </div>
+    <div class="grid" id="sgrid"></div>
+  </section>
+</main>
+
+<!-- ═══ The model sheet ═══ -->
+<dialog class="sheet" id="sheet" aria-labelledby="sh-title">
+  <div class="sh-bar">
+    <span class="crumb">My Models</span>
+    <button class="btn" type="button" data-close><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-close"/></svg>Close</button>
+  </div>
+  <div class="sh-body" id="shBody"></div>
+</dialog>
+
+<!-- ═══ The settings sheet ═══ -->
+<dialog class="sheet" id="setSheet" aria-labelledby="set-title">
+  <form class="sh-form" id="setForm" novalidate>
+    <div class="sh-bar">
+      <span class="crumb">Settings</span>
+      <button class="btn" type="button" data-close><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-close"/></svg>Close</button>
+    </div>
+    <div class="sh-body" id="setBody"></div>
+    <div class="sh-foot" role="region" aria-label="Save settings">
+      <p class="msg" id="saveMsg"></p>
+      <button class="btn primary big" type="submit">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ── Mock server: the same data as mockup 5, so every mockup describes one
+   server. Nothing here talks to a network; it is a picture of one. ───────── */
+var D = (function () {
+  'use strict';
+  var BUDGET = 48, MAC = 64;
+
+  var models = [
+    { id: 'gemma', org: 'mlx-community', name: 'gemma-3-12b-it-4bit', short: 'gemma-3-12b',
+      desc: 'A mid-sized chat model that can also read images.',
+      st: 'ready', note: 'Answering 1 request, for Carol’s iPad', pinned: true,
+      disk: 8.1, mem: 9.6, w: 8.1, c: 1.5, q: '4-bit', declared: 131072, measured: null, served: 32768,
+      today: { req: 611, tok: '188k', ft: '0.52 s', rate: '34 tok/s' } },
+    { id: 'qwen3', org: 'mlx-community', name: 'Qwen3-8B-4bit', short: 'Qwen3-8B',
+      desc: 'A quick, capable all-rounder for everyday chat.',
+      st: 'ready', note: 'Idle for 3 minutes; unloads after 10',
+      disk: 4.6, mem: 5.6, w: 4.6, c: 1.0, q: '4-bit', declared: 40960, measured: 38912, served: 32768,
+      update: [['tokenizer_config.json', '11 KB'], ['chat_template.jinja', '4 KB'], ['generation_config.json', '1 KB']],
+      today: { req: 498, tok: '162k', ft: '0.29 s', rate: '68 tok/s' } },
+    { id: 'coder', org: 'mlx-community', name: 'Qwen2.5-Coder-14B-Instruct-4bit', short: 'Qwen2.5-Coder-14B',
+      desc: 'Writes, explains and reviews code.',
+      st: 'working', pct: 63, note: '5.2 of 8.3 GB · about 4 minutes left',
+      disk: 8.3, mem: 9.4, w: 8.3, c: 1.1, q: '4-bit', declared: 32768, measured: null, served: 32768 },
+    { id: 'llama', org: 'mlx-community', name: 'Llama-3.2-3B-Instruct-4bit', short: 'Llama-3.2-3B',
+      desc: 'Small and very fast, for short everyday tasks.',
+      st: 'idle', note: 'Unloaded after 10 minutes idle, at 14:10',
+      disk: 1.8, mem: 2.3, w: 1.8, c: 0.5, q: '4-bit', declared: 131072, measured: null, served: 131072,
+      today: { req: 175, tok: '61k', ft: '0.14 s', rate: '121 tok/s' } },
+    { id: 'phi', org: 'mlx-community', name: 'Phi-4-mini-instruct-4bit', short: 'Phi-4-mini',
+      desc: 'A compact model tuned for step-by-step reasoning.',
+      st: 'failed', note: 'At 13:07, two minutes after its download finished',
+      disk: 2.2, mem: 2.9, w: 2.2, c: 0.7, q: '4-bit', declared: 131072, measured: null, served: 65536, merge: true,
+      log: 'ValueError: Model type phi3_v not supported.\nmodel server exited with status 1 after 2.4 s',
+      today: { req: 0, tok: '0', ft: '—', rate: '—' } }
+  ];
+
+  var events = [
+    ['14:33', 'ready', 'gemma-3-12b-it-4bit loaded in 4.1 s.'],
+    ['14:10', 'idle', 'Llama-3.2-3B-Instruct-4bit unloaded after 10 minutes idle.'],
+    ['13:58', 'working', 'Download started: Qwen2.5-Coder-14B-Instruct-4bit.'],
+    ['13:07', 'failed', 'Phi-4-mini-instruct-4bit would not start.'],
+    ['13:05', 'ready', 'Download finished: Phi-4-mini-instruct-4bit, 2.2 GB.']
+  ];
+
+  var clients = [
+    { id: 'bob', name: 'Bob’s laptop', paired: '2 Oct', seen: '2 minutes ago', recent: true, req: 2140 },
+    { id: 'carol', name: 'Carol’s iPad', paired: '5 Oct', seen: '14 minutes ago', recent: true, req: 612 },
+    { id: 'alice', name: 'Alice’s iPhone', paired: '19 Sep', seen: '41 minutes ago', recent: true, req: 388 },
+    { id: 'carol2', name: 'Carol’s old laptop', paired: '28 Aug', seen: '23 days ago', recent: false, req: 0 }
+  ];
+
+  var perModel = [
+    { name: 'gemma-3-12b-it-4bit', req: 8911, tok: '3.2 M', ft: '0.52 s', rate: '34 tok/s', big: '29,410' },
+    { name: 'Qwen3-8B-4bit', req: 7604, tok: '2.4 M', ft: '0.29 s', rate: '68 tok/s', big: '31,872' },
+    { name: 'Llama-3.2-3B-Instruct-4bit', req: 1822, tok: '0.5 M', ft: '0.14 s', rate: '121 tok/s', big: '6,204' },
+    { name: 'Phi-4-mini-instruct-4bit', req: 65, tok: '—', ft: '—', rate: '—', big: '—' }
+  ];
+
+  var found = [
+    { repo: 'mlx-community/gemma-3-4b-it-4bit', meta: 'Chat and images · 211k downloads · updated 3 Sep', size: '3.0 GB', fit: 'Fits alongside the models you have loaded', q: 'gemma 3 4b' },
+    { repo: 'mlx-community/gemma-3-12b-it-4bit', meta: 'Chat and images · 158k downloads', size: '8.1 GB', fit: 'Already on this Mac', have: 'gemma', q: 'gemma 3 12b' },
+    { repo: 'mlx-community/gemma-3-27b-it-4bit', meta: 'Chat and images · 97k downloads · updated 21 Aug', size: '16.9 GB', fit: 'Fits; Qwen3-8B unloads if both are asked for', q: 'gemma 3 27b' },
+    { repo: 'mlx-community/gemma-3-27b-it-8bit', meta: 'Chat and images · 18k downloads', size: '30.4 GB', fit: 'Fits only on its own', q: 'gemma 3 27b 8bit' },
+    { repo: 'mlx-community/Qwen3-32B-4bit', meta: 'Chat · 71k downloads', size: '18.4 GB', fit: 'Fits alongside the models you have loaded', q: 'qwen3 32b' },
+    { repo: 'mlx-community/Llama-3.3-70B-Instruct-4bit', meta: 'Chat · 64k downloads', size: '39.7 GB', fit: 'Fits only on its own, at a short context', q: 'llama 3.3 70b' }
+  ];
+
+  /* Settings, grouped by the job a setting does. Real setting names and hint
+     wording from today's panel; "now" is the line that says what is in force. */
+  var groups = [
+    { id: 'a', title: 'Who can reach this server', icon: 'i-share',
+      now: 'Reachable from your network on port 8080, with an API key.',
+      fields: [
+        { k: 'select', id: 'sHost', label: 'Bind address', hint: 'Applies when Dessau next starts.', options: ['0.0.0.0 — your whole network', '127.0.0.1 — this Mac only', '192.0.2.24 — one network interface'] },
+        { k: 'number', id: 'sPort', label: 'Port', value: '8080' },
+        { k: 'password', id: 'sKey', label: 'API key', hint: 'Blank means anyone on your network can use this server.', value: 'sk-dessau-example-key-3f9a' },
+        { k: 'toggle', id: 'sAdv', label: 'Announce this server on the local network', hint: 'Over Bonjour — how it is found, never what it allows.', on: true },
+        { k: 'number', id: 'sTLS', label: 'Port for paired clients', hint: '0 is the port just above; −1 serves no paired clients.', value: '0', adv: true }
+      ] },
+    { id: 'b', title: 'Memory and how many models stay loaded', icon: 'i-memory',
+      now: 'Models may use 48 GB of this Mac’s 64 GB. gemma-3-12b-it-4bit is pinned.',
+      fields: [
+        { k: 'number', id: 'sBudget', label: 'Memory for loaded models (GB)', hint: 'Blank for the default share of this Mac’s 64 GB.', placeholder: '48 — the default' },
+        { k: 'checks', id: 'sPin', label: 'Pinned models', hint: 'Never unloaded to make room. 9.6 GB pinned.', options: [['gemma-3-12b', true], ['Qwen3-8B', false], ['Llama-3.2-3B', false], ['Phi-4-mini', false]] },
+        { k: 'number', id: 'sConc', label: 'Batched requests', hint: 'Decode concurrency, 1 or more. Each holds its own cache.', value: '1', adv: true }
+      ] },
+    { id: 'c', title: 'How requests are handled', icon: 'i-settings',
+      now: 'Temperature 0.7 for any request that leaves it out. System messages merged for Phi-4-mini.',
+      fields: [
+        { k: 'number', id: 'sTemp', label: 'Temperature', hint: 'A request that sets its own value always wins.', value: '0.7', step: 'any' },
+        { k: 'number', id: 'sMax', label: 'Maximum completion tokens', placeholder: 'the served window' },
+        { k: 'number', id: 'sTopP', label: 'Top-p', placeholder: '1', step: 'any', adv: true },
+        { k: 'number', id: 'sTopK', label: 'Top-k', placeholder: '0 — off', adv: true },
+        { k: 'number', id: 'sMinP', label: 'Min-p', placeholder: '0 — off', step: 'any', adv: true },
+        { k: 'checks', id: 'sMerge', label: 'Merge system messages', hint: 'For models that refuse instructions that are not at the top.', options: [['gemma-3-12b', false], ['Qwen3-8B', false], ['Phi-4-mini', true]], adv: true },
+        { k: 'text', id: 'sPipes', label: 'Pipeline tags that count as chat', value: 'text-generation, image-text-to-text', adv: true },
+        { k: 'text', id: 'sTags', label: 'Tags a chat model must carry', value: 'conversational', adv: true }
+      ] },
+    { id: 'd', title: 'When idle models are unloaded', icon: 'i-clock',
+      now: 'Idle models unload after 10 minutes. A model that just finished is protected for 60 seconds.',
+      fields: [
+        { k: 'number', id: 'sIdle', label: 'Unload a model after it has been idle for', hint: 'Seconds; 0 means never.', value: '600' },
+        { k: 'toggle', id: 'sGraceOn', label: 'Wait for a model to fall idle instead of evicting one that just finished', on: true },
+        { k: 'number', id: 'sGrace', label: 'Protect a model that just finished for', hint: 'Seconds.', value: '420',
+          err: 'The grace period cannot exceed the maximum wait of 300 seconds.' },
+        { k: 'number', id: 'sWait', label: 'Wait at most', hint: 'Seconds.', value: '300' },
+        { k: 'toggle', id: 'sApiUnload', label: 'Let a program unload a model it has finished with', hint: 'With POST /v1/dessau/unload.', on: true, adv: true }
+      ] },
+    { id: 'e', title: 'Checks and measurements', icon: 'i-tick',
+      now: 'The self-test runs after 30 minutes of quiet, each model once a day. The context probe is off.',
+      fields: [
+        { k: 'toggle', id: 'sST', label: 'Test the models when this Mac is idle', hint: 'Counts and timings only, never a prompt or an answer.', on: true },
+        { k: 'toggle', id: 'sCP', label: 'Measure each model’s context window when this Mac is idle', hint: 'About forty minutes of GPU per model.', on: false },
+        { k: 'number', id: 'sSTI', label: 'Self-test idle threshold', hint: 'Seconds, 60 to 86,400.', value: '1800', adv: true },
+        { k: 'number', id: 'sCPI', label: 'Context probe idle threshold', hint: 'Seconds, 60 to 86,400.', value: '900', adv: true }
+      ] },
+    { id: 'f', title: 'Statistics and logging', icon: 'i-stats',
+      now: 'Recording on this Mac for 6 months, up to 512 MB (38.6 MB used). The log is sparse.',
+      fields: [
+        { k: 'toggle', id: 'sStats', label: 'Record request statistics on this Mac', hint: 'Anyone who can open this panel can read them.', on: true },
+        { k: 'select', id: 'sLog', label: 'How much the log says', hint: 'Never a prompt, an answer, a key or a client’s address.', options: ['Sparse — one line per event', 'Detailed — with the figures'] },
+        { k: 'number', id: 'sMonths', label: 'Keep records for (months)', value: '6', adv: true },
+        { k: 'number', id: 'sMB', label: 'Never use more than (MB)', value: '512', adv: true },
+        { k: 'checks', id: 'sTrans', label: 'Keep no transcript for', hint: 'Holds a model off the Discord bridge and debug logging.', options: [['gemma-3-12b', false], ['Qwen3-8B', false], ['Llama-3.2-3B', false]], adv: true }
+      ] },
+    { id: 'g', title: 'Discord bridge', icon: 'i-chat',
+      now: 'Off. Nothing passes through Discord.', off: true,
+      fields: [
+        { k: 'toggle', id: 'sDisc', label: 'Answer Discord direct messages and mentions with a model on this Mac', hint: 'While on, messages and answers pass through Discord and are kept under Discord’s terms.', on: false },
+        { k: 'password', id: 'sDiscT', label: 'Discord bot token', placeholder: 'no token' }
+      ] },
+    { id: 'h', title: 'Downloading and updating models', icon: 'i-download',
+      now: 'Checking for newer versions every 24 hours, last at 09:00. A HuggingFace token is set.',
+      fields: [
+        { k: 'toggle', id: 'sUpd', label: 'Check the models you downloaded for newer versions', on: true },
+        { k: 'password', id: 'sHF', label: 'HuggingFace token', hint: 'Only needed for gated models.', value: 'hf_example_token' },
+        { k: 'number', id: 'sUpdI', label: 'Check every (hours)', hint: '1 to 720; 0 or blank is daily.', value: '24', adv: true }
+      ] }
+  ];
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function fmt(n) { return Number(n).toLocaleString('en-GB'); }
+  function gb(n) { var r = Math.round(n * 10) / 10; return (r % 1 ? r.toFixed(1) : String(r)) + ' GB'; }
+  function shape(st, cls) { return '<svg class="st' + (cls ? ' ' + cls : '') + '" viewBox="0 0 20 20" aria-hidden="true"><use href="#s-' + st + '"/></svg>'; }
+  function icon(id, cls) { return '<svg class="ic' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+  function byId(id) { for (var i = 0; i < models.length; i++) if (models[i].id === id) return models[i]; return null; }
+  function used() { return models.reduce(function (a, m) { return a + (m.st === 'ready' ? m.mem : 0); }, 0); }
+  function loaded() { return models.filter(function (m) { return m.st === 'ready'; }); }
+  function failed() { return models.filter(function (m) { return m.st === 'failed'; }); }
+  function updates() { return models.filter(function (m) { return !!m.update; }); }
+
+  /* The state of a model, in words. */
+  function word(m) {
+    if (m.st === 'ready') return 'Loaded';
+    if (m.st === 'idle') return 'On disk, not loaded';
+    if (m.st === 'failed') return 'Would not start';
+    if (m.starting) return 'Starting';
+    return (m.paused ? 'Paused at ' : 'Downloading ') + m.pct + ' %';
+  }
+  /* Memory, in words. */
+  function memWord(m) {
+    if (m.st === 'ready') return { fig: gb(m.mem), cap: 'in memory now' };
+    if (m.st === 'working' && !m.starting) return { fig: gb(m.disk), cap: 'to download; ' + gb(m.mem) + ' when loaded' };
+    return { fig: gb(m.mem), cap: 'needed when loaded' };
+  }
+  /* The one primary action a model card carries, and its label. */
+  function primary(m) {
+    if (m.starting) return null;
+    if (m.st === 'failed') return { act: 'retry', label: 'Try again', strong: true };
+    if (m.update) return { act: 'update', label: 'Update', strong: true };
+    if (m.st === 'ready') return { act: 'unload', label: 'Unload' };
+    if (m.st === 'idle') return { act: 'load', label: 'Load', strong: true };
+    return { act: 'pause', label: m.paused ? 'Resume' : 'Pause' };
+  }
+  /* Secondary actions, behind "More". */
+  function secondary(m) {
+    var out = [];
+    if (m.update && m.st === 'ready') out.push({ act: 'unload', label: 'Unload' });
+    if (m.st !== 'working') out.push({ act: 'settings', label: 'Settings for this model' });
+    out.push({ act: 'delete', label: m.st === 'working' ? 'Cancel and delete…' : 'Delete…' });
+    return out;
+  }
+
+  /* Act on a model; returns the sentence the live region speaks. */
+  function act(m, a, after) {
+    if (a === 'unload') { m.st = 'idle'; m.note = 'Unloaded just now'; return m.name + ' unloaded. ' + gb(m.mem) + ' freed.'; }
+    if (a === 'load') {
+      if (used() + m.mem > BUDGET) return 'Not loaded: ' + m.name + ' needs ' + gb(m.mem) + ' and only ' + gb(BUDGET - used()) + ' is free.';
+      m.st = 'ready'; m.note = 'Loaded just now; unloads after 10 minutes idle'; return m.name + ' loaded.';
+    }
+    if (a === 'update') { var n = m.update.length; delete m.update; m.note = m.st === 'ready' ? 'Updated just now; the new files apply when it next loads' : m.note; return m.name + ' updated: ' + n + ' files replaced.'; }
+    if (a === 'pause') { m.paused = !m.paused; m.note = m.paused ? 'Paused at 5.2 of 8.3 GB; resumes where it left off' : '5.2 of 8.3 GB · about 4 minutes left'; return m.name + (m.paused ? ' paused.' : ' resumed.'); }
+    if (a === 'retry') {
+      m.starting = true; m.st = 'working'; m.note = 'Starting the model server…';
+      setTimeout(function () {
+        m.starting = false; m.st = 'failed'; m.note = 'At 14:38, again: this MLX runtime cannot run it';
+        if (after) after(m.name + ' would not start again. The log says why.');
+      }, 1600);
+      return 'Starting ' + m.name + '…';
+    }
+    if (a === 'really-delete') {
+      models.splice(models.indexOf(m), 1);
+      return m.name + ' deleted. ' + gb(m.disk) + ' of files removed.';
+    }
+    return '';
+  }
+
+  /* One form field, in generic markup each mockup styles its own way. */
+  function field(f) {
+    var hid = f.id + '-h', eid = f.id + '-e', desc = (f.hint ? hid : '') + (f.err ? ' ' + eid : '');
+    var hint = f.hint ? '<p class="f-hint" id="' + hid + '">' + esc(f.hint).replace('POST /v1/dessau/unload', '<code>POST /v1/dessau/unload</code>') + '</p>' : '';
+    var err = '<p class="f-err" id="' + eid + '"' + (f.err ? '' : ' hidden') + '>' + shape('failed') + '<span>' + esc(f.err || '') + '</span></p>';
+    var db = desc.trim() ? ' aria-describedby="' + desc.trim() + '"' : '';
+    if (f.k === 'toggle') {
+      return '<div class="field field-toggle" data-f="' + f.id + '"><div class="f-text"><label class="f-label" for="' + f.id + '">' + esc(f.label) + '</label>' + hint + '</div>' +
+        '<input class="switch" type="checkbox" role="switch" id="' + f.id + '"' + (f.on ? ' checked' : '') + db + '></div>';
+    }
+    if (f.k === 'checks') {
+      return '<fieldset class="field field-checks" data-f="' + f.id + '"' + (f.hint ? ' aria-describedby="' + hid + '"' : '') + '><legend class="f-label">' + esc(f.label) + '</legend>' + hint +
+        '<div class="chips">' + f.options.map(function (o, i) { return '<label class="chip"><input type="checkbox" name="' + f.id + '" value="' + i + '"' + (o[1] ? ' checked' : '') + '><span>' + esc(o[0]) + '</span></label>'; }).join('') + '</div></fieldset>';
+    }
+    var ctl;
+    if (f.k === 'select') ctl = '<select class="f-input" id="' + f.id + '"' + db + '>' + f.options.map(function (o, i) { return '<option' + (i ? '' : ' selected') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
+    else ctl = '<input class="f-input" id="' + f.id + '" type="' + f.k + '"' + (f.k === 'number' ? ' inputmode="decimal"' + (f.step ? ' step="any"' : '') : '') +
+      (f.value != null ? ' value="' + esc(f.value) + '"' : '') + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') +
+      (f.k === 'password' ? ' autocomplete="off"' : ' autocomplete="off"') + (f.err ? ' aria-invalid="true"' : '') + db + '>';
+    return '<div class="field' + (f.err ? ' has-err' : '') + '" data-f="' + f.id + '"><label class="f-label" for="' + f.id + '">' + esc(f.label) + '</label>' + hint + ctl + err + '</div>';
+  }
+  function form(g) {
+    var basic = g.fields.filter(function (f) { return !f.adv; }).map(field).join('');
+    var adv = g.fields.filter(function (f) { return f.adv; });
+    return basic + (adv.length ? '<details class="adv"><summary>More options<span class="adv-n"> (' + adv.length + ')</span></summary><div class="adv-body">' + adv.map(field).join('') + '</div></details>' : '');
+  }
+
+  /* The server-side check the mockup imitates: refuse, field by field. */
+  function check() {
+    var on = document.getElementById('sGraceOn'), g = document.getElementById('sGrace'), w = document.getElementById('sWait');
+    var row = g.closest('.field'), err = document.getElementById('sGrace-e');
+    var bad = on.checked && +g.value > +w.value;
+    row.classList.toggle('has-err', bad); err.hidden = !bad;
+    if (bad) { g.setAttribute('aria-invalid', 'true'); err.lastElementChild.textContent = 'The grace period cannot exceed the maximum wait of ' + (+w.value) + ' seconds.'; }
+    else g.removeAttribute('aria-invalid');
+    return bad ? { ok: false, group: 'd', field: g } : { ok: true };
+  }
+
+  /* A requests-per-day chart drawn at the width it is given, so its labels
+     stay at a readable size at 360 px and on a wide display alike. */
+  function series(n) {
+    var out = [], seed = 7;
+    for (var i = 0; i < n; i++) {
+      seed = (seed * 9301 + 49297) % 233280;
+      var day = (i + 6 - n % 7 + 70) % 7, weekend = day >= 5;
+      var base = 380 + i * (n > 30 ? 9 : 22) / (n / 30);
+      out.push(Math.round((weekend ? base * 0.55 : base) + (seed / 233280) * 260 + (n > 30 ? 0 : 520)));
+    }
+    var t = { 7: 4320, 30: 18402, 90: 47115 }[n], raw = out.reduce(function (a, b) { return a + b; }, 0);
+    out = out.map(function (x) { return Math.round(x * t / raw); });
+    out[out.length - 1] += t - out.reduce(function (a, b) { return a + b; }, 0);
+    return out;
+  }
+  function chart(el, n, opts) {
+    opts = opts || {};
+    var v = series(n), W = Math.max(280, Math.round(el.clientWidth || 600)), H = opts.h || 260, L = 56, R = 12, T = 16, B = 34;
+    var top = Math.ceil(Math.max.apply(null, v) / 500) * 500, sum = v.reduce(function (a, b) { return a + b; }, 0);
+    var x = function (i) { return L + (W - L - R) * i / (v.length - 1); }, y = function (val) { return T + (H - T - B) * (1 - val / top); };
+    var s = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">';
+    for (var k = 0; k <= 4; k += (W < 420 ? 2 : 1)) { var yy = y(top * k / 4); s += '<line class="c-grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '"/><text class="c-axis" x="' + (L - 10) + '" y="' + (yy + 5) + '" text-anchor="end">' + fmt(top * k / 4) + '</text>'; }
+    var pts = v.map(function (val, i) { return x(i).toFixed(1) + ',' + y(val).toFixed(1); });
+    s += '<path class="c-area" d="M' + x(0) + ',' + y(0) + ' L' + pts.join(' L') + ' L' + x(v.length - 1) + ',' + y(0) + ' Z"/>';
+    s += '<polyline class="c-line" points="' + pts.join(' ') + '"/>';
+    var labels = n === 7 ? ['4 Oct', '7 Oct', '10 Oct'] : n === 30 ? ['11 Sep', '26 Sep', '10 Oct'] : ['13 Jul', '26 Aug', '10 Oct'];
+    [0, Math.floor((v.length - 1) / 2), v.length - 1].forEach(function (i, j) { s += '<text class="c-axis" x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="' + (j === 0 ? 'start' : j === 2 ? 'end' : 'middle') + '">' + labels[j] + '</text>'; });
+    s += '<circle class="c-pt" cx="' + x(v.length - 1) + '" cy="' + y(v[v.length - 1]) + '" r="5"/></svg>';
+    el.innerHTML = s;
+    return { sum: sum, max: Math.max.apply(null, v), text: 'Requests per day over the last ' + n + ' days: ' + fmt(sum) + ' in all, at most ' + fmt(Math.max.apply(null, v)) + ' in a day. Weekends are quieter.' };
+  }
+
+  /* Find Models: filter, with a short loading state and an empty state. */
+  function search(q) {
+    q = q.trim().toLowerCase();
+    var words = q ? q.split(/\s+/) : [];
+    return found.filter(function (r) { var hay = (r.q + ' ' + r.repo + ' ' + r.meta).toLowerCase(); return words.every(function (w) { return hay.indexOf(w) !== -1; }); });
+  }
+
+  /* One polite live region per page. */
+  var liveEl = null;
+  function say(t) {
+    if (!t) return;
+    liveEl = liveEl || document.getElementById('live');
+    liveEl.textContent = '';
+    setTimeout(function () { liveEl.textContent = t; }, 40);
+  }
+  function copy(text, done) {
+    try { navigator.clipboard.writeText(text).then(done, done); } catch (e) { done(); }
+  }
+
+  return { BUDGET: BUDGET, MAC: MAC, models: function () { return models; }, events: events, clients: clients, perModel: perModel, found: found, groups: groups,
+    esc: esc, fmt: fmt, gb: gb, shape: shape, icon: icon, byId: byId, used: used, loaded: loaded, failed: failed, updates: updates,
+    word: word, memWord: memWord, primary: primary, secondary: secondary, act: act, field: field, form: form, check: check,
+    chart: chart, search: search, say: say, copy: copy };
+})();
+
+/* Tabs that behave as tabs: arrow keys, Home and End walk the list and the
+   pane follows the focus. Works for nested tab lists too. */
+function wireTabs(list, onSelect) {
+  var tabs = Array.prototype.slice.call(list.querySelectorAll(':scope > [role=tab], :scope > * > [role=tab]'));
+  function select(t, focus) {
+    tabs.forEach(function (o) {
+      var on = o === t; o.setAttribute('aria-selected', on ? 'true' : 'false'); o.tabIndex = on ? 0 : -1;
+      var p = document.getElementById(o.getAttribute('aria-controls')); if (p) p.hidden = !on;
+    });
+    if (focus) t.focus();
+    if (onSelect) onSelect(t);
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { select(t, false); });
+    t.addEventListener('keydown', function (e) {
+      var n = null, vert = list.getAttribute('aria-orientation') === 'vertical';
+      if (e.key === (vert ? 'ArrowDown' : 'ArrowRight')) n = tabs[(i + 1) % tabs.length];
+      else if (e.key === (vert ? 'ArrowUp' : 'ArrowLeft')) n = tabs[(i - 1 + tabs.length) % tabs.length];
+      else if (e.key === 'Home') n = tabs[0];
+      else if (e.key === 'End') n = tabs[tabs.length - 1];
+      if (n) { e.preventDefault(); select(n, true); }
+    });
+  });
+  return { select: select, tabs: tabs };
+}
+
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var esc = D.esc, gb = D.gb, shape = D.shape, icon = D.icon, fmt = D.fmt;
+  var sheet = $('#sheet'), setSheet = $('#setSheet');
+  var cur = null, opener = null, setGroup = 'a', setOpener = null, saveState = 'refused', range = 30;
+  var revoked = {};
+
+  function toast(t) {
+    var el = $('#toast'); el.textContent = t; el.hidden = false;
+    clearTimeout(toast.t); toast.t = setTimeout(function () { el.hidden = true; }, 2800);
+  }
+  function tell(t) { D.say(t); }
+  function devicesNow() { return D.clients.filter(function (c) { return c.recent && !revoked[c.id]; }); }
+
+  /* ── Places ─────────────────────────────────────────────────── */
+  var places = wireTabs($('#places'), function (t) { window.scrollTo(0, 0); if (t.id === 't-stats') drawChart(); });
+  var subModels = wireTabs($('#sub-models'), function () { window.scrollTo(0, 0); });
+  var subSharing = wireTabs($('#sub-sharing'), function () { window.scrollTo(0, 0); });
+  function go(spec, focus) {
+    var p = spec.split(':'), place = p[0], sub = p[1];
+    places.select($('#t-' + place));
+    if (sub) (place === 'models' ? subModels : subSharing).select($('#t-' + sub));
+    window.scrollTo(0, 0);
+    if (focus) { var h = $('#p-' + (sub || (place === 'models' ? 'mymodels' : place === 'sharing' ? 'connect' : place)) + ' h2'); if (h) h.focus(); }
+  }
+
+  /* ── Header pill and the Overview ───────────────────────────── */
+  function renderPill() {
+    var f = D.failed(), pill = $('#pill');
+    if (f.length) {
+      pill.innerHTML = shape('failed') + '<span class="long">' + (f.length === 1 ? '1 thing needs you' : f.length + ' things need you') + '</span><span class="short">Needs you</span>';
+      pill.setAttribute('data-open', f[0].id); pill.removeAttribute('data-go');
+    } else {
+      pill.innerHTML = shape('ready') + '<span class="long">Everything is working</span><span class="short">All working</span>';
+      pill.setAttribute('data-go', 'overview'); pill.removeAttribute('data-open');
+    }
+  }
+
+  function renderOverview() {
+    var f = D.failed(), L = D.loaded(), devs = devicesNow(), used = D.used(), ups = D.updates();
+    var serving = 'Serving ' + L.length + (L.length === 1 ? ' model' : ' models') + ' to ' + devs.length + (devs.length === 1 ? ' device' : ' devices') + ' on your network.';
+    var h = '';
+    // Hero: what needs you, or that nothing does.
+    if (f.length) {
+      h += '<section class="card hero b-hero" aria-labelledby="heroH"><div class="lead-st">' + shape('failed') + '<p class="eyebrow">Right now</p></div>' +
+        '<h3 id="heroH">' + (f.length === 1 ? '1 thing needs you' : f.length + ' things need you') + '</h3>' +
+        '<p><strong>' + esc(f[0].name) + ' would not start.</strong> Everything else is working. ' + serving + '</p>' +
+        '<div class="acts"><button class="btn primary big" type="button" data-open="' + f[0].id + '" data-to="why">See what happened</button></div>' +
+        '<p class="when">Saturday 10 October, 14:36 · up 2 days 6 hours</p></section>';
+    } else {
+      h += '<section class="card hero b-hero" aria-labelledby="heroH"><div class="lead-st">' + shape('ready') + '<p class="eyebrow">Right now</p></div>' +
+        '<h3 id="heroH">Everything is working</h3><p>' + serving + ' Nothing needs you.</p>' +
+        '<div class="acts"><button class="btn big" type="button" data-go="models:mymodels">Open My Models</button></div>' +
+        '<p class="when">Saturday 10 October, 14:36 · up 2 days 6 hours</p></section>';
+    }
+    // Memory
+    var segs = L.map(function (m) { return '<i style="width:' + (m.mem / D.BUDGET * 100).toFixed(1) + '%"></i>'; }).join('');
+    h += '<section class="card is-target b-mem" aria-labelledby="memH">' +
+      '<h3 id="memH" class="eyebrow"><button class="stretch" type="button" data-go="models:mymodels">Memory for models<span class="sr">, open My Models</span></button></h3>' +
+      '<p class="fig">' + gb(used).replace(' GB', '') + '<small>of 48 GB</small></p>' +
+      '<div class="meter" role="meter" aria-label="Memory in use" aria-valuemin="0" aria-valuemax="48" aria-valuenow="' + used.toFixed(1) + '" aria-valuetext="' + gb(used) + ' of the 48 GB budget">' + segs + '</div>' +
+      '<p class="muted">' + gb(D.BUDGET - used) + ' free. This Mac has 64 GB.</p><p class="go" aria-hidden="true">My Models' + icon('i-chev') + '</p></section>';
+    // Ready to answer
+    h += '<section class="card b-ready" aria-labelledby="readyH"><h3 id="readyH">Ready to answer</h3>';
+    if (L.length) {
+      h += '<div class="rows">' + L.map(function (m) {
+        return '<button class="row-btn" type="button" data-open="' + m.id + '">' + shape('ready') + '<span class="nm">' + esc(m.name) + '</span><span class="sm">' + esc(m.note) + '</span><span class="r">' + gb(m.mem) + '</span></button>';
+      }).join('') + '</div>';
+    } else {
+      h += '<div class="empty-state">' + shape('idle') + '<p><strong>No model is loaded.</strong> A request loads the model it asks for, or you can load one yourself.</p><button class="btn" type="button" data-go="models:mymodels">Open My Models</button></div>';
+    }
+    h += '</section>';
+    // Requests
+    h += '<section class="card is-target b-req" aria-labelledby="reqH">' +
+      '<h3 id="reqH" class="eyebrow"><button class="stretch" type="button" data-go="stats">Requests today<span class="sr">, open Statistics</span></button></h3>' +
+      '<p class="fig">1,284</p><p class="muted">18 % more than last Saturday. First token in 0.38 s, typically.</p><p class="go" aria-hidden="true">Statistics' + icon('i-chev') + '</p></section>';
+    // Devices
+    h += '<section class="card is-target b-dev" aria-labelledby="devH">' +
+      '<h3 id="devH" class="eyebrow"><button class="stretch" type="button" data-go="sharing:clients">Devices in the last hour<span class="sr">, open Clients</span></button></h3>' +
+      '<p class="fig">' + devs.length + '</p><p class="muted">' + devs.map(function (c) { return esc(c.name); }).join(', ') + '.</p><p class="go" aria-hidden="true">Clients' + icon('i-chev') + '</p></section>';
+    // Update
+    if (ups.length) {
+      var u = ups[0];
+      h += '<section class="card b-upd" aria-labelledby="updH"><p class="tag tag-upd" style="align-self:flex-start">' + shape('update') + 'Update ready</p>' +
+        '<h3 id="updH">' + esc(u.name) + '</h3><p class="muted"><strong style="color:var(--ink)">' + u.update.length + ' files changed</strong> on HuggingFace since you downloaded it. The weights are unchanged.</p>' +
+        '<div class="acts" style="margin-top:auto"><button class="btn" type="button" data-open="' + u.id + '" data-to="upd">Review the update</button></div></section>';
+    } else {
+      h += '<section class="card b-upd" aria-labelledby="updH"><h3 id="updH">Updates</h3><p class="state">' + shape('ready') + 'Every model is up to date.</p><p class="muted">Checked at 09:00. The next check is tomorrow morning.</p></section>';
+    }
+    // Recent changes
+    h += '<section class="card b-log" aria-labelledby="logH"><h3 id="logH">Recent changes</h3><ol class="events">' +
+      D.events.slice(0, 4).map(function (e) { return '<li><time>' + e[0] + '</time>' + shape(e[1]) + '<span>' + esc(e[2]) + '</span></li>'; }).join('') + '</ol></section>';
+    // Reach
+    h += '<section class="card is-target b-reach" aria-labelledby="reachH">' +
+      '<h3 id="reachH" class="eyebrow"><button class="stretch" type="button" data-go="sharing:posture">Who can reach this server<span class="sr">, open Posture</span></button></h3>' +
+      '<p style="font-weight:650;font-size:var(--fs-title);line-height:1.3">Your network, on port 8080, with an API key.</p><p class="muted">This panel answers only on this Mac.</p><p class="go" aria-hidden="true">Posture' + icon('i-chev') + '</p></section>';
+    $('#bento').innerHTML = h;
+  }
+
+  /* ── My Models ──────────────────────────────────────────────── */
+  function renderRoll() {
+    var L = D.loaded(), used = D.used();
+    $('#roll').innerHTML = '<h3 id="roll-h">Memory for models</h3>' +
+      '<div class="figs"><div><span>Budget</span><b class="fig-m">48 GB</b></div><div><span>In use</span><b class="fig-m">' + gb(used) + '</b></div><div><span>Free</span><b class="fig-m">' + gb(D.BUDGET - used) + '</b></div></div>' +
+      '<div class="meter" role="meter" aria-label="Memory in use" aria-valuemin="0" aria-valuemax="48" aria-valuenow="' + used.toFixed(1) + '" aria-valuetext="' + gb(used) + ' of the 48 GB budget">' +
+      L.map(function (m) { return '<i style="width:' + (m.mem / D.BUDGET * 100).toFixed(1) + '%"></i>'; }).join('') + '</div>' +
+      '<p class="legend">' + L.map(function (m) { return '<span><b></b>' + esc(m.short) + ' ' + gb(m.mem) + '</span>'; }).join('') + '<span class="free"><b></b>Free ' + gb(D.BUDGET - used) + '</span></p>' +
+      '<p class="f-hint">The default share of this Mac&rsquo;s 64 GB. <button class="btn plain" type="button" data-group="b" style="min-height:44px;margin-left:-12px">Change it in Settings</button></p>';
+  }
+  function card(m) {
+    var p = D.primary(m), mw = D.memWord(m), st = m.starting ? 'working' : m.st;
+    var tags = (m.pinned ? '<span class="tag">Pinned</span>' : '') + (m.update ? '<span class="tag tag-upd">' + shape('update') + 'Update: ' + m.update.length + ' files changed</span>' : '');
+    var prog = (m.st === 'working' && !m.starting) ? '<div class="progress" role="progressbar" aria-label="Download of ' + esc(m.name) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + m.pct + '"><i style="width:' + m.pct + '%"></i></div>' : '';
+    var more = '<details class="more"><summary class="btn" aria-label="More actions for ' + esc(m.name) + '">' + icon('i-more') + '<span>More</span></summary><div class="menu">' +
+      D.secondary(m).map(function (s) { return '<button type="button" data-act="' + s.act + '" data-id="' + m.id + '">' + s.label + '</button>'; }).join('') + '</div></details>';
+    var btn = p ? '<button class="btn' + (p.strong ? ' primary' : '') + '" type="button" data-act="' + p.act + '" data-id="' + m.id + '">' + p.label + '</button>'
+      : '<button class="btn" type="button" aria-disabled="true">Starting…</button>';
+    return '<article class="card mcard is-target' + (m.st === 'failed' ? ' is-failed' : '') + '" data-card="' + m.id + '" aria-labelledby="mc-' + m.id + '">' +
+      '<p class="state">' + shape(st) + '<span>' + esc(D.word(m)) + '</span>' + tags + '</p>' +
+      '<p class="org">' + esc(m.org) + ' · ' + gb(m.disk) + ' on disk · ' + m.q + '</p>' +
+      '<h3><button class="stretch" type="button" id="mc-' + m.id + '" data-open="' + m.id + '">' + esc(m.name) + '</button></h3>' +
+      '<p class="desc">' + esc(m.desc) + '</p>' + prog +
+      '<p class="note">' + esc(m.note) + '</p>' +
+      '<div class="foot"><p class="mem"><b class="fig-m">' + mw.fig + '</b><span>' + esc(mw.cap) + '</span></p>' +
+      '<div class="acts lift">' + btn + more + '</div></div></article>';
+  }
+  function renderModels() {
+    var ms = D.models();
+    $('#mbadge').textContent = ms.length;
+    var h = ms.map(card).join('');
+    if (!ms.length) h += '<div class="card"><h3>No models on this Mac yet</h3><p class="muted">Find one that fits this Mac, and it appears here while it downloads.</p></div>';
+    h += '<article class="card add-card is-target" aria-labelledby="addH"><span class="ic-big">' + icon('i-plus') + '</span><h3><button class="stretch" type="button" id="addH" data-go="models:find">Add a model</button></h3><p class="muted">Search HuggingFace for MLX models that fit in this Mac&rsquo;s memory.</p></article>';
+    $('#mgrid').innerHTML = h;
+    renderRoll();
+  }
+
+  /* ── The model sheet ────────────────────────────────────────── */
+  function settingsFor(m) {
+    var f = function (o) { o.id = 'm-' + m.id + '-' + o.id; return D.field(o); };
+    return '<section class="card" id="sh-set" aria-labelledby="sh-set-h"><h3 id="sh-set-h" tabindex="-1">This model&rsquo;s settings</h3>' +
+      '<p class="muted">Blank keeps the machine-wide default. Changes reach the model the next time it loads.</p><div class="form">' +
+      f({ k: 'number', id: 'ctx', label: 'Served context (tokens)', hint: 'Larger windows take more of the memory budget.', placeholder: fmt(m.served) + ' — the default' }) +
+      f({ k: 'number', id: 'temp', label: 'Temperature', placeholder: 'machine-wide, 0.7', step: 'any' }) +
+      f({ k: 'toggle', id: 'pin', label: 'Pin this model', hint: 'Never unloaded to make room for another.', on: !!m.pinned }) +
+      '<details class="adv"><summary>More options<span class="adv-n"> (4)</span></summary><div class="adv-body">' +
+      f({ k: 'number', id: 'topp', label: 'Top-p', placeholder: 'machine-wide, 1', step: 'any' }) +
+      f({ k: 'number', id: 'max', label: 'Maximum completion tokens', placeholder: 'the served window' }) +
+      f({ k: 'toggle', id: 'merge', label: 'Merge system messages', hint: 'For a model that refuses instructions in the middle of a conversation.', on: !!m.merge }) +
+      f({ k: 'toggle', id: 'trans', label: 'Keep no transcript', hint: 'Holds this model off the Discord bridge and debug logging.', on: false }) +
+      '<div><button class="btn" type="button" data-act="debug" data-id="' + m.id + '">Arm debug logging for the next run…</button></div>' +
+      '</div></details></div>' +
+      '<div class="acts"><button class="btn primary" type="button" data-act="apply" data-id="' + m.id + '">Apply</button><p class="f-hint" id="applyOut" role="status"></p></div></section>';
+  }
+  function renderSheet() {
+    var m = D.byId(cur); if (!m) return;
+    var p = D.primary(m), st = m.starting ? 'working' : m.st, loaded = m.st === 'ready';
+    var h = '<div class="sh-head"><p class="org">' + esc(m.org) + '</p><h2 id="sh-title" tabindex="-1">' + esc(m.name) + '</h2><p class="desc">' + esc(m.desc) + '</p>' +
+      '<p class="state">' + shape(st) + '<span>' + esc(D.word(m)) + '</span><span class="note">' + esc(m.note) + '</span></p>' +
+      '<div class="acts">' + (p ? '<button class="btn big' + (p.strong ? ' primary' : '') + '" type="button" data-act="' + p.act + '" data-id="' + m.id + '">' + p.label + '</button>' : '<button class="btn big" type="button" aria-disabled="true">Starting…</button>') +
+      (m.update && loaded ? '<button class="btn big" type="button" data-act="unload" data-id="' + m.id + '">Unload</button>' : '') + '</div></div>';
+
+    if (m.st === 'failed') {
+      h += '<section class="card is-error" id="sh-why" aria-labelledby="sh-why-h"><h3 class="h-st" id="sh-why-h" tabindex="-1">' + shape('failed') + 'Why it would not start</h3>' +
+        '<pre class="code">' + esc(m.log) + '</pre><p class="prose">This MLX runtime cannot run this kind of model yet. Nothing else was affected. The full log is beside the other model logs in your Dessau data folder. If you do not need it, deleting it frees ' + gb(m.disk) + '.</p></section>';
+    }
+    if (m.st === 'working' && !m.starting) {
+      h += '<section class="card" aria-labelledby="sh-dl-h"><h3 id="sh-dl-h">Download</h3><p class="fig-m">' + m.pct + ' %</p>' +
+        '<div class="progress" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + m.pct + '"><i style="width:' + m.pct + '%"></i></div>' +
+        '<dl class="kv"><div><dt>Fetched</dt><dd>5.2 of 8.3 GB</dd></div><div><dt>Files</dt><dd>3 of 5</dd></div><div><dt>Will need in memory</dt><dd>about ' + gb(m.mem) + '</dd></div></dl>' +
+        '<p class="muted prose">A stopped download resumes where it left off. Clients see the model once every file is here.</p></section>';
+    }
+    // Memory
+    var wp = (m.w / m.mem * 100).toFixed(1), cp = (m.c / m.mem * 100).toFixed(1), free = D.BUDGET - D.used();
+    h += '<section class="card" aria-labelledby="sh-mem-h"><h3 id="sh-mem-h">Memory</h3>' +
+      '<p class="fig-m">' + gb(m.mem) + '</p><p class="muted">' + (loaded ? 'In memory now, of the 48 GB budget.' : 'Needed when it loads. ' + gb(free) + ' is free now, so it ' + (m.mem <= free ? 'fits.' : 'would unload another model.')) + '</p>' +
+      '<div class="stack" role="img" aria-label="' + m.w + ' GB of weights and ' + m.c + ' GB of context cache"><i class="w" style="width:' + wp + '%"></i><i class="c" style="width:' + cp + '%"></i></div>' +
+      '<p class="legend"><span><b></b>Weights ' + gb(m.w) + '</span><span><b style="background:color-mix(in srgb, var(--accent) 45%, var(--card))"></b>Context cache ' + gb(m.c) + '</span></p>' +
+      '<dl class="kv"><div><dt>Pinned</dt><dd>' + (m.pinned ? 'Yes, never unloaded to make room' : 'No') + '</dd></div><div><dt>On disk</dt><dd>' + gb(m.disk) + ', ' + m.q + '</dd></div></dl></section>';
+    // Context window
+    if (m.st !== 'working' || m.starting) {
+      h += '<section class="card" aria-labelledby="sh-ctx-h"><h3 id="sh-ctx-h">Context window</h3>' +
+        '<p><span class="fig-m">' + fmt(m.served) + '</span> <span class="muted">tokens served</span></p>' +
+        '<dl class="kv"><div><dt>The model says it can take</dt><dd>' + fmt(m.declared) + '</dd></div><div><dt>Measured on this Mac</dt><dd>' + (m.measured ? fmt(m.measured) + ', on 8 Oct' : 'Not measured yet') + '</dd></div></dl>' +
+        '<p class="muted prose">' + (m.served < m.declared ? 'Served is what the memory budget has room for.' : 'Served is the full window the model declares.') + '</p>' +
+        '<div class="acts">' + (m.measured && m.measured !== m.served ? '<button class="btn" type="button" data-act="usewin" data-id="' + m.id + '">Use the measured window</button>' : '') +
+        '<button class="btn plain" type="button" data-act="measure" data-id="' + m.id + '">Measure now</button></div></section>';
+      h += settingsFor(m);
+    }
+    // Update
+    if (m.update) {
+      h += '<section class="card" id="sh-upd" aria-labelledby="sh-upd-h"><p class="tag tag-upd" style="align-self:flex-start">' + shape('update') + 'Update ready</p>' +
+        '<h3 id="sh-upd-h" tabindex="-1">' + m.update.length + ' files changed</h3><p class="muted">On HuggingFace since you downloaded this model, checked at 09:00. The weights are unchanged.</p>' +
+        '<ul class="files">' + m.update.map(function (f) { return '<li><code>' + esc(f[0]) + '</code><span>' + f[1] + '</span></li>'; }).join('') + '</ul>' +
+        '<div class="acts"><button class="btn primary" type="button" data-act="update" data-id="' + m.id + '">Update, 16 KB</button></div>' +
+        (loaded ? '<p class="f-hint">The loaded copy keeps answering; the update applies the next time it loads.</p>' : '') + '</section>';
+    } else if (m.st !== 'working') {
+      h += '<section class="card" id="sh-upd" aria-labelledby="sh-upd-h"><h3 id="sh-upd-h" tabindex="-1">Update</h3><p class="state">' + shape('ready') + 'Up to date</p><p class="muted">Nothing has changed on HuggingFace since you downloaded it. Checked at 09:00.</p></section>';
+    }
+    // Danger zone
+    h += '<section class="card danger" id="sh-del" aria-labelledby="sh-del-h"><h3 id="sh-del-h" tabindex="-1">Remove from this Mac</h3>' +
+      '<p class="muted prose">' + (m.st === 'working' && !m.starting ? 'Cancelling stops the download and removes the ' + gb(5.2) + ' fetched so far.' : 'Deleting removes its ' + gb(m.disk) + ' of files. Clients stop seeing it at once.') + '</p>' +
+      '<div id="delArea" class="acts"><button class="btn" type="button" data-act="delete" data-id="' + m.id + '">' + (m.st === 'working' && !m.starting ? 'Cancel and delete…' : 'Delete…') + '</button></div></section>';
+    $('#shBody').innerHTML = h;
+  }
+  function openSheet(id, to) {
+    if (!D.byId(id)) return;
+    if (!sheet.open) opener = document.activeElement;
+    cur = id; renderSheet();
+    if (setSheet.open) setSheet.close();
+    if (!sheet.open) sheet.showModal();
+    $('#shBody').scrollTop = 0;
+    var target = to && $('#sh-' + to);
+    if (target) { var hh = target.querySelector('h3') || target; target.scrollIntoView({ block: 'start' }); hh.focus(); }
+    else $('#sh-title').focus();
+    if (to === 'del') askDelete(D.byId(id));
+  }
+  function askDelete(m) {
+    var area = $('#delArea'); if (!area) return;
+    area.outerHTML = '<div class="confirm" id="delArea" role="group" aria-labelledby="delQ"><p id="delQ"><strong>Delete ' + esc(m.name) + ' from this Mac?</strong></p>' +
+      '<p class="muted">' + gb(m.disk) + ' of files are removed. Downloading it again fetches them afresh.</p>' +
+      '<div class="acts"><button class="btn strong" type="button" data-act="really-delete" data-id="' + m.id + '">Delete model</button><button class="btn" type="button" data-act="keep" data-id="' + m.id + '">Keep it</button></div></div>';
+    $('#sh-del').scrollIntoView({ block: 'nearest' });
+    $('[data-act=keep]', sheet).focus();
+  }
+  sheet.addEventListener('close', function () {
+    var id = cur; cur = null;
+    var back = (opener && document.contains(opener)) ? opener : $('[data-open="' + id + '"].stretch') || $('#p-mymodels h2');
+    if (back && back.offsetParent !== null) back.focus();
+  });
+  [sheet, setSheet].forEach(function (d) {
+    d.addEventListener('click', function (e) { if (e.target === d) d.close(); if (e.target.closest('[data-close]')) d.close(); });
+  });
+
+  /* ── Acting on a model, from a card or the sheet ────────────── */
+  function doAct(a, id, btn) {
+    var m = D.byId(id); if (!m) return;
+    if (a === 'settings') { openSheet(id, 'set'); return; }
+    if (a === 'delete') { if (!sheet.open || cur !== id) openSheet(id, 'del'); else askDelete(m); return; }
+    if (a === 'keep') { renderSheet(); var d = $('[data-act=delete]', sheet); if (d) d.focus(); return; }
+    if (a === 'apply') { var o = $('#applyOut'); o.textContent = 'Applied. It reaches ' + m.name + ' the next time it loads.'; return; }
+    if (a === 'debug') { $('#applyOut').textContent = 'Armed. From its next start until the one after, this model’s log holds every prompt and answer.'; return; }
+    if (a === 'usewin') { m.served = m.measured; renderSheet(); tell('Serving ' + fmt(m.measured) + ' tokens from the next load.'); $('#sh-ctx-h').focus(); return; }
+    if (a === 'measure') { btn.textContent = 'Measuring; it stands down if a request arrives'; btn.setAttribute('aria-disabled', 'true'); tell('Measuring the context window of ' + m.name + '.'); return; }
+    var inSheet = sheet.open && sheet.contains(btn);
+    var msg = D.act(m, a, function (later) {
+      var ae = document.activeElement, lost = !ae || ae === document.body || ae.getAttribute('aria-disabled') === 'true';
+      renderAll(); tell(later); toast(later);
+      if (lost) focusModel(id, sheet.open);
+    });
+    if (a === 'really-delete') { sheet.close(); renderAll(); toast(msg); tell(msg); var h2 = $('#p-mymodels h2'); go('models:mymodels'); h2.focus(); return; }
+    renderAll(); tell(msg);
+    if (a === 'update') toast(msg);
+    focusModel(id, inSheet);
+  }
+  /* Keep the focus on the same model, wherever its controls now are. */
+  function focusModel(id, inSheet) {
+    var b = inSheet ? $('.sh-head .acts .btn', sheet) : $('[data-card="' + id + '"] .acts .btn');
+    if (b) b.focus();
+  }
+
+  /* ── Settings ───────────────────────────────────────────────── */
+  function renderSettingsCards() {
+    $('#sgrid').innerHTML = D.groups.map(function (g) {
+      var err = g.id === 'd' && saveState === 'refused';
+      return '<article class="card scard is-target' + (err ? ' is-error' : '') + '" aria-labelledby="sc-' + g.id + '"><span class="s-ic">' + icon(g.icon) + '</span>' +
+        '<h3><button class="stretch" type="button" id="sc-' + g.id + '" data-group="' + g.id + '">' + esc(g.title) + '</button></h3>' +
+        '<p class="eyebrow">Right now</p><p class="now">' + (g.off ? shape('idle') : '') + esc(g.now) + '</p>' +
+        (err ? '<p class="s-err">' + shape('failed') + '<span><strong>Not saved.</strong> The server refused one change here.</span></p>' : '') +
+        '<p class="go" aria-hidden="true">Change' + icon('i-chev') + '</p></article>';
+    }).join('');
+  }
+  function buildSettingsSheet() {
+    $('#setBody').innerHTML = D.groups.map(function (g) {
+      return '<section class="sg" data-g="' + g.id + '" hidden><div class="sh-head"><p class="org">Settings</p><h2 tabindex="-1" id="sgh-' + g.id + '">' + esc(g.title) + '</h2></div>' +
+        '<div class="card inforce"><p class="eyebrow">Right now</p><p class="now-' + g.id + '">' + esc(g.now) + '</p></div>' +
+        '<div class="card"><div class="form">' + D.form(g) + '</div></div></section>';
+    }).join('');
+  }
+  function openGroup(id) {
+    if (sheet.open) sheet.close();
+    setGroup = id;
+    if (!setSheet.open) setOpener = document.activeElement;
+    $$('.sg', setSheet).forEach(function (s) { s.hidden = s.getAttribute('data-g') !== id; });
+    setSheet.setAttribute('aria-labelledby', 'sgh-' + id);
+    if (!setSheet.open) setSheet.showModal();
+    $('#setBody').scrollTop = 0;
+    $('#sgh-' + id).focus();
+  }
+  setSheet.addEventListener('close', function () {
+    var b = $('[data-group="' + setGroup + '"].stretch');
+    var back = (setOpener && document.contains(setOpener) && setOpener.offsetParent !== null) ? setOpener : b;
+    if (back) back.focus();
+  });
+  function renderSaveMsg() {
+    var el = $('#saveMsg');
+    if (saveState === 'refused') el.innerHTML = shape('failed') + '<span>Not saved. The server refused one field in <a href="#" data-group="d">When idle models are unloaded</a>.</span>';
+    else if (saveState === 'saved') el.innerHTML = shape('ready') + '<span>Saved at 14:37 and in force now. The bind address applies when Dessau next starts.</span>';
+  }
+  $('#setForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var r = D.check();
+    if (!r.ok) {
+      saveState = 'refused'; renderSaveMsg(); renderSettingsCards();
+      if (setGroup !== 'd') openGroup('d');
+      r.field.focus();
+      tell('Not saved. The grace period cannot exceed the maximum wait.');
+    } else {
+      saveState = 'saved';
+      var g = D.groups[3], s = $('#sGrace').value;
+      g.now = 'Idle models unload after ' + Math.round(+$('#sIdle').value / 60) + ' minutes. A model that just finished is protected for ' + s + ' seconds.';
+      $('.now-d', setSheet).textContent = g.now;
+      renderSaveMsg(); renderSettingsCards();
+      tell('Settings saved and in force.');
+    }
+  });
+
+  /* ── Find Models ────────────────────────────────────────────── */
+  function renderFind(loading) {
+    var list = $('#findList'), q = $('#findInput').value;
+    if (loading) {
+      list.setAttribute('aria-busy', 'true');
+      $('#findCount').textContent = 'Searching…';
+      list.innerHTML = [1, 2, 3].map(function () { return '<div class="card" aria-hidden="true"><span class="skel w80"></span><span class="skel w60"></span><span class="skel h2"></span><span class="skel w40"></span><span class="skel btn-s"></span></div>'; }).join('');
+      return;
+    }
+    list.setAttribute('aria-busy', 'false');
+    var r = D.search(q);
+    $('#findCount').textContent = r.length + (r.length === 1 ? ' model' : ' models') + (q.trim() ? ' match “' + q.trim() + '”.' : ' to choose from.');
+    if (!r.length) {
+      list.innerHTML = '<div class="card" style="grid-column:1/-1"><h3>No models match “' + esc(q.trim()) + '”</h3><p class="muted prose">Try a shorter name, such as “qwen” or “llama”, or paste a full repository id to fetch that exact model.</p><div class="acts"><button class="btn" type="button" data-clearfind>Clear the search</button></div></div>';
+      return;
+    }
+    list.innerHTML = r.map(function (x, i) {
+      var have = x.have ? D.byId(x.have) : null;
+      return '<article class="card res" aria-labelledby="fr-' + i + '"><h3 id="fr-' + i + '">' + esc(x.repo) + '</h3><p class="meta">' + esc(x.meta) + '</p>' +
+        '<p class="size"><span class="fig-m">' + x.size.replace(' GB', '') + '</span><span class="muted">GB</span></p>' +
+        '<p class="fit">' + icon(have ? 'i-check' : 'i-memory') + '<span>' + esc(x.fit) + '</span></p>' +
+        '<div class="acts">' + (have ? '<button class="btn" type="button" data-open="' + have.id + '">Open</button>' : '<button class="btn primary" type="button" data-dl="' + esc(x.repo) + '">Download</button>') + '</div></article>';
+    }).join('');
+  }
+  var findT;
+  $('#findInput').addEventListener('input', function () { renderFind(true); clearTimeout(findT); findT = setTimeout(function () { renderFind(false); }, 450); });
+  $('#findForm').addEventListener('submit', function (e) { e.preventDefault(); clearTimeout(findT); renderFind(false); });
+
+  /* ── Statistics ─────────────────────────────────────────────── */
+  function drawChart() {
+    if ($('#p-stats').hidden) return;
+    var r = D.chart($('#chart'), range);
+    $('#chartDesc').textContent = r.text;
+    $('#kReq').textContent = fmt(r.sum);
+    $('#kRange').textContent = 'in the last ' + range + ' days';
+  }
+  var rT; window.addEventListener('resize', function () { clearTimeout(rT); rT = setTimeout(drawChart, 120); });
+  $$('[data-range]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('[data-range]').forEach(function (o) { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+      range = +b.getAttribute('data-range'); drawChart();
+    });
+  });
+  function renderPM() {
+    var max = D.perModel[0].req;
+    $('#pm').innerHTML = D.perModel.map(function (p) {
+      return '<div class="card"><h4>' + esc(p.name) + '</h4><p class="fig-m">' + fmt(p.req) + ' <span class="muted" style="font-size:var(--fs-small);font-weight:500">requests</span></p>' +
+        '<div class="bar" aria-hidden="true"><i style="width:' + Math.max(1, p.req / max * 100).toFixed(1) + '%"></i></div>' +
+        '<dl><div><dt>Written</dt><dd>' + p.tok + '</dd></div><div><dt>First token</dt><dd>' + p.ft + '</dd></div><div><dt>Speed</dt><dd>' + p.rate + '</dd></div></dl></div>';
+    }).join('');
+  }
+  $('#clearBox').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-clear]'); if (!b) return; var a = b.getAttribute('data-clear'), box = $('#clearBox');
+    if (a === 'ask') { box.innerHTML = '<div class="confirm" role="group" aria-labelledby="clrQ" style="width:100%"><p id="clrQ"><strong>Clear all records?</strong> The 37 files are removed and cannot be recovered. Recording stays on.</p><div class="acts"><button class="btn strong" type="button" data-clear="yes">Clear records</button><button class="btn" type="button" data-clear="no">Keep them</button></div></div>'; $('[data-clear=no]').focus(); }
+    else if (a === 'no') { box.innerHTML = '<button class="btn" type="button" data-clear="ask">Clear records…</button>'; box.firstChild.focus(); }
+    else { box.innerHTML = '<p class="state">' + shape('ready') + 'Cleared. New requests are recorded from now.</p>'; tell('Records cleared.'); }
+  });
+
+  /* ── Clients ────────────────────────────────────────────────── */
+  function renderDevs(focusId) {
+    $('#devs').innerHTML = D.clients.map(function (c) {
+      var r = revoked[c.id];
+      return '<article class="card dev' + (r ? ' revoked' : '') + '" data-dev="' + c.id + '" aria-labelledby="dv-' + c.id + '"><h3 id="dv-' + c.id + '">' + esc(c.name) + '</h3>' +
+        '<p class="seen">' + shape(r ? 'idle' : c.recent ? 'ready' : 'idle') + '<span>' + (r ? 'Revoked just now' : 'Seen ' + c.seen) + '</span></p>' +
+        '<p class="muted">Paired ' + c.paired + ' · ' + fmt(c.req) + ' requests in 7 days</p>' +
+        '<div class="acts">' + (r ? '<p class="f-hint">It must pair again to connect.</p>' : '<button class="btn" type="button" data-rv="ask" data-c="' + c.id + '">Revoke…</button>') + '</div></article>';
+    }).join('');
+  }
+  $('#devs').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-rv]'); if (!b) return;
+    var id = b.getAttribute('data-c'), a = b.getAttribute('data-rv'), c = D.clients.filter(function (x) { return x.id === id; })[0];
+    var acts = b.closest('.acts');
+    if (a === 'ask') { acts.innerHTML = '<div class="confirm" role="group" aria-label="Confirm revoking ' + esc(c.name) + '" style="width:100%"><p><strong>Revoke ' + esc(c.name) + '?</strong> It stops reaching this server until it pairs again.</p><div class="acts"><button class="btn strong" type="button" data-rv="yes" data-c="' + id + '">Revoke</button><button class="btn" type="button" data-rv="no" data-c="' + id + '">Keep it</button></div></div>'; $('[data-rv=no]', acts).focus(); }
+    else if (a === 'no') { renderDevs(); $('[data-dev="' + id + '"] [data-rv]').focus(); }
+    else { revoked[id] = true; renderDevs(); renderOverview(); tell(c.name + ' revoked. It must pair again to connect.'); $('#dv-' + id).setAttribute('tabindex', '-1'); $('#dv-' + id).focus(); }
+  });
+
+  /* ── One click handler for the whole page ───────────────────── */
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    // Close any open "More" that the click was not inside.
+    $$('details.more[open]').forEach(function (d) { if (!d.contains(t)) d.open = false; });
+    var a = t.closest('[data-act]');
+    if (a && a.getAttribute('aria-disabled') !== 'true') { e.preventDefault(); var dm = a.closest('details.more'); if (dm) dm.open = false; doAct(a.getAttribute('data-act'), a.getAttribute('data-id'), a); return; }
+    var o = t.closest('[data-open]'); if (o) { e.preventDefault(); openSheet(o.getAttribute('data-open'), o.getAttribute('data-to')); return; }
+    var g = t.closest('[data-group]'); if (g) { e.preventDefault(); openGroup(g.getAttribute('data-group')); return; }
+    var n = t.closest('[data-go]'); if (n) { e.preventDefault(); if (sheet.open) sheet.close(); go(n.getAttribute('data-go'), true); return; }
+    var c = t.closest('[data-copy]'); if (c) { D.copy(c.getAttribute('data-copy'), function () { toast('Copied.'); tell('Copied to the clipboard.'); }); return; }
+    var d = t.closest('[data-dl]'); if (d) { d.textContent = 'Queued'; d.className = 'btn'; d.setAttribute('aria-disabled', 'true'); d.removeAttribute('data-dl'); tell(d.closest('.res').querySelector('h3').textContent + ' queued. It appears in My Models as it downloads.'); return; }
+    if (t.closest('[data-clearfind]')) { $('#findInput').value = ''; renderFind(false); $('#findInput').focus(); return; }
+    var k = t.closest('[data-code]'); if (k) { $$('[data-code]').forEach(function (x) { var on = x === k; x.setAttribute('aria-pressed', on ? 'true' : 'false'); $('#code-' + x.getAttribute('data-code')).hidden = !on; }); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var d = $('details.more[open]');
+    if (d && !sheet.open && !setSheet.open) { d.open = false; d.querySelector('summary').focus(); e.preventDefault(); }
+  });
+
+  function renderAll() {
+    renderPill(); renderOverview(); renderModels();
+    if (sheet.open && cur) { if (D.byId(cur)) renderSheet(); else sheet.close(); }
+  }
+
+  buildSettingsSheet(); renderSettingsCards(); renderSaveMsg();
+  renderAll(); renderFind(false); renderPM(); renderDevs();
+})();
+</script>
+</body>
+</html>

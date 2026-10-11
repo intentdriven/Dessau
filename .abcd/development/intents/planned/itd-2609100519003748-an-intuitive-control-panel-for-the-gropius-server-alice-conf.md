@@ -590,6 +590,10 @@ acceptance criteria, because a design promise that no test can fail is the one k
 promise this repository does not otherwise accept. If the maintainer prefers B, iss-2609190029331004
 is the precondition.
 
+## Design Reference
+
+The visual reference is design 8 ("Tahoe glass") from the 2026-10 design rounds, as the base, with the maintainer's changes and borrowings: a sidebar that can be hidden, icon-only top navigation, buttons that feel and sit like a Mac's own, cards that expand smoothly and use the width of large screens, a save bar set apart from the cards, design 9's detail sheet on the right, its button placement and its bar chart, and design 7's "More" pop-out on cards. The designs, the briefs, the assessment and the decision in full are in `.abcd/work/design/2026-10-10-control-panel/README.md`; lessons that outlast this intent are in `.abcd/development/design/taste.md`. The reference fixes the look and feel; the Scope Conditions and Acceptance Criteria above still govern behaviour.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._

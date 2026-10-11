@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Dessau Server</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'><rect width='1024' height='1024' fill='%2317181d'/><polygon points='302,132 472,472 132,472' fill='%23F5C518'/><rect x='552' y='132' width='340' height='340' fill='%23B4B6BB'/><rect x='132' y='552' width='340' height='340' fill='%232B5DAA'/><circle cx='722' cy='722' r='170' fill='%23E63329'/></svg>">
+<style>
+/* Direction 3 — "Calm and plain-spoken". One centred column, large type, few words.
+   Every colour is drawn from the CSS system colours (Canvas, CanvasText, AccentColor)
+   or mixed from them. The triad is the mark and ready / working / failed only. */
+:root{
+  color-scheme: light dark;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, sans-serif;
+  --serif: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --accent: light-dark(#007aff, #0a84ff);
+  --on-accent: #fff;
+  --ready: #2B5DAA; --working: #F5C518; --failed: #E63329;
+  --ready-text: light-dark(#2B5DAA, #9bb8ea);
+  --failed-text: light-dark(#b8261d, #ff9389);
+  --paper: color-mix(in srgb, Canvas 96%, CanvasText);
+  --card: Canvas;
+  --ink: CanvasText;
+  --ink-2: color-mix(in srgb, CanvasText 64%, Canvas);
+  --ink-3: color-mix(in srgb, CanvasText 42%, Canvas);
+  --rule: color-mix(in srgb, CanvasText 11%, Canvas);
+  --well: color-mix(in srgb, CanvasText 5%, Canvas);
+  --track: color-mix(in srgb, CanvasText 10%, Canvas);
+  --soft-accent: color-mix(in srgb, var(--accent) 12%, Canvas);
+}
+@supports (color: AccentColor){ :root{ --accent: AccentColor; --on-accent: AccentColorText; } }
+@media (prefers-contrast: more){
+  :root{ --ink-2: color-mix(in srgb, CanvasText 85%, Canvas); --ink-3: color-mix(in srgb, CanvasText 70%, Canvas); --rule: color-mix(in srgb, CanvasText 40%, Canvas); --paper: Canvas; }
+  .card{border-width:2px}
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:18px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+h1,h2,h3,p,ul,ol,dl,dd{margin:0;padding:0}
+ul,ol{list-style:none}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px;border-radius:8px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+a{color:var(--accent);text-underline-offset:3px}
+code{font:.82em var(--mono);background:var(--well);padding:.1em .35em;border-radius:5px}
+.logo{display:block}
+.num{font-variant-numeric:tabular-nums}
+
+.column{max-width:700px;margin:0 auto;padding:0 20px}
+.mast{text-align:center;padding:48px 0 18px}
+.mast .logo{width:44px;height:44px;margin:0 auto 14px}
+.mast h1{font:600 26px/1.2 var(--serif);letter-spacing:-.01em}
+.mast p{color:var(--ink-2);font-size:15px;margin-top:4px;display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap}
+.rec{appearance:none;border:1px solid var(--rule);background:var(--card);border-radius:999px;font-size:13px;padding:1px 10px;cursor:pointer;color:var(--ink-2)}
+.tabs{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 6px;padding:10px 0 22px;margin-bottom:30px;border-bottom:1px solid var(--rule)}
+.tab{appearance:none;background:none;border:0;padding:7px 12px;border-radius:999px;font-size:15.5px;color:var(--ink-2);cursor:pointer}
+.tab:hover{color:var(--ink);background:var(--well)}
+.tab[aria-selected="true"]{color:var(--on-accent);background:var(--accent);font-weight:500}
+
+.lede{font:400 32px/1.25 var(--serif);letter-spacing:-.015em;margin-bottom:14px;text-wrap:balance}
+.intro{font-size:19px;color:var(--ink-2);margin-bottom:34px;text-wrap:pretty}
+.intro b{color:var(--ink);font-weight:600}
+h2.sec{font:600 22px/1.3 var(--serif);margin:46px 0 14px}
+h2.sec:first-child{margin-top:0}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:18px;padding:26px 28px;margin-bottom:16px}
+.card + .card{margin-top:0}
+.card h3{font:600 20px/1.3 var(--sans);letter-spacing:-.01em;overflow-wrap:anywhere}
+.card h3 .org{font-weight:400;color:var(--ink-3)}
+.card .what{color:var(--ink-2);margin-top:4px;font-size:16.5px}
+.small{font-size:15px;color:var(--ink-2)}
+.quiet{color:var(--ink-3)}
+.status{display:inline-flex;align-items:center;gap:9px;font-size:16px;margin-top:14px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none;background:var(--ink-3)}
+.dot.ready{background:var(--ready)} .dot.working{background:var(--working);box-shadow:0 0 0 1px color-mix(in srgb, CanvasText 20%, transparent)} .dot.failed{background:var(--failed)}
+.pill{display:inline-block;font-size:13.5px;font-weight:500;padding:2px 11px;border-radius:999px;background:var(--well);color:var(--ink-2)}
+.pill.ready{background:color-mix(in srgb, var(--ready) 14%, Canvas);color:var(--ready-text)}
+.pill.working{background:var(--working);color:#1d1d1f}
+.pill.new{background:var(--soft-accent);color:var(--accent)}
+
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.btn{appearance:none;border:1px solid var(--rule);background:var(--card);border-radius:999px;padding:8px 18px;font-size:16px;cursor:pointer;line-height:1.3}
+.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--accent);border-color:transparent;color:var(--on-accent);font-weight:500}
+.btn.text{border-color:transparent;background:none;color:var(--accent);padding-left:8px;padding-right:8px}
+.btn.firm{font-weight:600;border-color:var(--ink-2)}
+.confirm{margin-top:18px;padding:18px 20px;border-radius:14px;background:var(--well)}
+.confirm p{font-size:16.5px}
+.confirm .actions{margin-top:14px}
+
+.meter{height:14px;border-radius:999px;background:var(--track);overflow:hidden;display:flex;gap:2px;margin:14px 0 10px}
+.meter i{display:block;height:100%}
+.meter i:first-child{border-radius:999px 0 0 999px}
+.meter-key{display:flex;flex-wrap:wrap;gap:6px 20px;font-size:15px;color:var(--ink-2)}
+.meter-key span{display:inline-flex;align-items:center;gap:8px}
+.meter-key i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.figure{font:600 40px/1.1 var(--serif);letter-spacing:-.02em}
+.figure small{font:400 18px var(--sans);color:var(--ink-2);letter-spacing:0;margin-left:6px}
+
+.timeline li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:16px;padding:14px 0;border-top:1px solid var(--rule)}
+.timeline li:first-child{border-top:0;padding-top:0}
+.timeline time,.timeline .k{font-size:14px;color:var(--ink-3);padding-top:3px;font-variant-numeric:tabular-nums;font-weight:500}
+.timeline p{font-size:17px}
+.timeline .dot{margin-right:8px;width:8px;height:8px;vertical-align:2px}
+
+.facts > div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;padding:14px 0;border-top:1px solid var(--rule);align-items:baseline}
+.facts > div:first-child{border-top:0;padding-top:0}
+.facts dt{font-size:16.5px}
+.facts dd{color:var(--ink-2);font-size:16px;text-align:right;font-variant-numeric:tabular-nums}
+
+.search{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 10px}
+.search input{flex:1 1 260px;font-size:18px;padding:12px 18px;border-radius:999px;border:1px solid var(--rule);background:var(--card)}
+.search input::placeholder{color:var(--ink-3)}
+
+.chart{margin:20px -4px 4px}
+.chart svg{display:block;width:100%}
+.chart text{font:12px var(--sans);fill:var(--ink-3)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:16px}
+th{font-weight:500;font-size:13.5px;color:var(--ink-3);text-align:right;padding:0 0 10px 12px}
+td{padding:12px 0 12px 12px;border-top:1px solid var(--rule);text-align:right}
+th:first-child,td:first-child{text-align:left;padding-left:0}
+.seg{display:inline-flex;gap:4px;background:var(--well);padding:3px;border-radius:999px}
+.seg button{appearance:none;border:0;background:none;padding:4px 14px;border-radius:999px;font-size:14.5px;color:var(--ink-2);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px color-mix(in srgb, CanvasText 15%, transparent)}
+
+.url{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:18px 20px;border-radius:14px;background:var(--well);margin-top:16px}
+.url code{background:none;padding:0;font-size:19px;flex:1 1 280px;overflow-wrap:anywhere}
+pre{margin:16px 0 0;padding:18px 20px;border-radius:14px;background:var(--well);font:14px/1.65 var(--mono);overflow-x:auto}
+.steps{counter-reset:s}
+.steps li{counter-increment:s;display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;padding:10px 0}
+.steps li::before{content:counter(s);width:30px;height:30px;border-radius:50%;background:var(--soft-accent);color:var(--accent);display:grid;place-items:center;font-weight:600;font-size:15px}
+
+/* settings, read like a form */
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 28px}
+.toc a{font-size:14.5px;text-decoration:none;color:var(--ink-2);border:1px solid var(--rule);border-radius:999px;padding:4px 12px;background:var(--card)}
+.toc a:hover{color:var(--ink);border-color:var(--ink-3)}
+.setgroup{scroll-margin-top:24px}
+.setgroup h3{font:600 22px/1.3 var(--serif);letter-spacing:-.005em}
+.now{display:flex;gap:10px;align-items:baseline;margin:10px 0 6px;padding:12px 16px;border-radius:12px;background:var(--soft-accent);font-size:16.5px}
+.now::before{content:"Right now";font-size:12.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);flex:none}
+.field{margin-top:24px}
+.field > label,.field > .label{display:block;font-weight:500;font-size:17px;margin-bottom:6px}
+.field .hint{font-size:15px;color:var(--ink-2);margin-top:6px;max-width:58ch}
+.input{font-size:17px;padding:10px 14px;border-radius:12px;border:1px solid var(--rule);background:var(--card);width:100%;max-width:340px}
+.input.short{max-width:160px}
+.input::placeholder{color:var(--ink-3)}
+.input[aria-invalid="true"]{border-color:var(--failed);box-shadow:0 0 0 3px color-mix(in srgb, var(--failed) 18%, transparent)}
+.with-unit{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.with-unit span{color:var(--ink-2);font-size:16px}
+select.input{appearance:none;-webkit-appearance:none;padding-right:40px;background-image:linear-gradient(45deg, transparent 50%, var(--ink-2) 50%),linear-gradient(135deg, var(--ink-2) 50%, transparent 50%);background-position:calc(100% - 20px) 52%, calc(100% - 14px) 52%;background-size:6px 6px;background-repeat:no-repeat}
+.toggle{display:flex;gap:14px;align-items:flex-start;cursor:pointer}
+.toggle input{appearance:none;-webkit-appearance:none;margin:3px 0 0;flex:none;width:44px;height:26px;border-radius:999px;background:var(--track);position:relative;cursor:pointer}
+.toggle input::before{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.toggle input:checked{background:var(--accent)}
+.toggle input:checked::before{transform:translateX(18px)}
+.toggle span b{display:block;font-weight:500;font-size:17px}
+.toggle span small{display:block;font-size:15px;color:var(--ink-2);margin-top:2px;max-width:56ch}
+.checks label{display:flex;gap:12px;align-items:center;padding:6px 0;font-size:16.5px}
+.checks input{width:20px;height:20px;accent-color:var(--accent);margin:0}
+.error{display:flex;gap:10px;align-items:flex-start;margin-top:10px;padding:10px 14px;border-radius:10px;background:color-mix(in srgb, var(--failed) 9%, Canvas);color:var(--failed-text);font-size:15.5px;max-width:520px}
+.error::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--failed);flex:none;margin-top:7px}
+.indent{margin-left:58px}
+.savebar{position:sticky;bottom:16px;z-index:5;margin:36px 0 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px 14px 22px;border-radius:999px;
+  background:color-mix(in srgb, Canvas 86%, transparent);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid var(--rule);box-shadow:0 10px 30px color-mix(in srgb, CanvasText 12%, transparent)}
+.savebar p{flex:1 1 240px;font-size:15.5px;display:flex;gap:10px;align-items:center}
+footer{text-align:center;color:var(--ink-3);font-size:14px;padding:56px 0 48px}
+
+@media (prefers-reduced-motion: no-preference){
+  .toggle input,.toggle input::before{transition:transform .2s ease, background-color .2s ease}
+  .tab{transition:background-color .15s, color .15s}
+  .dot.working{animation:soft 2.4s ease-in-out infinite}
+  @keyframes soft{50%{opacity:.45}}
+}
+@media (max-width: 560px){
+  body{font-size:17px}
+  .column{padding:0 16px}
+  .mast{padding-top:32px}
+  .lede{font-size:26px}
+  .intro{font-size:17.5px}
+  .card{padding:20px 18px;border-radius:16px}
+  .tab{font-size:15px;padding:6px 10px}
+  .indent{margin-left:0}
+  .opt{display:none}
+  .savebar{border-radius:18px}
+  .facts > div{grid-template-columns:minmax(0,1fr)}
+  .facts dd{text-align:left}
+  .timeline li{grid-template-columns:52px minmax(0,1fr);gap:10px}
+}
+</style>
+</head>
+<body>
+<p id="live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+
+<div class="column">
+  <header class="mast">
+    <svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true">
+      <polygon points="302,132 472,472 132,472" fill="#F5C518"/>
+      <rect x="552" y="132" width="340" height="340" fill="#B4B6BB"/>
+      <rect x="132" y="552" width="340" height="340" fill="#2B5DAA"/>
+      <circle cx="722" cy="722" r="170" fill="#E63329"/>
+    </svg>
+    <h1>Dessau Server</h1>
+    <p><span class="dot ready" aria-hidden="true"></span>Ready on alices-mac.local
+      <button type="button" class="rec" data-goto="stats" title="Request statistics are being recorded on this Mac. Anyone who can open this panel can read them.">Recording</button></p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Control panel sections">
+    <button class="tab" role="tab" id="t-overview" data-tab="overview" aria-controls="p-overview" aria-selected="true" tabindex="0">Overview</button>
+    <button class="tab" role="tab" id="t-models" data-tab="models" aria-controls="p-models" aria-selected="false" tabindex="-1">My Models</button>
+    <button class="tab" role="tab" id="t-find" data-tab="find" aria-controls="p-find" aria-selected="false" tabindex="-1">Find Models</button>
+    <button class="tab" role="tab" id="t-stats" data-tab="stats" aria-controls="p-stats" aria-selected="false" tabindex="-1">Statistics</button>
+    <button class="tab" role="tab" id="t-connect" data-tab="connect" aria-controls="p-connect" aria-selected="false" tabindex="-1">Connect</button>
+    <button class="tab" role="tab" id="t-clients" data-tab="clients" aria-controls="p-clients" aria-selected="false" tabindex="-1">Clients</button>
+    <button class="tab" role="tab" id="t-posture" data-tab="posture" aria-controls="p-posture" aria-selected="false" tabindex="-1">Posture</button>
+    <button class="tab" role="tab" id="t-settings" data-tab="settings" aria-controls="p-settings" aria-selected="false" tabindex="-1">Settings</button>
+  </nav>
+
+<main>
+<!-- ═════════ Overview ═════════ -->
+<section id="p-overview" role="tabpanel" aria-labelledby="t-overview" tabindex="0">
+  <p class="lede">Serving 2 models to 3 devices on your network.</p>
+  <p class="intro">Everything is working. <b>Qwen3-8B</b> and <b>Gemma 3 12B</b> are loaded and answering. Bob's laptop, Carol's iPad and Alice's iPhone are connected, and a new coding model is on its way down.</p>
+
+  <div class="card">
+    <p class="small">Memory</p>
+    <p class="figure num">16.5 GB<small>of 48 GB in use</small></p>
+    <div class="meter" role="meter" aria-label="Memory in use by loaded models" aria-valuemin="0" aria-valuemax="48" aria-valuenow="16.5" aria-valuetext="16.5 GB of 48 GB">
+      <i style="width:22.1%;background:var(--accent)"></i><i style="width:12.3%;background:color-mix(in srgb, var(--accent) 55%, Canvas)"></i>
+    </div>
+    <div class="meter-key"><span><i style="background:var(--accent)"></i>Gemma 3 12B, 10.6 GB</span><span><i style="background:color-mix(in srgb, var(--accent) 55%, Canvas)"></i>Qwen3-8B, 5.9 GB</span><span><i style="background:var(--track)"></i>31.5 GB free</span></div>
+    <p class="small" style="margin-top:14px">Room for another model of up to about 15 GB without unloading anything.</p>
+  </div>
+
+  <div class="card">
+    <dl class="facts">
+      <div><dt>Health</dt><dd><span class="dot ready" aria-hidden="true"></span> All good</dd></div>
+      <div><dt>Running for</dt><dd>3 days, 4 hours</dd></div>
+      <div><dt>Requests in the last hour</dt><dd>24</dd></div>
+      <div><dt>Answering at</dt><dd>about 61 tokens a second</dd></div>
+      <div><dt>Downloading</dt><dd><span class="dot working" aria-hidden="true"></span> 63 %, about 3 minutes left</dd></div>
+    </dl>
+  </div>
+
+  <h2 class="sec">What changed today</h2>
+  <div class="card">
+    <ol class="timeline">
+      <li><time>14:32</time><p><span class="dot working" aria-hidden="true"></span>Started downloading Qwen2.5 Coder 32B (18.4 GB).</p></li>
+      <li><time>14:05</time><p><span class="dot" aria-hidden="true"></span>Llama 3.2 3B was unloaded after 15 quiet minutes, to free memory.</p></li>
+      <li><time>13:48</time><p><span class="dot" aria-hidden="true" style="background:var(--accent)"></span>A newer version of Llama 3.2 3B is available: 3 files changed.</p></li>
+      <li><time>13:20</time><p><span class="dot ready" aria-hidden="true"></span>Gemma 3 12B loaded in 4 seconds, for Bob's laptop.</p></li>
+      <li><time>12:47</time><p><span class="dot failed" aria-hidden="true"></span>A question to Mistral Small was too long to answer — 41,210 tokens, where it takes 32,768.</p></li>
+      <li><time>11:02</time><p><span class="dot ready" aria-hidden="true"></span>Carol's iPad paired with this server.</p></li>
+    </ol>
+  </div>
+  <p class="small" style="text-align:center;margin-top:26px">Want to add a device? <button type="button" class="btn text" data-goto="connect">See how to connect</button></p>
+</section>
+
+<!-- ═════════ My Models ═════════ -->
+<section id="p-models" role="tabpanel" aria-labelledby="t-models" tabindex="0" hidden>
+  <p class="lede">Your models use 16.5 GB of the 48 GB set aside for them.</p>
+  <div class="card">
+    <div class="meter" role="meter" aria-label="Memory set aside for models, in use" aria-valuemin="0" aria-valuemax="48" aria-valuenow="16.5" aria-valuetext="16.5 GB of 48 GB" style="margin-top:0">
+      <i style="width:22.1%;background:var(--accent)"></i><i style="width:12.3%;background:color-mix(in srgb, var(--accent) 55%, Canvas)"></i>
+    </div>
+    <dl class="facts" style="margin-top:14px">
+      <div><dt>Set aside for models</dt><dd>48 GB — three quarters of this Mac's 64 GB</dd></div>
+      <div><dt>In use</dt><dd>16.5 GB, by 2 models</dd></div>
+      <div><dt>Free</dt><dd>31.5 GB</dd></div>
+    </dl>
+  </div>
+
+  <article class="card" id="m-qwen">
+    <h3><span class="org">mlx-community/</span>Qwen3-8B-4bit</h3>
+    <p class="what">A quick, capable all-rounder. 4.6 GB on disk, 4-bit. Kept loaded, so it is always ready.</p>
+    <p class="status"><span class="dot ready" aria-hidden="true"></span><span data-state>Loaded and answering Carol's iPad</span></p>
+    <div class="actions">
+      <button type="button" class="btn" data-load="Qwen3-8B-4bit">Unload</button>
+      <button type="button" class="btn" aria-expanded="false" aria-controls="ms-qwen" data-toggle>Settings for this model</button>
+      <button type="button" class="btn text" data-ask="c-qwen" aria-expanded="false" aria-controls="c-qwen">Delete</button>
+    </div>
+    <div class="confirm" id="ms-qwen" hidden>
+      <div class="field" style="margin-top:0"><label for="q-ctx">How much it can read at once</label><div class="with-unit"><input class="input short" id="q-ctx" placeholder="32,768"><span>tokens</span></div><p class="hint">Leave blank for the most that fits in memory — 32,768 for this model.</p></div>
+      <div class="field"><label for="q-temp">Creativity (temperature)</label><input class="input short" id="q-temp" value="0.6"><p class="hint">Lower is steadier and more repeatable. Blank uses the setting for all models.</p></div>
+      <div class="field"><label class="toggle"><input type="checkbox" role="switch" checked><span><b>Keep it loaded</b><small>It is never unloaded to make room or after a quiet spell.</small></span></label></div>
+      <div class="field"><label class="toggle"><input type="checkbox" role="switch"><span><b>Keep no transcript</b><small>It will not be offered over Discord, and debug logging is refused.</small></span></label></div>
+    </div>
+    <div class="confirm" id="c-qwen" hidden>
+      <p><b>Delete Qwen3-8B?</b> It is in use right now. Deleting it unloads it and frees 4.6 GB; Carol's iPad will need another model.</p>
+      <div class="actions"><button type="button" class="btn" data-cancel>Keep it</button><button type="button" class="btn firm" data-delete="m-qwen" data-name="Qwen3-8B">Delete Qwen3-8B</button></div>
+    </div>
+  </article>
+
+  <article class="card" id="m-gemma">
+    <h3><span class="org">mlx-community/</span>gemma-3-12b-it-4bit</h3>
+    <p class="what">Google's Gemma 3, larger and more careful. 8.1 GB on disk, 4-bit.</p>
+    <p class="status"><span class="dot ready" aria-hidden="true"></span><span data-state>Loaded · last answered Bob's laptop 2 minutes ago</span></p>
+    <div class="actions">
+      <button type="button" class="btn" data-load="gemma-3-12b-it-4bit">Unload</button>
+      <button type="button" class="btn" aria-expanded="false" aria-controls="ms-gemma" data-toggle>Settings for this model</button>
+      <button type="button" class="btn text" data-ask="c-gemma" aria-expanded="false" aria-controls="c-gemma">Delete</button>
+    </div>
+    <div class="confirm" id="ms-gemma" hidden>
+      <div class="field" style="margin-top:0"><label class="toggle"><input type="checkbox" role="switch" checked><span><b>Merge instructions into one</b><small>Gemma refuses a conversation whose instructions are not all at the top; this gathers them for it.</small></span></label></div>
+      <div class="field"><label class="toggle"><input type="checkbox" role="switch"><span><b>Keep it loaded</b><small>It is never unloaded to make room or after a quiet spell.</small></span></label></div>
+    </div>
+    <div class="confirm" id="c-gemma" hidden>
+      <p><b>Delete Gemma 3 12B?</b> Deleting it unloads it and frees 8.1 GB on this Mac.</p>
+      <div class="actions"><button type="button" class="btn" data-cancel>Keep it</button><button type="button" class="btn firm" data-delete="m-gemma" data-name="Gemma 3 12B">Delete Gemma 3 12B</button></div>
+    </div>
+  </article>
+
+  <article class="card" id="m-llama">
+    <h3><span class="org">mlx-community/</span>Llama-3.2-3B-Instruct-4bit</h3>
+    <p class="what">Small and very fast; good on a phone. 1.8 GB on disk, 4-bit.</p>
+    <p class="status"><span class="dot" aria-hidden="true"></span><span data-state>Resting — unloaded after 15 quiet minutes</span></p>
+    <p class="status" style="margin-top:8px"><span class="pill new">Update available</span><span class="small">3 files changed, 1.8 GB to download</span></p>
+    <div class="actions">
+      <button type="button" class="btn primary">Update</button>
+      <button type="button" class="btn" data-load="Llama-3.2-3B-Instruct-4bit">Load</button>
+      <button type="button" class="btn" aria-expanded="false" aria-controls="ms-llama" data-toggle>Settings for this model</button>
+      <button type="button" class="btn text" data-ask="c-llama" aria-expanded="false" aria-controls="c-llama">Delete</button>
+    </div>
+    <div class="confirm" id="ms-llama" hidden>
+      <div class="field" style="margin-top:0"><label class="toggle"><input type="checkbox" role="switch"><span><b>Keep it loaded</b><small>It is never unloaded to make room or after a quiet spell.</small></span></label></div>
+    </div>
+    <div class="confirm" id="c-llama" hidden>
+      <p><b>Delete Llama 3.2 3B?</b> This frees 1.8 GB. Alice's iPhone uses it.</p>
+      <div class="actions"><button type="button" class="btn" data-cancel>Keep it</button><button type="button" class="btn firm" data-delete="m-llama" data-name="Llama 3.2 3B">Delete Llama 3.2 3B</button></div>
+    </div>
+  </article>
+
+  <article class="card" id="m-mistral">
+    <h3><span class="org">mlx-community/</span>Mistral-Small-3.1-24B-Instruct-2503-4bit</h3>
+    <p class="what">The largest here: thorough, and slower. 13.3 GB on disk, 4-bit. Fits beside what is loaded now.</p>
+    <p class="status"><span class="dot" aria-hidden="true"></span><span data-state>Resting — downloaded yesterday</span></p>
+    <div class="actions">
+      <button type="button" class="btn" data-load="Mistral-Small-3.1-24B">Load</button>
+      <button type="button" class="btn" aria-expanded="false" aria-controls="ms-mistral" data-toggle>Settings for this model</button>
+      <button type="button" class="btn text" data-ask="c-mistral" aria-expanded="false" aria-controls="c-mistral">Delete</button>
+    </div>
+    <div class="confirm" id="ms-mistral" hidden>
+      <div class="field" style="margin-top:0"><label for="mi-ctx">How much it can read at once</label><div class="with-unit"><input class="input short" id="mi-ctx" placeholder="32,768"><span>tokens</span></div><p class="hint">A longer question was turned away today. A larger figure takes more memory.</p></div>
+    </div>
+    <div class="confirm" id="c-mistral" hidden>
+      <p><b>Delete Mistral Small?</b> This frees 13.3 GB on this Mac.</p>
+      <div class="actions"><button type="button" class="btn" data-cancel>Keep it</button><button type="button" class="btn firm" data-delete="m-mistral" data-name="Mistral Small">Delete Mistral Small</button></div>
+    </div>
+  </article>
+
+  <article class="card" id="m-coder">
+    <h3><span class="org">mlx-community/</span>Qwen2.5-Coder-32B-Instruct-4bit</h3>
+    <p class="what">A model for writing code. 18.4 GB, 4-bit.</p>
+    <p class="status"><span class="dot working" aria-hidden="true"></span><span>Downloading — 63 %, about 3 minutes left</span></p>
+    <div class="meter" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="63" style="height:8px"><i style="width:63%;background:var(--working)"></i></div>
+    <p class="small num">11.6 of 18.4 GB, at 41 MB a second</p>
+    <div class="actions">
+      <button type="button" class="btn">Pause</button>
+      <button type="button" class="btn text" data-ask="c-coder" aria-expanded="false" aria-controls="c-coder">Cancel download</button>
+    </div>
+    <div class="confirm" id="c-coder" hidden>
+      <p><b>Stop this download?</b> The 11.6 GB fetched so far will be removed.</p>
+      <div class="actions"><button type="button" class="btn" data-cancel>Keep downloading</button><button type="button" class="btn firm" data-delete="m-coder" data-name="The Qwen2.5 Coder download" data-verb="was cancelled">Stop and remove</button></div>
+    </div>
+  </article>
+</section>
+
+<!-- ═════════ Find Models ═════════ -->
+<section id="p-find" role="tabpanel" aria-labelledby="t-find" tabindex="0" hidden>
+  <p class="lede">This Mac can run models up to about 40 GB.</p>
+  <p class="intro">That leaves room for each model's working memory. Anything larger is shown, but cannot be loaded here.</p>
+  <form class="search" role="search" onsubmit="return false">
+    <label for="q" class="sr-only">Search MLX models</label>
+    <input id="q" type="search" value="qwen3" placeholder="Search for a model, like qwen3 or gemma" autocomplete="off">
+    <button type="submit" class="btn primary">Search</button>
+  </form>
+  <p class="small" style="margin-bottom:28px">Searching <code>mlx-community</code>. To fetch one exact model, type its full name, like <code>alice/Bonsai-27B-mlx-4bit</code>.</p>
+
+  <article class="card"><h3><span class="org">mlx-community/</span>Qwen3-14B-4bit</h3><p class="what">8.3 GB · 4-bit · a step up from the 8B you have</p><p class="status"><span class="pill ready">Fits comfortably</span></p><div class="actions"><button type="button" class="btn primary" data-dl>Download</button></div></article>
+  <article class="card"><h3><span class="org">mlx-community/</span>Qwen3-30B-A3B-4bit</h3><p class="what">17.2 GB · 4-bit · large, yet quick: it uses only part of itself for each word</p><p class="status"><span class="pill ready">Fits</span></p><div class="actions"><button type="button" class="btn primary" data-dl>Download</button></div></article>
+  <article class="card"><h3><span class="org">mlx-community/</span>Qwen3-32B-4bit</h3><p class="what">18.4 GB · 4-bit</p><p class="status"><span class="pill ready">Fits</span></p><div class="actions"><button type="button" class="btn primary" data-dl>Download</button></div></article>
+  <article class="card"><h3><span class="org">mlx-community/</span>Qwen3-8B-4bit</h3><p class="what">4.6 GB · 4-bit</p><p class="status"><span class="pill">Already on this Mac</span></p><div class="actions"><button type="button" class="btn" data-goto="models">Show in My Models</button></div></article>
+  <article class="card"><h3 class="quiet"><span class="org">mlx-community/</span>Qwen3-235B-A22B-4bit</h3><p class="what">132 GB · 4-bit</p><p class="status quiet">Too large for this Mac</p></article>
+</section>
+
+<!-- ═════════ Statistics ═════════ -->
+<section id="p-stats" role="tabpanel" aria-labelledby="t-stats" tabindex="0" hidden>
+  <p class="lede" id="statsLede">In the last 30 days, your models answered 4,588 requests.</p>
+  <p class="intro">Most went to Qwen3-8B. Half of all answers began in under a quarter of a second.</p>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <p class="small">Requests each day</p>
+      <span class="seg" role="group" aria-label="Range"><button type="button" data-range="7" aria-pressed="false">7 days</button><button type="button" data-range="30" aria-pressed="true">30 days</button></span>
+    </div>
+    <div class="chart" id="chart" role="img" aria-label="Requests each day"></div>
+  </div>
+
+  <h2 class="sec">By model</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Model</th><th>Requests</th><th class="opt">First word after</th><th>Speed</th></tr></thead>
+      <tbody>
+        <tr><td>Qwen3-8B</td><td>2,511</td><td class="opt">0.21 s</td><td>63 tokens/s</td></tr>
+        <tr><td>Gemma 3 12B</td><td>1,322</td><td class="opt">0.38 s</td><td>39 tokens/s</td></tr>
+        <tr><td>Llama 3.2 3B</td><td>661</td><td class="opt">0.09 s</td><td>122 tokens/s</td></tr>
+        <tr><td>Mistral Small</td><td>94</td><td class="opt">0.71 s</td><td>23 tokens/s</td></tr>
+      </tbody>
+    </table>
+    <p class="small" style="margin-top:16px">Six requests were turned away this month: four were too long for the model, two came when there was no room.</p>
+  </div>
+
+  <h2 class="sec">How each model measured up</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Model</th><th class="opt">Tested</th><th>Reads</th><th>Writes</th></tr></thead>
+      <tbody>
+        <tr><td>Qwen3-8B</td><td class="opt">Today, 09:12</td><td>1,412 tokens/s</td><td>65 tokens/s</td></tr>
+        <tr><td>Gemma 3 12B</td><td class="opt">Today, 08:40</td><td>802 tokens/s</td><td>39 tokens/s</td></tr>
+        <tr><td>Llama 3.2 3B</td><td class="opt">Yesterday</td><td>3,260 tokens/s</td><td>122 tokens/s</td></tr>
+        <tr><td>Mistral Small</td><td class="opt quiet">Waiting for room</td><td class="quiet">—</td><td class="quiet">—</td></tr>
+      </tbody>
+    </table>
+    <p class="small" style="margin-top:16px">Dessau tests each model once a day when the Mac is quiet. The prompts are fixed and nothing is kept but the timings.</p>
+  </div>
+
+  <h2 class="sec">What is kept</h2>
+  <div class="card">
+    <p id="storeLine">4,588 records in 2 files, 2.6 MB of the 256 MB allowed. The oldest is from 11 September.</p>
+    <p class="small" style="margin-top:8px">Only counts and timings — never what anyone asked or what a model said, and never who asked. Nothing leaves this Mac.</p>
+    <div class="actions"><button type="button" class="btn" data-ask="c-clear" aria-expanded="false" aria-controls="c-clear">Clear records</button></div>
+    <div class="confirm" id="c-clear" hidden>
+      <p><b>Clear all 4,588 records?</b> This cannot be undone. Recording carries on from now.</p>
+      <div class="actions"><button type="button" class="btn" data-cancel>Cancel</button><button type="button" class="btn firm" data-clear>Clear records</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ Connect ═════════ -->
+<section id="p-connect" role="tabpanel" aria-labelledby="t-connect" tabindex="0" hidden>
+  <p class="lede">Any app that works with OpenAI can use your Mac instead.</p>
+  <p class="intro">Give it this address and your key, and pick a model by name.</p>
+  <div class="card">
+    <p class="small">Address</p>
+    <div class="url"><code>http://alices-mac.local:8080/v1</code><button type="button" class="btn primary" data-copy="http://alices-mac.local:8080/v1">Copy</button></div>
+    <p class="small" style="margin-top:12px">If a device cannot find that name, use <code>http://192.0.2.24:8080/v1</code> <button type="button" class="btn text" data-copy="http://192.0.2.24:8080/v1">Copy</button></p>
+  </div>
+  <div class="card">
+    <p class="small">Key</p>
+    <p style="margin-top:4px">A key is required, so only the people you give it to can use this server.</p>
+    <div class="url"><code id="keyText">dsu-••••••••••••••••7f3a</code><button type="button" class="btn" id="keyShow" aria-pressed="false">Show</button><button type="button" class="btn" data-copy="dsu-4c1e9b07d2a85f6e3b90c4a17f3a">Copy</button></div>
+  </div>
+  <h2 class="sec">Connecting an app, step by step</h2>
+  <div class="card">
+    <ol class="steps">
+      <li><p>In the app's settings, find where it asks for an <b>OpenAI base URL</b> or <b>custom endpoint</b>, and paste the address.</p></li>
+      <li><p>Paste the key where it asks for an <b>API key</b>.</p></li>
+      <li><p>For the model, type one of yours, such as <code>mlx-community/Qwen3-8B-4bit</code>.</p></li>
+    </ol>
+  </div>
+  <h2 class="sec">For developers</h2>
+  <div class="card">
+<pre>curl http://alices-mac.local:8080/v1/chat/completions \
+  -H "Authorization: Bearer $DESSAU_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "mlx-community/Qwen3-8B-4bit",
+       "messages": [{"role": "user", "content": "Hello"}]}'</pre>
+  </div>
+</section>
+
+<!-- ═════════ Clients ═════════ -->
+<section id="p-clients" role="tabpanel" aria-labelledby="t-clients" tabindex="0" hidden>
+  <p class="lede">Three devices are paired with this server.</p>
+  <p class="intro">A paired device uses a key of its own. Anything on your network can pair, so if you see one you do not recognise, revoke it.</p>
+  <article class="card" id="cl-carol"><h3>Carol's iPad</h3><p class="what">Dessau Chat · paired today at 11:02</p><p class="status"><span class="dot ready" aria-hidden="true"></span>Seen just now</p>
+    <div class="actions"><button type="button" class="btn text" data-ask="r-carol" aria-expanded="false" aria-controls="r-carol">Revoke</button></div>
+    <div class="confirm" id="r-carol" hidden><p><b>Revoke Carol's iPad?</b> It stops working with this server at once, until it pairs again.</p><div class="actions"><button type="button" class="btn" data-cancel>Cancel</button><button type="button" class="btn firm" data-delete="cl-carol" data-name="Carol's iPad" data-verb="was revoked">Revoke Carol's iPad</button></div></div></article>
+  <article class="card" id="cl-bob"><h3>Bob's laptop</h3><p class="what">Dessau Chat · paired 14 September</p><p class="status"><span class="dot ready" aria-hidden="true"></span>Seen 2 minutes ago</p>
+    <div class="actions"><button type="button" class="btn text" data-ask="r-bob" aria-expanded="false" aria-controls="r-bob">Revoke</button></div>
+    <div class="confirm" id="r-bob" hidden><p><b>Revoke Bob's laptop?</b> It stops working with this server at once, until it pairs again.</p><div class="actions"><button type="button" class="btn" data-cancel>Cancel</button><button type="button" class="btn firm" data-delete="cl-bob" data-name="Bob's laptop" data-verb="was revoked">Revoke Bob's laptop</button></div></div></article>
+  <article class="card" id="cl-alice"><h3>Alice's iPhone</h3><p class="what">Dessau Chat · paired 2 September</p><p class="status"><span class="dot" aria-hidden="true"></span>Seen an hour ago</p>
+    <div class="actions"><button type="button" class="btn text" data-ask="r-alice" aria-expanded="false" aria-controls="r-alice">Revoke</button></div>
+    <div class="confirm" id="r-alice" hidden><p><b>Revoke Alice's iPhone?</b> It stops working with this server at once, until it pairs again.</p><div class="actions"><button type="button" class="btn" data-cancel>Cancel</button><button type="button" class="btn firm" data-delete="cl-alice" data-name="Alice's iPhone" data-verb="was revoked">Revoke Alice's iPhone</button></div></div></article>
+  <h2 class="sec">Checking it is really your server</h2>
+  <div class="card"><p>Your chat app shows a fingerprint when it pairs. It should match this one:</p><p class="num" style="font:500 20px/1.5 var(--mono);margin-top:12px;letter-spacing:.02em">9f3c a1d0 5b2e 77c4<br>e81a 0d36 4b9f 7e42</p></div>
+</section>
+
+<!-- ═════════ Posture ═════════ -->
+<section id="p-posture" role="tabpanel" aria-labelledby="t-posture" tabindex="0" hidden>
+  <p class="lede">What your server shares, and with whom.</p>
+  <p class="intro">This page only describes. To change anything, go to Settings.</p>
+  <h2 class="sec">Anyone on your network</h2>
+  <div class="card"><ul class="timeline">
+    <li><b class="k">API</b><p>can reach the models on port 8080 — but only with the key.</p></li>
+    <li><b class="k">Pair</b><p>can pair a chat app on port 8081. Three are paired: Carol's iPad, Bob's laptop and Alice's iPhone.</p></li>
+    <li><b class="k">Find</b><p>can find this server by name, “Dessau on alices-mac”. Being found is not the same as being let in.</p></li>
+  </ul></div>
+  <h2 class="sec">Only this Mac</h2>
+  <div class="card"><ul class="timeline">
+    <li><b class="k">Panel</b><p>can open this control panel. Bob and Carol use the models; they cannot see this page.</p></li>
+    <li><b class="k">Records</b><p>keeps request statistics — counts and timings, never conversations.</p></li>
+  </ul></div>
+  <h2 class="sec">Outside your network</h2>
+  <div class="card"><ul class="timeline">
+    <li><b class="k">Ports</b><p>Dessau opens nothing to the internet. (It cannot see your router, so a port opened there would not show here.)</p></li>
+    <li><b class="k">Daily</b><p>Dessau asks HuggingFace whether your 4 models have newer versions. It sends their names, nothing more.</p></li>
+    <li><b class="k">Discord</b><p>The Discord bridge is off.</p></li>
+  </ul></div>
+</section>
+
+<!-- ═════════ Settings ═════════ -->
+<section id="p-settings" role="tabpanel" aria-labelledby="t-settings" tabindex="0" hidden>
+  <p class="lede">Settings, by what you want to do.</p>
+  <p class="intro">Each section starts with what is true right now. Change what you need, then save at the bottom.</p>
+  <nav class="toc" aria-label="Settings sections">
+    <a href="#s-a">Who can reach it</a><a href="#s-b">Memory</a><a href="#s-c">Requests</a><a href="#s-d">Quiet models</a><a href="#s-e">Checks</a><a href="#s-f">Records and log</a><a href="#s-g">Discord</a><a href="#s-h">Downloads</a>
+  </nav>
+  <form id="settingsForm" novalidate>
+
+  <section class="card setgroup" id="s-a" aria-labelledby="h-a">
+    <h3 id="h-a">Who can reach this server</h3>
+    <p class="now">Reachable from your network on port 8080, with a key.</p>
+    <div class="field"><label for="setHost">Who may connect</label>
+      <select class="input" id="setHost"><option selected>Everyone on my network</option><option>Only this Mac</option><option>Only my private network (192.0.2.24)</option></select>
+      <p class="hint">Takes effect the next time Dessau starts.</p></div>
+    <div class="field"><label for="setPort">Port</label><input class="input short num" id="setPort" value="8080" inputmode="numeric"></div>
+    <div class="field"><label for="setTLSPort">Port for paired chat apps</label><input class="input short num" id="setTLSPort" value="0" inputmode="numeric"><p class="hint">0 uses the next port up, 8081. −1 turns pairing off.</p></div>
+    <div class="field"><label class="toggle"><input type="checkbox" role="switch" id="setAdvertise" checked><span><b>Let devices find this server by name</b><small>Uses Bonjour. It helps devices find the server; it does not let them in.</small></span></label></div>
+    <div class="field"><label for="setKey">Key</label>
+      <div class="with-unit"><input class="input" id="setKey" value="dsu-4c1e9b07d2a85f6e3b90c4a17f3a" style="font-family:var(--mono);font-size:15px" spellcheck="false" autocomplete="off"><button type="button" class="btn" data-genkey>Make a new key</button></div>
+      <p class="hint">Leave it empty and anyone on your network can use your models.</p></div>
+  </section>
+
+  <section class="card setgroup" id="s-b" aria-labelledby="h-b">
+    <h3 id="h-b">Memory, and how many models stay loaded</h3>
+    <p class="now">2 models loaded, using 16.5 GB of 48 GB. Qwen3-8B is kept loaded.</p>
+    <div class="field"><label for="setBudget">Memory to set aside for models</label><div class="with-unit"><input class="input short num" id="setBudget" placeholder="48" inputmode="decimal"><span>GB</span></div><p class="hint">Leave empty for three quarters of this Mac's 64 GB.</p></div>
+    <div class="field"><label for="setConc">Requests each model handles at once</label><input class="input short num" id="setConc" value="1" inputmode="numeric"><p class="hint">More at once means each can read a little less.</p></div>
+    <div class="field"><span class="label">Keep these loaded</span>
+      <div class="checks">
+        <label><input type="checkbox" checked> Qwen3-8B</label>
+        <label><input type="checkbox"> Gemma 3 12B</label>
+        <label><input type="checkbox"> Llama 3.2 3B</label>
+        <label><input type="checkbox"> Mistral Small</label>
+      </div>
+      <p class="hint">A model kept loaded is never unloaded to make room. It is not loaded at start-up; it is kept once something loads it.</p></div>
+  </section>
+
+  <section class="card setgroup" id="s-c" aria-labelledby="h-c">
+    <h3 id="h-c">How requests are handled</h3>
+    <p class="now">Each model answers with its own defaults. Qwen3-8B has its own creativity setting.</p>
+    <div class="field"><label for="setTemp">Creativity (temperature)</label><input class="input short num" id="setTemp" placeholder="model's own"><p class="hint">Used when an app does not say. An app that sets its own always wins.</p></div>
+    <div class="field"><label for="setMaxTokens">Longest answer</label><div class="with-unit"><input class="input short num" id="setMaxTokens" placeholder="no limit"><span>tokens</span></div></div>
+    <div class="field"><label for="setChatTags">Models that count as chat models carry the tag</label><input class="input" id="setChatTags" value="conversational"><p class="hint">Lets chat apps leave out models that cannot hold a conversation. Every model can still be called by name.</p></div>
+    <div class="field"><label class="toggle"><input type="checkbox" role="switch" id="setAPIUnload" checked><span><b>Let an app unload a model it has finished with</b><small>Never one that is kept loaded or still answering.</small></span></label></div>
+  </section>
+
+  <section class="card setgroup" id="s-d" aria-labelledby="h-d">
+    <h3 id="h-d">When quiet models are unloaded</h3>
+    <p class="now" id="now-d">After 15 quiet minutes. A model that just answered is protected for 2 minutes.</p>
+    <div class="field"><label for="setIdle">Unload a model after it has been quiet for</label><div class="with-unit"><input class="input short num" id="setIdle" value="900" inputmode="numeric"><span>seconds</span></div><p class="hint">0 keeps models loaded until they are needed elsewhere.</p></div>
+    <div class="field"><label class="toggle"><input type="checkbox" role="switch" id="setGrace" checked><span><b>Do not unload a model that has only just answered</b><small>Helps when two people share this Mac: their models stop pushing each other out between turns.</small></span></label></div>
+    <div class="indent">
+      <div class="field"><label for="setGraceSec">Protect a model that just answered for</label><div class="with-unit"><input class="input short num" id="setGraceSec" value="420" inputmode="numeric" aria-invalid="true" aria-describedby="err-setGraceSec"><span>seconds</span></div>
+        <p class="error" id="err-setGraceSec" role="note">The grace period cannot exceed the maximum wait of 300 seconds.</p></div>
+      <div class="field"><label for="setGraceWait">A new request waits at most</label><div class="with-unit"><input class="input short num" id="setGraceWait" value="300" inputmode="numeric"><span>seconds</span></div></div>
+    </div>
+  </section>
+
+  <section class="card setgroup" id="s-e" aria-labelledby="h-e">
+    <h3 id="h-e">Checks and measurements</h3>
+    <p class="now">Daily self-tests are on; the last ran at 09:12. Context measuring is off.</p>
+    <div class="field"><label class="toggle"><input type="checkbox" role="switch" id="setSelfTest" checked><span><b>Test each model once a day while the Mac is quiet</b><small>Measures how fast it loads, reads and writes. Stops the moment anyone asks for something.</small></span></label></div>
+    <div class="field indent"><label for="setSelfTestIdle">Count the Mac as quiet after</label><div class="with-unit"><input class="input short num" id="setSelfTestIdle" value="1800" inputmode="numeric"><span>seconds</span></div></div>
+    <div class="field"><label class="toggle"><input type="checkbox" role="switch" id="setContextProbe"><span><b>Measure how much each model can really read</b><small>About forty minutes of the graphics chip per model, only while quiet.</small></span></label></div>
+  </section>
+
+  <section class="card setgroup" id="s-f" aria-labelledby="h-f">
+    <h3 id="h-f">Statistics and logging</h3>
+    <p class="now">Recording on this Mac, kept for 6 months. The log is brief.</p>
+    <div class="field"><label class="toggle"><input type="checkbox" role="switch" id="setStats" checked><span><b>Keep request statistics on this Mac</b><small>Counts and timings only. On a shared Mac, everyone who can open this page can read them.</small></span></label></div>
+    <div class="field indent"><label for="setStatsMonths">Keep them for</label><div class="with-unit"><input class="input short num" id="setStatsMonths" value="6" inputmode="numeric"><span>months</span></div></div>
+    <div class="field indent"><label for="setStatsMB">Never use more than</label><div class="with-unit"><input class="input short num" id="setStatsMB" value="256" inputmode="numeric"><span>MB</span></div></div>
+    <div class="field"><label for="setLogLevel">How much the log says</label><select class="input" id="setLogLevel"><option selected>Brief — one line for each thing that mattered</option><option>Detailed — with the figures behind each</option></select><p class="hint">Neither ever writes down a question, an answer or a key.</p></div>
+  </section>
+
+  <section class="card setgroup" id="s-g" aria-labelledby="h-g">
+    <h3 id="h-g">Discord bridge</h3>
+    <p class="now">Off.</p>
+    <div class="field"><label class="toggle"><input type="checkbox" role="switch" id="setDiscord"><span><b>Answer Discord messages with a model on this Mac</b><small>Messages and answers pass through Discord and are kept under Discord's terms. Useful for reaching your models from a phone.</small></span></label></div>
+    <div class="field"><label for="setDiscordToken">Discord bot token</label><input class="input" type="password" id="setDiscordToken" placeholder="Not set" autocomplete="off"></div>
+  </section>
+
+  <section class="card setgroup" id="s-h" aria-labelledby="h-h">
+    <h3 id="h-h">Downloading and updating models</h3>
+    <p class="now">Checking for updates once a day. No HuggingFace token.</p>
+    <div class="field"><label class="toggle"><input type="checkbox" role="switch" id="setUpdate" checked><span><b>Check my models for newer versions</b><small>Sends HuggingFace the names of your models, nothing else.</small></span></label></div>
+    <div class="field indent"><label for="setUpdateEvery">Check every</label><div class="with-unit"><input class="input short num" id="setUpdateEvery" value="24" inputmode="numeric"><span>hours</span></div></div>
+    <div class="field"><label for="setHF">HuggingFace token</label><input class="input" type="password" id="setHF" placeholder="Only needed for gated models" autocomplete="off"></div>
+  </section>
+
+  <div class="savebar">
+    <p id="settingsMsg"><span class="dot failed" aria-hidden="true"></span><span>Not saved yet — one value needs a look, under <a href="#s-d">quiet models</a>.</span></p>
+    <button type="submit" class="btn primary">Save settings</button>
+  </div>
+  </form>
+</section>
+</main>
+
+<footer>Dessau Server · serving from this Mac · nothing on this page is loaded from the internet</footer>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const live = $('#live');
+  const say = (t) => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+
+  /* tabs: a wrapping strip of real buttons; arrows, Home and End move along it */
+  const tabs = $$('[role="tab"]');
+  function show(tab, focus) {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    });
+    if (focus) tab.focus();
+    try { history.replaceState(null, '', '#' + tab.dataset.tab); } catch (e) {}
+    if (tab.dataset.tab === 'stats') draw();
+  }
+  tabs.forEach((t) => {
+    t.addEventListener('click', () => show(t));
+    t.addEventListener('keydown', (e) => {
+      let i = tabs.indexOf(t);
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') i = (i + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') i = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') i = 0;
+      else if (e.key === 'End') i = tabs.length - 1;
+      else return;
+      e.preventDefault(); show(tabs[i], true);
+    });
+  });
+  $$('[data-goto]').forEach((b) => b.addEventListener('click', () => {
+    show(tabs.find((x) => x.dataset.tab === b.dataset.goto), true);
+    window.scrollTo(0, 0);
+  }));
+
+  /* per-model settings and untimed confirmations */
+  $$('[data-toggle]').forEach((b) => b.addEventListener('click', () => {
+    const open = b.getAttribute('aria-expanded') !== 'true';
+    b.setAttribute('aria-expanded', open);
+    document.getElementById(b.getAttribute('aria-controls')).hidden = !open;
+  }));
+  $$('[data-ask]').forEach((b) => b.addEventListener('click', () => {
+    const box = document.getElementById(b.dataset.ask);
+    box.hidden = false; b.setAttribute('aria-expanded', 'true');
+    box.querySelector('button').focus();
+  }));
+  $$('[data-cancel]').forEach((b) => b.addEventListener('click', () => {
+    const box = b.closest('.confirm');
+    box.hidden = true;
+    const ask = $('[data-ask="' + box.id + '"]');
+    ask.setAttribute('aria-expanded', 'false'); ask.focus();
+  }));
+  $$('[data-delete]').forEach((b) => b.addEventListener('click', () => {
+    const el = document.getElementById(b.dataset.delete);
+    const text = b.dataset.name + ' ' + (b.dataset.verb || 'was deleted') + '.';
+    const note = document.createElement('div');
+    note.className = 'card'; note.style.padding = '18px 28px';
+    const p = document.createElement('p'); p.className = 'small'; p.textContent = text; note.append(p);
+    el.replaceWith(note);
+    say(text);
+  }));
+  $('[data-clear]').addEventListener('click', (e) => {
+    $('#storeLine').textContent = 'Nothing is kept yet. Records were cleared just now, and recording carries on.';
+    e.currentTarget.closest('.confirm').hidden = true;
+    say('Records cleared.');
+  });
+  $$('[data-load]').forEach((b) => b.addEventListener('click', () => {
+    const card = b.closest('.card'), st = card.querySelector('[data-state]'), dot = st.previousElementSibling, name = b.dataset.load;
+    if (b.textContent === 'Unload') { dot.className = 'dot'; st.textContent = 'Resting — unloaded just now'; b.textContent = 'Load'; say(name + ' unloaded.'); }
+    else { dot.className = 'dot working'; st.textContent = 'Loading…'; b.textContent = 'Unload';
+      setTimeout(() => { dot.className = 'dot ready'; st.textContent = 'Loaded and ready'; say(name + ' loaded.'); }, 1400); }
+  }));
+  $$('[data-dl]').forEach((b) => b.addEventListener('click', () => { b.textContent = 'Added to downloads'; b.className = 'btn'; say('Download started.'); }));
+  $$('[data-copy]').forEach((b) => b.addEventListener('click', () => {
+    const done = () => { const w = b.textContent; b.textContent = 'Copied'; setTimeout(() => { b.textContent = w; }, 1500); say('Copied.'); };
+    if (navigator.clipboard) navigator.clipboard.writeText(b.dataset.copy).then(done, done); else done();
+  }));
+  $('#keyShow').addEventListener('click', (e) => {
+    const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+    e.currentTarget.setAttribute('aria-pressed', on); e.currentTarget.textContent = on ? 'Hide' : 'Show';
+    $('#keyText').textContent = on ? 'dsu-4c1e9b07d2a85f6e3b90c4a17f3a' : 'dsu-••••••••••••••••7f3a';
+  });
+
+  /* a quiet bar chart, drawn to the width it is given */
+  const req = [96,142,64,58,171,188,203,176,159,61,52,214,236,198,221,187,72,66,182,204,96,88,231,256,240,198,212,74,69,174];
+  const start = new Date(2026, 8, 11);
+  let range = 30;
+  function draw() {
+    const box = $('#chart'); if (!box.clientWidth) return;
+    const W = box.clientWidth, H = 200, B = 26, T = 22, r = req.slice(-range), mx = 260;
+    const bw = W / r.length, peak = r.indexOf(Math.max(...r));
+    let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '" aria-hidden="true">';
+    r.forEach((v, i) => {
+      const h = (H - B - T) * v / mx, x = i * bw + bw * 0.2, w = Math.max(3, bw * 0.6);
+      const d = new Date(start); d.setDate(d.getDate() + (30 - range) + i);
+      const lab = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      s += '<rect x="' + x.toFixed(1) + '" y="' + (H - B - h).toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="' + Math.min(5, w / 2) + '" fill="' + (i === peak ? 'var(--accent)' : 'color-mix(in srgb, var(--accent) 38%, Canvas)') + '"><title>' + lab + ': ' + v + ' requests</title></rect>';
+      if (i === peak) s += '<text x="' + (x + w / 2) + '" y="' + (H - B - h - 7) + '" text-anchor="middle" style="fill:var(--ink)">' + v + '</text>';
+      if (i === 0 || i === r.length - 1) s += '<text x="' + (i === 0 ? x : x + w) + '" y="' + (H - 6) + '" text-anchor="' + (i === 0 ? 'start' : 'end') + '">' + (i === r.length - 1 ? 'Today' : lab) + '</text>';
+    });
+    box.innerHTML = s + '</svg>';
+    const sum = r.reduce((a, b) => a + b, 0);
+    $('#statsLede').textContent = 'In the last ' + range + ' days, your models answered ' + sum.toLocaleString('en-GB') + ' requests.';
+  }
+  $$('[data-range]').forEach((b) => b.addEventListener('click', () => {
+    $$('[data-range]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+    range = +b.dataset.range; draw();
+  }));
+  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(draw, 120); });
+
+  /* settings: the server's answer, mocked; Save is never disabled */
+  const gs = $('#setGraceSec'), gw = $('#setGraceWait'), err = $('#err-setGraceSec'), msg = $('#settingsMsg');
+  function check() {
+    const bad = +gs.value > +gw.value;
+    gs.setAttribute('aria-invalid', bad ? 'true' : 'false'); err.hidden = !bad;
+    err.textContent = 'The grace period cannot exceed the maximum wait of ' + gw.value + ' seconds.';
+    return bad;
+  }
+  let ct; [gs, gw].forEach((f) => f.addEventListener('input', () => { clearTimeout(ct); ct = setTimeout(check, 400); }));
+  $('#settingsForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (check()) {
+      msg.innerHTML = '<span class="dot failed" aria-hidden="true"></span><span>Not saved — the server could not accept one value, under <a href="#s-d">quiet models</a>.</span>';
+      say('Not saved. The grace period cannot exceed the maximum wait.'); gs.focus();
+    } else {
+      msg.innerHTML = '<span class="dot ready" aria-hidden="true"></span><span>Saved. Changes to who can connect take effect when Dessau next starts.</span>';
+      const mins = Math.round(+$('#setIdle').value / 60);
+      $('#now-d').textContent = 'After ' + mins + ' quiet minutes. A model that just answered is protected for ' + gs.value + ' seconds.';
+      say('Settings saved.');
+    }
+  });
+  $('[data-genkey]').addEventListener('click', () => {
+    const a = new Uint8Array(14); crypto.getRandomValues(a);
+    $('#setKey').value = 'dsu-' + [...a].map((x) => x.toString(16).padStart(2, '0')).join('');
+    say('A new key was made. Save to start using it.');
+  });
+
+  const h = location.hash.slice(1);
+  const inPanel = h && document.getElementById(h) && document.getElementById(h).closest('[role="tabpanel"]');
+  const first = tabs.find((x) => x.dataset.tab === h) || (inPanel && tabs.find((x) => x.getAttribute('aria-controls') === inPanel.id));
+  show(first || tabs[0]);
+  if (inPanel) document.getElementById(h).scrollIntoView();
+})();
+</script>
+</body>
+</html>
