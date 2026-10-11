@@ -1,0 +1,1379 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Dessau Server</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'><rect width='1024' height='1024' fill='%2317181d'/><polygon points='302,132 472,472 132,472' fill='%23F5C518'/><rect x='552' y='132' width='340' height='340' fill='%23B4B6BB'/><rect x='132' y='552' width='340' height='340' fill='%232B5DAA'/><circle cx='722' cy='722' r='170' fill='%23E63329'/></svg>">
+<style>
+/* Mockup 9 — "Answers to the questions Alice actually has".
+   Every card is titled with a question; its headline is the answer; it
+   carries one clearly labelled action. Detail and settings open in a sheet.
+   Statuses use the mark's own shapes: blue square = ready, yellow triangle =
+   working, red circle = failed, hollow ring = resting. Always with words. */
+:root {
+  color-scheme: light dark;
+  --bg: #f2f2f7;
+  --card: #ffffff;
+  --card-2: #f7f7fa;
+  --fill: rgba(118, 118, 128, .12);
+  --fill-2: rgba(118, 118, 128, .22);
+  --label: #1d1d1f;
+  --label-2: #48484e;
+  --label-3: #64646b;
+  --line: rgba(60, 60, 67, .14);
+  --line-2: rgba(60, 60, 67, .32);
+  --accent: #0064d1;
+  --accent-ink: #ffffff;
+  --accent-text: #0060c7;
+  --accent-soft: rgba(0, 100, 209, .11);
+  --ready: #2B5DAA;
+  --working: #F5C518;
+  --failed: #E63329;
+  --edge: rgba(0, 0, 0, .3);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 20px rgba(0, 0, 0, .05);
+  --shadow-hi: 0 2px 4px rgba(0, 0, 0, .06), 0 14px 34px rgba(0, 0, 0, .1);
+  --r: 22px;
+  --r-sm: 14px;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111113;
+    --card: #1e1e21;
+    --card-2: #27272b;
+    --fill: rgba(118, 118, 128, .24);
+    --fill-2: rgba(118, 118, 128, .36);
+    --label: #f5f5f7;
+    --label-2: #c9c9ce;
+    --label-3: #a3a3aa;
+    --line: rgba(255, 255, 255, .1);
+    --line-2: rgba(255, 255, 255, .26);
+    --accent: #0a6ee0;
+    --accent-text: #6cb4ff;
+    --accent-soft: rgba(64, 156, 255, .18);
+    --edge: rgba(255, 255, 255, .6);
+    --shadow: 0 0 0 1px rgba(255, 255, 255, .06);
+    --shadow-hi: 0 0 0 1px rgba(255, 255, 255, .14), 0 12px 30px rgba(0, 0, 0, .5);
+  }
+}
+@supports (color: AccentColor) {
+  :root { --accent: AccentColor; --accent-ink: AccentColorText; --accent-text: AccentColor; --accent-soft: color-mix(in srgb, AccentColor 13%, transparent); }
+  @media (prefers-color-scheme: dark) { :root { --accent-text: color-mix(in srgb, AccentColor 62%, white); } }
+}
+@media (prefers-contrast: more) {
+  :root { --label-2: var(--label); --label-3: var(--label); --line: var(--line-2); --shadow: 0 0 0 1.5px var(--line-2); }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 88px; scroll-padding-bottom: 104px; }
+body {
+  margin: 0; background: var(--bg); color: var(--label);
+  font-family: var(--sans); font-size: clamp(1.0625rem, 1rem + .25vw, 1.1875rem); line-height: 1.5;
+  -webkit-font-smoothing: antialiased; font-feature-settings: "tnum" 1; overflow-x: hidden;
+}
+h1, h2, h3, h4, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+a { color: var(--accent-text); text-underline-offset: 3px; }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+button, input, select, textarea { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+:focus-visible { outline: 3px solid var(--accent-text); outline-offset: 3px; border-radius: 10px; }
+
+/* Status glyphs: shape + colour, never colour alone, and always beside words. */
+.st { width: 16px; height: 16px; flex: none; fill: currentColor; stroke: var(--edge); stroke-width: 1.2; vertical-align: -2px; }
+.st.ready { color: var(--ready); }
+.st.working { color: var(--working); }
+.st.failed { color: var(--failed); }
+.st.idle { fill: none; stroke: var(--label-3); stroke-width: 2.2; }
+.st.lg { width: 22px; height: 22px; }
+
+/* ── Header and navigation ───────────────────────────────────────── */
+.top { max-width: 1240px; margin: 0 auto; padding: 20px 24px 8px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.logo { width: 40px; height: 40px; flex: none; }
+.brand .name { font-size: 1.25rem; font-weight: 700; letter-spacing: -.01em; line-height: 1.2; }
+.brand .sub { font-size: .9375rem; color: var(--label-3); }
+.pill { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 18px; border-radius: 999px; background: var(--card); box-shadow: var(--shadow); font-weight: 600; }
+
+.nav { position: sticky; top: 0; z-index: 30; background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+.nav-in { max-width: 1240px; margin: 0 auto; padding: 8px 24px 12px; }
+.tabs { display: flex; gap: 6px; padding: 6px; background: var(--fill); border-radius: 999px; width: max-content; max-width: 100%; }
+.tab { min-height: 48px; padding: 0 20px; border: 0; border-radius: 999px; background: none; color: var(--label-2); font-weight: 600; font-size: 1.0625rem; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; white-space: nowrap; }
+.tab svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.tab:hover { color: var(--label); background: var(--fill); }
+.tab[aria-selected="true"] { background: var(--card); color: var(--label); box-shadow: var(--shadow); }
+.tab[aria-selected="true"] svg { stroke: var(--accent-text); }
+.tab .badge { font-size: .875rem; min-width: 24px; padding: 0 8px; border-radius: 999px; background: var(--fill-2); line-height: 24px; text-align: center; }
+
+@media (max-width: 879px) {
+  .tab { padding: 0 14px; }
+  .tab .badge { display: none; }
+}
+/* Narrow windows: the five places become a tab bar along the bottom. */
+@media (max-width: 719px) {
+  .top { padding: 16px 16px 4px; }
+  .brand .sub { display: none; }
+  .nav { position: fixed; top: auto; bottom: 0; left: 0; right: 0; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--card) 88%, transparent); }
+  .nav-in { padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
+  .tabs { width: 100%; background: none; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
+  .nav-in { padding-left: 4px; padding-right: 4px; }
+  .tab { flex-direction: column; gap: 2px; padding: 6px 0; min-height: 58px; border-radius: 14px; font-size: .875rem; letter-spacing: -.01em; }
+  .tab[aria-selected="true"] { box-shadow: none; background: var(--accent-soft); color: var(--label); }
+  body { padding-bottom: 88px; }
+  html { scroll-padding-top: 16px; }
+}
+
+/* ── Pages ───────────────────────────────────────────────────────── */
+.wrap { max-width: 1240px; margin: 0 auto; padding: 16px 24px 72px; }
+@media (max-width: 719px) { .wrap { padding: 8px 16px 40px; } }
+.panel:focus { outline: none; }
+.phead { display: grid; gap: 8px; margin: 8px 0 24px; max-width: 72ch; }
+.phead h1 { font-size: clamp(1.875rem, 1.4rem + 1.8vw, 2.75rem); font-weight: 700; letter-spacing: -.03em; line-height: 1.1; }
+.phead p { color: var(--label-2); }
+.when { font-size: .9375rem; color: var(--label-3); font-weight: 600; }
+
+.subtabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 16px; background: var(--fill); margin-bottom: 24px; max-width: 100%; }
+.subtab { min-height: 44px; padding: 0 20px; border: 0; border-radius: 12px; background: none; font-weight: 600; color: var(--label-2); cursor: pointer; white-space: nowrap; }
+.subtab:hover { color: var(--label); }
+.subtab[aria-selected="true"] { background: var(--card); color: var(--label); box-shadow: var(--shadow); }
+@media (max-width: 519px) { .subtabs { display: flex; } .subtab { flex: 1; padding: 0 8px; } }
+
+/* ── Cards ───────────────────────────────────────────────────────── */
+.grid { display: grid; gap: 24px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); grid-auto-flow: dense; }
+@media (max-width: 719px) { .grid { gap: 16px; } }
+@media (min-width: 1100px) { .span2 { grid-column: span 2; } }
+.full { grid-column: 1 / -1; }
+.card { position: relative; min-width: 0; background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 24px; display: flex; flex-direction: column; gap: 12px; transition: box-shadow .18s, transform .18s; }
+@media (max-width: 519px) { .card { padding: 20px; } }
+.ask { font-size: clamp(1.25rem, 1.15rem + .3vw, 1.375rem); font-weight: 600; color: var(--label-2); letter-spacing: -.01em; line-height: 1.3; overflow-wrap: anywhere; }
+.ans { font-size: clamp(1.5rem, 1.3rem + .9vw, 2rem); font-weight: 700; letter-spacing: -.02em; line-height: 1.2; overflow-wrap: anywhere; }
+.ans .st { width: 20px; height: 20px; margin-right: 8px; vertical-align: -1px; }
+.fig { font-size: clamp(2.25rem, 1.6rem + 2.6vw, 3.5rem); font-weight: 700; letter-spacing: -.035em; line-height: 1.05; }
+.fig small { font-size: .45em; font-weight: 600; color: var(--label-2); letter-spacing: -.01em; }
+.note { color: var(--label-2); max-width: 66ch; }
+.note strong { color: var(--label); }
+.cap { font-size: .9375rem; color: var(--label-3); }
+.act { margin-top: auto; padding-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* A card that opens detail is one big target. */
+.card.opens { cursor: pointer; }
+.card.opens:hover { box-shadow: var(--shadow-hi); transform: translateY(-2px); }
+.card.opens:active { transform: translateY(0); }
+.hit { all: unset; cursor: pointer; }
+.hit::after { content: ""; position: absolute; inset: 0; border-radius: var(--r); }
+.hit:focus-visible { outline: none; }
+.card:has(.hit:focus-visible) { outline: 3px solid var(--accent-text); outline-offset: 3px; }
+.card .act, .card .more, .card .confirm, .card .seg, .card input, .card select, .card a, .card table { position: relative; z-index: 1; }
+
+.btn { min-height: 44px; padding: 10px 20px; border: 0; border-radius: 12px; background: var(--fill); color: var(--label); font-weight: 600; font-size: 1rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; transition: background .15s, transform .1s, filter .15s; }
+.btn:hover { background: var(--fill-2); }
+.btn:active { transform: scale(.97); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.tint { background: var(--accent-soft); color: var(--accent-text); }
+.btn.tint:hover { background: color-mix(in srgb, var(--accent-soft) 100%, var(--fill-2)); filter: saturate(1.2); }
+.btn.strong { background: var(--label); color: var(--card); }
+.btn.quiet { background: none; color: var(--accent-text); padding: 10px 12px; }
+.btn.quiet:hover { background: var(--accent-soft); }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+.btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+details.more > summary { list-style: none; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) translateY(-2px); margin-left: 4px; transition: transform .15s; }
+details.more[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+.menu { display: grid; gap: 4px; margin-top: 8px; padding: 8px; border-radius: var(--r-sm); background: var(--card-2); box-shadow: inset 0 0 0 1px var(--line); }
+.menu .btn { justify-content: flex-start; background: none; width: 100%; }
+.menu .btn:hover { background: var(--fill); }
+
+.meter { height: 14px; border-radius: 999px; background: var(--fill-2); overflow: hidden; display: flex; gap: 3px; }
+.meter i { display: block; height: 100%; background: var(--accent); }
+.meter i + i { opacity: .55; }
+.keys { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: .9375rem; color: var(--label-2); }
+.keys span { display: inline-flex; gap: 8px; align-items: center; }
+.keys b { width: 12px; height: 12px; border-radius: 4px; background: var(--accent); }
+.keys b.c { opacity: .55; }
+.keys b.f { background: var(--fill-2); }
+
+.list { display: grid; gap: 4px; }
+.list li { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.list li + li { border-top: 1px solid var(--line); }
+.list .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.list .end { color: var(--label-2); font-weight: 600; white-space: nowrap; }
+.list time { color: var(--label-3); font-size: .9375rem; min-width: 3.2em; }
+
+.chip { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; padding: 6px 12px; border-radius: 999px; background: var(--fill); font-size: .9375rem; font-weight: 600; color: var(--label); }
+.chip svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+.callout { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--r-sm); background: var(--card-2); box-shadow: inset 0 0 0 1px var(--line); }
+.callout .st { margin-top: 4px; }
+.confirm { display: grid; gap: 12px; padding: 16px; border-radius: var(--r-sm); background: var(--card-2); box-shadow: inset 0 0 0 1.5px var(--line-2); }
+.confirm .row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.progress { height: 12px; border-radius: 999px; background: var(--fill-2); overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--working); border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12); }
+
+.url { display: block; font: 600 clamp(1.125rem, 1rem + .6vw, 1.5rem)/1.3 var(--mono); padding: 14px 16px; border-radius: var(--r-sm); background: var(--card-2); box-shadow: inset 0 0 0 1px var(--line); overflow-wrap: anywhere; }
+pre.code { margin: 0; padding: 16px; border-radius: var(--r-sm); background: var(--card-2); box-shadow: inset 0 0 0 1px var(--line); font: .9375rem/1.6 var(--mono); overflow-x: auto; white-space: pre; }
+.seg { display: inline-flex; padding: 4px; gap: 4px; border-radius: 12px; background: var(--fill); align-self: flex-start; }
+.seg button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 9px; background: none; font-weight: 600; font-size: 1rem; color: var(--label-2); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--label); box-shadow: var(--shadow); }
+.fp { font: 600 1rem/1.5 var(--mono); letter-spacing: .04em; overflow-wrap: anywhere; }
+
+/* Loading, empty and error states */
+.skel { display: block; border-radius: 10px; background: var(--fill); }
+.skel.l1 { height: 34px; width: 70%; }
+.skel.l2 { height: 18px; width: 90%; }
+.skel.l3 { height: 18px; width: 55%; }
+@media (prefers-reduced-motion: no-preference) {
+  .skel { background: linear-gradient(90deg, var(--fill) 0%, var(--fill-2) 50%, var(--fill) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+  @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+}
+.card.is-error { box-shadow: var(--shadow), inset 0 0 0 2px color-mix(in srgb, var(--failed) 55%, transparent); }
+.card.empty { align-items: flex-start; background: var(--card-2); box-shadow: inset 0 0 0 2px var(--line); }
+
+/* Tables */
+.scroll { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 1rem; }
+th { text-align: left; font-size: .9375rem; font-weight: 600; color: var(--label-3); padding: 0 12px 10px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.n, th.n { text-align: right; }
+td.nm { overflow-wrap: anywhere; font-weight: 600; }
+@media (max-width: 640px) { .wide-only { display: none; } }
+
+.chart svg { display: block; width: 100%; height: auto; }
+.chart .gl { stroke: var(--line); }
+.chart .ax { fill: var(--label-3); font: 500 14px var(--sans); }
+.chart .bar { fill: var(--accent); opacity: .78; }
+.chart .bar.wk { opacity: .42; }
+.chart .bar.now { opacity: 1; }
+
+/* ── Sheet ───────────────────────────────────────────────────────── */
+.scrim { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, .34); }
+.sheet { position: fixed; z-index: 51; top: 12px; right: 12px; bottom: 12px; width: min(680px, calc(100% - 24px)); background: var(--bg); border-radius: 26px; box-shadow: 0 24px 80px rgba(0, 0, 0, .35); display: flex; flex-direction: column; overflow: hidden; }
+@media (max-width: 719px) { .sheet { top: auto; left: 0; right: 0; bottom: 0; width: 100%; height: calc(100dvh - 24px); border-radius: 26px 26px 0 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  .sheet { animation: sheetIn .28s cubic-bezier(.2, .8, .2, 1); }
+  .scrim { animation: fadeIn .2s ease-out; }
+  @media (max-width: 719px) { .sheet { animation-name: sheetUp; } }
+  @keyframes sheetIn { from { transform: translateX(40px); opacity: 0; } }
+  @keyframes sheetUp { from { transform: translateY(60px); opacity: 0; } }
+  @keyframes fadeIn { from { opacity: 0; } }
+}
+.sheet-h { display: flex; gap: 16px; align-items: flex-start; padding: 20px 24px 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.sheet-h .t { flex: 1; min-width: 0; }
+.sheet-h .kick { font-size: .9375rem; font-weight: 600; color: var(--label-3); }
+.sheet-h h2 { font-size: clamp(1.5rem, 1.3rem + .8vw, 1.875rem); font-weight: 700; letter-spacing: -.025em; line-height: 1.15; overflow-wrap: anywhere; }
+.sheet-h h2:focus { outline: none; }
+.sheet-b { flex: 1; overflow-y: auto; padding: 20px 24px 24px; display: grid; gap: 16px; align-content: start; scroll-padding: 16px 0 120px; overscroll-behavior: contain; }
+@media (max-width: 519px) { .sheet-h { padding: 16px 16px 12px; } .sheet-b { padding: 16px; } }
+.sheet .card { box-shadow: var(--shadow); }
+.sform { display: grid; gap: 16px; }
+
+/* Forms (inside settings and model sheets) */
+.form { display: grid; }
+.field { display: grid; gap: 8px; padding: 16px 0; border-top: 1px solid var(--line); }
+.field:first-child { border-top: 0; padding-top: 4px; }
+.field .lbl { font-weight: 600; }
+.hint { font-size: .9375rem; color: var(--label-2); }
+.field.sw { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; }
+.field.sw .hint { grid-column: 1; }
+.field.sw .lbl { grid-column: 1; }
+.field.sw input[role="switch"] { grid-column: 2; grid-row: 1 / span 2; }
+input[type="text"], input[type="number"], input[type="password"], input[type="search"], select {
+  width: 100%; max-width: 420px; min-height: 48px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card); color: var(--label); font-size: 1.0625rem; }
+input[type="search"] { max-width: none; }
+input::placeholder { color: var(--label-3); }
+input:focus-visible, select:focus-visible { outline: 3px solid var(--accent-text); outline-offset: 1px; border-color: transparent; border-radius: 12px; }
+.field.err input { border-color: var(--failed); box-shadow: 0 0 0 1.5px var(--failed); }
+.ferr { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; }
+.ferr .st { margin-top: 5px; }
+input[role="switch"] { appearance: none; -webkit-appearance: none; width: 54px; height: 32px; border-radius: 999px; background: var(--fill-2); position: relative; cursor: pointer; margin: 0; transition: background .15s; }
+input[role="switch"]::before { content: ""; position: absolute; top: 2px; left: 2px; width: 28px; height: 28px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .18s; }
+input[role="switch"]:checked { background: var(--accent); }
+input[role="switch"]:checked::before { transform: translateX(22px); }
+input[role="switch"]:focus-visible { outline: 3px solid var(--accent-text); outline-offset: 3px; border-radius: 999px; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.checks label { display: inline-flex; gap: 10px; align-items: center; min-height: 44px; cursor: pointer; }
+.checks input { width: 20px; height: 20px; accent-color: var(--accent); margin: 0; }
+details.adv > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 600; color: var(--accent-text); padding: 0 4px; border-radius: 10px; }
+details.adv > summary::-webkit-details-marker { display: none; }
+details.adv > summary::before { content: "+"; font-size: 1.25rem; width: 20px; text-align: center; }
+details.adv[open] > summary::before { content: "−"; }
+.inforce { display: flex; gap: 12px; align-items: flex-start; padding: 16px 18px; border-radius: var(--r-sm); background: var(--accent-soft); }
+.inforce svg { width: 22px; height: 22px; flex: none; fill: none; stroke: var(--accent-text); stroke-width: 2; margin-top: 2px; }
+.inforce .k { display: block; font-size: .9375rem; font-weight: 600; color: var(--label-2); }
+.inforce .v { font-weight: 700; font-size: 1.125rem; }
+.savebar { position: sticky; bottom: 0; z-index: 2; margin: 8px -24px -24px; padding: 16px 24px calc(16px + env(safe-area-inset-bottom)); display: flex; gap: 12px 16px; align-items: center; flex-wrap: wrap;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); -webkit-backdrop-filter: blur(18px) saturate(180%); backdrop-filter: blur(18px) saturate(180%); border-top: 1px solid var(--line); }
+@media (max-width: 519px) { .savebar { margin: 8px -16px -16px; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); } }
+.savebar .msg { flex: 1 1 240px; display: flex; gap: 10px; align-items: flex-start; }
+.savebar .msg .st { margin-top: 5px; }
+.savebar .btn { min-width: 140px; }
+
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 60; padding: 12px 20px; border-radius: 999px; background: var(--label); color: var(--bg); font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
+@media (max-width: 719px) { .toast { bottom: 100px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="s-ready" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="2"/></symbol>
+  <symbol id="s-working" viewBox="0 0 16 16"><polygon points="8,1.5 15,14.5 1,14.5"/></symbol>
+  <symbol id="s-failed" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/></symbol>
+  <symbol id="s-idle" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/></symbol>
+</svg>
+
+<div id="app">
+<header class="top">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true">
+      <polygon points="302,132 472,472 132,472" fill="#F5C518"/>
+      <rect x="552" y="132" width="340" height="340" fill="#B4B6BB"/>
+      <rect x="132" y="552" width="340" height="340" fill="#2B5DAA"/>
+      <circle cx="722" cy="722" r="170" fill="#E63329"/>
+    </svg>
+    <div>
+      <p class="name">Dessau Server</p>
+      <p class="sub">Local MLX models, served to your network</p>
+    </div>
+  </div>
+  <p class="pill"><svg class="st ready" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-ready"/></svg>Ready</p>
+</header>
+
+<nav class="nav" aria-label="Control panel">
+  <div class="nav-in">
+    <div class="tabs" role="tablist" aria-label="Places" data-tablist="main">
+      <button class="tab" role="tab" id="t-overview" aria-controls="p-overview" aria-selected="true" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5" rx="2"/><rect x="13.5" y="11" width="7.5" height="10" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/></svg>Overview</button>
+      <button class="tab" role="tab" id="t-models" aria-controls="p-models" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg>Models<span class="badge" id="mBadge">5</span></button>
+      <button class="tab" role="tab" id="t-stats" aria-controls="p-stats" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M11 20V5M17 20v-7M3 20h18"/></svg>Statistics</button>
+      <button class="tab" role="tab" id="t-sharing" aria-controls="p-sharing" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="m8.2 10.8 7.6-3.6M8.2 13.2l7.6 3.6"/></svg>Sharing</button>
+      <button class="tab" role="tab" id="t-settings" aria-controls="p-settings" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>Settings</button>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap" id="main">
+
+<!-- ═════════════ Overview ═════════════ -->
+<section class="panel" id="p-overview" role="tabpanel" aria-labelledby="t-overview" tabindex="-1">
+  <div class="phead">
+    <p class="when">Saturday 10 October, 14:36</p>
+    <h1>Serving <span data-bind="ready-count">2</span> models to 3 devices on your network.</h1>
+    <p>The answers below are read from the server as it is now. Nothing on this page changes a setting until you choose to.</p>
+  </div>
+
+  <div class="grid">
+    <article class="card span2">
+      <h2 class="ask">Is my server working?</h2>
+      <p class="ans"><svg class="st ready" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-ready"/></svg>Yes — <span data-bind="ready-count">2</span> models ready, 3 devices connected</p>
+      <p class="note">Up 2 days 6 hours. 1,284 requests answered today, 18 % more than last Saturday.</p>
+      <ul class="list" id="ovLoaded" aria-label="Loaded now"></ul>
+      <div class="act"><button class="btn tint" type="button" data-go="models/my">See my models</button></div>
+    </article>
+
+    <article class="card is-error">
+      <h2 class="ask">Does anything need me?</h2>
+      <p class="ans">Two things</p>
+      <ul class="list">
+        <li><svg class="st failed" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-failed"/></svg><span class="grow"><strong>Failed:</strong> Phi-4-mini-instruct-4bit would not start.</span></li>
+        <li><svg class="st idle" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-idle"/></svg><span class="grow"><strong>Update:</strong> Qwen3-8B-4bit has 3 files changed.</span></li>
+      </ul>
+      <div class="act"><button class="btn tint" type="button" data-model="phi">Look at Phi-4-mini</button></div>
+    </article>
+
+    <article class="card">
+      <h2 class="ask">How much memory is it using?</h2>
+      <p class="fig"><span data-bind="used">15.2</span> <small>GB of 48 GB</small></p>
+      <div class="meter" role="meter" aria-label="Memory in use" aria-valuemin="0" aria-valuemax="48" aria-valuenow="15.2" aria-valuetext="15.2 GB of the 48 GB budget" data-bind="meter"><i style="width:20%"></i><i style="width:11.7%"></i></div>
+      <p class="note"><span data-bind="free">32.8</span> GB free. The budget is the default share of this Mac's 64 GB.</p>
+      <div class="act"><button class="btn tint" type="button" data-settings="b">Change the memory budget</button></div>
+    </article>
+
+    <article class="card">
+      <h2 class="ask">Who can reach it?</h2>
+      <p class="ans" data-bind="reach">Anyone on your home network, with the API key</p>
+      <p class="note">On port 8080. Paired chat apps use port 8081. This panel opens only on this Mac.</p>
+      <div class="act"><button class="btn tint" type="button" data-settings="a">Change who can reach it</button></div>
+    </article>
+
+    <article class="card">
+      <h2 class="ask">Who is using it?</h2>
+      <p class="ans">3 devices in the last hour</p>
+      <ul class="list">
+        <li><span class="grow">Bob's laptop</span><span class="end">2 min ago</span></li>
+        <li><span class="grow">Carol's iPad</span><span class="end">14 min ago</span></li>
+        <li><span class="grow">Alice's iPhone</span><span class="end">41 min ago</span></li>
+      </ul>
+      <div class="act"><button class="btn tint" type="button" data-go="sharing/clients">See every device</button></div>
+    </article>
+
+    <article class="card" id="speedCard" aria-busy="true" aria-labelledby="speedQ">
+      <h2 class="ask" id="speedQ">How quickly is it answering?</h2>
+      <div id="speedLoading" role="status">
+        <span class="sr">Working this out from the last hour of requests…</span>
+        <span class="skel l1" aria-hidden="true"></span>
+        <span class="skel l2" aria-hidden="true" style="margin-top:12px"></span>
+        <span class="skel l3" aria-hidden="true" style="margin-top:8px"></span>
+      </div>
+      <div id="speedDone" hidden>
+        <p class="fig">0.38 <small>s to the first word</small></p>
+        <p class="note">Then 41 tokens a second. Medians over the last hour.</p>
+      </div>
+      <div class="act"><button class="btn tint" type="button" data-go="stats">See statistics</button></div>
+    </article>
+
+    <article class="card span2">
+      <h2 class="ask">What has happened today?</h2>
+      <p class="ans">gemma-3-12b-it-4bit loaded 3 minutes ago</p>
+      <ol class="list">
+        <li><time>14:33</time><svg class="st ready" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-ready"/></svg><span class="grow">gemma-3-12b-it-4bit loaded in 4.1 seconds.</span></li>
+        <li><time>14:10</time><svg class="st idle" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-idle"/></svg><span class="grow">Llama-3.2-3B-Instruct-4bit unloaded after 10 minutes idle.</span></li>
+        <li><time>13:58</time><svg class="st working" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-working"/></svg><span class="grow">Download started: Qwen2.5-Coder-14B-Instruct-4bit.</span></li>
+        <li><time>13:07</time><svg class="st failed" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-failed"/></svg><span class="grow">Phi-4-mini-instruct-4bit would not start.</span></li>
+        <li><time>13:05</time><svg class="st ready" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-ready"/></svg><span class="grow">Download finished: Phi-4-mini-instruct-4bit, 2.2 GB.</span></li>
+      </ol>
+      <div class="act"><button class="btn tint" type="button" data-go="stats">See the full record</button></div>
+    </article>
+
+    <article class="card">
+      <h2 class="ask">How do I connect an app?</h2>
+      <p class="ans">Give it this address</p>
+      <code class="url">http://alices-mac.local:8080/v1</code>
+      <div class="act"><button class="btn tint" type="button" data-copy="http://alices-mac.local:8080/v1">Copy the address</button></div>
+    </article>
+
+    <article class="card">
+      <h2 class="ask">Is anything being recorded?</h2>
+      <p class="ans" data-bind="recorded">Counts and timings only, on this Mac</p>
+      <p class="note">No prompt, no answer and no device address is ever written down. Kept for 6 months.</p>
+      <div class="act"><button class="btn tint" type="button" data-settings="f">Change what is recorded</button></div>
+    </article>
+  </div>
+</section>
+
+<!-- ═════════════ Models (My Models · Find Models) ═════════════ -->
+<section class="panel" id="p-models" role="tabpanel" aria-labelledby="t-models" tabindex="-1" hidden>
+  <div class="phead">
+    <h1>Models</h1>
+    <p>What is on this Mac, what is ready to answer, and what else would fit.</p>
+  </div>
+  <div class="subtabs" role="tablist" aria-label="Models" data-tablist="models">
+    <button class="subtab" role="tab" id="t-my" aria-controls="p-my" aria-selected="true" tabindex="0">My Models</button>
+    <button class="subtab" role="tab" id="t-find" aria-controls="p-find" aria-selected="false" tabindex="-1">Find Models</button>
+  </div>
+
+  <div id="p-my" role="tabpanel" aria-labelledby="t-my">
+    <div class="grid" id="modelGrid">
+      <article class="card full" id="rollup">
+        <h2 class="ask">How much room is left?</h2>
+        <p class="fig"><span data-bind="free">32.8</span> <small>GB free of 48 GB</small></p>
+        <div class="meter" role="meter" aria-label="Memory in use" aria-valuemin="0" aria-valuemax="48" aria-valuenow="15.2" data-bind="meter"><i style="width:20%"></i><i style="width:11.7%"></i></div>
+        <div class="keys"><span><b></b>Models' weights</span><span><b class="c"></b>Their context caches</span><span><b class="f"></b>Free</span></div>
+        <p class="note"><strong><span data-bind="used">15.2</span> GB</strong> in use by <span data-bind="ready-count">2</span> loaded models. The budget is the default share of this Mac's 64 GB; a model that would not fit unloads the one used least recently.</p>
+        <div class="act"><button class="btn tint" type="button" data-go="models/find">Find a model that fits</button></div>
+      </article>
+      <!-- model cards are drawn here -->
+    </div>
+  </div>
+
+  <div id="p-find" role="tabpanel" aria-labelledby="t-find" hidden>
+    <div class="grid">
+      <article class="card span2">
+        <h2 class="ask">What can this Mac run?</h2>
+        <p class="ans">This Mac can run models up to about 40 GB</p>
+        <p class="note">64 GB of unified memory and a 48 GB budget, with room left for the context a model serves. Searching the <code>mlx-community</code> organisation; type a repository id in full, such as <code>alice/Bonsai-27B-mlx-4bit</code>, to fetch that exact model.</p>
+        <form role="search" id="findForm" style="position:relative;z-index:1">
+          <label class="sr" for="findInput">Search MLX models</label>
+          <input id="findInput" type="search" value="gemma 3" placeholder="Search MLX models, for example “qwen3”" autocomplete="off">
+        </form>
+        <p class="cap" id="findCount" aria-live="polite">4 results for “gemma 3”.</p>
+      </article>
+    </div>
+    <div class="grid" id="findGrid" style="margin-top:24px" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- ═════════════ Statistics ═════════════ -->
+<section class="panel" id="p-stats" role="tabpanel" aria-labelledby="t-stats" tabindex="-1" hidden>
+  <div class="phead">
+    <h1>Statistics</h1>
+    <p>Recorded on this Mac. Counts and timings only — no prompt, no answer and no device address is recorded, so none can be shown.</p>
+  </div>
+  <div class="grid">
+    <article class="card full">
+      <h2 class="ask" id="busyQ">How busy has it been?</h2>
+      <p class="ans"><span id="kReq">18,402</span> requests in the last <span id="kDays">30</span> days</p>
+      <div class="seg" role="group" aria-label="Period">
+        <button type="button" aria-pressed="false" data-range="7">7 days</button>
+        <button type="button" aria-pressed="true" data-range="30">30 days</button>
+        <button type="button" aria-pressed="false" data-range="90">90 days</button>
+      </div>
+      <figure class="chart" id="chart" role="img" aria-labelledby="busyQ chartDesc"></figure>
+      <p class="cap" id="chartDesc"></p>
+    </article>
+
+    <article class="card">
+      <h2 class="ask">How quickly does it answer?</h2>
+      <p class="fig">0.41 <small>s to the first word</small></p>
+      <p class="note">Half of all requests start answering within 0.41 s; nine in ten within 1.18 s. Medians over 30 days.</p>
+    </article>
+
+    <article class="card">
+      <h2 class="ask">Did anything go wrong?</h2>
+      <p class="ans"><svg class="st ready" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-ready"/></svg>Rarely — 0.6 % of requests</p>
+      <p class="note">112 requests were refused or failed in 30 days: 65 asked for Phi-4-mini-instruct-4bit while it would not start, 41 were too long for the served context, 6 were cancelled by the app.</p>
+      <div class="act"><button class="btn tint" type="button" data-model="phi">Look at Phi-4-mini</button></div>
+    </article>
+
+    <article class="card">
+      <h2 class="ask">How much did it write?</h2>
+      <p class="fig">6.1 <small>million tokens out</small></p>
+      <p class="note">From 41.3 million tokens in. Most of it came from Bob's laptop.</p>
+    </article>
+
+    <article class="card full">
+      <h2 class="ask">Which model does the most work?</h2>
+      <p class="ans">gemma-3-12b-it-4bit — about half of all requests</p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th scope="col">Model</th><th scope="col" class="n">Requests</th><th scope="col" class="n wide-only">Tokens out</th><th scope="col" class="n">First word</th><th scope="col" class="n wide-only">Speed</th></tr></thead>
+          <tbody>
+            <tr><td class="nm">gemma-3-12b-it-4bit</td><td class="n">8,911</td><td class="n wide-only">3.2 M</td><td class="n">0.52 s</td><td class="n wide-only">34 tok/s</td></tr>
+            <tr><td class="nm">Qwen3-8B-4bit</td><td class="n">7,604</td><td class="n wide-only">2.4 M</td><td class="n">0.29 s</td><td class="n wide-only">68 tok/s</td></tr>
+            <tr><td class="nm">Llama-3.2-3B-Instruct-4bit</td><td class="n">1,822</td><td class="n wide-only">0.5 M</td><td class="n">0.14 s</td><td class="n wide-only">121 tok/s</td></tr>
+            <tr><td class="nm">Phi-4-mini-instruct-4bit</td><td class="n">65</td><td class="n wide-only">—</td><td class="n">—</td><td class="n wide-only">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="act"><button class="btn tint" type="button" data-model="gemma">Open gemma-3-12b-it-4bit</button></div>
+    </article>
+
+    <article class="card">
+      <h2 class="ask">What did the self-tests find?</h2>
+      <p class="ans"><svg class="st ready" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-ready"/></svg>All three passed this morning</p>
+      <ul class="list">
+        <li><span class="grow">Qwen3-8B-4bit · 07:12</span><span class="end">68 tok/s</span></li>
+        <li><span class="grow">gemma-3-12b-it-4bit · 06:40</span><span class="end">34 tok/s</span></li>
+        <li><span class="grow">Llama-3.2-3B-Instruct-4bit · 06:21</span><span class="end">121 tok/s</span></li>
+      </ul>
+      <div class="act"><button class="btn tint" type="button" data-settings="e">Change when tests run</button></div>
+    </article>
+
+    <article class="card" id="storeCard">
+      <h2 class="ask">How much room do the records take?</h2>
+      <p class="fig" id="storeFig">38.6 <small>MB of 512 MB</small></p>
+      <p class="note" id="storeNote">37 files in your Dessau data folder on this Mac. The oldest is from 3 September 2026; records are kept for 6 months.</p>
+      <div class="act" id="clearBox"><button class="btn" type="button" data-act="clear">Clear records…</button></div>
+    </article>
+  </div>
+</section>
+
+<!-- ═════════════ Sharing (Connect · Clients · Posture) ═════════════ -->
+<section class="panel" id="p-sharing" role="tabpanel" aria-labelledby="t-sharing" tabindex="-1" hidden>
+  <div class="phead">
+    <h1>Sharing</h1>
+    <p>How apps connect, which devices do, and where this server stands.</p>
+  </div>
+  <div class="subtabs" role="tablist" aria-label="Sharing" data-tablist="sharing">
+    <button class="subtab" role="tab" id="t-connect" aria-controls="p-connect" aria-selected="true" tabindex="0">Connect</button>
+    <button class="subtab" role="tab" id="t-clients" aria-controls="p-clients" aria-selected="false" tabindex="-1">Clients</button>
+    <button class="subtab" role="tab" id="t-posture" aria-controls="p-posture" aria-selected="false" tabindex="-1">Posture</button>
+  </div>
+
+  <div id="p-connect" role="tabpanel" aria-labelledby="t-connect">
+    <div class="grid">
+      <article class="card span2">
+        <h2 class="ask">What address do I give my apps?</h2>
+        <code class="url">http://alices-mac.local:8080/v1</code>
+        <p class="note">Dessau speaks the OpenAI API, so anything that talks to ChatGPT can talk to this Mac. It also answers on <code>http://192.0.2.24:8080/v1</code>, and on this Mac at <code>http://127.0.0.1:8080/v1</code>.</p>
+        <div class="act"><button class="btn primary" type="button" data-copy="http://alices-mac.local:8080/v1">Copy the address</button></div>
+      </article>
+      <article class="card">
+        <h2 class="ask">Do apps need a key?</h2>
+        <p class="ans">Yes — every request sends the API key</p>
+        <p class="note">The key ends <code>••••3f9a</code>. Paired chat apps use keys of their own instead, on port 8081.</p>
+        <div class="act">
+          <button class="btn tint" type="button" data-copy="sk-dessau-example-key-3f9a">Copy the key</button>
+          <details class="more"><summary class="btn quiet">More</summary>
+            <div class="menu"><button class="btn" type="button" data-settings="a">Change or remove the key</button></div>
+          </details>
+        </div>
+      </article>
+      <article class="card full">
+        <h2 class="ask">What does a request look like?</h2>
+        <p class="ans">Like any OpenAI request</p>
+        <div class="seg" role="group" aria-label="Example language">
+          <button type="button" aria-pressed="true" data-code="curl">curl</button>
+          <button type="button" aria-pressed="false" data-code="py">Python</button>
+        </div>
+<pre class="code" id="code-curl">curl http://alices-mac.local:8080/v1/chat/completions \
+  -H "Authorization: Bearer $DESSAU_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "mlx-community/Qwen3-8B-4bit",
+       "messages": [{"role": "user", "content": "Hello"}]}'</pre>
+<pre class="code" id="code-py" hidden>import os
+from openai import OpenAI
+
+client = OpenAI(base_url="http://alices-mac.local:8080/v1",
+                api_key=os.environ["DESSAU_KEY"])
+r = client.chat.completions.create(
+    model="mlx-community/gemma-3-12b-it-4bit",
+    messages=[{"role": "user", "content": "Hello"}])
+print(r.choices[0].message.content)</pre>
+        <div class="act"><button class="btn tint" type="button" id="copyExample">Copy the example</button></div>
+      </article>
+    </div>
+  </div>
+
+  <div id="p-clients" role="tabpanel" aria-labelledby="t-clients" hidden>
+    <div class="grid" id="clientGrid">
+      <article class="card span2">
+        <h2 class="ask">Which devices are paired?</h2>
+        <p class="ans" id="clientSummary">4 devices; 3 seen in the last hour</p>
+        <p class="note">A paired chat app proves itself with a key of its own and never sends the API key. Anything on your network that reaches port 8081 can pair, so revoke anything you do not recognise.</p>
+      </article>
+      <article class="card">
+        <h2 class="ask">Is my chat app talking to this Mac?</h2>
+        <p class="ans">It is, if it shows this fingerprint</p>
+        <p class="fp">SHA256 3F9A 7C21 B04E 66D8 91AF 2C5B 0E73 D4A9</p>
+        <div class="act"><button class="btn tint" type="button" data-copy="SHA256 3F9A 7C21 B04E 66D8 91AF 2C5B 0E73 D4A9">Copy the fingerprint</button></div>
+      </article>
+      <article class="card" data-client="Bob's laptop">
+        <h2 class="ask">When did Bob's laptop last connect?</h2>
+        <p class="ans" data-seen>2 minutes ago</p>
+        <p class="note">Paired 2 October. 2,140 requests in the last 7 days.</p>
+        <div class="act" data-rv><button class="btn" type="button" data-act="revoke">Revoke Bob's laptop…</button></div>
+      </article>
+      <article class="card" data-client="Carol's iPad">
+        <h2 class="ask">When did Carol's iPad last connect?</h2>
+        <p class="ans" data-seen>14 minutes ago</p>
+        <p class="note">Paired 5 October. 612 requests in the last 7 days.</p>
+        <div class="act" data-rv><button class="btn" type="button" data-act="revoke">Revoke Carol's iPad…</button></div>
+      </article>
+      <article class="card" data-client="Alice's iPhone">
+        <h2 class="ask">When did Alice's iPhone last connect?</h2>
+        <p class="ans" data-seen>41 minutes ago</p>
+        <p class="note">Paired 19 September. 388 requests in the last 7 days.</p>
+        <div class="act" data-rv><button class="btn" type="button" data-act="revoke">Revoke Alice's iPhone…</button></div>
+      </article>
+      <article class="card" data-client="Carol's old laptop">
+        <h2 class="ask">When did Carol's old laptop last connect?</h2>
+        <p class="ans" data-seen>23 days ago</p>
+        <p class="note">Paired 28 August. No requests in the last 7 days — revoke it if it has gone.</p>
+        <div class="act" data-rv><button class="btn" type="button" data-act="revoke">Revoke Carol's old laptop…</button></div>
+      </article>
+    </div>
+  </div>
+
+  <div id="p-posture" role="tabpanel" aria-labelledby="t-posture" hidden>
+    <p class="note" style="margin-bottom:24px">Each answer says what is, as Dessau sees it now, and where its view stops. Nothing here is a warning.</p>
+    <div class="grid">
+      <article class="card">
+        <h2 class="ask">Who can reach the API?</h2>
+        <p class="ans" data-bind="reach">Anyone on your home network, with the API key</p>
+        <p class="note">Listening on every network this Mac is on, port 8080. Dessau cannot see your router or firewall, so it cannot say whether the internet can.</p>
+        <div class="act"><button class="btn tint" type="button" data-settings="a">Change who can reach it</button></div>
+      </article>
+      <article class="card">
+        <h2 class="ask">Who can open this panel?</h2>
+        <p class="ans">Only this Mac</p>
+        <p class="note">Bob and Carol reach the API, never the panel.</p>
+      </article>
+      <article class="card">
+        <h2 class="ask">Can a new device pair itself?</h2>
+        <p class="ans">Yes — anything that reaches port 8081</p>
+        <p class="note">4 devices are paired now, each with a key of its own.</p>
+        <div class="act"><button class="btn tint" type="button" data-go="sharing/clients">See paired devices</button></div>
+      </article>
+      <article class="card">
+        <h2 class="ask">Is the server announced?</h2>
+        <p class="ans">Yes, over Bonjour as alices-mac.local</p>
+        <p class="note">Announcing is how a server is found, never what it allows.</p>
+      </article>
+      <article class="card">
+        <h2 class="ask">What is written down?</h2>
+        <p class="ans" data-bind="recorded">Counts and timings only, on this Mac</p>
+        <p class="note">Anyone who can open this panel can read them.</p>
+      </article>
+      <article class="card">
+        <h2 class="ask">Does anything keep a transcript?</h2>
+        <p class="ans">No</p>
+        <p class="note">Debug logging is off for every model.</p>
+      </article>
+      <article class="card span2">
+        <h2 class="ask">Does anything leave this Mac?</h2>
+        <p class="ans">Model names, once a day, for the update check</p>
+        <p class="note">They go to HuggingFace. The Discord bridge is off, so no message passes through Discord.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ Settings ═════════════ -->
+<section class="panel" id="p-settings" role="tabpanel" aria-labelledby="t-settings" tabindex="-1" hidden>
+  <div class="phead">
+    <h1>Settings</h1>
+    <p>Eight jobs this server does. Each card answers with what is in force now; change one and only that job's settings open.</p>
+  </div>
+  <div class="grid" id="setGrid">
+    <article class="card" id="sc-a">
+      <h2 class="ask">Who can reach this server?</h2>
+      <p class="ans" data-sum="a">Reachable from your network on port 8080, with an API key</p>
+      <div class="act"><button class="btn tint" type="button" data-settings="a">Change who can reach it</button></div>
+    </article>
+    <article class="card" id="sc-b">
+      <h2 class="ask">How much memory may models use, and how many stay loaded?</h2>
+      <p class="ans" data-sum="b">48 GB of 64 GB; gemma-3-12b-it-4bit always stays</p>
+      <div class="act"><button class="btn tint" type="button" data-settings="b">Change memory</button></div>
+    </article>
+    <article class="card" id="sc-c">
+      <h2 class="ask">How are requests handled?</h2>
+      <p class="ans" data-sum="c">Temperature 0.7, unless a request asks for its own</p>
+      <div class="act"><button class="btn tint" type="button" data-settings="c">Change request handling</button></div>
+    </article>
+    <article class="card is-error" id="sc-d">
+      <h2 class="ask">When are idle models unloaded?</h2>
+      <p class="ans" data-sum="d">After 10 minutes with nothing to do</p>
+      <p class="callout" id="d-alert"><svg class="st failed" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-failed"/></svg><span><strong>Not saved.</strong> The server refused one change; what is above is still in force.</span></p>
+      <div class="act"><button class="btn tint" type="button" data-settings="d">Change unloading</button></div>
+    </article>
+    <article class="card" id="sc-e">
+      <h2 class="ask">Which checks and measurements run on their own?</h2>
+      <p class="ans" data-sum="e">A self-test after 30 quiet minutes; no context probe</p>
+      <div class="act"><button class="btn tint" type="button" data-settings="e">Change checks</button></div>
+    </article>
+    <article class="card" id="sc-f">
+      <h2 class="ask">What do statistics and the log keep?</h2>
+      <p class="ans" data-sum="f">Counts and timings for 6 months, up to 512 MB</p>
+      <div class="act"><button class="btn tint" type="button" data-settings="f">Change what is recorded</button></div>
+    </article>
+    <article class="card" id="sc-g">
+      <h2 class="ask">Does it answer on Discord?</h2>
+      <p class="ans" data-sum="g"><svg class="st idle" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-idle"/></svg>No — the Discord bridge is off</p>
+      <div class="act"><button class="btn tint" type="button" data-settings="g">Set up the Discord bridge</button></div>
+    </article>
+    <article class="card" id="sc-h">
+      <h2 class="ask">How are models downloaded and updated?</h2>
+      <p class="ans" data-sum="h">Checked for updates every 24 hours</p>
+      <div class="act"><button class="btn tint" type="button" data-settings="h">Change downloading</button></div>
+    </article>
+  </div>
+</section>
+
+</main>
+</div>
+
+<p class="sr" role="status" aria-live="polite" id="live"></p>
+
+<!-- ═════════════ The sheet ═════════════ -->
+<div class="scrim" id="scrim" hidden></div>
+<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <header class="sheet-h">
+    <div class="t"><p class="kick" id="sheetKick"></p><h2 id="sheetTitle" tabindex="-1"></h2></div>
+    <button class="btn" type="button" id="sheetClose">Close</button>
+  </header>
+  <div class="sheet-b" id="sheetBody"></div>
+</section>
+
+<!-- Settings forms live here while their sheet is shut, so values persist. -->
+<div id="formStore" hidden>
+
+  <form class="sform" id="sf-a" data-group="a" novalidate>
+    <div class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force now</span><span class="v" data-sum="a">Reachable from your network on port 8080, with an API key</span></span></div>
+    <div class="card"><div class="form">
+      <div class="field"><label class="lbl" for="sHost">Who can reach it</label>
+        <select id="sHost"><option value="net" selected>Your whole network (0.0.0.0)</option><option value="mac">Only this Mac (127.0.0.1)</option><option value="lan">One private network (192.0.2.24)</option></select>
+        <p class="hint">Applies when Dessau next starts.</p></div>
+      <div class="field"><label class="lbl" for="sPort">Port</label><input id="sPort" type="number" inputmode="numeric" value="8080"></div>
+      <div class="field"><label class="lbl" for="sKey">API key</label><input id="sKey" type="password" value="sk-dessau-example-key-3f9a" autocomplete="off"><p class="hint">Blank means anyone who can reach the server can use it.</p></div>
+      <div class="field sw"><label class="lbl" for="sAdv">Announce this server on the local network</label><input id="sAdv" type="checkbox" role="switch" checked><p class="hint">Over Bonjour — how it is found, never what it allows.</p></div>
+      <details class="adv"><summary>More for paired chat apps</summary>
+        <div class="field"><label class="lbl" for="sTLS">Port for paired clients</label><input id="sTLS" type="number" value="0"><p class="hint">0 is the port just above; −1 serves no paired clients.</p></div>
+      </details>
+    </div></div>
+    <div class="savebar"><p class="msg" aria-live="polite"><span>Changes apply when you save.</span></p><button class="btn primary" type="submit">Save</button></div>
+  </form>
+
+  <form class="sform" id="sf-b" data-group="b" novalidate>
+    <div class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force now</span><span class="v" data-sum="b">48 GB of 64 GB; gemma-3-12b-it-4bit always stays</span></span></div>
+    <div class="card"><div class="form">
+      <div class="field"><label class="lbl" for="sBudget">Memory for loaded models (GB)</label><input id="sBudget" type="number" step="any" placeholder="48 — the default"><p class="hint">Blank for the default share of this Mac's 64 GB.</p></div>
+      <div class="field"><span class="lbl" id="pinL">Always keep loaded</span><div class="checks" role="group" aria-labelledby="pinL"><label><input type="checkbox" name="pin" value="gemma-3-12b-it-4bit" checked>gemma-3-12b-it-4bit</label><label><input type="checkbox" name="pin" value="Qwen3-8B-4bit">Qwen3-8B-4bit</label><label><input type="checkbox" name="pin" value="Llama-3.2-3B-Instruct-4bit">Llama-3.2-3B-Instruct-4bit</label></div><p class="hint">A pinned model is never unloaded to make room. 9.6 GB pinned.</p></div>
+      <details class="adv"><summary>More</summary>
+        <div class="field"><label class="lbl" for="sConc">Requests answered at once, per model</label><input id="sConc" type="number" value="1"><p class="hint">Batched decoding. Each one holds its own context cache.</p></div>
+        <div class="field"><span class="lbl">Served context</span><p class="hint">Set per model, from each model's card in My Models.</p></div>
+      </details>
+    </div></div>
+    <div class="savebar"><p class="msg" aria-live="polite"><span>Changes apply when you save.</span></p><button class="btn primary" type="submit">Save</button></div>
+  </form>
+
+  <form class="sform" id="sf-c" data-group="c" novalidate>
+    <div class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force now</span><span class="v" data-sum="c">Temperature 0.7, unless a request asks for its own</span></span></div>
+    <div class="card"><div class="form">
+      <div class="field"><label class="lbl" for="sTemp">Temperature</label><input id="sTemp" type="number" step="any" value="0.7"><p class="hint">Used when a request leaves it out. A request that sets its own always wins.</p></div>
+      <div class="field"><label class="lbl" for="sMax">Longest answer, in tokens</label><input id="sMax" type="number" placeholder="the served window"></div>
+      <div class="field"><span class="lbl" id="mergeL">Merge system messages for</span><div class="checks" role="group" aria-labelledby="mergeL"><label><input type="checkbox">gemma-3-12b-it-4bit</label><label><input type="checkbox">Qwen3-8B-4bit</label><label><input type="checkbox" checked>Phi-4-mini-instruct-4bit</label></div><p class="hint">For models that refuse instructions anywhere but the top.</p></div>
+      <details class="adv"><summary>Advanced sampling and chat detection</summary>
+        <div class="field"><label class="lbl" for="sTopP">Top-p</label><input id="sTopP" type="number" step="any" placeholder="1"></div>
+        <div class="field"><label class="lbl" for="sTopK">Top-k</label><input id="sTopK" type="number" placeholder="0 — off"></div>
+        <div class="field"><label class="lbl" for="sMinP">Min-p</label><input id="sMinP" type="number" step="any" placeholder="0 — off"></div>
+        <div class="field"><label class="lbl" for="sPipes">Pipeline tags that count as chat</label><input id="sPipes" type="text" value="text-generation, image-text-to-text"></div>
+        <div class="field"><label class="lbl" for="sTags">Tags a chat model must carry</label><input id="sTags" type="text" value="conversational"></div>
+      </details>
+    </div></div>
+    <div class="savebar"><p class="msg" aria-live="polite"><span>Changes apply when you save.</span></p><button class="btn primary" type="submit">Save</button></div>
+  </form>
+
+  <form class="sform" id="sf-d" data-group="d" novalidate>
+    <div class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force now</span><span class="v" data-sum="d">After 10 minutes with nothing to do</span></span></div>
+    <div class="card"><div class="form">
+      <div class="field"><label class="lbl" for="sIdle">Unload a model after it has been idle for (seconds)</label><input id="sIdle" type="number" value="600"><p class="hint">0 means never.</p></div>
+      <div class="field sw"><label class="lbl" for="sGraceOn">Wait for a model to fall idle instead of unloading one that just finished</label><input id="sGraceOn" type="checkbox" role="switch" checked></div>
+      <div class="field err" id="f-grace"><label class="lbl" for="sGrace">Protect a model that just finished for (seconds)</label><input id="sGrace" type="number" value="420" aria-invalid="true" aria-describedby="e-grace">
+        <p class="ferr" id="e-grace"><svg class="st failed" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-failed"/></svg><span>The grace period cannot exceed the maximum wait of 300 seconds.</span></p></div>
+      <div class="field"><label class="lbl" for="sWait">A waiting request waits at most (seconds)</label><input id="sWait" type="number" value="300"></div>
+      <div class="field sw"><label class="lbl" for="sApiUnload">Let a program unload a model it has finished with</label><input id="sApiUnload" type="checkbox" role="switch" checked><p class="hint">With <code>POST /v1/dessau/unload</code>.</p></div>
+    </div></div>
+    <div class="savebar"><p class="msg" aria-live="polite"><svg class="st failed" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-failed"/></svg><span>Not saved. The server refused one field; nothing else changed.</span></p><button class="btn primary" type="submit">Save</button></div>
+  </form>
+
+  <form class="sform" id="sf-e" data-group="e" novalidate>
+    <div class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force now</span><span class="v" data-sum="e">A self-test after 30 quiet minutes; no context probe</span></span></div>
+    <div class="card"><div class="form">
+      <div class="field sw"><label class="lbl" for="sST">Test the models when this Mac is idle</label><input id="sST" type="checkbox" role="switch" checked><p class="hint">Each model once a day. Counts and timings only, never a prompt or an answer.</p></div>
+      <div class="field"><label class="lbl" for="sSTI">Idle for this long first (seconds)</label><input id="sSTI" type="number" value="1800"><p class="hint">60 to 86,400.</p></div>
+      <div class="field sw"><label class="lbl" for="sCP">Measure each model's context window when this Mac is idle</label><input id="sCP" type="checkbox" role="switch"><p class="hint">About forty minutes of GPU per model. Stands down the moment anyone sends a request.</p></div>
+      <div class="field"><label class="lbl" for="sCPI">Idle for this long before measuring (seconds)</label><input id="sCPI" type="number" value="900"></div>
+    </div></div>
+    <div class="savebar"><p class="msg" aria-live="polite"><span>Changes apply when you save.</span></p><button class="btn primary" type="submit">Save</button></div>
+  </form>
+
+  <form class="sform" id="sf-f" data-group="f" novalidate>
+    <div class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force now</span><span class="v" data-sum="f">Counts and timings for 6 months, up to 512 MB</span></span></div>
+    <div class="card"><div class="form">
+      <div class="field sw"><label class="lbl" for="sStats">Record request statistics on this Mac</label><input id="sStats" type="checkbox" role="switch" checked><p class="hint">Anyone who can open this panel can read them.</p></div>
+      <div class="field"><label class="lbl" for="sMonths">Keep records for (months)</label><input id="sMonths" type="number" value="6"></div>
+      <div class="field"><label class="lbl" for="sMB">Never use more than (MB)</label><input id="sMB" type="number" value="512"></div>
+      <div class="field"><label class="lbl" for="sLog">How much the log says</label><select id="sLog"><option selected>Sparse — one line per event</option><option>Detailed — with the figures</option></select><p class="hint">Never a prompt, an answer, a key or a device's address.</p></div>
+      <details class="adv"><summary>Keep no transcript for some models</summary>
+        <div class="field"><span class="lbl" id="trL">Keep no transcript for</span><div class="checks" role="group" aria-labelledby="trL"><label><input type="checkbox">gemma-3-12b-it-4bit</label><label><input type="checkbox">Qwen3-8B-4bit</label><label><input type="checkbox">Llama-3.2-3B-Instruct-4bit</label></div><p class="hint">Holds a model off the Discord bridge and off debug logging.</p></div>
+      </details>
+    </div></div>
+    <div class="savebar"><p class="msg" aria-live="polite"><span>Changes apply when you save.</span></p><button class="btn primary" type="submit">Save</button></div>
+  </form>
+
+  <form class="sform" id="sf-g" data-group="g" novalidate>
+    <div class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg><span><span class="k">In force now</span><span class="v" data-sum="g">No — the Discord bridge is off</span></span></div>
+    <div class="card"><div class="form">
+      <div class="field sw"><label class="lbl" for="sDisc">Answer Discord direct messages and mentions with a model on this Mac</label><input id="sDisc" type="checkbox" role="switch"><p class="hint">While on, messages and answers pass through Discord and are kept under Discord's terms.</p></div>
+      <div class="field"><label class="lbl" for="sDiscT">Discord bot token</label><input id="sDiscT" type="password" placeholder="No token yet" autocomplete="off"></div>
+    </div></div>
+    <div class="savebar"><p class="msg" aria-live="polite"><span>Changes apply when you save.</span></p><button class="btn primary" type="submit">Save</button></div>
+  </form>
+
+  <form class="sform" id="sf-h" data-group="h" novalidate>
+    <div class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force now</span><span class="v" data-sum="h">Checked for updates every 24 hours</span></span></div>
+    <div class="card"><div class="form">
+      <div class="field sw"><label class="lbl" for="sUpd">Check the models you downloaded for newer versions</label><input id="sUpd" type="checkbox" role="switch" checked><p class="hint">Last checked at 09:00. Sends model names to HuggingFace.</p></div>
+      <div class="field"><label class="lbl" for="sUpdI">Check every (hours)</label><input id="sUpdI" type="number" value="24"><p class="hint">1 to 720; 0 or blank is daily.</p></div>
+      <div class="field"><label class="lbl" for="sHF">HuggingFace token</label><input id="sHF" type="password" value="hf_example_token" autocomplete="off"><p class="hint">Only needed for gated models.</p></div>
+    </div></div>
+    <div class="savebar"><p class="msg" aria-live="polite"><span>Changes apply when you save.</span></p><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var live = $('#live');
+  function say(t) { live.textContent = ''; setTimeout(function () { live.textContent = t; }, 40); }
+  function toast(t) {
+    var el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
+    document.body.appendChild(el); say(t); setTimeout(function () { el.remove(); }, 2200);
+  }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function g(st, cls) { return '<svg class="st ' + st + (cls ? ' ' + cls : '') + '" viewBox="0 0 16 16" aria-hidden="true"><use href="#s-' + st + '"/></svg>'; }
+  function fmt(n) { return Number(n).toLocaleString('en-GB'); }
+  var BUDGET = 48;
+
+  /* ── Mock models: the same server as mockup 5 ─────────────────────── */
+  var models = [
+    { id: 'gemma', name: 'gemma-3-12b-it-4bit', st: 'ready', disk: 8.1, mem: 9.6, w: 8.1, c: 1.5, q: '4-bit', kind: 'Chat and images',
+      declared: 131072, measured: null, served: 32768, pinned: true,
+      note: "Pinned, so it always stays loaded. Answering 1 request for Carol's iPad.",
+      today: { req: 611, tok: '188k', ft: '0.52 s', rate: '34 tok/s' } },
+    { id: 'qwen3', name: 'Qwen3-8B-4bit', st: 'ready', disk: 4.6, mem: 5.6, w: 4.6, c: 1.0, q: '4-bit', kind: 'Chat',
+      declared: 40960, measured: 38912, served: 32768,
+      note: 'Idle for 3 minutes; unloads after 10.',
+      update: [['tokenizer_config.json', '11 KB'], ['chat_template.jinja', '4 KB'], ['generation_config.json', '1 KB']],
+      today: { req: 498, tok: '162k', ft: '0.29 s', rate: '68 tok/s' } },
+    { id: 'coder', name: 'Qwen2.5-Coder-14B-Instruct-4bit', st: 'working', disk: 8.3, q: '4-bit', kind: 'Chat and code', pct: 63, need: 9.4 },
+    { id: 'llama', name: 'Llama-3.2-3B-Instruct-4bit', st: 'idle', disk: 1.8, mem: 2.3, w: 1.8, c: 0.5, q: '4-bit', kind: 'Chat',
+      declared: 131072, measured: null, served: 131072,
+      note: 'Unloaded after 10 minutes idle, at 14:10. Loads by itself in about a second when a request asks for it.',
+      today: { req: 175, tok: '61k', ft: '0.14 s', rate: '121 tok/s' } },
+    { id: 'phi', name: 'Phi-4-mini-instruct-4bit', st: 'failed', disk: 2.2, mem: 2.9, w: 2.2, c: 0.7, q: '4-bit', kind: 'Chat',
+      declared: 131072, measured: null, served: 65536, merge: true,
+      note: 'At 13:07, two minutes after its download finished. Nothing else was affected.',
+      today: { req: 0, tok: '0', ft: '—', rate: '—' } }
+  ];
+  function byId(id) { return models.filter(function (m) { return m.id === id; })[0]; }
+
+  function answer(m) {
+    if (m.st === 'ready') return { ask: 'Is ' + m.name + ' ready?', ans: g('ready') + 'Yes — loaded and ready to answer' };
+    if (m.st === 'idle') return { ask: 'Is ' + m.name + ' ready?', ans: g('idle') + 'Resting on disk — loads when asked' };
+    if (m.st === 'failed') return { ask: 'Is ' + m.name + ' ready?', ans: g('failed') + 'No — it would not start' };
+    return { ask: 'Is ' + m.name + ' here yet?', ans: g('working') + (m.paused ? 'Not yet — paused at ' : 'Not yet — ') + m.pct + ' % downloaded' };
+  }
+
+  function primaryFor(m) {
+    if (m.st === 'ready') return '<button class="btn tint" type="button" data-act="unload">Unload</button>';
+    if (m.st === 'idle') return '<button class="btn primary" type="button" data-act="load">Load</button>';
+    if (m.st === 'failed') return '<button class="btn tint" type="button" data-act="open">See why</button>';
+    return '<button class="btn tint" type="button" data-act="pause">' + (m.paused ? 'Resume' : 'Pause') + '</button>';
+  }
+  function moreFor(m) {
+    var items = [];
+    if (m.st !== 'failed') items.push('<button class="btn" type="button" data-act="open">Open details</button>');
+    if (m.st !== 'working') items.push('<button class="btn" type="button" data-act="settings">Settings for this model</button>');
+    if (m.update) items.push('<button class="btn" type="button" data-act="update">Update — 3 files, 16 KB</button>');
+    if (m.st === 'failed') items.push('<button class="btn" type="button" data-act="load">Try again</button>');
+    items.push('<button class="btn" type="button" data-act="delete">' + (m.st === 'working' ? 'Cancel and delete…' : 'Delete…') + '</button>');
+    return '<details class="more"><summary class="btn quiet">More</summary><div class="menu">' + items.join('') + '</div></details>';
+  }
+
+  function cardFor(m) {
+    var a = answer(m), facts;
+    if (m.st === 'working') facts = '<div class="progress" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + m.pct + '"><i style="width:' + m.pct + '%"></i></div>' +
+      '<p class="note">5.2 of 8.3 GB' + (m.paused ? '. Paused; it resumes from where it stopped.' : ' · about 4 minutes left') + '</p>';
+    else facts = '<p class="note">' + esc(m.note) + '</p>';
+    var meta = '<p class="cap">' + m.disk + ' GB on disk · ' + m.q + ' quantisation · ' + (m.st === 'working' ? 'needs about ' + m.need + ' GB in memory' : m.mem + ' GB in memory' + (m.st === 'ready' ? '' : ' when loaded')) + '</p>';
+    var chip = m.update ? '<p class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Update available — 3 files changed</p>' : '';
+    return '<article class="card opens' + (m.st === 'failed' ? ' is-error' : '') + '" data-id="' + m.id + '">' +
+      '<h2 class="ask"><button class="hit" type="button" data-act="open" aria-haspopup="dialog">' + esc(a.ask) + '</button></h2>' +
+      '<p class="ans">' + a.ans + '</p>' + facts + meta + chip +
+      '<div class="act" data-area>' + primaryFor(m) + moreFor(m) + '</div></article>';
+  }
+
+  var grid = $('#modelGrid');
+  function drawModels() {
+    $$('#modelGrid > [data-id], #modelGrid > .empty').forEach(function (n) { n.remove(); });
+    if (!models.length) {
+      grid.insertAdjacentHTML('beforeend', '<article class="card empty span2"><h2 class="ask">Which models are on this Mac?</h2><p class="ans">None yet</p><p class="note">Find one that fits, and it appears here while it downloads.</p><div class="act"><button class="btn primary" type="button" data-go="models/find">Find a model</button></div></article>');
+    }
+    models.forEach(function (m) { grid.insertAdjacentHTML('beforeend', cardFor(m)); });
+    syncTotals();
+  }
+
+  function syncTotals() {
+    var loaded = models.filter(function (m) { return m.st === 'ready'; });
+    var used = loaded.reduce(function (s, m) { return s + m.mem; }, 0);
+    var w = loaded.reduce(function (s, m) { return s + m.w; }, 0), c = used - w;
+    var u = used.toFixed(1), f = (BUDGET - used).toFixed(1);
+    $$('[data-bind="used"]').forEach(function (n) { n.textContent = u; });
+    $$('[data-bind="free"]').forEach(function (n) { n.textContent = f; });
+    $$('[data-bind="ready-count"]').forEach(function (n) { n.textContent = loaded.length; });
+    $$('[data-bind="meter"]').forEach(function (n) {
+      n.setAttribute('aria-valuenow', u); n.setAttribute('aria-valuetext', u + ' GB of the 48 GB budget');
+      n.innerHTML = '<i style="width:' + (w / BUDGET * 100).toFixed(1) + '%"></i><i style="width:' + (c / BUDGET * 100).toFixed(1) + '%"></i>';
+    });
+    $('#mBadge').textContent = models.length;
+    $('#ovLoaded').innerHTML = loaded.length ? loaded.map(function (m) {
+      return '<li>' + g('ready') + '<span class="grow">' + esc(m.name) + '</span><span class="end">' + m.mem + ' GB</span></li>';
+    }).join('') : '<li><span class="grow">Nothing is loaded. A model loads when a request asks for it.</span></li>';
+  }
+
+  grid.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]'); if (!b) return;
+    var card = b.closest('[data-id]'); if (!card) return;
+    var m = byId(card.getAttribute('data-id'));
+    doModel(m, b.getAttribute('data-act'), b, card.querySelector('[data-area]'));
+  });
+
+  function doModel(m, a, btn, area) {
+    if (a === 'open') { openModel(m, btn); return; }
+    if (a === 'settings') { openModel(m, btn, 'msettings'); return; }
+    if (a === 'unload') { m.st = 'idle'; m.note = 'Unloaded just now. Loads by itself when a request asks for it.'; refresh(m); say(m.name + ' unloaded. ' + m.mem + ' GB freed.'); return; }
+    if (a === 'load') { m.st = 'ready'; m.note = 'Loaded just now; unloads after 10 minutes idle.'; refresh(m); say(m.name + ' loaded.'); return; }
+    if (a === 'pause') { m.paused = !m.paused; refresh(m); say(m.paused ? 'Download paused.' : 'Download resumed.'); return; }
+    if (a === 'update') { delete m.update; refresh(m); toast(m.name + ' updated — 3 files replaced.'); return; }
+    if (a === 'delete') {
+      area.innerHTML = '<div class="confirm" role="group" aria-label="Confirm delete"><p><strong>Delete ' + esc(m.name) + ' from this Mac?</strong> Its ' + m.disk + ' GB of files are removed, and apps stop seeing it at once. Downloading it again fetches them afresh.</p>' +
+        '<div class="row"><button class="btn strong" type="button" data-act="really-delete">Delete model</button><button class="btn" type="button" data-act="keep">Keep it</button></div></div>';
+      area.querySelector('[data-act="keep"]').focus(); return;
+    }
+    if (a === 'keep') { refresh(m); var d = findDeleteTrigger(m); if (d) d.focus(); return; }
+    if (a === 'really-delete') {
+      var name = m.name; models = models.filter(function (x) { return x !== m; });
+      if (sheetModel === m) closeSheet(true);
+      drawModels(); toast(name + ' deleted.');
+      var next = $('#modelGrid > [data-id] .hit') || $('#rollup .btn'); if (next) next.focus();
+      return;
+    }
+  }
+  function findDeleteTrigger(m) {
+    var card = $('#modelGrid [data-id="' + m.id + '"]');
+    if (sheetModel === m && !$('#sheet').hidden) return $('#sheetBody [data-act="delete"]');
+    return card && card.querySelector('summary');
+  }
+  function refresh(m) {
+    var inSheet = sheetModel === m && !$('#sheet').hidden;
+    drawModels();
+    if (inSheet) drawModelSheet(m);
+    /* The pressed button was redrawn: put focus back on its replacement. */
+    var t = inSheet ? $('#sheetBody .act .btn') : $('#modelGrid [data-id="' + m.id + '"] [data-area] .btn');
+    if (t) t.focus();
+  }
+
+  /* ── The sheet ────────────────────────────────────────────────────── */
+  var sheet = $('#sheet'), scrim = $('#scrim'), body = $('#sheetBody'), app = $('#app');
+  var opener = null, sheetModel = null, sheetForm = null;
+  function openSheet(kick, title, trigger) {
+    opener = trigger || document.activeElement;
+    $('#sheetKick').textContent = kick; $('#sheetTitle').textContent = title;
+    sheet.hidden = false; scrim.hidden = false; app.inert = true;
+    document.body.style.overflow = 'hidden';
+    body.scrollTop = 0;
+    setTimeout(function () { $('#sheetTitle').focus(); }, 0);
+  }
+  function closeSheet(silent) {
+    if (sheetForm) { $('#formStore').appendChild(sheetForm); sheetForm = null; }
+    sheet.hidden = true; scrim.hidden = true; app.inert = false; body.innerHTML = '';
+    document.body.style.overflow = '';
+    sheetModel = null;
+    if (!silent && opener && document.contains(opener)) opener.focus();
+  }
+  $('#sheetClose').addEventListener('click', function () { closeSheet(); });
+  scrim.addEventListener('click', function () { closeSheet(); });
+  document.addEventListener('keydown', function (e) {
+    if (sheet.hidden) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeSheet(); return; }
+    if (e.key === 'Tab') {
+      var f = $$('button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])', sheet).filter(function (n) { return !n.disabled && n.offsetParent !== null; });
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === $('#sheetTitle'))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+
+  function openModel(m, trigger, focusPart) {
+    sheetModel = m;
+    openSheet(m.kind + ' · mlx-community', m.name, trigger);
+    drawModelSheet(m);
+    if (focusPart) { var t = $('#' + focusPart); if (t) { t.scrollIntoView({ block: 'start' }); setTimeout(function () { var f = t.querySelector('input'); if (f) f.focus(); }, 10); } }
+  }
+
+  function drawModelSheet(m) {
+    var a = answer(m), h = '';
+    h += '<article class="card' + (m.st === 'failed' ? ' is-error' : '') + '"><h3 class="ask">' + (m.st === 'working' ? 'Is it here yet?' : 'Is it ready?') + '</h3><p class="ans">' + a.ans + '</p>' +
+      (m.st === 'working' ? '<div class="progress" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + m.pct + '"><i style="width:' + m.pct + '%"></i></div><p class="note">5.2 of 8.3 GB, 3 of 5 files. A stopped download resumes from where it left off; apps see the model once every file is here.</p>' : '<p class="note">' + esc(m.note) + '</p>') +
+      '<div class="act">' + primaryFor(m).replace('data-act="open"', 'data-act="load"').replace('See why', 'Try again') + '</div></article>';
+
+    if (m.st === 'failed') {
+      h += '<article class="card"><h3 class="ask">Why would it not start?</h3><p class="ans">This MLX runtime cannot run this model</p>' +
+        '<pre class="code">ValueError: Model type phi3_v not supported.\nmodel server exited with status 1 after 2.4 s</pre>' +
+        '<p class="note">The full log is beside the model servers\' logs in your Dessau data folder. A newer runtime may run it; until then, apps asking for it are refused with this reason.</p></article>';
+    }
+    if (m.st === 'working') {
+      h += '<article class="card"><h3 class="ask">Will it fit?</h3><p class="ans">Yes — alongside the two loaded now</p><p class="note">It needs about ' + m.need + ' GB with its context; ' + $('[data-bind="free"]').textContent + ' GB of the budget is free.</p></article>';
+      h += dangerCard(m);
+      body.innerHTML = h; return;
+    }
+    if (m.update) {
+      h += '<article class="card" id="upd"><h3 class="ask">Is there a newer version?</h3><p class="ans">Yes — 3 files changed</p>' +
+        '<ul class="list">' + m.update.map(function (f) { return '<li><span class="grow mono">' + esc(f[0]) + '</span><span class="end">' + f[1] + '</span></li>'; }).join('') + '</ul>' +
+        '<p class="note">The weights are unchanged. A loaded copy keeps running; the update applies the next time it loads.</p>' +
+        '<div class="act"><button class="btn primary" type="button" data-act="update">Update — 16 KB</button></div></article>';
+    } else {
+      h += '<article class="card"><h3 class="ask">Is there a newer version?</h3><p class="ans">No — this is the latest</p><p class="note">Checked on HuggingFace at 09:00.</p></article>';
+    }
+    var loaded = m.st === 'ready', wp = (m.w / m.mem * 100).toFixed(1), cp = (m.c / m.mem * 100).toFixed(1);
+    h += '<article class="card"><h3 class="ask">How much memory does it take?</h3><p class="fig">' + m.mem + ' <small>GB ' + (loaded ? 'while loaded' : 'when loaded') + '</small></p>' +
+      '<div class="meter" role="img" aria-label="' + m.w + ' GB of weights and ' + m.c + ' GB of context cache"><i style="width:' + wp + '%"></i><i style="width:' + cp + '%"></i></div>' +
+      '<div class="keys"><span><b></b>Weights ' + m.w + ' GB</span><span><b class="c"></b>Context cache ' + m.c + ' GB</span></div>' +
+      '<p class="note">' + (m.pinned ? '<strong>Pinned:</strong> never unloaded to make room for another model.' : 'Not pinned: it may be unloaded to make room for another model.') + '</p>' +
+      '<div class="act"><button class="btn tint" type="button" data-act="pin" aria-pressed="' + (m.pinned ? 'true' : 'false') + '">' + (m.pinned ? 'Stop keeping it loaded' : 'Always keep it loaded') + '</button></div></article>';
+
+    h += '<article class="card"><h3 class="ask">How much can it read at once?</h3><p class="fig">' + fmt(m.served) + ' <small>tokens</small></p>' +
+      '<ul class="list"><li><span class="grow">The model declares</span><span class="end">' + fmt(m.declared) + '</span></li>' +
+      '<li><span class="grow">Measured on this Mac</span><span class="end">' + (m.measured ? fmt(m.measured) + ' · 8 Oct' : 'Not yet') + '</span></li></ul>' +
+      '<p class="note">' + (m.served < m.declared ? 'Served below what it declares, because that is what the budget has room for.' : 'Served at the window it declares.') + '</p>' +
+      '<div class="act">' + (m.measured && m.measured !== m.served ? '<button class="btn tint" type="button" data-act="usewin">Serve the measured ' + fmt(m.measured) + '</button>' : '<button class="btn tint" type="button" data-act="measure">Measure it now</button>') + '</div></article>';
+
+    h += '<article class="card"><h3 class="ask">How has it done today?</h3><p class="ans">' + fmt(m.today.req) + ' requests' + (m.today.rate !== '—' ? ' at ' + m.today.rate : '') + '</p>' +
+      '<ul class="list"><li><span class="grow">Tokens written</span><span class="end">' + m.today.tok + '</span></li><li><span class="grow">First word, median</span><span class="end">' + m.today.ft + '</span></li></ul>' +
+      '<div class="act"><button class="btn tint" type="button" data-go="stats">See statistics</button></div></article>';
+
+    var id = function (k) { return 'm-' + m.id + '-' + k; };
+    h += '<article class="card" id="msettings"><h3 class="ask">How is it set up?</h3><p class="ans">Machine-wide defaults, except where set here</p><div class="form">' +
+      '<div class="field"><label class="lbl" for="' + id('ctx') + '">Served context (tokens)</label><input id="' + id('ctx') + '" type="number" placeholder="' + fmt(m.served) + ' — the default"><p class="hint">Larger windows take more of the budget.</p></div>' +
+      '<div class="field"><label class="lbl" for="' + id('temp') + '">Temperature</label><input id="' + id('temp') + '" type="number" step="any" placeholder="0.7 — machine-wide"></div>' +
+      '<div class="field sw"><label class="lbl" for="' + id('merge') + '">Merge system messages</label><input id="' + id('merge') + '" type="checkbox" role="switch"' + (m.merge ? ' checked' : '') + '><p class="hint">For a model that refuses instructions anywhere but the top.</p></div>' +
+      '<details class="adv"><summary>More for this model</summary>' +
+        '<div class="field"><label class="lbl" for="' + id('topp') + '">Top-p</label><input id="' + id('topp') + '" type="number" step="any" placeholder="1 — machine-wide"></div>' +
+        '<div class="field"><label class="lbl" for="' + id('max') + '">Longest answer, in tokens</label><input id="' + id('max') + '" type="number" placeholder="the served window"></div>' +
+        '<div class="field sw"><label class="lbl" for="' + id('trans') + '">Keep no transcript</label><input id="' + id('trans') + '" type="checkbox" role="switch"><p class="hint">Holds it off the Discord bridge and off debug logging.</p></div>' +
+        '<div class="field"><button class="btn quiet" type="button" data-act="debug">Arm debug logging for its next run…</button></div>' +
+      '</details></div>' +
+      '<p class="hint" id="applyOut" aria-live="polite">Changes reach the model the next time it loads.</p>' +
+      '<div class="act"><button class="btn primary" type="button" data-act="apply">Apply</button></div></article>';
+
+    h += dangerCard(m);
+    body.innerHTML = h;
+  }
+  function dangerCard(m) {
+    return '<article class="card"><h3 class="ask">Do I still need it?</h3><p class="ans">' + (m.st === 'working' ? 'Cancelling frees its ' : 'Deleting frees ') + m.disk + ' GB of disk</p>' +
+      '<p class="note">Apps stop seeing it at once. You can download it again at any time.</p>' +
+      '<div class="act" data-area><button class="btn" type="button" data-act="delete">' + (m.st === 'working' ? 'Cancel and delete…' : 'Delete…') + '</button></div></article>';
+  }
+
+  body.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]'); if (!b || !sheetModel) return;
+    var m = sheetModel, a = b.getAttribute('data-act');
+    if (a === 'pin') { m.pinned = !m.pinned; drawModelSheet(m); say(m.pinned ? m.name + ' will always stay loaded.' : m.name + ' may be unloaded to make room.'); var p = $('#sheetBody [data-act="pin"]'); if (p) p.focus(); return; }
+    if (a === 'usewin') { m.served = m.measured; drawModelSheet(m); say('Serving ' + fmt(m.measured) + ' tokens from its next load.'); return; }
+    if (a === 'measure') { b.textContent = 'Measuring — stands down if anyone sends a request'; b.disabled = true; say('Measuring the context window.'); return; }
+    if (a === 'apply') { $('#applyOut').textContent = 'Applied. It reaches ' + m.name + ' the next time it loads.'; say('Applied.'); return; }
+    if (a === 'debug') { $('#applyOut').textContent = 'Armed: from its next start until the start after it, the model server\'s log holds every prompt and answer. Unload it to begin.'; return; }
+    doModel(m, a, b, b.closest('[data-area]') || b.parentNode);
+  });
+
+  /* ── Settings: eight task cards open their own form in the sheet ─── */
+  var titles = { a: 'Who can reach this server', b: 'Memory and how many models stay loaded', c: 'How requests are handled', d: 'When idle models are unloaded', e: 'Checks and measurements', f: 'Statistics and logging', g: 'Discord bridge', h: 'Downloading and updating models' };
+  function openSettings(k, trigger) {
+    openSheet('Settings', titles[k], trigger);
+    sheetForm = $('#sf-' + k); body.appendChild(sheetForm);
+    if (k === 'd' && $('#f-grace').classList.contains('err')) setTimeout(function () { $('#sGrace').scrollIntoView({ block: 'center' }); }, 0);
+  }
+
+  function summary(k) {
+    var v = function (id) { return $('#' + id); };
+    if (k === 'a') {
+      var host = v('sHost').value, key = v('sKey').value.trim(), port = v('sPort').value || '8080';
+      var who = host === 'mac' ? 'Only this Mac' : host === 'lan' ? 'One private network' : 'Reachable from your network';
+      var ov = host === 'mac' ? 'Only this Mac' : host === 'lan' ? 'One private network' : 'Anyone on your home network';
+      $$('[data-bind="reach"]').forEach(function (n) { n.textContent = ov + (key ? ', with the API key' : ', with no key'); });
+      return who + ' on port ' + port + (key ? ', with an API key' : ', with no key');
+    }
+    if (k === 'b') {
+      var b = v('sBudget').value || '48', pins = $$('#sf-b input[name="pin"]:checked').map(function (n) { return n.value; });
+      return b + ' GB of 64 GB; ' + (pins.length ? pins.join(' and ') + (pins.length > 1 ? ' always stay' : ' always stays') : 'no model is pinned');
+    }
+    if (k === 'c') return 'Temperature ' + (v('sTemp').value || '1') + ', unless a request asks for its own';
+    if (k === 'd') { var s = +v('sIdle').value; return s === 0 ? 'Never — models stay until room is needed' : 'After ' + (s % 60 === 0 ? (s / 60) + ' minutes' : s + ' seconds') + ' with nothing to do'; }
+    if (k === 'e') return (v('sST').checked ? 'A self-test after ' + Math.round(v('sSTI').value / 60) + ' quiet minutes' : 'No self-test') + '; ' + (v('sCP').checked ? 'the context probe is on' : 'no context probe');
+    if (k === 'f') {
+      var on = v('sStats').checked;
+      $$('[data-bind="recorded"]').forEach(function (n) { n.textContent = on ? 'Counts and timings only, on this Mac' : 'Nothing — recording is off'; });
+      return on ? 'Counts and timings for ' + v('sMonths').value + ' months, up to ' + v('sMB').value + ' MB' : 'Nothing is recorded';
+    }
+    if (k === 'g') return v('sDisc').checked ? g('ready') + 'Yes — answering on Discord' : g('idle') + 'No — the Discord bridge is off';
+    if (k === 'h') return v('sUpd').checked ? 'Checked for updates every ' + (v('sUpdI').value || '24') + ' hours' : 'Never checked for updates';
+  }
+
+  $$('.sform').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var k = f.getAttribute('data-group'), msg = f.querySelector('.msg');
+      if (k === 'd') {
+        var gr = +$('#sGrace').value, w = +$('#sWait').value, on = $('#sGraceOn').checked;
+        var row = $('#f-grace'), err = $('#e-grace'), inp = $('#sGrace');
+        if (on && gr > w) {
+          row.classList.add('err'); err.hidden = false; inp.setAttribute('aria-invalid', 'true');
+          err.lastElementChild.textContent = 'The grace period cannot exceed the maximum wait of ' + w + ' seconds.';
+          msg.innerHTML = g('failed') + '<span>Not saved. The server refused one field; nothing else changed.</span>';
+          $('#sc-d').classList.add('is-error'); $('#d-alert').hidden = false;
+          inp.focus(); return;
+        }
+        row.classList.remove('err'); err.hidden = true; inp.removeAttribute('aria-invalid');
+        $('#sc-d').classList.remove('is-error'); $('#d-alert').hidden = true;
+      }
+      var s = summary(k);
+      $$('[data-sum="' + k + '"]').forEach(function (n) { n.innerHTML = s; });
+      msg.innerHTML = g('ready') + '<span>Saved at 14:37 and in force now' + (k === 'a' ? '; who can reach it changes when Dessau next starts.' : '.') + '</span>';
+    });
+  });
+
+  /* ── Tabs: real tablists, arrow keys, Home and End ──────────────────── */
+  function selectTab(tab, focus) {
+    var list = tab.closest('[role="tablist"]');
+    $$('[role="tab"]', list).forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false'); t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    });
+    if (focus) tab.focus();
+    if (tab.id === 't-stats') drawChart(range);
+  }
+  $$('[role="tablist"]').forEach(function (list) {
+    var tabs = $$('[role="tab"]', list);
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { selectTab(t, false); if (list.getAttribute('data-tablist') === 'main') window.scrollTo(0, 0); });
+      t.addEventListener('keydown', function (e) {
+        var n = null;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') n = tabs[(i + 1) % tabs.length];
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') n = tabs[(i - 1 + tabs.length) % tabs.length];
+        else if (e.key === 'Home') n = tabs[0];
+        else if (e.key === 'End') n = tabs[tabs.length - 1];
+        if (n) { e.preventDefault(); selectTab(n, true); }
+      });
+    });
+  });
+  function go(path) {
+    var parts = path.split('/');
+    if (!sheet.hidden) closeSheet(true);
+    selectTab($('#t-' + parts[0]), false);
+    if (parts[1]) selectTab($('#t-' + parts[1]), false);
+    window.scrollTo(0, 0);
+    var panel = $('#p-' + parts[0]); panel.focus({ preventScroll: true });
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-go]');
+    if (t) { e.preventDefault(); go(t.getAttribute('data-go')); return; }
+    t = e.target.closest('[data-settings]');
+    if (t) { e.preventDefault(); if (!sheet.hidden) closeSheet(true); openSettings(t.getAttribute('data-settings'), t); return; }
+    t = e.target.closest('[data-model]');
+    if (t) { e.preventDefault(); var m = byId(t.getAttribute('data-model')); if (m) openModel(m, t); else toast('That model is no longer on this Mac.'); return; }
+    t = e.target.closest('[data-copy]');
+    if (t) { copy(t.getAttribute('data-copy')); return; }
+  });
+  function copy(text) {
+    var done = function () { toast('Copied.'); };
+    try { navigator.clipboard.writeText(text).then(done, done); } catch (x) { done(); }
+  }
+  $('#copyExample').addEventListener('click', function () {
+    var shown = $$('pre.code').filter(function (p) { return !p.hidden; })[0]; copy(shown.textContent);
+  });
+  $$('[data-code]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('[data-code]').forEach(function (o) { var on = o === b; o.setAttribute('aria-pressed', on ? 'true' : 'false'); $('#code-' + o.getAttribute('data-code')).hidden = !on; });
+    });
+  });
+
+  /* ── Find Models: loading, results and an empty state ─────────────── */
+  var results = [
+    { q: 'gemma 3 4b', name: 'mlx-community/gemma-3-4b-it-4bit', meta: 'Chat and images · 211k downloads · updated 3 Sep', size: 3.0, fit: 'ready', ans: 'Yes — alongside the others', act: 'download' },
+    { q: 'gemma 3 12b', name: 'mlx-community/gemma-3-12b-it-4bit', meta: 'Chat and images · 158k downloads', size: 8.1, fit: 'ready', ans: 'Yes — it is already on this Mac', act: 'open' },
+    { q: 'gemma 3 27b', name: 'mlx-community/gemma-3-27b-it-4bit', meta: 'Chat and images · 97k downloads · updated 21 Aug', size: 16.9, fit: 'ready', ans: 'Yes — Qwen3-8B unloads if both are asked for', act: 'download' },
+    { q: 'gemma 3 27b 8bit', name: 'mlx-community/gemma-3-27b-it-8bit', meta: 'Chat and images · 18k downloads', size: 30.4, fit: 'idle', ans: 'Only on its own', act: 'download' },
+    { q: 'qwen3 32b', name: 'mlx-community/Qwen3-32B-4bit', meta: 'Chat · 71k downloads', size: 18.4, fit: 'ready', ans: 'Yes — with one other model', act: 'download' },
+    { q: 'qwen3 8b', name: 'mlx-community/Qwen3-8B-4bit', meta: 'Chat · 402k downloads', size: 4.6, fit: 'ready', ans: 'Yes — it is already on this Mac', act: 'open' },
+    { q: 'llama 3.3 70b', name: 'mlx-community/Llama-3.3-70B-Instruct-4bit', meta: 'Chat · 64k downloads', size: 39.7, fit: 'idle', ans: 'Only on its own, at a short context', act: 'download' },
+    { q: 'deepseek r1 671b', name: 'mlx-community/DeepSeek-R1-4bit', meta: 'Chat · 22k downloads', size: 377, fit: 'idle', ans: 'No — it needs about 380 GB', act: 'none' }
+  ];
+  var fi = $('#findInput'), fg = $('#findGrid'), ftimer = null, queued = {};
+  function renderFind() {
+    var q = fi.value.trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean);
+    var hits = results.filter(function (r) { var hay = (r.q + ' ' + r.name + ' ' + r.meta).toLowerCase(); return words.every(function (w) { return hay.indexOf(w) !== -1; }); });
+    fg.setAttribute('aria-busy', 'false');
+    $('#findCount').textContent = q ? hits.length + (hits.length === 1 ? ' result' : ' results') + ' for “' + fi.value.trim() + '”.' : 'Showing popular models.';
+    if (!hits.length) {
+      fg.innerHTML = '<article class="card empty span2"><h2 class="ask">Is there a model called “' + esc(fi.value.trim()) + '”?</h2><p class="ans">Not in mlx-community</p><p class="note">Try a shorter name, such as “qwen3” or “gemma”, or type a full repository id to fetch it from another organisation.</p><div class="act"><button class="btn tint" type="button" id="findClear">Clear the search</button></div></article>';
+      return;
+    }
+    fg.innerHTML = hits.map(function (r) {
+      var btn = r.act === 'open' ? '<button class="btn tint" type="button" data-model="' + (r.name.indexOf('gemma-3-12b') > -1 ? 'gemma' : 'qwen3') + '">Open it</button>'
+        : r.act === 'none' ? '' : queued[r.name] ? '<button class="btn" type="button" disabled>Queued — see My Models</button>'
+        : '<button class="btn primary" type="button" data-dl="' + esc(r.name) + '">Download ' + r.size + ' GB</button>';
+      return '<article class="card"><h2 class="ask">Will ' + esc(r.name.replace('mlx-community/', '')) + ' fit?</h2><p class="ans">' + g(r.fit) + esc(r.ans) + '</p>' +
+        '<p class="cap">' + esc(r.name) + '<br>' + esc(r.meta) + ' · ' + r.size + ' GB</p>' + (btn ? '<div class="act">' + btn + '</div>' : '') + '</article>';
+    }).join('');
+  }
+  function searchSoon() {
+    clearTimeout(ftimer);
+    fg.setAttribute('aria-busy', 'true');
+    $('#findCount').textContent = 'Searching…';
+    fg.innerHTML = [0, 1, 2].map(function () { return '<article class="card" aria-hidden="true"><span class="skel l2"></span><span class="skel l1"></span><span class="skel l3"></span></article>'; }).join('');
+    ftimer = setTimeout(renderFind, 500);
+  }
+  fi.addEventListener('input', searchSoon);
+  $('#findForm').addEventListener('submit', function (e) { e.preventDefault(); clearTimeout(ftimer); renderFind(); });
+  fg.addEventListener('click', function (e) {
+    if (e.target.closest('#findClear')) { fi.value = ''; renderFind(); fi.focus(); return; }
+    var b = e.target.closest('[data-dl]'); if (!b) return;
+    queued[b.getAttribute('data-dl')] = true; renderFind(); say('Download queued. It appears in My Models.');
+  });
+
+  /* ── Statistics chart ─────────────────────────────────────────────── */
+  var targets = { 7: 4320, 30: 18402, 90: 47115 };
+  function series(n) {
+    var out = [], seed = 11;
+    for (var i = 0; i < n; i++) {
+      seed = (seed * 9301 + 49297) % 233280;
+      var wk = ((i + 7 - (n % 7)) % 7) >= 5;
+      out.push(((wk ? .55 : 1) * (420 + i * 240 / n)) + (seed / 233280) * 220);
+    }
+    var raw = out.reduce(function (a, b) { return a + b; }, 0);
+    out = out.map(function (x) { return Math.round(x * targets[n] / raw); });
+    out[n - 1] += targets[n] - out.reduce(function (a, b) { return a + b; }, 0);
+    return out;
+  }
+  var range = 30;
+  function drawChart(n) {
+    range = n;
+    var cw = $('#chart').clientWidth;
+    var v = series(n), W = Math.max(280, Math.round(cw || 760)), H = W < 520 ? 220 : 260, L = 52, R = 8, T = 12, B = 32;
+    var top = Math.ceil(Math.max.apply(null, v) / 250) * 250;
+    var bw = (W - L - R) / n, y = function (val) { return T + (H - T - B) * (1 - val / top); };
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">';
+    for (var k = 0; k <= 4; k++) { var yy = y(top * k / 4); s += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax" x="' + (L - 10) + '" y="' + (yy + 5) + '" text-anchor="end">' + fmt(top * k / 4) + '</text>'; }
+    v.forEach(function (val, i) {
+      var wk = ((i + 7 - (n % 7)) % 7) >= 5, x = L + i * bw + bw * .14, h = (H - T - B) * val / top;
+      s += '<rect class="bar' + (wk ? ' wk' : '') + (i === n - 1 ? ' now' : '') + '" x="' + x.toFixed(1) + '" y="' + (H - B - h).toFixed(1) + '" width="' + (bw * .72).toFixed(1) + '" height="' + h.toFixed(1) + '" rx="' + Math.min(4, bw * .2).toFixed(1) + '"/>';
+    });
+    var labels = n === 7 ? ['4 Oct', '7 Oct', '10 Oct'] : n === 30 ? ['11 Sep', '26 Sep', 'Today'] : ['13 Jul', '26 Aug', 'Today'];
+    s += '<text class="ax" x="' + L + '" y="' + (H - 8) + '">' + labels[0] + '</text><text class="ax" x="' + (L + (W - L - R) / 2) + '" y="' + (H - 8) + '" text-anchor="middle">' + labels[1] + '</text><text class="ax" x="' + (W - R) + '" y="' + (H - 8) + '" text-anchor="end">' + labels[2] + '</text>';
+    $('#chart').innerHTML = s + '</svg>';
+    var sum = v.reduce(function (a, b) { return a + b; }, 0);
+    $('#kReq').textContent = fmt(sum); $('#kDays').textContent = n;
+    $('#chartDesc').textContent = 'Requests per day, one bar a day, weekends paler: ' + fmt(sum) + ' in all, at most ' + fmt(Math.max.apply(null, v)) + ' in a day. Today is the darkest bar.';
+  }
+  $$('[data-range]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('[data-range]').forEach(function (o) { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+      drawChart(+b.getAttribute('data-range'));
+    });
+  });
+
+  /* ── Clear records and revoke: inline, untimed confirmations ──────── */
+  var cb = $('#clearBox');
+  cb.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return; var a = b.getAttribute('data-act');
+    if (a === 'clear') { cb.innerHTML = '<div class="confirm" role="group" aria-label="Confirm clearing records"><p><strong>Clear every record?</strong> The 37 files are removed and cannot be recovered. Recording stays on.</p><div class="row"><button class="btn strong" type="button" data-act="yes">Clear records</button><button class="btn" type="button" data-act="no">Keep them</button></div></div>'; cb.querySelector('[data-act="no"]').focus(); }
+    else if (a === 'no') { cb.innerHTML = '<button class="btn" type="button" data-act="clear">Clear records…</button>'; cb.firstChild.focus(); }
+    else if (a === 'yes') { $('#storeFig').innerHTML = '0 <small>MB of 512 MB</small>'; $('#storeNote').textContent = 'Cleared just now. New requests are recorded from here on.'; cb.innerHTML = ''; say('Records cleared.'); $('#storeFig').setAttribute('tabindex', '-1'); $('#storeFig').focus(); }
+  });
+  $('#clientGrid').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var card = b.closest('[data-client]'); if (!card) return;
+    var name = card.getAttribute('data-client'), area = card.querySelector('[data-rv]'), a = b.getAttribute('data-act');
+    if (a === 'revoke') { area.innerHTML = '<div class="confirm" role="group" aria-label="Confirm revoke"><p><strong>Revoke ' + esc(name) + '?</strong> It stops reaching this server at once and must pair again to come back.</p><div class="row"><button class="btn strong" type="button" data-act="yes">Revoke</button><button class="btn" type="button" data-act="no">Keep it</button></div></div>'; area.querySelector('[data-act="no"]').focus(); }
+    else if (a === 'no') { area.innerHTML = '<button class="btn" type="button" data-act="revoke">Revoke ' + esc(name) + '…</button>'; area.firstChild.focus(); }
+    else if (a === 'yes') { card.querySelector('[data-seen]').innerHTML = g('idle') + 'Revoked just now'; area.innerHTML = '<p class="cap">It must pair again to connect.</p>'; say(name + ' revoked.'); }
+  });
+
+  /* ── The one loading card on the Overview ─────────────────────────── */
+  setTimeout(function () { $('#speedLoading').hidden = true; $('#speedDone').hidden = false; $('#speedCard').setAttribute('aria-busy', 'false'); }, 1400);
+
+  var rt = null;
+  window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { if (!$('#p-stats').hidden) drawChart(range); }, 120); });
+  drawModels(); drawChart(30); renderFind();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Dessau Server · Console</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'><rect width='1024' height='1024' fill='%2317181d'/><polygon points='302,132 472,472 132,472' fill='%23F5C518'/><rect x='552' y='132' width='340' height='340' fill='%23B4B6BB'/><rect x='132' y='552' width='340' height='340' fill='%232B5DAA'/><circle cx='722' cy='722' r='170' fill='%23E63329'/></svg>">
+<style>
+/* Direction 2 — "Control room": a dense operations console. Dark-first, light designed too.
+   One token block of light-dark() pairs over the system greys and the system accent.
+   The triad is the mark and the three status meanings only: ready, working, failed. */
+:root{
+  color-scheme: dark light;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --accent: light-dark(#007aff, #0a84ff);
+  --on-accent: #fff;
+  --ready: #2B5DAA; --working: #F5C518; --failed: #E63329;
+  --ready-text: light-dark(#2B5DAA, #8fb0e6);
+  --failed-text: light-dark(#c4241b, #ff8a80);
+  --bg: light-dark(#ececf0, #0a0a0b);
+  --surface: light-dark(#ffffff, #141416);
+  --surface-2: light-dark(#f6f6f9, #1b1b1e);
+  --line: light-dark(#dcdce2, #26262a);
+  --line-2: light-dark(#e9e9ee, #1f1f22);
+  --text: light-dark(#141416, #e8e8ec);
+  --text-2: light-dark(#5c5c63, #8e8e93);
+  --text-3: light-dark(#8e8e93, #5b5b60);
+  --grid: light-dark(rgba(0,0,0,.07), rgba(255,255,255,.06));
+  --tint: color-mix(in srgb, var(--accent) 14%, transparent);
+  --s1: var(--accent);
+  --s2: color-mix(in srgb, var(--accent) 60%, light-dark(#fff, #000));
+  --s3: color-mix(in srgb, var(--accent) 35%, light-dark(#fff, #555));
+  --s4: light-dark(#aeaeb2, #48484a);
+  --focus: var(--accent);
+}
+@supports (color: AccentColor){ :root{ --accent: AccentColor; --on-accent: AccentColorText; } }
+@media (prefers-contrast: more){
+  :root{ --line: light-dark(#8e8e93, #6e6e73); --text-2: light-dark(#3a3a3c, #c7c7cc); --text-3: light-dark(#5c5c63, #98989d); --grid: light-dark(rgba(0,0,0,.18), rgba(255,255,255,.18)); }
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:12.5px/1.45 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden;font-variant-numeric:tabular-nums}
+h1,h2,h3,p,ul,ol{margin:0;padding:0}
+ul,ol{list-style:none}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.mono,code,pre,time,.num{font-family:var(--mono)}
+code{font-size:11.5px;color:var(--text)}
+a{color:var(--accent)}
+.logo{display:block}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb, var(--surface) 88%, transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;gap:14px;padding:8px 16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:9px;margin-right:6px}
+.brand .logo{width:20px;height:20px}
+.brand b{font-weight:650;letter-spacing:-.01em;font-size:13px}
+.brand span{font:11px var(--mono);color:var(--text-2)}
+.telemetry{display:flex;gap:0;flex-wrap:wrap;margin-left:auto;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface-2)}
+.telemetry > div{padding:4px 10px;display:flex;flex-direction:column;line-height:1.2;border-left:1px solid var(--line);min-width:70px}
+.telemetry > div:first-child{border-left:0}
+.telemetry dt{font:600 9.5px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+.telemetry dd{margin:0;font:600 12.5px/1.3 var(--mono)}
+.state{display:inline-flex;align-items:center;gap:6px}
+.led{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none;background:var(--text-3)}
+.led.ready{background:var(--ready);box-shadow:0 0 0 3px color-mix(in srgb, var(--ready) 25%, transparent)}
+.led.working{background:var(--working)}
+.led.failed{background:var(--failed)}
+.rec{appearance:none;border:1px solid var(--line);background:var(--surface-2);border-radius:5px;padding:4px 8px;font:600 10px var(--mono);letter-spacing:.08em;display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+.tabs{display:flex;flex-wrap:wrap;gap:0 2px;padding:0 10px;border-top:1px solid var(--line-2)}
+.tab{appearance:none;background:none;border:0;padding:9px 10px 8px;font-size:12px;color:var(--text-2);border-bottom:2px solid transparent;cursor:pointer;display:inline-flex;gap:7px;align-items:baseline}
+.tab kbd{font:10px var(--mono);color:var(--text-3)}
+.tab:hover{color:var(--text)}
+.tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+.tab .n{font:600 10px var(--mono);padding:0 5px;border-radius:3px;background:var(--line);color:var(--text-2)}
+
+main{padding:14px 16px 72px;max-width:1480px;margin:0 auto}
+.panel{container-type:inline-size}
+.headline{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:2px 0 12px}
+.headline h1{font-size:18px;font-weight:650;letter-spacing:-.015em}
+.headline p{color:var(--text-2);font-size:12px}
+.headline .r{margin-left:auto;font:11px var(--mono);color:var(--text-3)}
+
+/* panels / tiles */
+.box{background:var(--surface);border:1px solid var(--line);border-radius:8px;min-width:0}
+.box > header{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line-2);flex-wrap:wrap}
+.box > header h2{font:650 10.5px/1.4 var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--text-2)}
+.box > header .r{margin-left:auto;display:flex;gap:8px;align-items:center;font-size:11px;color:var(--text-3);flex-wrap:wrap}
+.grid{display:grid;gap:10px}
+.tiles{grid-template-columns:repeat(auto-fill, minmax(178px, 1fr))}
+.tile{padding:10px 12px 8px;display:flex;flex-direction:column;gap:2px;position:relative;overflow:hidden}
+.tile h3{font:650 10px/1.3 var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--text-3);display:flex;gap:6px;align-items:center}
+.tile .v{font:600 24px/1.15 var(--mono);letter-spacing:-.03em}
+.tile .v small{font-size:12px;color:var(--text-2);font-weight:500;letter-spacing:0;margin-left:3px}
+.tile .d{font-size:11px;color:var(--text-2)}
+.spark{height:34px;margin:4px -2px 0}
+.spark svg{display:block;width:100%;height:100%}
+.meter{height:6px;border-radius:2px;background:var(--line);display:flex;gap:1px;overflow:hidden;margin:6px 0 3px}
+.meter i{display:block;height:100%}
+.two{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+@container (max-width: 860px){ .two{grid-template-columns:minmax(0,1fr)} }
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{font:650 9.5px/1.3 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);text-align:right;padding:7px 12px;white-space:nowrap;border-bottom:1px solid var(--line-2);background:var(--surface-2)}
+td{padding:6px 12px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line-2);font-family:var(--mono);font-size:11.5px}
+th:first-child,td:first-child{text-align:left}
+td.t{font-family:var(--sans);font-size:12px}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--surface-2)}
+.dim{color:var(--text-2)} .faint{color:var(--text-3)}
+@container (max-width: 640px){ .opt{display:none} }
+
+.tag{display:inline-flex;align-items:center;gap:5px;font:650 9.5px/1 var(--mono);letter-spacing:.07em;text-transform:uppercase;padding:3px 6px;border-radius:3px;white-space:nowrap;background:var(--line);color:var(--text-2)}
+.tag.ready{background:color-mix(in srgb, var(--ready) 20%, transparent);color:var(--ready-text)}
+.tag.working{background:var(--working);color:#1a1a1a}
+.tag.failed{background:color-mix(in srgb, var(--failed) 18%, transparent);color:var(--failed-text)}
+.tag.info{background:var(--tint);color:var(--accent)}
+
+/* event log */
+.log{font:11.5px/1.5 var(--mono);max-height:320px;overflow:auto}
+.log li{display:grid;grid-template-columns:62px 54px 128px minmax(0,1fr);gap:10px;padding:5px 12px;border-bottom:1px solid var(--line-2);align-items:baseline}
+.log li:last-child{border-bottom:0}
+.log time{color:var(--text-3)}
+.log .k{color:var(--text-2)}
+.log .m{font-family:var(--sans);font-size:12px;overflow-wrap:anywhere}
+@container (max-width: 560px){ .log li{grid-template-columns:58px 52px minmax(0,1fr)} .log .k{display:none} }
+
+/* buttons and fields */
+.btn{appearance:none;border:1px solid var(--line);background:var(--surface-2);border-radius:5px;padding:3px 9px;font-size:11.5px;cursor:pointer;white-space:nowrap;line-height:1.5}
+.btn:hover{border-color:var(--text-3)}
+.btn.pri{background:var(--accent);border-color:transparent;color:var(--on-accent);font-weight:600}
+.btn.ghost{background:none}
+.btn.warn{font-weight:650}
+.btn.sm{padding:1px 7px;font-size:11px}
+.in{background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:4px 8px;font:12px var(--mono);color:var(--text);width:100%;min-width:0}
+.in.num{width:110px;text-align:right}
+.in::placeholder{color:var(--text-3)}
+.in[aria-invalid="true"]{border-color:var(--failed);background:color-mix(in srgb, var(--failed) 7%, var(--surface-2))}
+select.in{appearance:none;-webkit-appearance:none;padding-right:24px;background-image:linear-gradient(45deg, transparent 50%, var(--text-2) 50%),linear-gradient(135deg, var(--text-2) 50%, transparent 50%);background-position:calc(100% - 12px) 52%, calc(100% - 8px) 52%;background-size:4px 4px;background-repeat:no-repeat}
+.sw{appearance:none;-webkit-appearance:none;margin:0;width:30px;height:16px;border-radius:4px;background:var(--line);position:relative;flex:none;cursor:pointer;border:1px solid var(--line)}
+.sw::before{content:"";position:absolute;top:1px;left:1px;width:12px;height:12px;border-radius:2px;background:var(--text-2)}
+.sw:checked{background:var(--accent);border-color:transparent}
+.sw:checked::before{transform:translateX(14px);background:#fff}
+.chk{accent-color:var(--accent);margin:0}
+
+/* models */
+.res{display:grid;grid-template-columns:repeat(4, minmax(0,1fr));}
+.res > div{padding:10px 12px;border-left:1px solid var(--line-2)}
+.res > div:first-child{border-left:0}
+.res dt{font:650 9.5px var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--text-3)}
+.res dd{margin:2px 0 0;font:600 20px/1.2 var(--mono);letter-spacing:-.02em}
+.res dd small{font-size:11px;color:var(--text-2);font-weight:500;letter-spacing:0}
+@container (max-width: 560px){ .res{grid-template-columns:repeat(2, minmax(0,1fr))} .res > div:nth-child(3){border-left:0} .res > div:nth-child(n+3){border-top:1px solid var(--line-2)} }
+.mrow{display:grid;grid-template-columns:minmax(0,2.3fr) 150px 84px 108px 70px minmax(0,auto);gap:12px;align-items:center;padding:9px 12px;border-top:1px solid var(--line-2)}
+.mhead{padding-top:7px;padding-bottom:7px;background:var(--surface-2);font:650 9.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);border-top:0}
+.mrow .nm{min-width:0}
+.mrow .nm b{font-weight:600;font-size:12.5px;overflow-wrap:anywhere}
+.mrow .nm b span{color:var(--text-3);font-weight:400}
+.mrow .nm div{font:11px var(--mono);color:var(--text-2);margin-top:1px}
+.mrow .c{font:11.5px var(--mono);text-align:right}
+.mrow .acts{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.pbar{height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:5px}
+.pbar i{display:block;height:100%;background:var(--working)}
+.drawer{grid-column:1 / -1;background:var(--surface-2);border:1px solid var(--line-2);border-radius:6px;padding:10px 12px;margin-top:2px}
+.drawer.confirm{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.drawer.confirm p{flex:1 1 260px}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:8px 16px}
+.fgrid label{display:block;font-size:11px;color:var(--text-2);margin-bottom:3px}
+.fgrid .swrow{display:flex;align-items:center;gap:8px;padding-top:18px}
+.fgrid .swrow label{margin:0;color:var(--text)}
+@container (max-width: 820px){
+  .mrow{grid-template-columns:minmax(0,1fr) auto}
+  .mrow .c,.mhead .c{display:none}
+  .mhead{display:none}
+  .mrow .st{grid-column:1}
+  .mrow .acts{grid-column:2;grid-row:1 / span 2;align-self:start}
+}
+
+/* charts */
+.chart{padding:10px 12px 6px}
+.chart svg{display:block;width:100%}
+.chart text{font:10px var(--mono);fill:var(--text-3)}
+.chart .gl{stroke:var(--grid)}
+.legend{display:flex;gap:6px 14px;flex-wrap:wrap;padding:0 12px 10px;font-size:11px;color:var(--text-2)}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.segm{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.segm button{appearance:none;border:0;background:none;padding:2px 9px;font:11px var(--mono);color:var(--text-2);cursor:pointer;border-left:1px solid var(--line)}
+.segm button:first-child{border-left:0}
+.segm button[aria-pressed="true"]{background:var(--tint);color:var(--accent);font-weight:650}
+.kpi{display:grid;grid-template-columns:repeat(5, minmax(0,1fr));border-bottom:1px solid var(--line-2)}
+.kpi > div{padding:8px 12px;border-left:1px solid var(--line-2)}
+.kpi > div:first-child{border-left:0}
+.kpi dt{font:650 9.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+.kpi dd{margin:1px 0 0;font:600 16px var(--mono)}
+@container (max-width: 640px){ .kpi{grid-template-columns:repeat(2, minmax(0,1fr))} .kpi > div:nth-child(odd){border-left:0} .kpi > div:nth-child(n+3){border-top:1px solid var(--line-2)} }
+.storebar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:9px 12px}
+.storebar p{flex:1 1 300px;font-size:12px}
+.hbar{display:inline-block;height:6px;border-radius:1px;background:var(--s2);vertical-align:middle}
+
+pre.code{margin:0;padding:12px;font:11.5px/1.6 var(--mono);overflow-x:auto;background:var(--surface-2);border-top:1px solid var(--line-2)}
+.code .c1{color:var(--text-3)} .code .k{color:var(--accent)} .code .s{color:var(--text-2)}
+.kv{display:grid;grid-template-columns:170px minmax(0,1fr);}
+.kv > *{padding:7px 12px;border-top:1px solid var(--line-2)}
+.kv dt{color:var(--text-2);font-size:11.5px}
+.kv dd{margin:0;font-family:var(--mono);font-size:11.5px;overflow-wrap:anywhere}
+.kv > :nth-child(1),.kv > :nth-child(2){border-top:0}
+@container (max-width: 520px){ .kv{grid-template-columns:minmax(0,1fr)} .kv dd{border-top:0;padding-top:0} }
+.urlrow{display:flex;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--line-2);flex-wrap:wrap}
+.urlrow:first-of-type{border-top:0}
+.urlrow code{font-size:12.5px;flex:1 1 260px;overflow-wrap:anywhere}
+.urlrow .dim{font-size:11px;width:110px}
+
+/* settings */
+.set{display:grid;grid-template-columns:240px minmax(0,1fr);gap:12px;align-items:start}
+@container (max-width: 900px){ .set{grid-template-columns:minmax(0,1fr)} .toc{position:static !important} }
+.toc{position:sticky;top:100px;padding:6px}
+.toc a{display:grid;grid-template-columns:20px minmax(0,1fr);gap:2px 6px;padding:6px 8px;border-radius:5px;text-decoration:none;color:var(--text)}
+.toc a:hover{background:var(--surface-2)}
+.toc a b{font:650 10px var(--mono);color:var(--accent);grid-row:span 2;padding-top:2px}
+.toc a span{font-size:12px}
+.toc a small{font:10.5px var(--mono);color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toc a.err small{color:var(--failed-text)}
+.sg{scroll-margin-top:110px}
+.sg > header{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;align-items:baseline}
+.sg > header .code{font:650 11px var(--mono);color:var(--accent);grid-row:span 2}
+.sg > header h2{font-size:11px}
+.force{grid-column:2;font:11.5px var(--mono);color:var(--text);display:flex;gap:7px;align-items:baseline;flex-wrap:wrap}
+.force::before{content:"IN FORCE";font:650 9px var(--sans);letter-spacing:.1em;color:var(--accent);background:var(--tint);padding:2px 5px;border-radius:3px}
+.fields{display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr))}
+.f{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:center;padding:9px 12px;border-top:1px solid var(--line-2);border-right:1px solid var(--line-2)}
+.f > label,.f > .lab{font-size:12px}
+.f .ctl{display:flex;gap:6px;align-items:center;justify-content:flex-end}
+.f .ctl .u{font:11px var(--mono);color:var(--text-3)}
+.f .h{grid-column:1 / -1;font-size:11px;color:var(--text-2);line-height:1.4}
+.f.full{grid-column:1 / -1}
+.f.full .ctl{justify-content:flex-start}
+.ferr{grid-column:1 / -1;display:flex;gap:7px;align-items:baseline;font:11.5px var(--mono);color:var(--failed-text)}
+.ferr::before{content:"REFUSED";font:650 9px var(--sans);letter-spacing:.1em;color:#fff;background:var(--failed);padding:2px 5px;border-radius:3px}
+.ghint{padding:8px 12px;border-top:1px solid var(--line-2);font-size:11px;color:var(--text-2)}
+.savebar{position:sticky;bottom:0;z-index:15;margin:14px -16px -72px;padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  background:color-mix(in srgb, var(--surface) 92%, transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line)}
+.savebar .msg{flex:1 1 300px;display:flex;gap:8px;align-items:baseline;font-size:12px;flex-wrap:wrap}
+.savebar .diff{font:11px var(--mono);color:var(--text-2)}
+
+.facts li{display:grid;grid-template-columns:62px minmax(0,1fr);gap:10px;padding:8px 12px;border-top:1px solid var(--line-2);align-items:baseline}
+.facts li:first-child{border-top:0}
+.facts p{font-size:12.5px}
+.facts small{display:block;font-size:11px;color:var(--text-2)}
+.cap{display:flex;gap:14px;align-items:center;padding:10px 12px;flex-wrap:wrap}
+.cap .scale{flex:1 1 280px;position:relative;height:28px}
+.cap .scale .track{position:absolute;left:0;right:0;top:12px;height:4px;background:var(--line);border-radius:2px}
+.cap .scale .fill{position:absolute;left:0;top:12px;height:4px;width:62.5%;background:var(--s2);border-radius:2px}
+.cap .scale .mk{position:absolute;top:4px;width:1px;height:20px;background:var(--text-2)}
+.cap .scale .mk span{position:absolute;top:-2px;left:5px;font:10px var(--mono);color:var(--text-2);white-space:nowrap}
+.search{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line-2);flex-wrap:wrap}
+.search .in{flex:1 1 240px;font-size:13px;padding:6px 10px}
+.fit{display:inline-block;width:80px;height:5px;background:var(--line);border-radius:1px;position:relative;vertical-align:middle;margin-right:6px}
+.fit i{position:absolute;left:0;top:0;bottom:0;background:var(--s2);border-radius:1px}
+.fit.over i{background:var(--text-3)}
+
+@media (prefers-reduced-motion: no-preference){
+  .sw::before{transition:transform .12s}
+  .pbar i{animation:stripe 1.2s linear infinite;background-image:linear-gradient(90deg, transparent 0 40%, rgba(255,255,255,.5) 50%, transparent 60% 100%);background-size:200% 100%}
+  @keyframes stripe{from{background-position:100% 0}to{background-position:-100% 0}}
+  .led.ready{animation:breathe 3s ease-in-out infinite}
+  @keyframes breathe{50%{box-shadow:0 0 0 5px color-mix(in srgb, var(--ready) 10%, transparent)}}
+}
+@media (max-width: 640px){
+  .bar{padding:8px 12px;gap:8px}
+  .telemetry{margin-left:0;width:100%}
+  .telemetry > div{flex:1 1 30%;min-width:0}
+  .tabs{padding:0 4px}
+  .tab{padding:8px 7px}
+  .tab kbd{display:none}
+  main{padding:12px 12px 72px}
+  .savebar{margin:14px -12px -72px;padding:10px 12px}
+}
+</style>
+</head>
+<body>
+<p id="live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+
+<header class="top">
+  <div class="bar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true">
+        <polygon points="302,132 472,472 132,472" fill="#F5C518"/>
+        <rect x="552" y="132" width="340" height="340" fill="#B4B6BB"/>
+        <rect x="132" y="552" width="340" height="340" fill="#2B5DAA"/>
+        <circle cx="722" cy="722" r="170" fill="#E63329"/>
+      </svg>
+      <b>Dessau Server</b><span>alices-mac.local</span>
+    </div>
+    <span class="state"><span class="led ready" aria-hidden="true"></span><span class="tag ready">Ready</span></span>
+    <button type="button" class="rec" data-goto="stats" title="Request statistics are being recorded on this Mac. Anyone who can open this panel can read them."><span class="led" style="background:var(--text-2)" aria-hidden="true"></span>REC</button>
+    <dl class="telemetry" aria-label="Live figures">
+      <div><dt>Uptime</dt><dd id="tm-up">3d 04:12</dd></div>
+      <div><dt>In flight</dt><dd id="tm-fl">1</dd></div>
+      <div><dt>Req/min</dt><dd id="tm-rpm">2.4</dd></div>
+      <div><dt>Tok/s</dt><dd id="tm-tps">61.2</dd></div>
+      <div><dt>Memory</dt><dd id="tm-mem">16.5/48 GB</dd></div>
+      <div><dt>Local</dt><dd id="tm-clock">14:37:12</dd></div>
+    </dl>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Console sections">
+    <button class="tab" role="tab" id="t-overview" data-tab="overview" aria-controls="p-overview" aria-selected="true" tabindex="0"><kbd>1</kbd>Overview</button>
+    <button class="tab" role="tab" id="t-models" data-tab="models" aria-controls="p-models" aria-selected="false" tabindex="-1"><kbd>2</kbd>My Models<span class="n">5</span></button>
+    <button class="tab" role="tab" id="t-find" data-tab="find" aria-controls="p-find" aria-selected="false" tabindex="-1"><kbd>3</kbd>Find Models</button>
+    <button class="tab" role="tab" id="t-stats" data-tab="stats" aria-controls="p-stats" aria-selected="false" tabindex="-1"><kbd>4</kbd>Statistics</button>
+    <button class="tab" role="tab" id="t-connect" data-tab="connect" aria-controls="p-connect" aria-selected="false" tabindex="-1"><kbd>5</kbd>Connect</button>
+    <button class="tab" role="tab" id="t-clients" data-tab="clients" aria-controls="p-clients" aria-selected="false" tabindex="-1"><kbd>6</kbd>Clients<span class="n">3</span></button>
+    <button class="tab" role="tab" id="t-posture" data-tab="posture" aria-controls="p-posture" aria-selected="false" tabindex="-1"><kbd>7</kbd>Posture</button>
+    <button class="tab" role="tab" id="t-settings" data-tab="settings" aria-controls="p-settings" aria-selected="false" tabindex="-1"><kbd>8</kbd>Settings<span class="n" style="background:color-mix(in srgb, var(--failed) 22%, transparent);color:var(--failed-text)">1</span></button>
+  </nav>
+</header>
+
+<main>
+<!-- ═════════ Overview ═════════ -->
+<section class="panel" id="p-overview" role="tabpanel" aria-labelledby="t-overview" tabindex="0">
+  <div class="headline">
+    <h1>Serving 2 models to 3 devices on your network</h1>
+    <p>All systems ready · 1 download working · Mac Studio, M2 Max, 64 GB</p>
+    <span class="r">refreshes every 2 s</span>
+  </div>
+  <div class="grid tiles">
+    <article class="box tile"><h3>Requests / min</h3><div class="v" id="v-rpm">2.4</div><div class="d">24 in the last hour · 174 today</div><div class="spark" data-spark="rpm"></div></article>
+    <article class="box tile"><h3>Tokens / s</h3><div class="v" id="v-tps">61.2</div><div class="d">generation, mean of last 5 min</div><div class="spark" data-spark="tps"></div></article>
+    <article class="box tile"><h3>First token p50</h3><div class="v">0.24<small>s</small></div><div class="d">p90 0.61 s · p99 1.92 s</div><div class="spark" data-spark="ttft"></div></article>
+    <article class="box tile"><h3>Memory</h3><div class="v">16.5<small>/ 48 GB</small></div>
+      <div class="meter" role="meter" aria-label="Memory in use against the budget" aria-valuemin="0" aria-valuemax="48" aria-valuenow="16.5" aria-valuetext="16.5 GB of 48 GB"><i style="width:22.1%;background:var(--s2)"></i><i style="width:12.3%;background:var(--s1)"></i></div>
+      <div class="d">34 % of budget · 31.5 GB free</div></article>
+    <article class="box tile"><h3><span class="led ready" aria-hidden="true"></span>Health</h3><div class="v" style="font-size:17px;padding:4px 0 2px">Ready</div><div class="d">runtime mlx-lm 0.26.4 · self-test passed 09:12</div><div class="d">0 failed launches in 7 days</div></article>
+    <article class="box tile"><h3>Queue</h3><div class="v">0<small>waiting</small></div><div class="d">1 in flight · grace 120 s / 300 s</div><div class="spark" data-spark="q"></div></article>
+    <article class="box tile"><h3>Clients</h3><div class="v">3<small>paired</small></div><div class="d">last seen: Carol's iPad, just now</div><div class="d">port 8081 · key required on 8080</div></article>
+    <article class="box tile"><h3><span class="led failed" aria-hidden="true"></span>Refused · 24 h</h3><div class="v">1</div><div class="d">prompt over served window (Mistral)</div><div class="d">0 for lack of room</div></article>
+  </div>
+
+  <div class="grid two" style="margin-top:10px">
+    <section class="box" aria-labelledby="h-res">
+      <header><h2 id="h-res">Resident</h2><span class="r">2 loaded · 16.5 GB</span></header>
+      <div class="scroll"><table>
+        <thead><tr><th>Model</th><th>State</th><th>Memory</th><th class="opt">Window</th><th class="opt">Req 1 h</th><th>Tok/s</th><th class="opt">Idle</th></tr></thead>
+        <tbody>
+          <tr><td class="t"><b>Qwen3-8B-4bit</b> <span class="tag info">pin</span></td><td><span class="tag ready">serving 1</span></td><td>5.9 GB</td><td class="opt">32,768</td><td class="opt">17</td><td>63.8</td><td class="opt">0 s</td></tr>
+          <tr><td class="t"><b>gemma-3-12b-it-4bit</b></td><td><span class="tag ready">loaded</span></td><td>10.6 GB</td><td class="opt">32,768</td><td class="opt">7</td><td>38.2</td><td class="opt">2 m 14 s</td></tr>
+          <tr><td class="t dim">Llama-3.2-3B-Instruct-4bit</td><td><span class="tag">idle</span></td><td class="faint">—</td><td class="opt faint">32,768</td><td class="opt">0</td><td class="faint">—</td><td class="opt dim">unloaded 14:05</td></tr>
+          <tr><td class="t dim">Qwen2.5-Coder-32B-Instruct-4bit</td><td><span class="tag working">dl 63 %</span></td><td class="faint">—</td><td class="opt faint">—</td><td class="opt">—</td><td class="faint">—</td><td class="opt dim">≈ 3 min</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+    <section class="box" aria-labelledby="h-conn">
+      <header><h2 id="h-conn">Connections</h2><span class="r"><code>:8080</code> key · <code>:8081</code> paired</span></header>
+      <div class="scroll"><table>
+        <thead><tr><th>Device</th><th>Model</th><th class="opt">Req 24 h</th><th>Last seen</th></tr></thead>
+        <tbody>
+          <tr><td class="t"><span class="led ready" aria-hidden="true"></span>&nbsp; Carol's iPad</td><td class="dim">Qwen3-8B</td><td class="opt">46</td><td>now</td></tr>
+          <tr><td class="t"><span class="led ready" aria-hidden="true"></span>&nbsp; Bob's laptop</td><td class="dim">gemma-3-12b</td><td class="opt">102</td><td>2 m</td></tr>
+          <tr><td class="t"><span class="led" aria-hidden="true"></span>&nbsp; Alice's iPhone</td><td class="dim">Llama-3.2-3B</td><td class="opt">26</td><td>1 h</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+  </div>
+
+  <section class="box" style="margin-top:10px" aria-labelledby="h-ev">
+    <header><h2 id="h-ev">Recent changes</h2><span class="r">newest first · local time</span></header>
+    <ol class="log">
+      <li><time>14:32:08</time><span><span class="tag working">work</span></span><span class="k">download.start</span><span class="m">Downloading Qwen2.5-Coder-32B-Instruct-4bit, 18.4 GB</span></li>
+      <li><time>14:05:41</time><span><span class="tag">info</span></span><span class="k">model.unload</span><span class="m">Llama-3.2-3B-Instruct-4bit unloaded after 15 minutes idle</span></li>
+      <li><time>13:48:02</time><span><span class="tag info">note</span></span><span class="k">update.found</span><span class="m">Update available for Llama-3.2-3B-Instruct-4bit: 3 files changed</span></li>
+      <li><time>13:20:17</time><span><span class="tag ready">ready</span></span><span class="k">model.load</span><span class="m">gemma-3-12b-it-4bit loaded in 4.2 s for Bob's laptop</span></li>
+      <li><time>12:47:33</time><span><span class="tag failed">fail</span></span><span class="k">request.refused</span><span class="m">Mistral-Small-3.1-24B: prompt of 41,210 tokens exceeds the served window of 32,768</span></li>
+      <li><time>11:02:55</time><span><span class="tag ready">ready</span></span><span class="k">client.paired</span><span class="m">Carol's iPad paired on port 8081</span></li>
+      <li><time>09:12:40</time><span><span class="tag ready">ready</span></span><span class="k">selftest.done</span><span class="m">Qwen3-8B-4bit measured: 64.8 tok/s generation, 1,412 tok/s prompt read</span></li>
+      <li><time>09:11:58</time><span><span class="tag">info</span></span><span class="k">model.unload</span><span class="m">Qwen3-8B-4bit kept loaded after self-test: it is pinned</span></li>
+      <li><time datetime="2026-10-09T18:40">Thu 18:40</time><span><span class="tag ready">ready</span></span><span class="k">download.done</span><span class="m">Download finished: Mistral-Small-3.1-24B-Instruct-2503-4bit, 13.3 GB</span></li>
+    </ol>
+  </section>
+</section>
+
+<!-- ═════════ My Models ═════════ -->
+<section class="panel" id="p-models" role="tabpanel" aria-labelledby="t-models" tabindex="0" hidden>
+  <section class="box" aria-label="Resources">
+    <dl class="res">
+      <div><dt>Budget</dt><dd>48.0 <small>GB · default, ¾ of 64</small></dd></div>
+      <div><dt>In use</dt><dd>16.5 <small>GB · 2 models</small></dd></div>
+      <div><dt>Free</dt><dd>31.5 <small>GB</small></dd></div>
+      <div><dt>On disk</dt><dd>39.2 <small>GB · + 11.6 partial</small></dd></div>
+    </dl>
+    <div style="padding:0 12px 10px">
+      <div class="meter" style="height:10px" role="meter" aria-label="Memory budget in use" aria-valuemin="0" aria-valuemax="48" aria-valuenow="16.5" aria-valuetext="16.5 GB of 48 GB"><i style="width:22.1%;background:var(--s2)"></i><i style="width:12.3%;background:var(--s1)"></i></div>
+      <div class="legend" style="padding:4px 0 0"><span><i style="background:var(--s2)"></i>gemma-3-12b 10.6</span><span><i style="background:var(--s1)"></i>Qwen3-8B 5.9 (pinned)</span><span><i style="background:var(--line)"></i>free 31.5</span></div>
+    </div>
+  </section>
+
+  <section class="box" style="margin-top:10px" aria-labelledby="h-ml">
+    <header><h2 id="h-ml">Models on this Mac</h2><span class="r">sorted by state</span></header>
+    <div class="mrow mhead" aria-hidden="true"><span>Model</span><span>State</span><span class="c">Memory</span><span class="c">Window</span><span class="c">Req 24 h</span><span></span></div>
+
+    <div class="mrow" id="m-qwen">
+      <div class="nm"><b><span>mlx-community/</span>Qwen3-8B-4bit</b><div>4.6 GB · 4-bit · qwen3 · pinned · t=0.6</div></div>
+      <div class="st"><span class="tag ready" data-state>loaded · serving 1</span></div>
+      <div class="c">5.9 GB</div><div class="c">32,768<span class="faint">/40,960</span></div><div class="c">1,046</div>
+      <div class="acts"><button type="button" class="btn sm" data-load="Qwen3-8B-4bit">Unload</button><button type="button" class="btn sm" aria-expanded="true" aria-controls="ms-qwen" data-toggle>Settings</button><button type="button" class="btn sm ghost" data-ask="c-qwen" aria-expanded="false" aria-controls="c-qwen">Delete</button></div>
+      <div class="drawer" id="ms-qwen">
+        <div class="fgrid">
+          <div><label for="q-ctx">Served context (tokens)</label><input class="in" id="q-ctx" placeholder="32768 — largest that fits"></div>
+          <div><label for="q-temp">Temperature</label><input class="in" id="q-temp" value="0.6"></div>
+          <div><label for="q-topp">Top-p</label><input class="in" id="q-topp" value="0.95"></div>
+          <div><label for="q-max">Maximum completion tokens</label><input class="in" id="q-max" placeholder="machine-wide default"></div>
+          <div class="swrow"><input type="checkbox" class="sw" role="switch" id="q-pin" checked><label for="q-pin">Pinned — never evicted</label></div>
+          <div class="swrow"><input type="checkbox" class="sw" role="switch" id="q-merge"><label for="q-merge">Merge system messages</label></div>
+          <div class="swrow"><input type="checkbox" class="sw" role="switch" id="q-notr"><label for="q-notr">Keeps no transcript</label></div>
+          <div class="swrow"><button type="button" class="btn sm">Measure context now</button><button type="button" class="btn sm">Arm debug log</button></div>
+        </div>
+      </div>
+      <div class="drawer confirm" id="c-qwen" hidden><p><b>Delete Qwen3-8B-4bit?</b> It is loaded, pinned and serving Carol's iPad. Deleting unloads it and frees 4.6 GB on disk.</p><button type="button" class="btn" data-cancel>Keep</button><button type="button" class="btn warn" data-delete="m-qwen" data-name="Qwen3-8B-4bit">Delete</button></div>
+    </div>
+
+    <div class="mrow" id="m-gemma">
+      <div class="nm"><b><span>mlx-community/</span>gemma-3-12b-it-4bit</b><div>8.1 GB · 4-bit · gemma3 · merges system messages</div></div>
+      <div class="st"><span class="tag ready" data-state>loaded</span></div>
+      <div class="c">10.6 GB</div><div class="c">32,768<span class="faint">/131,072</span></div><div class="c">612</div>
+      <div class="acts"><button type="button" class="btn sm" data-load="gemma-3-12b-it-4bit">Unload</button><button type="button" class="btn sm" aria-expanded="false" aria-controls="ms-gemma" data-toggle>Settings</button><button type="button" class="btn sm ghost" data-ask="c-gemma" aria-expanded="false" aria-controls="c-gemma">Delete</button></div>
+      <div class="drawer" id="ms-gemma" hidden><div class="fgrid">
+        <div><label for="g-ctx">Served context (tokens)</label><input class="in" id="g-ctx" placeholder="32768 — largest that fits"></div>
+        <div><label for="g-temp">Temperature</label><input class="in" id="g-temp" placeholder="machine-wide default"></div>
+        <div class="swrow"><input type="checkbox" class="sw" role="switch" id="g-pin"><label for="g-pin">Pinned — never evicted</label></div>
+        <div class="swrow"><input type="checkbox" class="sw" role="switch" id="g-merge" checked><label for="g-merge">Merge system messages</label></div>
+      </div></div>
+      <div class="drawer confirm" id="c-gemma" hidden><p><b>Delete gemma-3-12b-it-4bit?</b> Deleting unloads it and frees 8.1 GB on disk.</p><button type="button" class="btn" data-cancel>Keep</button><button type="button" class="btn warn" data-delete="m-gemma" data-name="gemma-3-12b-it-4bit">Delete</button></div>
+    </div>
+
+    <div class="mrow" id="m-llama">
+      <div class="nm"><b><span>mlx-community/</span>Llama-3.2-3B-Instruct-4bit</b><div>1.8 GB · 4-bit · llama · <span style="color:var(--accent)">update: 3 files changed</span></div></div>
+      <div class="st"><span class="tag" data-state>idle</span> <span class="tag info">update</span></div>
+      <div class="c faint">—</div><div class="c">32,768<span class="faint">/131,072</span></div><div class="c">26</div>
+      <div class="acts"><button type="button" class="btn sm" data-load="Llama-3.2-3B-Instruct-4bit">Load</button><button type="button" class="btn sm pri">Update</button><button type="button" class="btn sm" aria-expanded="false" aria-controls="ms-llama" data-toggle>Settings</button><button type="button" class="btn sm ghost" data-ask="c-llama" aria-expanded="false" aria-controls="c-llama">Delete</button></div>
+      <div class="drawer" id="ms-llama" hidden><div class="fgrid">
+        <div><label for="l-ctx">Served context (tokens)</label><input class="in" id="l-ctx" placeholder="32768 — largest that fits"></div>
+        <div class="swrow"><input type="checkbox" class="sw" role="switch" id="l-pin"><label for="l-pin">Pinned — never evicted</label></div>
+        <div style="grid-column:1/-1;font:11px var(--mono);color:var(--text-2)">changed upstream: model.safetensors · tokenizer.json · config.json — 1.8 GB to fetch</div>
+      </div></div>
+      <div class="drawer confirm" id="c-llama" hidden><p><b>Delete Llama-3.2-3B-Instruct-4bit?</b> Frees 1.8 GB on disk. Alice's iPhone uses it.</p><button type="button" class="btn" data-cancel>Keep</button><button type="button" class="btn warn" data-delete="m-llama" data-name="Llama-3.2-3B-Instruct-4bit">Delete</button></div>
+    </div>
+
+    <div class="mrow" id="m-mistral">
+      <div class="nm"><b><span>mlx-community/</span>Mistral-Small-3.1-24B-Instruct-2503-4bit</b><div>13.3 GB · 4-bit · mistral3 · fits now (≈ 15.1 GB with cache)</div></div>
+      <div class="st"><span class="tag" data-state>idle</span></div>
+      <div class="c faint">—</div><div class="c">32,768<span class="faint">/131,072</span></div><div class="c">3</div>
+      <div class="acts"><button type="button" class="btn sm" data-load="Mistral-Small-3.1-24B-Instruct-2503-4bit">Load</button><button type="button" class="btn sm" aria-expanded="false" aria-controls="ms-mistral" data-toggle>Settings</button><button type="button" class="btn sm ghost" data-ask="c-mistral" aria-expanded="false" aria-controls="c-mistral">Delete</button></div>
+      <div class="drawer" id="ms-mistral" hidden><div class="fgrid">
+        <div><label for="mi-ctx">Served context (tokens)</label><input class="in" id="mi-ctx" placeholder="32768 — largest that fits"></div>
+        <div style="grid-column:1/-1;font:11px var(--mono);color:var(--failed-text)">12:47 refused a 41,210-token prompt at the 32,768 window</div>
+      </div></div>
+      <div class="drawer confirm" id="c-mistral" hidden><p><b>Delete Mistral-Small-3.1-24B-Instruct-2503-4bit?</b> Frees 13.3 GB on disk.</p><button type="button" class="btn" data-cancel>Keep</button><button type="button" class="btn warn" data-delete="m-mistral" data-name="Mistral-Small-3.1-24B-Instruct-2503-4bit">Delete</button></div>
+    </div>
+
+    <div class="mrow" id="m-coder">
+      <div class="nm"><b><span>mlx-community/</span>Qwen2.5-Coder-32B-Instruct-4bit</b><div>11.6 / 18.4 GB · 41 MB/s · eta 2 m 46 s</div><div class="pbar" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="63"><i style="width:63%"></i></div></div>
+      <div class="st"><span class="tag working">downloading 63 %</span></div>
+      <div class="c faint">—</div><div class="c faint">—</div><div class="c faint">—</div>
+      <div class="acts"><button type="button" class="btn sm">Pause</button><button type="button" class="btn sm ghost" data-ask="c-coder" aria-expanded="false" aria-controls="c-coder">Cancel</button></div>
+      <div class="drawer confirm" id="c-coder" hidden><p><b>Cancel this download?</b> The 11.6 GB fetched so far is removed.</p><button type="button" class="btn" data-cancel>Keep downloading</button><button type="button" class="btn warn" data-delete="m-coder" data-name="Qwen2.5-Coder-32B download" data-verb="cancelled">Cancel download</button></div>
+    </div>
+  </section>
+  <p class="dim" style="font-size:11px;margin:8px 2px 0">Debug logging is a per-model diagnostic, off unless armed: from the model's next start, its server log holds every prompt and answer. Owner-only file, capped at 64 MB, never sent anywhere.</p>
+</section>
+
+<!-- ═════════ Find Models ═════════ -->
+<section class="panel" id="p-find" role="tabpanel" aria-labelledby="t-find" tabindex="0" hidden>
+  <section class="box">
+    <div class="cap">
+      <div><div style="font:650 10px var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--text-3)">This Mac</div><div style="font-size:14px;font-weight:600">This Mac can run models up to about 40 GB</div><div class="dim" style="font-size:11px">48 GB budget, less each model's cache at a 32,768-token window</div></div>
+      <div class="scale" aria-hidden="true"><div class="track"></div><div class="fill"></div><div class="mk" style="left:62.5%"><span>40 GB</span></div><div class="mk" style="left:75%"><span>48</span></div><div class="mk" style="left:99.8%"><span>64</span></div></div>
+    </div>
+    <form class="search" role="search" onsubmit="return false">
+      <label for="q" class="sr-only">Search MLX models</label>
+      <input class="in" id="q" type="search" value="qwen3" placeholder="search mlx-community, or owner/repo for an exact id" autocomplete="off">
+      <button type="submit" class="btn pri">Search</button>
+    </form>
+    <p class="ghint">Searching <code>mlx-community</code>. Type a repository id in full, such as <code>alice/Bonsai-27B-mlx-4bit</code>, or prefix <code>author:someone</code> to search another account.</p>
+  </section>
+  <section class="box" style="margin-top:10px">
+    <header><h2>Results · qwen3</h2><span class="r">6 of 148 · sorted by downloads</span></header>
+    <div class="scroll"><table>
+      <thead><tr><th>Repository</th><th>Size</th><th class="opt">Fits in 40 GB</th><th class="opt">Downloads</th><th class="opt">Updated</th><th></th></tr></thead>
+      <tbody>
+        <tr><td class="t"><span class="dim">mlx-community/</span><b>Qwen3-8B-4bit</b></td><td>4.6 GB</td><td class="opt"><span class="fit"><i style="width:11.5%"></i></span>11 %</td><td class="opt">112k</td><td class="opt">5 w</td><td><span class="tag ready">on this Mac</span></td></tr>
+        <tr><td class="t"><span class="dim">mlx-community/</span><b>Qwen3-30B-A3B-4bit</b></td><td>17.2 GB</td><td class="opt"><span class="fit"><i style="width:43%"></i></span>43 %</td><td class="opt">88.7k</td><td class="opt">4 w</td><td><button type="button" class="btn sm" data-dl>Download</button></td></tr>
+        <tr><td class="t"><span class="dim">mlx-community/</span><b>Qwen3-14B-4bit</b></td><td>8.3 GB</td><td class="opt"><span class="fit"><i style="width:20.8%"></i></span>21 %</td><td class="opt">41.2k</td><td class="opt">3 w</td><td><button type="button" class="btn sm" data-dl>Download</button></td></tr>
+        <tr><td class="t"><span class="dim">mlx-community/</span><b>Qwen3-32B-4bit</b></td><td>18.4 GB</td><td class="opt"><span class="fit"><i style="width:46%"></i></span>46 %</td><td class="opt">29.5k</td><td class="opt">4 w</td><td><button type="button" class="btn sm" data-dl>Download</button></td></tr>
+        <tr><td class="t"><span class="dim">mlx-community/</span><b>Qwen3-30B-A3B-8bit</b></td><td>32.5 GB</td><td class="opt"><span class="fit"><i style="width:81%"></i></span>81 %</td><td class="opt">14.1k</td><td class="opt">4 w</td><td><button type="button" class="btn sm" data-dl>Download</button></td></tr>
+        <tr><td class="t dim"><span class="faint">mlx-community/</span>Qwen3-235B-A22B-4bit</td><td>132 GB</td><td class="opt"><span class="fit over"><i style="width:100%"></i></span>330 %</td><td class="opt">6.3k</td><td class="opt">6 w</td><td class="faint">too large</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+</section>
+
+<!-- ═════════ Statistics ═════════ -->
+<section class="panel" id="p-stats" role="tabpanel" aria-labelledby="t-stats" tabindex="0" hidden>
+  <section class="box">
+    <div class="storebar">
+      <p id="storeLine"><span class="tag ready">rec</span>&nbsp; Store: <b class="mono">4,588</b> records in 2 files · <span class="mono">2.6 MB / 256 MB</span> · oldest <span class="mono">2026-09-11</span> · kept 6 months</p>
+      <button type="button" class="btn" data-ask="c-clear" aria-expanded="false" aria-controls="c-clear">Clear records</button>
+    </div>
+    <div class="drawer confirm" id="c-clear" hidden style="margin:0 12px 10px"><p><b>Clear all 4,588 records?</b> This empties the store on this Mac and cannot be undone. Recording stays on.</p><button type="button" class="btn" data-cancel>Cancel</button><button type="button" class="btn warn" data-clear>Clear records</button></div>
+  </section>
+
+  <section class="box" style="margin-top:10px" aria-labelledby="h-chart">
+    <header><h2 id="h-chart">Requests and tokens</h2><span class="r"><span class="segm" role="group" aria-label="Range"><button type="button" data-range="7" aria-pressed="false">7 d</button><button type="button" data-range="30" aria-pressed="true">30 d</button></span></span></header>
+    <dl class="kpi">
+      <div><dt>Requests</dt><dd id="k-req">4,588</dd></div>
+      <div><dt>Tokens in</dt><dd>6.11 M</dd></div>
+      <div><dt>Tokens out</dt><dd id="k-out">1.45 M</dd></div>
+      <div><dt>TTFT p50</dt><dd>0.24 s</dd></div>
+      <div><dt>Refused</dt><dd>6</dd></div>
+    </dl>
+    <div class="chart" id="chart" role="img" aria-label="Requests per day stacked by model, with tokens out per day as a line"></div>
+    <div class="legend"><span><i style="background:var(--s1)"></i>Qwen3-8B</span><span><i style="background:var(--s2)"></i>gemma-3-12b</span><span><i style="background:var(--s3)"></i>Llama-3.2-3B</span><span><i style="background:var(--s4)"></i>Mistral-Small</span><span><i style="background:var(--text);height:2px;width:12px;border-radius:0"></i>tokens out</span></div>
+  </section>
+
+  <div class="grid two" style="margin-top:10px">
+    <section class="box" aria-labelledby="h-pm">
+      <header><h2 id="h-pm">Per model · 30 d</h2></header>
+      <div class="scroll"><table>
+        <thead><tr><th>Model</th><th>Req</th><th class="opt">Share</th><th class="opt">Tok in</th><th>Tok out</th><th>TTFT p50</th><th class="opt">p90</th><th class="opt">p99</th><th>Rate p50</th></tr></thead>
+        <tbody>
+          <tr><td class="t">Qwen3-8B-4bit</td><td>2,511</td><td class="opt"><span class="hbar" style="width:44px;background:var(--s1)"></span> 55 %</td><td class="opt">3.31 M</td><td>796k</td><td>0.21 s</td><td class="opt">0.48</td><td class="opt">1.12</td><td>63.4</td></tr>
+          <tr><td class="t">gemma-3-12b-it-4bit</td><td>1,322</td><td class="opt"><span class="hbar" style="width:23px"></span> 29 %</td><td class="opt">2.00 M</td><td>431k</td><td>0.38 s</td><td class="opt">0.81</td><td class="opt">1.95</td><td>38.9</td></tr>
+          <tr><td class="t">Llama-3.2-3B-Instruct-4bit</td><td>661</td><td class="opt"><span class="hbar" style="width:12px;background:var(--s3)"></span> 14 %</td><td class="opt">0.70 M</td><td>184k</td><td>0.09 s</td><td class="opt">0.17</td><td class="opt">1.92</td><td>121.7</td></tr>
+          <tr><td class="t">Mistral-Small-3.1-24B</td><td>94</td><td class="opt"><span class="hbar" style="width:2px;background:var(--s4)"></span> 2 %</td><td class="opt">0.10 M</td><td>34k</td><td>0.71 s</td><td class="opt">1.42</td><td class="opt">2.80</td><td>22.6</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+    <section class="box" aria-labelledby="h-ttft">
+      <header><h2 id="h-ttft">Time to first token · spread</h2><span class="r">all models · 30 d</span></header>
+      <div class="chart" id="hist" role="img" aria-label="Histogram of time to first token"></div>
+    </section>
+  </div>
+
+  <section class="box" style="margin-top:10px" aria-labelledby="h-rr">
+    <header><h2 id="h-rr">Recent requests</h2><span class="r">newest first · no message text and no client address is recorded</span></header>
+    <div class="scroll"><table>
+      <thead><tr><th>Time</th><th>Model</th><th class="opt">Mode</th><th>Outcome</th><th class="opt">In</th><th class="opt">Out</th><th>TTFT</th><th>Rate</th><th class="opt">Waited</th><th class="opt">Total</th></tr></thead>
+      <tbody>
+        <tr><td>14:37:02</td><td class="t">Qwen3-8B-4bit</td><td class="opt">stream</td><td><span class="tag ready">ok</span></td><td class="opt">1,204</td><td class="opt">388</td><td>0.19</td><td>64.1</td><td class="opt">0.00</td><td class="opt">6.24</td></tr>
+        <tr><td>14:36:41</td><td class="t">Qwen3-8B-4bit</td><td class="opt">stream</td><td><span class="tag ready">ok</span></td><td class="opt">982</td><td class="opt">211</td><td>0.17</td><td>63.8</td><td class="opt">0.00</td><td class="opt">3.48</td></tr>
+        <tr><td>14:34:58</td><td class="t">gemma-3-12b-it-4bit</td><td class="opt">stream</td><td><span class="tag ready">ok</span></td><td class="opt">3,410</td><td class="opt">702</td><td>0.44</td><td>38.2</td><td class="opt">0.00</td><td class="opt">18.82</td></tr>
+        <tr><td>14:31:20</td><td class="t">gemma-3-12b-it-4bit</td><td class="opt">whole</td><td><span class="tag ready">ok</span></td><td class="opt">512</td><td class="opt">96</td><td>0.29</td><td>39.5</td><td class="opt">0.00</td><td class="opt">2.72</td></tr>
+        <tr><td>14:12:07</td><td class="t">Llama-3.2-3B-Instruct-4bit</td><td class="opt">stream</td><td><span class="tag ready">ok</span></td><td class="opt">220</td><td class="opt">140</td><td>1.92</td><td>119.0</td><td class="opt">1.81</td><td class="opt">3.10</td></tr>
+        <tr><td>12:47:33</td><td class="t">Mistral-Small-3.1-24B</td><td class="opt">stream</td><td><span class="tag failed">too large</span></td><td class="opt">41,210</td><td class="opt">—</td><td>—</td><td>—</td><td class="opt">0.00</td><td class="opt">0.01</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="box" style="margin-top:10px" aria-labelledby="h-st">
+    <header><h2 id="h-st">Self-test</h2><span class="r">latest run per model · pp512 / tg128 / concurrent</span></header>
+    <div class="scroll"><table>
+      <thead><tr><th>Model</th><th>Measured</th><th>Outcome</th><th class="opt">Load</th><th>Prompt read</th><th class="opt">First token</th><th>Generation</th><th class="opt">Under load</th></tr></thead>
+      <tbody>
+        <tr><td class="t">Qwen3-8B-4bit</td><td>10-10 09:12</td><td><span class="tag ready">pass</span></td><td class="opt">2.1 s</td><td>1,412 t/s</td><td class="opt">0.18 s</td><td>64.8 t/s</td><td class="opt">171 t/s</td></tr>
+        <tr><td class="t">gemma-3-12b-it-4bit</td><td>10-10 08:40</td><td><span class="tag ready">pass</span></td><td class="opt">3.9 s</td><td>802 t/s</td><td class="opt">0.31 s</td><td>39.2 t/s</td><td class="opt">104 t/s</td></tr>
+        <tr><td class="t">Llama-3.2-3B-Instruct-4bit</td><td>10-09 22:15</td><td><span class="tag ready">pass</span></td><td class="opt">1.0 s</td><td>3,260 t/s</td><td class="opt">0.07 s</td><td>122.4 t/s</td><td class="opt">318 t/s</td></tr>
+        <tr><td class="t">Mistral-Small-3.1-24B</td><td class="faint">—</td><td><span class="tag">waiting for room</span></td><td class="opt faint">—</td><td class="faint">—</td><td class="opt faint">—</td><td class="faint">—</td><td class="opt faint">—</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+</section>
+
+<!-- ═════════ Connect ═════════ -->
+<section class="panel" id="p-connect" role="tabpanel" aria-labelledby="t-connect" tabindex="0" hidden>
+  <div class="headline"><h1>Point any OpenAI client here</h1><p>OpenAI-compatible: <code>/v1/chat/completions</code>, <code>/v1/completions</code>, <code>/v1/models</code></p></div>
+  <div class="grid two">
+    <section class="box" aria-labelledby="h-base">
+      <header><h2 id="h-base">Base URL</h2></header>
+      <div class="urlrow"><span class="dim">bonjour</span><code>http://alices-mac.local:8080/v1</code><button type="button" class="btn sm" data-copy="http://alices-mac.local:8080/v1">Copy</button></div>
+      <div class="urlrow"><span class="dim">wi-fi en0</span><code>http://192.0.2.24:8080/v1</code><button type="button" class="btn sm" data-copy="http://192.0.2.24:8080/v1">Copy</button></div>
+      <div class="urlrow"><span class="dim">loopback</span><code>http://127.0.0.1:8080/v1</code><button type="button" class="btn sm" data-copy="http://127.0.0.1:8080/v1">Copy</button></div>
+    </section>
+    <section class="box" aria-labelledby="h-key">
+      <header><h2 id="h-key">API key</h2><span class="r"><span class="tag ready">required</span></span></header>
+      <dl class="kv">
+        <dt>State</dt><dd>set 2026-09-12 · sent as <code>Authorization: Bearer</code></dd>
+        <dt>Key</dt><dd><span id="keyText">dsu-••••••••••••••••7f3a</span> &nbsp;<button type="button" class="btn sm" id="keyShow" aria-pressed="false">Show</button> <button type="button" class="btn sm" data-copy="dsu-4c1e9b07d2a85f6e3b90c4a17f3a">Copy</button></dd>
+        <dt>Paired clients</dt><dd>port 8081, own keys — never the API key</dd>
+        <dt>Change</dt><dd><button type="button" class="btn sm" data-goto="settings" data-anchor="s-a">Settings › A</button></dd>
+      </dl>
+    </section>
+  </div>
+  <section class="box" style="margin-top:10px" aria-labelledby="h-ex">
+    <header><h2 id="h-ex">Example</h2><span class="r"><span class="segm" role="group" aria-label="Language"><button type="button" data-lang="curl" aria-pressed="true">curl</button><button type="button" data-lang="py" aria-pressed="false">python</button><button type="button" data-lang="models" aria-pressed="false">GET /v1/models</button></span></span></header>
+<pre class="code" data-code="curl"><span class="c1"># DESSAU_API_KEY holds the key above</span>
+<span class="k">curl</span> http://alices-mac.local:8080/v1/chat/completions \
+  -H <span class="s">"Authorization: Bearer $DESSAU_API_KEY"</span> \
+  -H <span class="s">"Content-Type: application/json"</span> \
+  -d <span class="s">'{"model": "mlx-community/Qwen3-8B-4bit", "stream": true,
+       "messages": [{"role": "user", "content": "Hello"}]}'</span></pre>
+<pre class="code" data-code="py" hidden><span class="k">import</span> os
+<span class="k">from</span> openai <span class="k">import</span> OpenAI
+
+client = OpenAI(base_url=<span class="s">"http://alices-mac.local:8080/v1"</span>,
+                api_key=os.environ[<span class="s">"DESSAU_API_KEY"</span>])
+r = client.chat.completions.create(model=<span class="s">"mlx-community/Qwen3-8B-4bit"</span>,
+        messages=[{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Hello"</span>}])
+print(r.choices[0].message.content)</pre>
+<pre class="code" data-code="models" hidden>{ <span class="s">"object"</span>: <span class="s">"list"</span>, <span class="s">"data"</span>: [
+  { <span class="s">"id"</span>: <span class="s">"mlx-community/Qwen3-8B-4bit"</span>,              <span class="s">"loaded"</span>: <span class="k">true</span>,  <span class="s">"chat"</span>: <span class="k">true</span> },
+  { <span class="s">"id"</span>: <span class="s">"mlx-community/gemma-3-12b-it-4bit"</span>,        <span class="s">"loaded"</span>: <span class="k">true</span>,  <span class="s">"chat"</span>: <span class="k">true</span> },
+  { <span class="s">"id"</span>: <span class="s">"mlx-community/Llama-3.2-3B-Instruct-4bit"</span>, <span class="s">"loaded"</span>: <span class="k">false</span>, <span class="s">"chat"</span>: <span class="k">true</span> },
+  { <span class="s">"id"</span>: <span class="s">"mlx-community/Mistral-Small-3.1-24B-Instruct-2503-4bit"</span>, <span class="s">"loaded"</span>: <span class="k">false</span>, <span class="s">"chat"</span>: <span class="k">true</span> } ] }</pre>
+  </section>
+</section>
+
+<!-- ═════════ Clients ═════════ -->
+<section class="panel" id="p-clients" role="tabpanel" aria-labelledby="t-clients" tabindex="0" hidden>
+  <section class="box" aria-labelledby="h-fp">
+    <header><h2 id="h-fp">Server key fingerprint</h2><span class="r">compare with what the chat client shows</span></header>
+    <p class="mono" style="padding:10px 12px;font-size:14px;letter-spacing:.04em">9f3c a1d0 5b2e 77c4 e81a 0d36 4b9f 7e42</p>
+  </section>
+  <section class="box" style="margin-top:10px" aria-labelledby="h-pc">
+    <header><h2 id="h-pc">Paired clients</h2><span class="r">3 active · 1 revoked · port 8081</span></header>
+    <div class="scroll"><table>
+      <thead><tr><th>Device</th><th class="opt">Client</th><th class="opt">Paired</th><th>Last seen</th><th class="opt">Last address</th><th class="opt">Req 30 d</th><th class="opt">Key</th><th></th></tr></thead>
+      <tbody>
+        <tr id="cl-carol"><td class="t"><span class="led ready" aria-hidden="true"></span>&nbsp; Carol's iPad</td><td class="opt">Dessau Chat · iPadOS</td><td class="opt">10-10 11:02</td><td>now</td><td class="opt">192.0.2.41</td><td class="opt">46</td><td class="opt">c2e1…9a04</td><td><button type="button" class="btn sm ghost" data-ask="r-carol" aria-expanded="false" aria-controls="r-carol">Revoke</button></td></tr>
+        <tr id="r-carol" hidden><td colspan="8"><div class="drawer confirm"><p><b>Revoke Carol's iPad?</b> Its key stops working at once; it must pair again to use this server.</p><button type="button" class="btn" data-cancel>Cancel</button><button type="button" class="btn warn" data-delete="cl-carol" data-name="Carol's iPad" data-verb="revoked">Revoke</button></div></td></tr>
+        <tr id="cl-bob"><td class="t"><span class="led ready" aria-hidden="true"></span>&nbsp; Bob's laptop</td><td class="opt">Dessau Chat · macOS</td><td class="opt">09-14 16:20</td><td>2 m</td><td class="opt">192.0.2.31</td><td class="opt">1,108</td><td class="opt">7b40…e2d1</td><td><button type="button" class="btn sm ghost" data-ask="r-bob" aria-expanded="false" aria-controls="r-bob">Revoke</button></td></tr>
+        <tr id="r-bob" hidden><td colspan="8"><div class="drawer confirm"><p><b>Revoke Bob's laptop?</b> Its key stops working at once; it must pair again to use this server.</p><button type="button" class="btn" data-cancel>Cancel</button><button type="button" class="btn warn" data-delete="cl-bob" data-name="Bob's laptop" data-verb="revoked">Revoke</button></div></td></tr>
+        <tr id="cl-alice"><td class="t"><span class="led" aria-hidden="true"></span>&nbsp; Alice's iPhone</td><td class="opt">Dessau Chat · iOS</td><td class="opt">09-02 08:45</td><td>1 h</td><td class="opt">192.0.2.57</td><td class="opt">389</td><td class="opt">0d9f…41bc</td><td><button type="button" class="btn sm ghost" data-ask="r-alice" aria-expanded="false" aria-controls="r-alice">Revoke</button></td></tr>
+        <tr id="r-alice" hidden><td colspan="8"><div class="drawer confirm"><p><b>Revoke Alice's iPhone?</b> Its key stops working at once; it must pair again to use this server.</p><button type="button" class="btn" data-cancel>Cancel</button><button type="button" class="btn warn" data-delete="cl-alice" data-name="Alice's iPhone" data-verb="revoked">Revoke</button></div></td></tr>
+        <tr><td class="t faint">Bob's old laptop</td><td class="opt faint">Dessau Chat · macOS</td><td class="opt faint">08-30</td><td class="faint">revoked 09-20</td><td class="opt faint">—</td><td class="opt faint">—</td><td class="opt faint">51aa…03c7</td><td></td></tr>
+      </tbody>
+    </table></div>
+    <p class="ghint">Anything on your network that reaches this server can pair itself, so this list is where you find out that something did — revoke anything you do not recognise.</p>
+  </section>
+</section>
+
+<!-- ═════════ Posture ═════════ -->
+<section class="panel" id="p-posture" role="tabpanel" aria-labelledby="t-posture" tabindex="0" hidden>
+  <div class="headline"><h1>Where this server stands</h1><p>Each line is what is, as Dessau sees it now. Nothing here changes a setting.</p></div>
+  <section class="box" aria-labelledby="h-exp">
+    <header><h2 id="h-exp">Exposure</h2></header>
+    <div class="scroll"><table>
+      <thead><tr><th>Surface</th><th>Bound</th><th>Who can reach it</th><th class="opt">Proof required</th><th class="opt">Announced</th></tr></thead>
+      <tbody>
+        <tr><td class="t">Model API</td><td>0.0.0.0:8080</td><td class="t">every device on your network</td><td class="opt t">API key</td><td class="opt t">Bonjour, as “Dessau on alices-mac”</td></tr>
+        <tr><td class="t">Paired clients</td><td>0.0.0.0:8081</td><td class="t">every device on your network</td><td class="opt t">a key per client · 3 paired</td><td class="opt t">same advert</td></tr>
+        <tr><td class="t">Control panel</td><td>127.0.0.1:8080</td><td class="t">this Mac only</td><td class="opt t">an account on this Mac</td><td class="opt t">no</td></tr>
+        <tr><td class="t">Discord bridge</td><td class="faint">—</td><td class="t">off · no connection held</td><td class="opt faint">—</td><td class="opt faint">—</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+  <section class="box" style="margin-top:10px" aria-labelledby="h-facts">
+    <header><h2 id="h-facts">Facts</h2></header>
+    <ul class="facts">
+      <li><span class="tag">net</span><p>No port is opened to the internet by Dessau.<small>Dessau cannot see your router; a port forwarded there would not show here.</small></p></li>
+      <li><span class="tag">out</span><p>Every 24 hours Dessau asks huggingface.co about the 4 models you downloaded.<small>It sends their names and nothing else, with no token.</small></p></li>
+      <li><span class="tag">rec</span><p>Request statistics are recorded on this Mac: counts and timings only.<small>Never a prompt, an answer, a key or a client address. Anyone who can open this panel can read them.</small></p></li>
+      <li><span class="tag">log</span><p>Dessau's log is sparse. Debug logging is armed on no model.<small>Model servers run at their INFO level and write no prompts.</small></p></li>
+      <li><span class="tag">api</span><p>A program with the key, or a paired client, may unload a model it has finished with.<small>Not a pinned model, nor one answering or inside its grace.</small></p></li>
+      <li><span class="tag">idle</span><p>Self-test runs after 30 minutes of quiet; the context probe is off.<small>Both stand down the moment anyone sends a request.</small></p></li>
+    </ul>
+  </section>
+</section>
+
+<!-- ═════════ Settings ═════════ -->
+<section class="panel" id="p-settings" role="tabpanel" aria-labelledby="t-settings" tabindex="0" hidden>
+  <form id="settingsForm" novalidate>
+  <div class="set">
+    <nav class="box toc" aria-label="Settings by task">
+      <a href="#s-a"><b>A</b><span>Who can reach this server</span><small>network · :8080 · key</small></a>
+      <a href="#s-b"><b>B</b><span>Memory and loaded models</span><small>16.5 / 48 GB · 1 pinned</small></a>
+      <a href="#s-c"><b>C</b><span>How requests are handled</span><small>model defaults · 1 override</small></a>
+      <a href="#s-d" class="err"><b>D</b><span>When idle models are unloaded</span><small>1 value refused</small></a>
+      <a href="#s-e"><b>E</b><span>Checks and measurements</span><small>self-test on · probe off</small></a>
+      <a href="#s-f"><b>F</b><span>Statistics and logging</span><small>recording · sparse</small></a>
+      <a href="#s-g"><b>G</b><span>Discord bridge</span><small>off</small></a>
+      <a href="#s-h"><b>H</b><span>Downloading and updating</span><small>daily check · no token</small></a>
+    </nav>
+    <div class="grid" style="gap:10px">
+
+      <section class="box sg" id="s-a" aria-labelledby="h-sa">
+        <header><span class="code">A</span><h2 id="h-sa">Who can reach this server</h2><p class="force">Reachable from your network on port 8080 · API key required · 3 paired clients on 8081</p></header>
+        <div class="fields">
+          <div class="f"><label for="setHost">Bind address</label><div class="ctl"><select class="in" id="setHost" style="width:220px"><option selected>0.0.0.0 — whole network</option><option>127.0.0.1 — this Mac only</option><option>192.0.2.24 — private network</option></select></div><p class="h">Read once at start-up; applies when Dessau next starts.</p></div>
+          <div class="f"><label for="setPort">Port</label><div class="ctl"><input class="in num" id="setPort" value="8080" inputmode="numeric"></div></div>
+          <div class="f"><label for="setTLSPort">Port for paired clients</label><div class="ctl"><input class="in num" id="setTLSPort" value="0" inputmode="numeric"></div><p class="h">0 = port above (8081) · −1 = serve no paired clients</p></div>
+          <div class="f"><label for="setAdvertise">Announce on the local network</label><div class="ctl"><input type="checkbox" class="sw" role="switch" id="setAdvertise" checked></div><p class="h">Bonjour: how a server is found, never what it allows.</p></div>
+          <div class="f full"><label for="setKey">API key</label><div class="ctl" style="grid-column:1/-1"><input class="in" id="setKey" value="dsu-4c1e9b07d2a85f6e3b90c4a17f3a" spellcheck="false" autocomplete="off"><button type="button" class="btn" data-genkey>Generate</button></div><p class="h">Blank for no authentication — anyone on the network could use this server.</p></div>
+        </div>
+      </section>
+
+      <section class="box sg" id="s-b" aria-labelledby="h-sb">
+        <header><span class="code">B</span><h2 id="h-sb">Memory and how many models stay loaded</h2><p class="force">2 loaded · 16.5 / 48 GB · concurrency 1 · Qwen3-8B pinned</p></header>
+        <div class="fields">
+          <div class="f"><label for="setBudget">Memory for loaded models</label><div class="ctl"><input class="in num" id="setBudget" placeholder="48 (default)" inputmode="decimal"><span class="u">GB</span></div><p class="h">Blank = ¾ of this Mac's 64 GB.</p></div>
+          <div class="f"><label for="setConc">Batched requests</label><div class="ctl"><input class="in num" id="setConc" value="1" inputmode="numeric"></div><p class="h">Each holds its own cache; more means a smaller default window.</p></div>
+          <div class="f full"><span class="lab">Pinned models</span><div class="ctl" style="grid-column:1/-1;flex-wrap:wrap;gap:6px 16px">
+            <label><input type="checkbox" class="chk" checked> Qwen3-8B-4bit <span class="faint mono">5.9</span></label>
+            <label><input type="checkbox" class="chk"> gemma-3-12b-it-4bit <span class="faint mono">10.6</span></label>
+            <label><input type="checkbox" class="chk"> Llama-3.2-3B <span class="faint mono">2.3</span></label>
+            <label><input type="checkbox" class="chk"> Mistral-Small-3.1-24B <span class="faint mono">15.1</span></label></div>
+            <p class="h">Pinned: never evicted, never unloaded after idle. Not preloaded. Pinned total 5.9 GB of 48.</p></div>
+        </div>
+      </section>
+
+      <section class="box sg" id="s-c" aria-labelledby="h-sc">
+        <header><span class="code">C</span><h2 id="h-sc">How requests are handled</h2><p class="force">sampling: model defaults · 1 per-model override · merge on gemma · API unload allowed</p></header>
+        <div class="fields">
+          <div class="f"><label for="setTemp">Temperature</label><div class="ctl"><input class="in num" id="setTemp" placeholder="0 · greedy"></div></div>
+          <div class="f"><label for="setTopP">Top-p</label><div class="ctl"><input class="in num" id="setTopP" placeholder="1"></div></div>
+          <div class="f"><label for="setTopK">Top-k</label><div class="ctl"><input class="in num" id="setTopK" placeholder="0 · off"></div></div>
+          <div class="f"><label for="setMinP">Min-p</label><div class="ctl"><input class="in num" id="setMinP" placeholder="0 · off"></div></div>
+          <div class="f"><label for="setMaxTokens">Max completion tokens</label><div class="ctl"><input class="in num" id="setMaxTokens" placeholder="window"></div></div>
+          <div class="f"><span class="lab">Per-model overrides</span><div class="ctl"><span class="mono dim" style="font-size:11px">Qwen3-8B: t=0.6 p=0.95</span><button type="button" class="btn sm" data-goto="models">Edit</button></div></div>
+          <div class="f"><label for="setChatPipelines">Pipeline tags that can chat</label><div class="ctl"><input class="in" id="setChatPipelines" value="text-generation, image-text-to-text" style="width:220px"></div></div>
+          <div class="f"><label for="setChatTags">Tags a model must carry</label><div class="ctl"><input class="in" id="setChatTags" value="conversational" style="width:220px"></div></div>
+          <div class="f full"><label for="setAPIUnload">Let a program unload a model it has finished with</label><div class="ctl"><input type="checkbox" class="sw" role="switch" id="setAPIUnload" checked></div><p class="h"><code>POST /v1/dessau/unload</code> · never a pinned model, nor one answering or inside its grace. The Unload button is not affected.</p></div>
+        </div>
+      </section>
+
+      <section class="box sg" id="s-d" aria-labelledby="h-sd">
+        <header><span class="code">D</span><h2 id="h-sd">When idle models are unloaded</h2><p class="force" id="force-d">idle unload 900 s · grace on: protect 120 s, wait ≤ 300 s</p></header>
+        <div class="fields">
+          <div class="f"><label for="setIdle">Unload models after idle</label><div class="ctl"><input class="in num" id="setIdle" value="900" inputmode="numeric"><span class="u">s</span></div><p class="h">0 = never.</p></div>
+          <div class="f"><label for="setGrace">Eviction grace</label><div class="ctl"><input type="checkbox" class="sw" role="switch" id="setGrace" checked></div><p class="h">Wait for a model to fall idle instead of evicting one that just finished.</p></div>
+          <div class="f"><label for="setGraceSec">Protect a model that just finished for</label><div class="ctl"><input class="in num" id="setGraceSec" value="420" inputmode="numeric" aria-invalid="true" aria-describedby="err-setGraceSec"><span class="u">s</span></div>
+            <p class="ferr" id="err-setGraceSec" role="note">The grace period cannot exceed the maximum wait of 300 seconds.</p></div>
+          <div class="f"><label for="setGraceWait">Wait at most</label><div class="ctl"><input class="in num" id="setGraceWait" value="300" inputmode="numeric"><span class="u">s</span></div></div>
+        </div>
+        <p class="ghint">With a key set, answers carry <code>X-Dessau-State</code> and <code>X-Dessau-Queue-Time</code>. A request that waits the full maximum gets the refusal it would have had at once, saying how long it waited.</p>
+      </section>
+
+      <section class="box sg" id="s-e" aria-labelledby="h-se">
+        <header><span class="code">E</span><h2 id="h-se">Checks and measurements</h2><p class="force">self-test on · idle ≥ 1800 s · last 09:12 pass · context probe off</p></header>
+        <div class="fields">
+          <div class="f"><label for="setSelfTest">Test the models when this Mac is idle</label><div class="ctl"><input type="checkbox" class="sw" role="switch" id="setSelfTest" checked></div><p class="h">Once a day per model; never evicts another to make room.</p></div>
+          <div class="f"><label for="setSelfTestIdle">Self-test idle threshold</label><div class="ctl"><input class="in num" id="setSelfTestIdle" value="1800" inputmode="numeric"><span class="u">s</span></div><p class="h">60 – 86,400</p></div>
+          <div class="f"><label for="setContextProbe">Measure context windows when idle</label><div class="ctl"><input type="checkbox" class="sw" role="switch" id="setContextProbe"></div><p class="h">≈ 40 min of GPU per model; stands down on any request.</p></div>
+          <div class="f"><label for="setIdleThreshold">Context probe idle threshold</label><div class="ctl"><input class="in num" id="setIdleThreshold" value="600" inputmode="numeric"><span class="u">s</span></div><p class="h">60 – 86,400</p></div>
+        </div>
+      </section>
+
+      <section class="box sg" id="s-f" aria-labelledby="h-sf">
+        <header><span class="code">F</span><h2 id="h-sf">Statistics and logging</h2><p class="force">recording · 4,588 records · 6 months / 256 MB · log sparse</p></header>
+        <div class="fields">
+          <div class="f"><label for="setStats">Record request statistics on this Mac</label><div class="ctl"><input type="checkbox" class="sw" role="switch" id="setStats" checked></div><p class="h">Never a prompt, answer, key or client address. On a shared Mac, a decision for everyone on it.</p></div>
+          <div class="f"><label for="setStatsMonths">Keep records for</label><div class="ctl"><input class="in num" id="setStatsMonths" value="6" inputmode="numeric"><span class="u">months</span></div></div>
+          <div class="f"><label for="setStatsMB">Never use more than</label><div class="ctl"><input class="in num" id="setStatsMB" value="256" inputmode="numeric"><span class="u">MB</span></div><p class="h">The size limit always wins.</p></div>
+          <div class="f"><label for="setLogLevel">Server log</label><div class="ctl"><select class="in" id="setLogLevel" style="width:200px"><option selected>sparse — events that mattered</option><option>detailed — with figures</option></select></div></div>
+          <div class="f full"><span class="lab">Models that keep no transcript</span><div class="ctl"><span class="mono dim" style="font-size:11px">none</span><button type="button" class="btn sm" data-goto="models">Choose</button></div></div>
+        </div>
+      </section>
+
+      <section class="box sg" id="s-g" aria-labelledby="h-sg">
+        <header><span class="code">G</span><h2 id="h-sg">Discord bridge</h2><p class="force">off · no connection held</p></header>
+        <div class="fields">
+          <div class="f"><label for="setDiscord">Answer Discord DMs and mentions</label><div class="ctl"><input type="checkbox" class="sw" role="switch" id="setDiscord"></div><p class="h">Messages and answers pass through Discord and are kept under Discord's terms.</p></div>
+          <div class="f"><label for="setDiscordToken">Bot token</label><div class="ctl"><input class="in" type="password" id="setDiscordToken" placeholder="none — cannot connect" autocomplete="off" style="width:200px"></div></div>
+        </div>
+      </section>
+
+      <section class="box sg" id="s-h" aria-labelledby="h-sh">
+        <header><span class="code">H</span><h2 id="h-sh">Downloading and updating models</h2><p class="force">update check every 24 h · last 13:48 found 1 · no HF token</p></header>
+        <div class="fields">
+          <div class="f"><label for="setHF">HuggingFace token</label><div class="ctl"><input class="in" type="password" id="setHF" placeholder="hf_…" autocomplete="off" style="width:200px"></div><p class="h">Gated models only.</p></div>
+          <div class="f"><label for="setUpdate">Check downloaded models for newer versions</label><div class="ctl"><input type="checkbox" class="sw" role="switch" id="setUpdate" checked></div></div>
+          <div class="f"><label for="setUpdateEvery">Check every</label><div class="ctl"><input class="in num" id="setUpdateEvery" value="24" inputmode="numeric"><span class="u">h</span></div><p class="h">1 – 720; 0 or blank = daily.</p></div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <div class="savebar">
+    <p class="msg" id="settingsMsg"><span class="tag failed">refused</span><span>Not saved: the server refused 1 value in D.</span><span class="diff">changed: D.grace_seconds 120 → 420</span></p>
+    <button type="button" class="btn" id="revert">Discard</button>
+    <button type="submit" class="btn pri">Save settings</button>
+  </div>
+  </form>
+</section>
+</main>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const live = $('#live');
+  const say = (t) => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+  const fmt = (n) => n.toLocaleString('en-GB');
+
+  /* tabs */
+  const tabs = $$('[role="tab"]');
+  function show(tab, focus) {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    });
+    if (focus) tab.focus();
+    try { history.replaceState(null, '', '#' + tab.dataset.tab); } catch (e) {}
+    redraw();
+  }
+  tabs.forEach((t) => {
+    t.addEventListener('click', () => show(t));
+    t.addEventListener('keydown', (e) => {
+      let i = tabs.indexOf(t);
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') i = (i + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') i = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') i = 0;
+      else if (e.key === 'End') i = tabs.length - 1;
+      else return;
+      e.preventDefault(); show(tabs[i], true);
+    });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    const n = +e.key;
+    if (n >= 1 && n <= 8) show(tabs[n - 1], true);
+  });
+  $$('[data-goto]').forEach((b) => b.addEventListener('click', () => {
+    show(tabs.find((x) => x.dataset.tab === b.dataset.goto), true);
+    const a = b.dataset.anchor && document.getElementById(b.dataset.anchor);
+    if (a) a.scrollIntoView(); else window.scrollTo(0, 0);
+  }));
+
+  /* drawers and inline confirmations */
+  $$('[data-toggle]').forEach((b) => b.addEventListener('click', () => {
+    const open = b.getAttribute('aria-expanded') !== 'true';
+    b.setAttribute('aria-expanded', open);
+    document.getElementById(b.getAttribute('aria-controls')).hidden = !open;
+  }));
+  $$('[data-ask]').forEach((b) => b.addEventListener('click', () => {
+    const box = document.getElementById(b.dataset.ask);
+    box.hidden = false; b.setAttribute('aria-expanded', 'true');
+    box.querySelector('button').focus();
+  }));
+  $$('[data-cancel]').forEach((b) => b.addEventListener('click', () => {
+    const box = b.closest('[id]');
+    box.hidden = true;
+    const ask = $('[data-ask="' + box.id + '"]');
+    ask.setAttribute('aria-expanded', 'false'); ask.focus();
+  }));
+  $$('[data-delete]').forEach((b) => b.addEventListener('click', () => {
+    const el = document.getElementById(b.dataset.delete);
+    const text = b.dataset.name + ' ' + (b.dataset.verb || 'deleted') + '.';
+    const holder = b.closest('[id]');
+    if (el.tagName === 'TR') {
+      const tr = document.createElement('tr'), td = document.createElement('td');
+      td.colSpan = 8; td.className = 't faint'; td.textContent = text; tr.append(td);
+      el.replaceWith(tr); holder.hidden = true;
+    } else {
+      const d = document.createElement('div'); d.className = 'mrow'; d.style.display = 'block';
+      d.innerHTML = '<span class="tag">removed</span> <span class="dim"></span>'; d.lastChild.textContent = text;
+      el.replaceWith(d);
+    }
+    say(text);
+  }));
+  $('[data-clear]').addEventListener('click', (e) => {
+    $('#storeLine').innerHTML = '<span class="tag ready">rec</span>&nbsp; Store: <b class="mono">0</b> records · <span class="mono">0 MB / 256 MB</span> · cleared just now · recording continues';
+    e.currentTarget.closest('[id]').hidden = true;
+    say('Records cleared.');
+  });
+  $$('[data-load]').forEach((b) => b.addEventListener('click', () => {
+    const tag = b.closest('.mrow').querySelector('[data-state]'), name = b.dataset.load;
+    if (b.textContent === 'Unload') { tag.className = 'tag'; tag.textContent = 'idle'; b.textContent = 'Load'; say(name + ' unloaded.'); }
+    else { tag.className = 'tag working'; tag.textContent = 'loading'; b.textContent = 'Unload';
+      setTimeout(() => { tag.className = 'tag ready'; tag.textContent = 'loaded'; say(name + ' loaded.'); }, 1400); }
+  }));
+  $$('[data-dl]').forEach((b) => b.addEventListener('click', () => { b.replaceWith(Object.assign(document.createElement('span'), { className: 'tag working', textContent: 'queued' })); say('Download queued.'); }));
+  $$('[data-copy]').forEach((b) => b.addEventListener('click', () => {
+    const done = () => { const w = b.textContent; b.textContent = 'Copied'; setTimeout(() => { b.textContent = w; }, 1400); say('Copied.'); };
+    if (navigator.clipboard) navigator.clipboard.writeText(b.dataset.copy).then(done, done); else done();
+  }));
+  $('#keyShow').addEventListener('click', (e) => {
+    const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+    e.currentTarget.setAttribute('aria-pressed', on); e.currentTarget.textContent = on ? 'Hide' : 'Show';
+    $('#keyText').textContent = on ? 'dsu-4c1e9b07d2a85f6e3b90c4a17f3a' : 'dsu-••••••••••••••••7f3a';
+  });
+  $$('[data-lang]').forEach((b) => b.addEventListener('click', () => {
+    $$('[data-lang]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+    $$('[data-code]').forEach((p) => { p.hidden = p.dataset.code !== b.dataset.lang; });
+  }));
+
+  /* sparklines */
+  const series = {
+    rpm: [1.2,1.8,2.6,3.1,2.2,1.4,0.8,1.9,2.8,3.6,4.1,3.3,2.5,2.9,3.4,2.1,1.6,2.4,2.8,2.0,1.5,2.2,2.6,2.4],
+    tps: [58,61,63,60,57,62,64,59,55,61,63,62,60,58,64,63,61,57,60,62,63,61,59,61.2],
+    ttft: [0.22,0.25,0.31,0.21,0.24,0.28,0.23,0.19,0.26,0.33,0.24,0.22,0.21,0.27,0.25,0.23,0.24,0.29,0.22,0.24,0.26,0.23,0.24,0.24],
+    q: [0,0,1,0,0,0,2,1,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0]
+  };
+  function spark(el, d) {
+    const W = Math.max(120, el.clientWidth), H = el.clientHeight || 34;
+    const mx = Math.max(...d) * 1.1 || 1, mn = Math.min(0, ...d);
+    const pts = d.map((v, i) => [(i / (d.length - 1)) * W, H - 2 - ((v - mn) / (mx - mn)) * (H - 4)]);
+    const line = pts.map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    const last = pts[pts.length - 1];
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">' +
+      '<polygon points="0,' + H + ' ' + line + ' ' + W + ',' + H + '" fill="var(--tint)"/>' +
+      '<polyline points="' + line + '" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
+      '<circle cx="' + (last[0] - 2) + '" cy="' + last[1] + '" r="2.2" fill="var(--accent)"/></svg>';
+  }
+
+  /* stacked chart: requests per day by model, tokens out as a line */
+  const req = [96,142,64,58,171,188,203,176,159,61,52,214,236,198,221,187,72,66,182,204,96,88,231,256,240,198,212,74,69,174];
+  const share = [0.547, 0.288, 0.144, 0.021];
+  const tok = req.map((r, i) => Math.round(r * 315 * (0.88 + 0.24 * Math.abs(Math.sin(i * 1.7)))));
+  const cols = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)'];
+  const start = new Date(2026, 8, 11);
+  let range = 30;
+  function chart() {
+    const box = $('#chart'); if (!box.clientWidth) return;
+    const W = box.clientWidth - 24, H = 210, L = 34, R = 40, T = 8, B = 20;
+    const r = req.slice(-range), t = tok.slice(-range), maxR = 300, maxT = Math.ceil(Math.max(...t) / 20000) * 20000;
+    const bw = (W - L - R) / r.length, y = (v) => T + (H - T - B) * (1 - v / maxR), yt = (v) => T + (H - T - B) * (1 - v / maxT);
+    let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '" aria-hidden="true">';
+    [0, 75, 150, 225, 300].forEach((v) => { s += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text x="' + (L - 6) + '" y="' + (y(v) + 3) + '" text-anchor="end">' + v + '</text>'; });
+    [0, maxT / 2, maxT].forEach((v) => { s += '<text x="' + (W - R + 6) + '" y="' + (yt(v) + 3) + '">' + (v / 1000) + 'k</text>'; });
+    r.forEach((v, i) => {
+      const x = L + i * bw + 1, w = Math.max(1.5, bw - 2);
+      let acc = 0;
+      const d = new Date(start); d.setDate(d.getDate() + (30 - range) + i);
+      const label = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      share.forEach((p, k) => {
+        const h = v * p, y0 = y(acc + h);
+        s += '<rect x="' + x.toFixed(1) + '" y="' + y0.toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + (y(acc) - y0).toFixed(1) + '" fill="' + cols[k] + '"><title>' + label + ' · ' + Math.round(h) + '</title></rect>';
+        acc += h;
+      });
+      const every = range > 10 ? 5 : 1;
+      if ((r.length - 1 - i) % every === 0) s += '<text x="' + (x + w / 2) + '" y="' + (H - 5) + '" text-anchor="middle">' + label + '</text>';
+    });
+    s += '<polyline fill="none" stroke="var(--text)" stroke-width="1.4" stroke-dasharray="3 2" points="' + t.map((v, i) => (L + i * bw + bw / 2).toFixed(1) + ',' + yt(v).toFixed(1)).join(' ') + '"/></svg>';
+    box.innerHTML = s;
+    $('#k-req').textContent = fmt(r.reduce((a, b) => a + b, 0));
+    $('#k-out').textContent = (t.reduce((a, b) => a + b, 0) / 1e6).toFixed(2) + ' M';
+  }
+  function hist() {
+    const box = $('#hist'); if (!box.clientWidth) return;
+    const bins = [['<0.1', 612], ['0.1–0.2', 1484], ['0.2–0.3', 1102], ['0.3–0.5', 744], ['0.5–1', 431], ['1–2', 171], ['2–5', 38], ['>5', 6]];
+    const W = box.clientWidth - 24, H = 186, L = 4, B = 32, mx = 1600, bw = (W - L) / bins.length;
+    let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '" aria-hidden="true">';
+    bins.forEach(([lab, v], i) => {
+      const h = (H - B - 12) * v / mx, x = L + i * bw + 3, w = bw - 6;
+      s += '<rect x="' + x + '" y="' + (H - B - h) + '" width="' + w + '" height="' + h + '" rx="1.5" fill="' + (i < 3 ? 'var(--s1)' : 'var(--s3)') + '"/>';
+      s += '<text x="' + (x + w / 2) + '" y="' + (H - B - h - 4) + '" text-anchor="middle">' + fmt(v) + '</text>';
+      s += '<text x="' + (x + w / 2) + '" y="' + (H - 16) + '" text-anchor="middle">' + lab + '</text>';
+    });
+    s += '<text x="' + (W / 2) + '" y="' + (H - 2) + '" text-anchor="middle">seconds to first token</text></svg>';
+    box.innerHTML = s;
+  }
+  function redraw() {
+    $$('[data-spark]').forEach((el) => { if (el.clientWidth) spark(el, series[el.dataset.spark]); });
+    chart(); hist();
+  }
+  $$('[data-range]').forEach((b) => b.addEventListener('click', () => {
+    $$('[data-range]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+    range = +b.dataset.range; chart();
+  }));
+  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(redraw, 120); });
+
+  /* the two-second refresh: figures change quietly; nothing is announced */
+  const pad = (n) => String(n).padStart(2, '0');
+  let up = ((3 * 24 + 4) * 60 + 12) * 60;
+  setInterval(() => {
+    const d = new Date();
+    $('#tm-clock').textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    up += 2;
+    const h = Math.floor(up / 3600) % 24, m = Math.floor(up / 60) % 60;
+    $('#tm-up').textContent = Math.floor(up / 86400) + 'd ' + pad(h) + ':' + pad(m);
+    const tps = +(58 + Math.random() * 6).toFixed(1), rpm = +(1.6 + Math.random() * 1.8).toFixed(1);
+    series.tps.push(tps); series.tps.shift(); series.rpm.push(rpm); series.rpm.shift();
+    $('#tm-tps').textContent = tps.toFixed(1); $('#v-tps').textContent = tps.toFixed(1);
+    $('#tm-rpm').textContent = rpm.toFixed(1); $('#v-rpm').textContent = rpm.toFixed(1);
+    $('#tm-fl').textContent = Math.random() > 0.6 ? '2' : '1';
+    $$('[data-spark="tps"],[data-spark="rpm"]').forEach((el) => { if (el.clientWidth) spark(el, series[el.dataset.spark]); });
+  }, 2000);
+
+  /* settings: mocked server answer; Save is never disabled */
+  const gs = $('#setGraceSec'), gw = $('#setGraceWait'), err = $('#err-setGraceSec'), msg = $('#settingsMsg'), tocD = $('.toc a[href="#s-d"]');
+  function check() {
+    const bad = +gs.value > +gw.value;
+    gs.setAttribute('aria-invalid', bad ? 'true' : 'false'); err.hidden = !bad;
+    err.textContent = 'The grace period cannot exceed the maximum wait of ' + gw.value + ' seconds.';
+    tocD.classList.toggle('err', bad);
+    tocD.querySelector('small').textContent = bad ? '1 value refused' : 'idle 900 s · grace on';
+    return bad;
+  }
+  let ct; [gs, gw].forEach((f) => f.addEventListener('input', () => { clearTimeout(ct); ct = setTimeout(check, 350); }));
+  $('#settingsForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (check()) {
+      msg.innerHTML = '<span class="tag failed">refused</span><span>Not saved: the server refused 1 value in D.</span><span class="diff">D.grace_seconds ' + gs.value + ' &gt; D.grace_max_wait ' + gw.value + '</span>';
+      say('Not saved. The grace period cannot exceed the maximum wait.'); gs.focus();
+    } else {
+      const d = new Date();
+      msg.innerHTML = '<span class="tag ready">saved</span><span>Saved at ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '. Bind address and ports apply at next start.</span>';
+      $('#force-d').textContent = 'idle unload ' + $('#setIdle').value + ' s · grace on: protect ' + gs.value + ' s, wait ≤ ' + gw.value + ' s';
+      $('.tabs .tab:last-child .n').hidden = true;
+      say('Settings saved.');
+    }
+  });
+  $('#revert').addEventListener('click', () => { gs.value = 120; check(); msg.innerHTML = '<span class="tag">clean</span><span>No changes. The form shows what is in force.</span>'; });
+  $('[data-genkey]').addEventListener('click', () => {
+    const a = new Uint8Array(14); crypto.getRandomValues(a);
+    $('#setKey').value = 'dsu-' + [...a].map((x) => x.toString(16).padStart(2, '0')).join('');
+    say('A new key was generated. Save to use it.');
+  });
+
+  const hsh = location.hash.slice(1);
+  show(tabs.find((x) => x.dataset.tab === hsh) || tabs[0]);
+})();
+</script>
+</body>
+</html>

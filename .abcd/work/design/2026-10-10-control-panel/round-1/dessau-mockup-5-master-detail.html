@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Dessau Server</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'><rect width='1024' height='1024' fill='%2317181d'/><polygon points='302,132 472,472 132,472' fill='%23F5C518'/><rect x='552' y='132' width='340' height='340' fill='%23B4B6BB'/><rect x='132' y='552' width='340' height='340' fill='%232B5DAA'/><circle cx='722' cy='722' r='170' fill='%23E63329'/></svg>">
+<style>
+/* ── Tokens: the system's palette and accent; the triad only as status.
+   ready = blue, working = yellow, failed = red; idle is a hollow ring. */
+:root {
+  color-scheme: light dark;
+  --bg: #f5f5f7;
+  --side: #ebebee;
+  --surface: #ffffff;
+  --raised: #ffffff;
+  --fill: rgba(118, 118, 128, .12);
+  --fill-2: rgba(118, 118, 128, .2);
+  --label: #1d1d1f;
+  --label-2: rgba(60, 60, 67, .78);
+  --label-3: rgba(60, 60, 67, .56);
+  --sep: rgba(60, 60, 67, .16);
+  --sep-strong: rgba(60, 60, 67, .3);
+  --accent: #007aff;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(0, 122, 255, .12);
+  --ready: #2B5DAA;
+  --working: #F5C518;
+  --failed: #E63329;
+  --shadow: 0 1px 2px rgba(0,0,0,.06), 0 0 0 .5px rgba(0,0,0,.06);
+  --radius: 12px;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1e;
+    --side: #232326;
+    --surface: #2a2a2d;
+    --raised: #323236;
+    --fill: rgba(118, 118, 128, .24);
+    --fill-2: rgba(118, 118, 128, .34);
+    --label: #f5f5f7;
+    --label-2: rgba(235, 235, 245, .74);
+    --label-3: rgba(235, 235, 245, .5);
+    --sep: rgba(84, 84, 88, .55);
+    --sep-strong: rgba(120, 120, 128, .7);
+    --accent: #0a84ff;
+    --accent-soft: rgba(10, 132, 255, .2);
+    --shadow: 0 0 0 .5px rgba(255,255,255,.06);
+  }
+}
+@supports (color: AccentColor) {
+  :root { --accent: AccentColor; --accent-ink: AccentColorText; --accent-soft: color-mix(in srgb, AccentColor 16%, transparent); }
+}
+@media (prefers-contrast: more) {
+  :root { --label-2: var(--label); --label-3: var(--label); --sep: var(--sep-strong); }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--label); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; font-feature-settings: "tnum" 1; overflow-x: hidden; }
+h1, h2, h3, h4, p { margin: 0; }
+a { color: var(--accent); }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+[hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ── App frame: header, tab bar, then master | detail ─────────────────── */
+@media (min-width: 700px) {
+  body { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
+}
+.top { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--side); border-bottom: 1px solid var(--sep); flex-wrap: wrap; }
+.top .logo { width: 30px; height: 30px; flex: none; }
+.top h1 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.top .sub { font-size: 12px; color: var(--label-3); }
+.top .end { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.status { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--fill); }
+.recording { font-size: 12px; font-weight: 600; color: var(--label-2); background: none; border: 1px solid var(--sep-strong); border-radius: 999px; padding: 3px 9px; cursor: pointer; }
+.endpoint { display: inline-flex; align-items: center; gap: 6px; font: 600 12.5px var(--mono); padding: 4px 6px 4px 10px; border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
+.endpoint button { border: 0; background: var(--fill); border-radius: 6px; padding: 2px 8px; font: 600 12px var(--sans); cursor: pointer; }
+@media (max-width: 560px) { .top .sub, .endpoint { display: none; } }
+
+.tabbar { background: var(--side); border-bottom: 1px solid var(--sep); padding: 0 12px; overflow-x: auto; scrollbar-width: none; }
+.tabbar::-webkit-scrollbar { display: none; }
+.tablist { display: flex; gap: 2px; padding: 6px 0 8px; width: max-content; margin: 0 auto; }
+.tab { border: 0; background: none; border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--label-2); cursor: pointer; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+.tab svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tab:hover { background: var(--fill); color: var(--label); }
+.tab[aria-selected="true"] { background: var(--surface); color: var(--label); box-shadow: var(--shadow); }
+.tab[aria-selected="true"] svg { stroke: var(--accent); }
+.tab .badge { font-size: 11px; background: var(--fill-2); border-radius: 999px; padding: 0 6px; }
+
+.app { min-height: 0; display: grid; grid-template-columns: 1fr; }
+@media (min-width: 700px) { .app { grid-template-columns: 290px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); } }
+@media (min-width: 1200px) { .app { grid-template-columns: 320px minmax(0, 1fr); } }
+
+/* ── Master: the model list ─────────────────────────────────────────── */
+.side { background: var(--side); border-right: 1px solid var(--sep); padding: 14px 10px 18px; display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; }
+.roll { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; display: grid; gap: 10px; }
+.roll .nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.roll .nums div { display: grid; }
+.roll .nums b { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
+.roll .nums span { font-size: 11px; color: var(--label-3); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.meter { height: 8px; border-radius: 999px; background: var(--fill-2); display: flex; overflow: hidden; gap: 2px; }
+.meter i { display: block; height: 100%; background: var(--accent); }
+.meter i + i { opacity: .55; }
+.roll .cap { font-size: 12px; color: var(--label-2); }
+.side h2 { font-size: 11.5px; font-weight: 700; color: var(--label-3); text-transform: uppercase; letter-spacing: .06em; padding: 0 8px; display: flex; justify-content: space-between; }
+.mlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.mitem { width: 100%; border: 0; background: none; text-align: left; display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 4px 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.mitem:hover { background: var(--fill); }
+.mitem .nm { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mitem .sm { grid-column: 2 / 4; font-size: 12px; color: var(--label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mitem .tag { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--fill-2); color: var(--label-2); }
+.mitem[aria-current="true"] { background: var(--accent); color: var(--accent-ink); }
+.mitem[aria-current="true"] .sm, .mitem[aria-current="true"] .tag { color: var(--accent-ink); opacity: .9; }
+.mitem[aria-current="true"] .tag { background: rgba(255,255,255,.22); }
+.mitem[aria-current="true"] .dot { box-shadow: 0 0 0 2px #fff; }
+.side .find { margin-top: auto; }
+
+/* Status dots */
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+.dot.ready { background: var(--ready); }
+.dot.working { background: var(--working); box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); }
+.dot.failed { background: var(--failed); }
+.dot.idle { box-shadow: inset 0 0 0 2px var(--label-3); }
+@media (prefers-color-scheme: dark) { .dot.ready { box-shadow: 0 0 0 1px rgba(255,255,255,.55); } }
+
+/* ── Detail ─────────────────────────────────────────────────────────── */
+.main { min-height: 0; overflow-y: auto; padding: 20px 16px 0; }
+@media (min-width: 900px) { .main { padding: 26px 32px 0; } }
+.pane { display: none; max-width: 1080px; margin: 0 auto; padding-bottom: 48px; }
+.pane.active { display: block; }
+.pane > header { margin-bottom: 18px; display: grid; gap: 4px; }
+.pane > header h2 { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+.pane > header p { color: var(--label-2); font-size: 14.5px; max-width: 70ch; }
+.back { display: none; border: 0; background: none; color: var(--accent); font-weight: 600; font-size: 15px; padding: 6px 0; cursor: pointer; margin-bottom: 6px; }
+
+.dhead { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 18px; }
+.dhead .t { flex: 1 1 280px; min-width: 0; }
+.dhead .org { font-size: 12.5px; color: var(--label-3); font-weight: 600; }
+.dhead h2 { font-size: 26px; font-weight: 700; letter-spacing: -.025em; line-height: 1.15; overflow-wrap: anywhere; }
+.stline { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--label-2); font-size: 13.5px; flex-wrap: wrap; }
+.stline strong { color: var(--label); }
+.dact { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.btn { border: 0; border-radius: 8px; padding: 7px 14px; font-weight: 600; font-size: 13.5px; background: var(--fill); cursor: pointer; min-height: 32px; display: inline-flex; gap: 6px; align-items: center; }
+.btn:hover { background: var(--fill-2); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.plain { background: none; color: var(--accent); padding-left: 6px; padding-right: 6px; }
+.btn.plain:hover { background: var(--accent-soft); }
+.btn.destructive { background: none; color: var(--label); box-shadow: inset 0 0 0 1px var(--sep-strong); }
+.btn.strong { background: var(--label); color: var(--bg); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 10px; margin-bottom: 14px; }
+.tile { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; display: grid; gap: 2px; }
+.tile span { font-size: 11.5px; color: var(--label-3); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.tile b { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.tile b small { font-size: 13px; color: var(--label-2); font-weight: 600; letter-spacing: 0; }
+.tile em { font-style: normal; font-size: 12px; color: var(--label-2); }
+
+.boxes { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 1100px) { .boxes { grid-template-columns: 1fr 1fr; } .boxes .wide { grid-column: 1 / -1; } }
+.box { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.box h3 { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.box h3 .aside { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--label-3); }
+.box .lead { color: var(--label-2); font-size: 13.5px; }
+.rows { display: grid; margin: 0; }
+.rows > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--sep); font-size: 13.5px; }
+.rows > div:first-child { border-top: 0; padding-top: 0; }
+.rows .dt { color: var(--label-2); }
+.rows .dd { margin: 0; font-weight: 600; text-align: right; }
+.stack { height: 12px; border-radius: 6px; background: var(--fill-2); display: flex; overflow: hidden; }
+.stack i { display: block; height: 100%; }
+.stack .w { background: var(--accent); }
+.stack .c { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.keyrow { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--label-2); }
+.keyrow span { display: inline-flex; gap: 6px; align-items: center; }
+.keyrow b { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.files { list-style: none; margin: 0; padding: 0; border-radius: 8px; background: var(--fill); }
+.files li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; font: 12.5px var(--mono); border-top: 1px solid var(--sep); }
+.files li:first-child { border-top: 0; }
+.files li span:last-child { color: var(--label-2); font-family: var(--sans); white-space: nowrap; }
+.callout { border-radius: 10px; padding: 10px 12px; background: var(--fill); font-size: 13.5px; display: flex; gap: 10px; align-items: flex-start; }
+.callout .dot { margin-top: 4px; }
+.confirm { border-radius: 10px; padding: 12px; background: var(--fill); display: grid; gap: 10px; }
+.confirm .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.progress { height: 8px; border-radius: 999px; background: var(--fill-2); overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+
+/* Forms: grouped rows, label left and control right when there is room */
+.form { display: grid; }
+.frow { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 12px 0; border-top: 1px solid var(--sep); }
+.frow:first-child { border-top: 0; padding-top: 2px; }
+@media (min-width: 760px) { .frow { grid-template-columns: minmax(0, 1fr) minmax(0, 260px); gap: 4px 20px; align-items: center; } .frow > .hint, .frow > .fielderr { grid-column: 1 / -1; } }
+.frow .lbl { font-size: 13.5px; font-weight: 600; }
+.frow .lbl small { display: block; font-weight: 400; color: var(--label-2); font-size: 12.5px; margin-top: 1px; }
+.hint { font-size: 12.5px; color: var(--label-2); max-width: 72ch; }
+input[type=text], input[type=number], input[type=password], input[type=search], select {
+  width: 100%; min-height: 32px; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--sep-strong); background: var(--raised); color: var(--label); }
+input::placeholder { color: var(--label-3); }
+input:focus-visible, select:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 0; border-color: var(--accent); }
+.frow.err input { border-color: var(--failed); box-shadow: 0 0 0 1px var(--failed); }
+.fielderr { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; font-weight: 600; color: var(--label); }
+.fielderr .dot { margin-top: 4px; }
+.toggle { justify-self: start; }
+@media (min-width: 760px) { .toggle { justify-self: end; } }
+.toggle input { appearance: none; -webkit-appearance: none; width: 38px; height: 22px; border-radius: 999px; background: var(--fill-2); position: relative; cursor: pointer; margin: 0; transition: background .15s; display: block; }
+.toggle input::before { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.toggle input:checked { background: var(--accent); }
+.toggle input:checked::before { transform: translateX(16px); }
+.toggle input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.checks label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.checks input { accent-color: var(--accent); margin: 0; }
+
+/* ── Settings: filter and jump list ─────────────────────────────────── */
+.sfilter { position: sticky; top: 0; z-index: 4; background: var(--bg); padding: 4px 0 12px; display: grid; gap: 8px; }
+.sfilter .field { position: relative; }
+.sfilter svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: var(--label-3); fill: none; stroke-width: 2; }
+.sfilter input { min-height: 38px; padding-left: 34px; font-size: 14.5px; border-radius: 10px; }
+.sfilter .count { font-size: 12.5px; color: var(--label-2); }
+.slayout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+@media (min-width: 1150px) { .slayout { grid-template-columns: minmax(0, 1fr) 220px; } }
+.sjump { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.sjump a { flex: none; display: inline-flex; gap: 6px; align-items: center; text-decoration: none; color: var(--label); background: var(--surface); box-shadow: var(--shadow); border-radius: 999px; padding: 5px 12px 5px 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.sjump a .lt { width: 20px; height: 20px; border-radius: 50%; background: var(--fill-2); display: inline-grid; place-items: center; font-size: 11px; font-weight: 700; }
+.sjump a .n { color: var(--label-3); font-weight: 600; }
+.sjump a.none { opacity: .4; }
+@media (min-width: 1150px) {
+  .sjump { order: 2; flex-direction: column; position: sticky; top: 64px; align-self: start; overflow: visible; gap: 2px; }
+  .sjump a { background: none; box-shadow: none; border-radius: 8px; white-space: normal; padding: 6px 8px; }
+  .sjump a:hover { background: var(--fill); }
+  .sjump .jh { font-size: 11.5px; font-weight: 700; color: var(--label-3); text-transform: uppercase; letter-spacing: .06em; padding: 0 8px 6px; }
+}
+@media (max-width: 1149px) { .sjump .jh { display: none; } }
+.sgroups { display: grid; gap: 16px; min-width: 0; }
+.sgroup { scroll-margin-top: 70px; }
+.sgroup > h3 { font-size: 17px; font-weight: 700; letter-spacing: -.01em; display: flex; gap: 10px; align-items: center; margin: 0 0 8px 2px; }
+.sgroup > h3 .lt { width: 24px; height: 24px; border-radius: 7px; background: var(--label); color: var(--bg); display: inline-grid; place-items: center; font-size: 12.5px; flex: none; }
+.inforce { display: flex; gap: 10px; align-items: flex-start; background: var(--accent-soft); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+.inforce svg { width: 16px; height: 16px; flex: none; margin-top: 1px; stroke: var(--accent); fill: none; stroke-width: 2; }
+.inforce .k { display: block; font-size: 11px; color: var(--label-2); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.sub-h { font-size: 12px; font-weight: 700; color: var(--label-3); text-transform: uppercase; letter-spacing: .05em; padding-top: 14px; }
+mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.empty { text-align: center; padding: 40px 16px; color: var(--label-2); background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
+.savebar { position: sticky; bottom: 0; z-index: 5; margin: 18px -4px 0; padding: 12px 14px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px);
+  border-radius: 14px 14px 0 0; box-shadow: 0 -1px 0 var(--sep), 0 -8px 24px rgba(0,0,0,.06); }
+.savebar .msg { flex: 1 1 240px; font-size: 13.5px; display: flex; gap: 8px; align-items: flex-start; }
+.savebar .msg .dot { margin-top: 4px; }
+.savebar .btn.primary { padding: 8px 20px; min-height: 36px; }
+
+/* ── Tables, charts, lists ──────────────────────────────────────────── */
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; font-size: 11.5px; font-weight: 600; color: var(--label-3); padding: 0 10px 8px 0; border-bottom: 1px solid var(--sep); white-space: nowrap; }
+td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--sep); }
+tr:last-child td { border-bottom: 0; }
+.num { text-align: right; }
+.inbar { display: inline-block; height: 6px; border-radius: 3px; background: var(--accent); vertical-align: middle; margin-left: 8px; opacity: .8; }
+@media (max-width: 640px) { .hide-sm { display: none; } }
+.chart svg { width: 100%; height: auto; display: block; }
+.chart .gl { stroke: var(--sep); }
+.chart .ax { fill: var(--label-3); font: 500 11px var(--sans); }
+.chart .area { fill: var(--accent-soft); }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.chart .pt { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.seg { display: inline-flex; background: var(--fill); border-radius: 8px; padding: 2px; }
+.seg button { border: 0; background: none; border-radius: 6px; padding: 4px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--raised); box-shadow: var(--shadow); }
+.hrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.events { list-style: none; margin: 0; padding: 0; }
+.events li { display: grid; grid-template-columns: 46px 12px 1fr; gap: 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--sep); font-size: 13.5px; }
+.events li:first-child { border-top: 0; padding-top: 0; }
+.events time { color: var(--label-3); font-size: 12.5px; }
+.events .dot { align-self: center; }
+.res { display: grid; grid-template-columns: 1fr; gap: 8px 16px; padding: 14px 0; border-top: 1px solid var(--sep); align-items: center; }
+.res:first-child { border-top: 0; padding-top: 0; }
+@media (min-width: 760px) { .res { grid-template-columns: 1fr 90px 150px 120px; } }
+.res h4 { font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+.res .meta { font-size: 12.5px; color: var(--label-2); }
+.res .sz { font-weight: 700; font-size: 15px; }
+.res .fit { font-size: 12.5px; color: var(--label-2); }
+.res .btn { justify-self: start; }
+@media (min-width: 760px) { .res .btn { justify-self: end; } }
+pre.code { margin: 0; padding: 14px; border-radius: 10px; background: var(--fill); font: 12.5px/1.6 var(--mono); overflow-x: auto; white-space: pre; }
+.urlbox { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.urlbox code { flex: 1 1 240px; font-size: 17px; font-weight: 600; padding: 10px 12px; border-radius: 10px; background: var(--fill); overflow-wrap: anywhere; }
+.fp { font: 600 13px var(--mono); letter-spacing: .03em; overflow-wrap: anywhere; }
+.facts { display: grid; }
+.facts > div { display: grid; grid-template-columns: 1fr; gap: 2px 18px; padding: 12px 0; border-top: 1px solid var(--sep); }
+.facts > div:first-child { border-top: 0; padding-top: 0; }
+@media (min-width: 760px) { .facts > div { grid-template-columns: 160px 1fr; } }
+.facts .k { font-size: 12.5px; color: var(--label-3); font-weight: 600; }
+.facts .v { font-weight: 600; }
+.facts .v small { display: block; font-weight: 400; color: var(--label-2); font-size: 13px; margin-top: 2px; }
+.lede { font-size: clamp(22px, 3.2vw, 30px); font-weight: 700; letter-spacing: -.025em; line-height: 1.15; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--label); color: var(--bg); padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 13px; z-index: 30; }
+
+/* ── Narrow: one column, list first, detail with a back button ───────── */
+@media (max-width: 699px) {
+  .side { border-right: 0; padding: 14px 12px; }
+  .app:not([data-tab="models"]) .side { display: none; }
+  .app[data-tab="models"][data-view="detail"] .side { display: none; }
+  .app[data-tab="models"][data-view="list"] .main { display: none; }
+  .back { display: inline-flex; }
+  .side .find { margin-top: 4px; }
+  .mitem { padding: 11px 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+@media (prefers-reduced-motion: no-preference) { .main { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true">
+      <polygon points="302,132 472,472 132,472" fill="#F5C518"/>
+      <rect x="552" y="132" width="340" height="340" fill="#B4B6BB"/>
+      <rect x="132" y="552" width="340" height="340" fill="#2B5DAA"/>
+      <circle cx="722" cy="722" r="170" fill="#E63329"/>
+    </svg>
+  <div>
+    <h1>Dessau Server</h1>
+    <p class="sub">Local MLX models, served to your network</p>
+  </div>
+  <div class="end">
+    <span class="status"><span class="dot ready" aria-hidden="true"></span>Ready</span>
+    <button class="recording" type="button" data-goto="stats" title="Request statistics are being recorded on this Mac. Anyone who can open this panel can read them.">Recording</button>
+    <span class="endpoint">alices-mac.local:8080<button type="button" data-copy="http://alices-mac.local:8080/v1" aria-label="Copy the endpoint URL">Copy</button></span>
+  </div>
+</header>
+
+<nav class="tabbar" aria-label="Panel">
+  <div class="tablist" role="tablist" aria-label="Control panel sections">
+    <button class="tab" role="tab" id="t-overview" aria-controls="p-overview" aria-selected="true" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</button>
+    <button class="tab" role="tab" id="t-models" aria-controls="p-models" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg>My Models<span class="badge">5</span></button>
+    <button class="tab" role="tab" id="t-find" aria-controls="p-find" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>Find Models</button>
+    <button class="tab" role="tab" id="t-stats" aria-controls="p-stats" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Statistics</button>
+    <button class="tab" role="tab" id="t-connect" aria-controls="p-connect" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></svg>Connect</button>
+    <button class="tab" role="tab" id="t-clients" aria-controls="p-clients" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="13" height="10" rx="1.5"/><path d="M1 18h17"/><rect x="17" y="8" width="5.5" height="11" rx="1.2"/></svg>Clients</button>
+    <button class="tab" role="tab" id="t-posture" aria-controls="p-posture" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8 7.5 9.5 4.4-1.5 7.5-4.9 7.5-9.5V6L12 3Z"/></svg>Posture</button>
+    <button class="tab" role="tab" id="t-settings" aria-controls="p-settings" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Settings</button>
+  </div>
+</nav>
+
+<p class="sr" role="status" id="live"></p>
+
+<div class="app" id="app" data-tab="overview" data-view="list">
+
+  <!-- ── Master: models, always at hand ───────────────────────────── -->
+  <aside class="side" aria-label="Models on this Mac">
+    <div class="roll" aria-label="Memory">
+      <div class="nums">
+        <div><b>48 GB</b><span>Budget</span></div>
+        <div><b>15.2 GB</b><span>In use</span></div>
+        <div><b>32.8 GB</b><span>Free</span></div>
+      </div>
+      <div class="meter" role="meter" aria-label="Memory in use" aria-valuemin="0" aria-valuemax="48" aria-valuenow="15.2" aria-valuetext="15.2 GB of the 48 GB budget"><i style="width:20%"></i><i style="width:11.7%"></i></div>
+      <p class="cap">Default share of this Mac's 64 GB.</p>
+    </div>
+    <h2><span>My Models</span><span id="mcount">5</span></h2>
+    <ul class="mlist" id="mlist"></ul>
+    <button class="btn find" type="button" data-goto="find">＋ Find Models</button>
+  </aside>
+
+  <!-- ── Detail ───────────────────────────────────────────────────── -->
+  <main class="main" id="main" tabindex="-1">
+
+    <!-- Overview -->
+    <section class="pane active" id="p-overview" role="tabpanel" aria-labelledby="t-overview">
+      <header>
+        <p class="lede">Serving 2 models to 3 devices on your network.</p>
+        <p>Saturday 10 October, 14:36. Everything on this page is read from the server as it is now; nothing here changes a setting.</p>
+      </header>
+      <div class="tiles">
+        <div class="tile"><span>Health</span><b style="display:flex;align-items:center;gap:8px"><span class="dot ready" aria-hidden="true"></span>Ready</b><em>Up 2 days 6 hours</em></div>
+        <div class="tile"><span>Memory</span><b>15.2 <small>of 48 GB</small></b><div class="meter" role="meter" aria-label="Memory in use" aria-valuemin="0" aria-valuemax="48" aria-valuenow="15.2"><i style="width:20%"></i><i style="width:11.7%"></i></div></div>
+        <div class="tile"><span>Requests today</span><b>1,284</b><em>+18 % on last Saturday</em></div>
+        <div class="tile"><span>First token, median</span><b>0.38 <small>s</small></b><em>Generation 41 tok/s</em></div>
+      </div>
+      <div class="boxes">
+        <section class="box">
+          <h3>Loaded now<span class="aside">2 of 5</span></h3>
+          <div class="rows">
+            <div><span class="dt"><span class="dot ready" aria-hidden="true"></span> <a href="#" data-model="gemma">gemma-3-12b-it-4bit</a> · pinned, answering 1</span><span class="dd">9.6 GB</span></div>
+            <div><span class="dt"><span class="dot ready" aria-hidden="true"></span> <a href="#" data-model="qwen3">Qwen3-8B-4bit</a> · idle 3 min</span><span class="dd">5.6 GB</span></div>
+            <div><span class="dt"><span class="dot working" aria-hidden="true"></span> <a href="#" data-model="coder">Qwen2.5-Coder-14B</a> · downloading</span><span class="dd">63 %</span></div>
+          </div>
+        </section>
+        <section class="box">
+          <h3>Connections<span class="aside">last hour</span></h3>
+          <div class="rows">
+            <div><span class="dt">Bob's laptop</span><span class="dd">2 min ago</span></div>
+            <div><span class="dt">Carol's iPad</span><span class="dd">14 min ago</span></div>
+            <div><span class="dt">Alice's iPhone</span><span class="dd">41 min ago</span></div>
+          </div>
+          <p class="lead">Reachable from your network on port 8080, with an API key. <a href="#" data-goto="posture">Posture</a></p>
+        </section>
+        <section class="box">
+          <h3>Health</h3>
+          <div class="callout"><span class="dot failed" aria-hidden="true"></span><span><strong>Phi-4-mini-instruct-4bit would not start.</strong> The model server exited while loading. <a href="#" data-model="phi">See the model</a></span></div>
+          <div class="callout"><span class="dot idle" aria-hidden="true"></span><span>An update is ready for Qwen3-8B-4bit — 3 files changed. <a href="#" data-model="qwen3">Review it</a></span></div>
+        </section>
+        <section class="box">
+          <h3>Recent changes</h3>
+          <ol class="events">
+            <li><time>14:33</time><span class="dot ready" aria-hidden="true"></span><span>gemma-3-12b-it-4bit loaded in 4.1 s.</span></li>
+            <li><time>14:10</time><span class="dot idle" aria-hidden="true"></span><span>Llama-3.2-3B-Instruct-4bit unloaded after 10 minutes idle.</span></li>
+            <li><time>13:58</time><span class="dot working" aria-hidden="true"></span><span>Download started: Qwen2.5-Coder-14B-Instruct-4bit.</span></li>
+            <li><time>13:07</time><span class="dot failed" aria-hidden="true"></span><span>Phi-4-mini-instruct-4bit would not start.</span></li>
+            <li><time>13:05</time><span class="dot ready" aria-hidden="true"></span><span>Download finished: Phi-4-mini-instruct-4bit (2.2 GB).</span></li>
+          </ol>
+        </section>
+      </div>
+    </section>
+
+    <!-- My Models: the detail pane is drawn from the list's selection -->
+    <section class="pane" id="p-models" role="tabpanel" aria-labelledby="t-models">
+      <button class="back" type="button" id="back">‹ My Models</button>
+      <div id="detail"></div>
+    </section>
+
+    <!-- Find Models -->
+    <section class="pane" id="p-find" role="tabpanel" aria-labelledby="t-find">
+      <header>
+        <p class="lede">This Mac can run models up to about 40 GB.</p>
+        <p>64 GB of unified memory, a 48 GB budget, and room left for the context a model serves. Searching the <code>mlx-community</code> organisation; type a repository id in full, such as <code>alice/Bonsai-27B-mlx-4bit</code>, to fetch that exact model.</p>
+      </header>
+      <form class="sfilter" role="search" id="findForm" style="position:static">
+        <div class="field">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+          <label class="sr" for="findInput">Search MLX models</label>
+          <input id="findInput" type="search" value="gemma 3" placeholder="Search MLX models, e.g. qwen3" autocomplete="off">
+        </div>
+        <p class="count" id="findCount">4 results for “gemma 3”.</p>
+      </form>
+      <section class="box" id="findList">
+        <div class="res" data-q="gemma 3 4b"><div><h4>mlx-community/gemma-3-4b-it-4bit</h4><p class="meta">image-text-to-text · conversational · 211k downloads · updated 3 Sep</p></div><p class="sz">3.0 GB</p><p class="fit">Fits alongside the others</p><button class="btn primary" type="button" data-act="download">Download</button></div>
+        <div class="res" data-q="gemma 3 12b"><div><h4>mlx-community/gemma-3-12b-it-4bit</h4><p class="meta">image-text-to-text · conversational · 158k downloads</p></div><p class="sz">8.1 GB</p><p class="fit">Already on this Mac</p><button class="btn" type="button" data-model="gemma">Open</button></div>
+        <div class="res" data-q="gemma 3 27b"><div><h4>mlx-community/gemma-3-27b-it-4bit</h4><p class="meta">image-text-to-text · conversational · 97k downloads · updated 21 Aug</p></div><p class="sz">16.9 GB</p><p class="fit">Fits; unloads Qwen3-8B if both are asked for</p><button class="btn primary" type="button" data-act="download">Download</button></div>
+        <div class="res" data-q="gemma 3 27b 8bit"><div><h4>mlx-community/gemma-3-27b-it-8bit</h4><p class="meta">image-text-to-text · conversational · 18k downloads</p></div><p class="sz">30.4 GB</p><p class="fit">Fits only on its own</p><button class="btn primary" type="button" data-act="download">Download</button></div>
+        <div class="res" data-q="qwen3 32b" hidden><div><h4>mlx-community/Qwen3-32B-4bit</h4><p class="meta">text-generation · conversational · 71k downloads</p></div><p class="sz">18.4 GB</p><p class="fit">Fits</p><button class="btn primary" type="button" data-act="download">Download</button></div>
+        <div class="res" data-q="llama 3.3 70b" hidden><div><h4>mlx-community/Llama-3.3-70B-Instruct-4bit</h4><p class="meta">text-generation · conversational · 64k downloads</p></div><p class="sz">39.7 GB</p><p class="fit">Fits only on its own, at a short context</p><button class="btn primary" type="button" data-act="download">Download</button></div>
+      </section>
+    </section>
+
+    <!-- Statistics -->
+    <section class="pane" id="p-stats" role="tabpanel" aria-labelledby="t-stats">
+      <header>
+        <h2>Statistics</h2>
+        <p>Recorded on this Mac. Counts and timings only — no prompt, no answer and no client address is recorded, so none can be shown.</p>
+      </header>
+      <div class="tiles">
+        <div class="tile"><span>Requests</span><b id="kReq">18,402</b><em id="kRange">last 30 days</em></div>
+        <div class="tile"><span>Tokens out</span><b id="kTok">6.1 <small>M</small></b><em>in 41.3 M</em></div>
+        <div class="tile"><span>First token, median</span><b>0.41 <small>s</small></b><em>90th 1.18 s</em></div>
+        <div class="tile"><span>Refused or failed</span><b>0.6 <small>%</small></b><em>112 requests</em></div>
+      </div>
+      <div class="boxes">
+        <section class="box wide">
+          <div class="hrow">
+            <h3 id="chartH">Requests per day</h3>
+            <div class="seg" role="group" aria-label="Range">
+              <button type="button" aria-pressed="false" data-range="7">7 days</button>
+              <button type="button" aria-pressed="true" data-range="30">30 days</button>
+              <button type="button" aria-pressed="false" data-range="90">90 days</button>
+            </div>
+          </div>
+          <div class="chart" id="chart" role="img" aria-labelledby="chartH chartDesc"></div>
+          <p class="hint" id="chartDesc"></p>
+        </section>
+        <section class="box wide">
+          <h3>Per model</h3>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>Model</th><th class="num">Requests</th><th class="num hide-sm">Tokens out</th><th class="num">First token</th><th class="num hide-sm">Rate</th><th class="num hide-sm">Largest prompt</th></tr></thead>
+              <tbody>
+                <tr><td>gemma-3-12b-it-4bit<span class="inbar" style="width:48px" aria-hidden="true"></span></td><td class="num">8,911</td><td class="num hide-sm">3.2 M</td><td class="num">0.52 s</td><td class="num hide-sm">34 tok/s</td><td class="num hide-sm">29,410</td></tr>
+                <tr><td>Qwen3-8B-4bit<span class="inbar" style="width:41px" aria-hidden="true"></span></td><td class="num">7,604</td><td class="num hide-sm">2.4 M</td><td class="num">0.29 s</td><td class="num hide-sm">68 tok/s</td><td class="num hide-sm">31,872</td></tr>
+                <tr><td>Llama-3.2-3B-Instruct-4bit<span class="inbar" style="width:10px" aria-hidden="true"></span></td><td class="num">1,822</td><td class="num hide-sm">0.5 M</td><td class="num">0.14 s</td><td class="num hide-sm">121 tok/s</td><td class="num hide-sm">6,204</td></tr>
+                <tr><td>Phi-4-mini-instruct-4bit<span class="inbar" style="width:2px" aria-hidden="true"></span></td><td class="num">65</td><td class="num hide-sm">—</td><td class="num">—</td><td class="num hide-sm">—</td><td class="num hide-sm">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="box">
+          <h3>Self-test</h3>
+          <div class="rows">
+            <div><span class="dt">Qwen3-8B-4bit · 07:12</span><span class="dd">load 2.3 s · 68 tok/s</span></div>
+            <div><span class="dt">gemma-3-12b-it-4bit · 06:40</span><span class="dd">load 4.1 s · 34 tok/s</span></div>
+            <div><span class="dt">Llama-3.2-3B-Instruct-4bit · 06:21</span><span class="dd">load 1.1 s · 121 tok/s</span></div>
+          </div>
+        </section>
+        <section class="box">
+          <h3>The store</h3>
+          <p>Records take <strong>38.6 MB</strong> of the 512 MB allowed, in 37 files under your Dessau data folder. The oldest is from 3 September 2026; records are kept for 6 months.</p>
+          <div id="clearBox"><button class="btn destructive" type="button" data-act="clear">Clear records…</button></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- Connect -->
+    <section class="pane" id="p-connect" role="tabpanel" aria-labelledby="t-connect">
+      <header><h2>Point any OpenAI client here</h2><p>Dessau speaks the OpenAI API. Anything that talks to ChatGPT can talk to this Mac.</p></header>
+      <div class="boxes">
+        <section class="box wide">
+          <h3>Base URL</h3>
+          <div class="urlbox"><code>http://alices-mac.local:8080/v1</code><button class="btn primary" type="button" data-copy="http://alices-mac.local:8080/v1">Copy</button></div>
+          <p class="hint">Also answering on <code>http://192.0.2.24:8080/v1</code>, and on this Mac at <code>http://127.0.0.1:8080/v1</code>.</p>
+        </section>
+        <section class="box">
+          <h3>API key</h3>
+          <div class="rows">
+            <div><span class="dt">State</span><span class="dd">Set — required on port 8080</span></div>
+            <div><span class="dt">Key</span><span class="dd mono">sk-dessau-••••3f9a</span></div>
+            <div><span class="dt">Paired clients</span><span class="dd">Own keys, port 8081</span></div>
+          </div>
+          <div class="dact"><button class="btn" type="button" data-copy="sk-dessau-example-key-3f9a">Copy key</button><button class="btn plain" type="button" data-goto="settings" data-group="sg-a">Change in Settings</button></div>
+        </section>
+        <section class="box">
+          <div class="hrow"><h3>Example</h3>
+            <div class="seg" role="group" aria-label="Example language"><button type="button" aria-pressed="true" data-code="curl">curl</button><button type="button" aria-pressed="false" data-code="py">Python</button></div></div>
+<pre class="code" id="code-curl">curl http://alices-mac.local:8080/v1/chat/completions \
+  -H "Authorization: Bearer $DESSAU_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "mlx-community/Qwen3-8B-4bit",
+       "messages": [{"role": "user", "content": "Hello"}]}'</pre>
+<pre class="code" id="code-py" hidden>import os
+from openai import OpenAI
+
+client = OpenAI(base_url="http://alices-mac.local:8080/v1",
+                api_key=os.environ["DESSAU_KEY"])
+r = client.chat.completions.create(
+    model="mlx-community/gemma-3-12b-it-4bit",
+    messages=[{"role": "user", "content": "Hello"}])
+print(r.choices[0].message.content)</pre>
+        </section>
+      </div>
+    </section>
+
+    <!-- Clients -->
+    <section class="pane" id="p-clients" role="tabpanel" aria-labelledby="t-clients">
+      <header><h2>Chat clients paired with this server</h2><p>A paired client proves itself with a key of its own and never sends the API key. Anything on your network that reaches this server can pair itself, so revoke anything you do not recognise.</p></header>
+      <div class="boxes">
+        <section class="box wide">
+          <h3>This server's key</h3>
+          <p class="fp">SHA256 3F9A 7C21 B04E 66D8 91AF 2C5B 0E73 D4A9</p>
+          <p class="hint">Compare this with the fingerprint your chat client shows. If the two differ, the client is talking to something else.</p>
+        </section>
+        <section class="box wide">
+          <h3>Paired clients<span class="aside">4</span></h3>
+          <div class="scroll">
+            <table id="clientTable">
+              <thead><tr><th>Name</th><th class="hide-sm">Paired</th><th>Last seen</th><th class="num hide-sm">Requests, 7 days</th><th class="num"><span class="sr">Action</span></th></tr></thead>
+              <tbody>
+                <tr><td><strong>Bob's laptop</strong></td><td class="hide-sm">2 Oct</td><td>2 min ago</td><td class="num hide-sm">2,140</td><td class="num"><button class="btn" type="button" data-act="revoke">Revoke</button></td></tr>
+                <tr><td><strong>Carol's iPad</strong></td><td class="hide-sm">5 Oct</td><td>14 min ago</td><td class="num hide-sm">612</td><td class="num"><button class="btn" type="button" data-act="revoke">Revoke</button></td></tr>
+                <tr><td><strong>Alice's iPhone</strong></td><td class="hide-sm">19 Sep</td><td>41 min ago</td><td class="num hide-sm">388</td><td class="num"><button class="btn" type="button" data-act="revoke">Revoke</button></td></tr>
+                <tr><td><strong>Carol's old laptop</strong></td><td class="hide-sm">28 Aug</td><td>23 days ago</td><td class="num hide-sm">0</td><td class="num"><button class="btn" type="button" data-act="revoke">Revoke</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- Posture -->
+    <section class="pane" id="p-posture" role="tabpanel" aria-labelledby="t-posture">
+      <header><h2>Where this server stands</h2><p>Each line says what is, as Dessau sees it now, and where its view stops. Nothing here is a warning and nothing here changes a setting.</p></header>
+      <section class="box">
+        <div class="facts">
+          <div><span class="k">Network</span><p class="v">Reachable from your network on port 8080.<small>Bound to 0.0.0.0. Dessau cannot see your router or firewall.</small></p></div>
+          <div><span class="k">API key</span><p class="v">Every request on port 8080 must send the API key.</p></div>
+          <div><span class="k">Paired clients</span><p class="v">4 clients may connect on port 8081 with keys of their own.<small>Pairing is first-come: anything that reaches port 8081 can pair.</small></p></div>
+          <div><span class="k">Announced</span><p class="v">Announced over Bonjour as alices-mac.local.<small>Announcing is how a server is found, never what it allows.</small></p></div>
+          <div><span class="k">This panel</span><p class="v">Answers only on this Mac.<small>Bob and Carol reach the API, never the panel.</small></p></div>
+          <div><span class="k">Recorded</span><p class="v">Request statistics are recorded on this Mac.<small>Counts and timings only. Anyone who can open this panel can read them.</small></p></div>
+          <div><span class="k">Transcript</span><p class="v">No model keeps a transcript; debug logging is off for every model.</p></div>
+          <div><span class="k">Leaves this Mac</span><p class="v">Model names go to HuggingFace once a day for the update check.<small>The Discord bridge is off.</small></p></div>
+        </div>
+      </section>
+    </section>
+
+    <!-- Settings -->
+    <section class="pane" id="p-settings" role="tabpanel" aria-labelledby="t-settings">
+      <header><h2>Settings</h2><p>Grouped by the job a setting does. Each group opens with what is in force now.</p></header>
+      <div class="sfilter">
+        <div class="field">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+          <label class="sr" for="setFilter">Filter settings</label>
+          <input id="setFilter" type="search" placeholder="Filter settings — try “port”, “idle” or “Discord”" autocomplete="off" aria-describedby="setCount">
+        </div>
+        <p class="count" id="setCount" aria-live="polite">8 groups, 41 settings.</p>
+      </div>
+      <div class="slayout">
+        <nav class="sjump" aria-label="Jump to a group" id="sjump">
+          <p class="jh">Jump to</p>
+          <a href="#sg-a"><span class="lt">A</span>Who can reach this server<span class="n"></span></a>
+          <a href="#sg-b"><span class="lt">B</span>Memory and loaded models<span class="n"></span></a>
+          <a href="#sg-c"><span class="lt">C</span>How requests are handled<span class="n"></span></a>
+          <a href="#sg-d"><span class="lt">D</span>When idle models unload<span class="n"></span></a>
+          <a href="#sg-e"><span class="lt">E</span>Checks and measurements<span class="n"></span></a>
+          <a href="#sg-f"><span class="lt">F</span>Statistics and logging<span class="n"></span></a>
+          <a href="#sg-g"><span class="lt">G</span>Discord bridge<span class="n"></span></a>
+          <a href="#sg-h"><span class="lt">H</span>Downloading and updating<span class="n"></span></a>
+        </nav>
+        <form id="settingsForm" class="sgroups" novalidate>
+
+          <section class="sgroup" id="sg-a" aria-labelledby="sg-a-h">
+            <h3 id="sg-a-h"><span class="lt" aria-hidden="true">A</span>Who can reach this server</h3>
+            <div class="box">
+              <p class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force</span>Reachable from your network on port 8080, with an API key. Paired clients on 8081.</span></p>
+              <div class="form">
+                <div class="frow" data-k="bind address network interface"><label class="lbl" for="sHost">Bind address<small>Applies when Dessau next starts.</small></label><select id="sHost"><option selected>0.0.0.0 — your whole network</option><option>127.0.0.1 — this Mac only</option><option>192.0.2.24 — a private network</option></select></div>
+                <div class="frow" data-k="port"><label class="lbl" for="sPort">Port</label><input id="sPort" type="number" value="8080"></div>
+                <div class="frow" data-k="port tls paired clients pairing"><label class="lbl" for="sTLS">Port for paired clients<small>0 is the port just above; −1 serves no paired clients.</small></label><input id="sTLS" type="number" value="0"></div>
+                <div class="frow" data-k="api key authentication bearer password"><label class="lbl" for="sKey">API key<small>Blank means anyone on the network can use this server.</small></label><input id="sKey" type="password" value="sk-dessau-example-key-3f9a" autocomplete="off"></div>
+                <div class="frow" data-k="bonjour announce mdns advertise network"><label class="lbl" for="sAdv">Announce this server on the local network<small>Over Bonjour — how it is found, never what it allows.</small></label><span class="toggle"><input id="sAdv" type="checkbox" checked></span></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="sgroup" id="sg-b" aria-labelledby="sg-b-h">
+            <h3 id="sg-b-h"><span class="lt" aria-hidden="true">B</span>Memory and how many models stay loaded</h3>
+            <div class="box">
+              <p class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force</span>Models may use 48 GB of this Mac's 64 GB; one batched request each; gemma-3-12b-it-4bit is pinned.</span></p>
+              <div class="form">
+                <div class="frow" data-k="memory budget gb ram"><label class="lbl" for="sBudget">Memory for loaded models (GB)<small>Blank for the default share: 48 GB.</small></label><input id="sBudget" type="number" step="any" placeholder="48 — the default"></div>
+                <div class="frow" data-k="batched requests decode concurrency parallel"><label class="lbl" for="sConc">Batched requests<small>Decode concurrency, 1 or more. Each holds its own cache.</small></label><input id="sConc" type="number" value="1"></div>
+                <div class="frow" data-k="pinned pin models keep loaded"><span class="lbl" id="pinL">Pinned models<small>Never unloaded to make room. 9.6 GB pinned.</small></span><div class="checks" role="group" aria-labelledby="pinL"><label><input type="checkbox" checked>gemma-3-12b</label><label><input type="checkbox">Qwen3-8B</label><label><input type="checkbox">Llama-3.2-3B</label></div></div>
+                <div class="frow" data-k="served context window tokens"><span class="lbl">Served context<small>Set per model, in each model's settings on My Models.</small></span><button class="btn plain" type="button" data-goto="models">Open My Models</button></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="sgroup" id="sg-c" aria-labelledby="sg-c-h">
+            <h3 id="sg-c-h"><span class="lt" aria-hidden="true">C</span>How requests are handled</h3>
+            <div class="box">
+              <p class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force</span>Temperature 0.7 for any request that leaves it out; one per-model override; system messages merged for Phi-4-mini.</span></p>
+              <div class="form">
+                <div class="frow" data-k="sampling temperature"><label class="lbl" for="sTemp">Temperature<small>A request that sets its own value always wins.</small></label><input id="sTemp" type="number" step="any" value="0.7"></div>
+                <div class="frow" data-k="sampling top-p nucleus"><label class="lbl" for="sTopP">Top-p</label><input id="sTopP" type="number" step="any" placeholder="1"></div>
+                <div class="frow" data-k="sampling top-k"><label class="lbl" for="sTopK">Top-k</label><input id="sTopK" type="number" placeholder="0 — off"></div>
+                <div class="frow" data-k="sampling min-p"><label class="lbl" for="sMinP">Min-p</label><input id="sMinP" type="number" step="any" placeholder="0 — off"></div>
+                <div class="frow" data-k="maximum completion tokens max tokens"><label class="lbl" for="sMax">Maximum completion tokens</label><input id="sMax" type="number" placeholder="the served window"></div>
+                <div class="frow" data-k="merge system messages instructions"><span class="lbl" id="mergeL">Merge system messages<small>For models that refuse instructions not at the top.</small></span><div class="checks" role="group" aria-labelledby="mergeL"><label><input type="checkbox">gemma-3-12b</label><label><input type="checkbox">Qwen3-8B</label><label><input type="checkbox" checked>Phi-4-mini</label></div></div>
+                <div class="frow" data-k="which models can chat pipeline tags conversational"><label class="lbl" for="sPipes">Pipeline tags that count as chat</label><input id="sPipes" type="text" value="text-generation, image-text-to-text"></div>
+                <div class="frow" data-k="which models can chat tags conversational"><label class="lbl" for="sTags">Tags a chat model must carry</label><input id="sTags" type="text" value="conversational"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="sgroup" id="sg-d" aria-labelledby="sg-d-h">
+            <h3 id="sg-d-h"><span class="lt" aria-hidden="true">D</span>When idle models are unloaded</h3>
+            <div class="box">
+              <p class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force</span>Idle models unload after 10 minutes. Eviction grace protects a model for 60 s; a request waits at most 300 s.</span></p>
+              <div class="form">
+                <div class="frow" data-k="unload idle timeout seconds"><label class="lbl" for="sIdle">Unload models after idle<small>Seconds; 0 means never.</small></label><input id="sIdle" type="number" value="600"></div>
+                <div class="frow" data-k="eviction grace wait evict"><label class="lbl" for="sGraceOn">Wait for a model to fall idle instead of evicting one that just finished</label><span class="toggle"><input id="sGraceOn" type="checkbox" checked></span></div>
+                <div class="frow err" id="f-grace" data-k="eviction grace period protect seconds"><label class="lbl" for="sGrace">Protect a model that just finished for<small>Seconds.</small></label><input id="sGrace" type="number" value="420" aria-invalid="true" aria-describedby="e-grace">
+                  <p class="fielderr" id="e-grace"><span class="dot failed" aria-hidden="true"></span><span>The grace period cannot exceed the maximum wait of 300 seconds.</span></p></div>
+                <div class="frow" data-k="eviction grace wait at most maximum seconds"><label class="lbl" for="sWait">Wait at most<small>Seconds.</small></label><input id="sWait" type="number" value="300"></div>
+                <div class="frow" data-k="unloading from a program api unload"><label class="lbl" for="sApiUnload">Let a program unload a model it has finished with<small>With <code>POST /v1/dessau/unload</code>.</small></label><span class="toggle"><input id="sApiUnload" type="checkbox" checked></span></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="sgroup" id="sg-e" aria-labelledby="sg-e-h">
+            <h3 id="sg-e-h"><span class="lt" aria-hidden="true">E</span>Checks and measurements</h3>
+            <div class="box">
+              <p class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force</span>The self-test runs after 30 minutes of quiet, each model once a day. The context probe is off.</span></p>
+              <div class="form">
+                <div class="frow" data-k="self-test selftest benchmark idle"><label class="lbl" for="sST">Test the models when this Mac is idle<small>Counts and timings only, never a prompt or an answer.</small></label><span class="toggle"><input id="sST" type="checkbox" checked></span></div>
+                <div class="frow" data-k="self-test idle threshold seconds"><label class="lbl" for="sSTI">Self-test idle threshold<small>Seconds, 60 to 86,400.</small></label><input id="sSTI" type="number" value="1800"></div>
+                <div class="frow" data-k="context probe measure window"><label class="lbl" for="sCP">Measure each model's context window when this Mac is idle<small>About forty minutes of GPU per model.</small></label><span class="toggle"><input id="sCP" type="checkbox"></span></div>
+                <div class="frow" data-k="context probe idle threshold seconds"><label class="lbl" for="sCPI">Context probe idle threshold<small>Seconds, 60 to 86,400.</small></label><input id="sCPI" type="number" value="900"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="sgroup" id="sg-f" aria-labelledby="sg-f-h">
+            <h3 id="sg-f-h"><span class="lt" aria-hidden="true">F</span>Statistics and logging</h3>
+            <div class="box">
+              <p class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force</span>Recording on this Mac for 6 months, up to 512 MB (38.6 MB used). The log is sparse. No transcript is kept.</span></p>
+              <div class="form">
+                <div class="frow" data-k="record request statistics recording"><label class="lbl" for="sStats">Record request statistics on this Mac<small>Anyone who can open this panel can read them.</small></label><span class="toggle"><input id="sStats" type="checkbox" checked></span></div>
+                <div class="frow" data-k="keep records months retention"><label class="lbl" for="sMonths">Keep records for (months)</label><input id="sMonths" type="number" value="6"></div>
+                <div class="frow" data-k="never use more than mb size limit"><label class="lbl" for="sMB">Never use more than (MB)</label><input id="sMB" type="number" value="512"></div>
+                <div class="frow" data-k="server log level sparse detailed logging"><label class="lbl" for="sLog">How much the log says<small>Never a prompt, an answer, a key or a client's address.</small></label><select id="sLog"><option selected>Sparse — one line per event</option><option>Detailed — with the figures</option></select></div>
+                <div class="frow" data-k="transcript keep no transcript"><span class="lbl" id="trL">Keep no transcript for<small>Holds a model off the Discord bridge and debug logging.</small></span><div class="checks" role="group" aria-labelledby="trL"><label><input type="checkbox">gemma-3-12b</label><label><input type="checkbox">Qwen3-8B</label><label><input type="checkbox">Llama-3.2-3B</label></div></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="sgroup" id="sg-g" aria-labelledby="sg-g-h">
+            <h3 id="sg-g-h"><span class="lt" aria-hidden="true">G</span>Discord bridge</h3>
+            <div class="box">
+              <p class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg><span><span class="k">In force</span>Off. Nothing passes through Discord.</span></p>
+              <div class="form">
+                <div class="frow" data-k="discord bridge bot messages mentions"><label class="lbl" for="sDisc">Answer Discord direct messages and mentions with a model on this Mac<small>While on, messages and answers pass through Discord and are kept under Discord's terms.</small></label><span class="toggle"><input id="sDisc" type="checkbox"></span></div>
+                <div class="frow" data-k="discord bot token"><label class="lbl" for="sDiscT">Discord bot token</label><input id="sDiscT" type="password" placeholder="no token" autocomplete="off"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="sgroup" id="sg-h" aria-labelledby="sg-h-h">
+            <h3 id="sg-h-h"><span class="lt" aria-hidden="true">H</span>Downloading and updating models</h3>
+            <div class="box">
+              <p class="inforce"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span><span class="k">In force</span>Checking for newer versions every 24 hours (last at 09:00). A HuggingFace token is set.</span></p>
+              <div class="form">
+                <div class="frow" data-k="huggingface token gated hf"><label class="lbl" for="sHF">HuggingFace token<small>Only needed for gated models.</small></label><input id="sHF" type="password" value="hf_example_token" autocomplete="off"></div>
+                <div class="frow" data-k="model updates check newer versions"><label class="lbl" for="sUpd">Check the models you downloaded for newer versions</label><span class="toggle"><input id="sUpd" type="checkbox" checked></span></div>
+                <div class="frow" data-k="check every hours update interval"><label class="lbl" for="sUpdI">Check every (hours)<small>1 to 720; 0 or blank is daily.</small></label><input id="sUpdI" type="number" value="24"></div>
+              </div>
+            </div>
+          </section>
+
+          <div class="empty" id="setEmpty" hidden><p><strong>No setting matches.</strong></p><p>Try a shorter word, or clear the filter.</p></div>
+
+          <div class="savebar" role="region" aria-label="Save settings">
+            <p class="msg" id="saveMsg" aria-live="polite"><span class="dot failed" aria-hidden="true"></span><span>Not saved. The server refused one field in <a href="#sg-d">D, When idle models are unloaded</a>.</span></p>
+            <button class="btn primary" type="submit">Save settings</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var live = document.getElementById('live');
+  function say(t) { live.textContent = ''; setTimeout(function () { live.textContent = t; }, 30); }
+  function toast(t) { var el = document.createElement('div'); el.className = 'toast'; el.textContent = t; document.body.appendChild(el); say(t); setTimeout(function () { el.remove(); }, 2000); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  /* ── Mock models ─────────────────────────────────────────────── */
+  var models = [
+    { id: 'gemma', name: 'gemma-3-12b-it-4bit', st: 'ready', label: 'Loaded', side: 'Loaded · pinned · 9.6 GB', line: 'Pinned · answering 1 request for Carol\'s iPad',
+      disk: 8.1, mem: 9.6, w: 8.1, c: 1.5, q: '4-bit', declared: 131072, measured: null, served: 32768, pinned: true,
+      today: { req: 611, tok: '188k', ft: '0.52 s', rate: '34 tok/s' }, kind: 'Chat and images' },
+    { id: 'qwen3', name: 'Qwen3-8B-4bit', st: 'ready', label: 'Loaded', side: 'Loaded · update ready', line: 'Idle 3 minutes · unloads after 10 minutes',
+      disk: 4.6, mem: 5.6, w: 4.6, c: 1.0, q: '4-bit', declared: 40960, measured: 38912, served: 32768,
+      update: [['tokenizer_config.json', '11 KB'], ['chat_template.jinja', '4 KB'], ['generation_config.json', '1 KB']],
+      today: { req: 498, tok: '162k', ft: '0.29 s', rate: '68 tok/s' }, kind: 'Chat' },
+    { id: 'coder', name: 'Qwen2.5-Coder-14B-Instruct-4bit', st: 'working', label: 'Downloading 63 %', side: 'Downloading · 63 %', line: '5.2 of 8.3 GB · 13 MB/s · about 4 minutes left',
+      disk: 8.3, q: '4-bit', pct: 63, kind: 'Chat, code' },
+    { id: 'llama', name: 'Llama-3.2-3B-Instruct-4bit', st: 'idle', label: 'On disk', side: 'On disk · 1.8 GB', line: 'Unloaded after 10 minutes idle, at 14:10',
+      disk: 1.8, mem: 2.3, w: 1.8, c: 0.5, q: '4-bit', declared: 131072, measured: null, served: 131072,
+      today: { req: 175, tok: '61k', ft: '0.14 s', rate: '121 tok/s' }, kind: 'Chat' },
+    { id: 'phi', name: 'Phi-4-mini-instruct-4bit', st: 'failed', label: 'Would not start', side: 'Would not start', line: 'At 13:07, two minutes after its download finished',
+      disk: 2.2, mem: 2.9, w: 2.2, c: 0.7, q: '4-bit', declared: 131072, measured: null, served: 65536, merge: true,
+      today: { req: 0, tok: '0', ft: '—', rate: '—' }, kind: 'Chat' }
+  ];
+  var selected = 'qwen3';
+  var app = document.getElementById('app');
+
+  function fmt(n) { return n.toLocaleString('en-GB'); }
+
+  function drawList() {
+    var ul = document.getElementById('mlist'); ul.innerHTML = '';
+    models.forEach(function (m) {
+      var li = document.createElement('li');
+      li.innerHTML = '<button type="button" class="mitem" data-id="' + m.id + '"' + (m.id === selected ? ' aria-current="true"' : '') + '>' +
+        '<span class="dot ' + m.st + '" aria-hidden="true"></span><span class="nm">' + esc(m.name) + '</span>' +
+        (m.update ? '<span class="tag">Update</span>' : '<span></span>') +
+        '<span class="sm">' + esc(m.side) + '</span></button>';
+      ul.appendChild(li);
+    });
+    document.getElementById('mcount').textContent = models.length;
+  }
+
+  function field(m, key, label, ph, val) {
+    var id = 'm-' + m.id + '-' + key;
+    return '<div class="frow"><label class="lbl" for="' + id + '">' + label + '</label><input id="' + id + '" type="number" step="any" placeholder="' + esc(ph) + '"' + (val != null ? ' value="' + val + '"' : '') + '></div>';
+  }
+  function toggle(m, key, label, sub, on) {
+    var id = 'm-' + m.id + '-' + key;
+    return '<div class="frow"><label class="lbl" for="' + id + '">' + label + (sub ? '<small>' + sub + '</small>' : '') + '</label><span class="toggle"><input id="' + id + '" type="checkbox"' + (on ? ' checked' : '') + '></span></div>';
+  }
+
+  function drawDetail() {
+    var m = models.filter(function (x) { return x.id === selected; })[0];
+    var d = document.getElementById('detail');
+    if (!m) { d.innerHTML = '<div class="empty"><p><strong>No model selected.</strong></p><p>Pick one from the list.</p></div>'; return; }
+    var loaded = m.st === 'ready';
+    var act = '';
+    if (m.st === 'ready') act = '<button class="btn" type="button" data-act="unload">Unload</button>';
+    else if (m.st === 'idle') act = '<button class="btn primary" type="button" data-act="load">Load</button>';
+    else if (m.st === 'failed') act = '<button class="btn primary" type="button" data-act="load">Try again</button>';
+    else act = '<button class="btn" type="button" data-act="pause">' + (m.paused ? 'Resume' : 'Pause') + '</button>';
+
+    var h = '<div class="dhead"><div class="t"><p class="org">mlx-community /</p><h2 id="detailH" tabindex="-1">' + esc(m.name) + '</h2>' +
+      '<p class="stline"><span class="dot ' + m.st + '" aria-hidden="true"></span><strong>' + esc(m.label) + '</strong><span>·</span><span>' + esc(m.line) + '</span></p></div>' +
+      '<div class="dact">' + act + '</div></div>';
+
+    if (m.st === 'working') {
+      h += '<div class="boxes"><section class="box wide"><h3>Download</h3><div class="progress" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + m.pct + '"><i style="width:' + m.pct + '%"></i></div>' +
+        '<div class="rows"><div><span class="dt">Fetched</span><span class="dd">5.2 of 8.3 GB</span></div><div><span class="dt">Files</span><span class="dd">3 of 5</span></div><div><span class="dt">Will need in memory</span><span class="dd">about 9.4 GB with its context</span></div></div>' +
+        '<p class="lead">A stopped download resumes from where it left off. It appears in the models list for clients once every file is here.</p></section>' +
+        dangerBox(m, 'Cancel and delete') + '</div>';
+      d.innerHTML = h; return;
+    }
+
+    h += '<div class="tiles">' +
+      '<div class="tile"><span>On disk</span><b>' + m.disk + ' <small>GB</small></b><em>' + m.q + ' quantisation</em></div>' +
+      '<div class="tile"><span>' + (loaded ? 'In memory' : 'Needs') + '</span><b>' + m.mem + ' <small>GB</small></b><em>' + (loaded ? 'of the 48 GB budget' : 'when loaded') + '</em></div>' +
+      '<div class="tile"><span>Context served</span><b>' + fmt(m.served) + '</b><em>tokens</em></div>' +
+      '<div class="tile"><span>Requests today</span><b>' + fmt(m.today.req) + '</b><em>' + m.today.rate + '</em></div></div><div class="boxes">';
+
+    if (m.st === 'failed') {
+      h += '<section class="box wide"><h3><span class="dot failed" aria-hidden="true"></span>Why it would not start</h3>' +
+        '<pre class="code">ValueError: Model type phi3_v not supported.\nmodel server exited with status 1 after 2.4 s</pre>' +
+        '<p class="lead">This MLX runtime cannot run this model. The full log is beside the model servers\' logs in your Dessau data folder. Nothing else was affected.</p></section>';
+    }
+    if (m.update) {
+      h += '<section class="box wide" id="upd"><h3>Update available<span class="aside">checked at 09:00</span></h3>' +
+        '<p><strong>3 files changed</strong> on HuggingFace since you downloaded this model. The weights are unchanged.</p>' +
+        '<ul class="files">' + m.update.map(function (f) { return '<li><span>' + esc(f[0]) + '</span><span>' + f[1] + '</span></li>'; }).join('') + '</ul>' +
+        '<div class="dact"><button class="btn primary" type="button" data-act="update">Update — 16 KB</button><span class="hint" style="align-self:center">The loaded copy keeps running; the update applies the next time it loads.</span></div></section>';
+    }
+    var wp = (m.w / m.mem * 100).toFixed(1), cp = (m.c / m.mem * 100).toFixed(1);
+    h += '<section class="box"><h3>Memory</h3><div class="stack" role="img" aria-label="' + m.w + ' GB weights and ' + m.c + ' GB context cache"><i class="w" style="width:' + wp + '%"></i><i class="c" style="width:' + cp + '%"></i></div>' +
+      '<div class="keyrow"><span><b style="background:var(--accent)"></b>Weights ' + m.w + ' GB</span><span><b style="background:color-mix(in srgb, var(--accent) 45%, transparent)"></b>Context cache ' + m.c + ' GB</span></div>' +
+      '<div class="rows"><div><span class="dt">' + (loaded ? 'Held now' : 'Charged when loaded') + '</span><span class="dd">' + m.mem + ' GB</span></div><div><span class="dt">Pinned</span><span class="dd">' + (m.pinned ? 'Yes — never unloaded to make room' : 'No') + '</span></div><div><span class="dt">Batched requests</span><span class="dd">1</span></div></div></section>';
+
+    h += '<section class="box"><h3>Context window</h3><div class="rows">' +
+      '<div><span class="dt">The model declares</span><span class="dd">' + fmt(m.declared) + '</span></div>' +
+      '<div><span class="dt">Measured on this Mac</span><span class="dd">' + (m.measured ? fmt(m.measured) + ' · 8 Oct' : 'Not measured') + '</span></div>' +
+      '<div><span class="dt">Served</span><span class="dd">' + fmt(m.served) + (m.served < m.declared ? ' — what the budget has room for' : ' — the declared window') + '</span></div></div>' +
+      '<div class="dact">' + (m.measured ? '<button class="btn" type="button" data-act="usewin">Use the measured window</button>' : '') + '<button class="btn plain" type="button" data-act="measure">Measure now</button></div></section>';
+
+    h += '<section class="box wide"><h3>Settings for this model<span class="aside">blank keeps the machine-wide default</span></h3><div class="form">' +
+      field(m, 'ctx', 'Served context (tokens)<small>Larger windows take more of the budget.</small>', fmt(m.served) + ' — the default') +
+      field(m, 'temp', 'Temperature', 'machine-wide (0.7)') +
+      field(m, 'topp', 'Top-p', 'machine-wide (1)') +
+      field(m, 'max', 'Maximum completion tokens', 'the served window') +
+      toggle(m, 'pin', 'Pin this model', 'Never unloaded to make room for another.', m.pinned) +
+      toggle(m, 'merge', 'Merge system messages', 'For a model that refuses instructions mid-conversation.', m.merge) +
+      toggle(m, 'trans', 'Keep no transcript', 'Held off the Discord bridge and debug logging.', false) +
+      '</div><div class="dact"><button class="btn primary" type="button" data-act="apply">Apply</button><button class="btn plain" type="button" data-act="debug">Arm debug logging for the next run…</button></div>' +
+      '<p class="hint" id="applyOut">Changes reach the model the next time it loads.</p></section>';
+
+    h += '<section class="box"><h3>Today</h3><div class="rows"><div><span class="dt">Requests</span><span class="dd">' + fmt(m.today.req) + '</span></div><div><span class="dt">Tokens out</span><span class="dd">' + m.today.tok + '</span></div><div><span class="dt">First token, median</span><span class="dd">' + m.today.ft + '</span></div><div><span class="dt">Generation, median</span><span class="dd">' + m.today.rate + '</span></div></div></section>';
+    h += dangerBox(m, 'Delete') + '</div>';
+    d.innerHTML = h;
+  }
+  function dangerBox(m, verb) {
+    return '<section class="box" id="danger"><h3>Remove from this Mac</h3><p class="lead">Deleting removes its ' + m.disk + ' GB of files. Clients stop seeing it at once.</p>' +
+      '<div class="dact" id="delArea"><button class="btn destructive" type="button" data-act="delete">' + verb + '…</button></div></section>';
+  }
+
+  function pick(id, focusDetail) {
+    selected = id; drawList(); drawDetail();
+    selectTab(document.getElementById('t-models'), false);
+    app.setAttribute('data-view', 'detail');
+    document.getElementById('main').scrollTop = 0;
+    if (focusDetail) { var hh = document.getElementById('detailH'); if (hh) hh.focus(); }
+  }
+
+  document.getElementById('mlist').addEventListener('click', function (e) {
+    var b = e.target.closest('.mitem'); if (b) pick(b.getAttribute('data-id'), window.innerWidth < 700);
+  });
+  document.getElementById('back').addEventListener('click', function () {
+    app.setAttribute('data-view', 'list');
+    var cur = document.querySelector('.mitem[aria-current="true"]'); if (cur) cur.focus();
+  });
+
+  document.getElementById('detail').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var m = models.filter(function (x) { return x.id === selected; })[0];
+    var a = b.getAttribute('data-act');
+    if (a === 'unload') { m.st = 'idle'; m.label = 'On disk'; m.side = 'On disk · ' + m.disk + ' GB' + (m.update ? ' · update ready' : ''); m.line = 'Unloaded just now'; drawList(); drawDetail(); say(m.name + ' unloaded.'); }
+    else if (a === 'load') { m.st = 'ready'; m.label = 'Loaded'; m.side = 'Loaded · ' + m.mem + ' GB'; m.line = 'Loaded just now · unloads after 10 minutes idle'; drawList(); drawDetail(); say(m.name + ' loaded.'); }
+    else if (a === 'pause') { m.paused = !m.paused; m.label = m.paused ? 'Paused at 63 %' : 'Downloading 63 %'; m.side = m.paused ? 'Paused · 63 %' : 'Downloading · 63 %'; drawList(); drawDetail(); }
+    else if (a === 'update') { delete m.update; m.side = m.st === 'ready' ? 'Loaded · 5.6 GB' : 'On disk'; drawList(); drawDetail(); toast('Updated — 3 files replaced.'); }
+    else if (a === 'usewin') { m.served = m.measured; drawDetail(); say('Serving ' + fmt(m.measured) + ' tokens from the next load.'); }
+    else if (a === 'measure') { b.textContent = 'Measuring — stands down if anyone sends a request'; b.disabled = true; }
+    else if (a === 'apply') { document.getElementById('applyOut').textContent = 'Applied. It reaches ' + m.name + ' the next time it loads.'; say('Applied.'); }
+    else if (a === 'debug') { document.getElementById('applyOut').textContent = 'Armed: from its next start until the start after it, the model server\'s log holds every prompt and answer. Unload it to begin.'; }
+    else if (a === 'delete') {
+      var area = document.getElementById('delArea');
+      area.outerHTML = '<div class="confirm" id="delArea" role="group" aria-label="Confirm delete"><p><strong>Delete ' + esc(m.name) + ' from this Mac?</strong> ' + m.disk + ' GB of files are removed. Downloading it again fetches them afresh.</p>' +
+        '<div class="row"><button class="btn strong" type="button" data-act="really-delete">Delete model</button><button class="btn" type="button" data-act="keep">Keep it</button></div></div>';
+      document.querySelector('[data-act=keep]').focus();
+    } else if (a === 'keep') { drawDetail(); var del = document.querySelector('[data-act=delete]'); if (del) del.focus(); }
+    else if (a === 'really-delete') {
+      var name = m.name; models = models.filter(function (x) { return x !== m; });
+      selected = models.length ? models[0].id : null; drawList(); drawDetail(); toast(name + ' deleted.');
+    }
+  });
+
+  /* ── Tabs ────────────────────────────────────────────────────── */
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role=tab]'));
+  function selectTab(tab, focus) {
+    tabs.forEach(function (t) {
+      var on = t === tab; t.setAttribute('aria-selected', on ? 'true' : 'false'); t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).classList.toggle('active', on);
+    });
+    app.setAttribute('data-tab', tab.id.slice(2));
+    if (focus) { tab.focus(); tab.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { selectTab(t, false); if (t.id === 't-models') app.setAttribute('data-view', window.innerWidth < 700 ? 'list' : 'detail'); document.getElementById('main').scrollTop = 0; });
+    t.addEventListener('keydown', function (e) {
+      var n = null;
+      if (e.key === 'ArrowRight') n = tabs[(i + 1) % tabs.length];
+      else if (e.key === 'ArrowLeft') n = tabs[(i - 1 + tabs.length) % tabs.length];
+      else if (e.key === 'Home') n = tabs[0];
+      else if (e.key === 'End') n = tabs[tabs.length - 1];
+      if (n) { e.preventDefault(); selectTab(n, true); if (n.id === 't-models') app.setAttribute('data-view', window.innerWidth < 700 ? 'list' : 'detail'); }
+    });
+  });
+  document.addEventListener('click', function (e) {
+    var mm = e.target.closest('[data-model]');
+    if (mm) { e.preventDefault(); pick(mm.getAttribute('data-model'), true); return; }
+    var g = e.target.closest('[data-goto]'); if (!g) return;
+    e.preventDefault();
+    var tab = document.getElementById('t-' + g.getAttribute('data-goto'));
+    selectTab(tab, false);
+    if (tab.id === 't-models') app.setAttribute('data-view', window.innerWidth < 700 ? 'list' : 'detail');
+    var grp = g.getAttribute('data-group');
+    if (grp) document.getElementById(grp).scrollIntoView(); else document.getElementById('main').scrollTop = 0;
+  });
+
+  /* ── Settings filter ─────────────────────────────────────────── */
+  var groups = Array.prototype.slice.call(document.querySelectorAll('.sgroup'));
+  groups.forEach(function (g) {
+    g.querySelectorAll('.frow .lbl').forEach(function (l) {
+      var first = l.firstChild; if (first && first.nodeType === 3) l.setAttribute('data-orig', first.nodeValue);
+    });
+  });
+  var total = document.querySelectorAll('.sgroup .frow').length;
+  var sf = document.getElementById('setFilter');
+  function highlight(lbl, q) {
+    var orig = lbl.getAttribute('data-orig'); if (orig == null) return;
+    var txt = lbl.firstChild; var span = lbl.querySelector('.hl');
+    if (!span) { span = document.createElement('span'); span.className = 'hl'; lbl.insertBefore(span, txt); lbl.removeChild(txt); }
+    if (!q) { span.textContent = orig; return; }
+    var i = orig.toLowerCase().indexOf(q);
+    span.innerHTML = i < 0 ? esc(orig) : esc(orig.slice(0, i)) + '<mark>' + esc(orig.slice(i, i + q.length)) + '</mark>' + esc(orig.slice(i + q.length));
+  }
+  function runFilter() {
+    var q = sf.value.trim().toLowerCase(), shownG = 0, shownR = 0;
+    var links = document.querySelectorAll('#sjump a');
+    groups.forEach(function (g, gi) {
+      var title = g.querySelector('h3').textContent.toLowerCase();
+      var titleHit = q && title.indexOf(q) !== -1, n = 0;
+      g.querySelectorAll('.frow').forEach(function (r) {
+        var hit = !q || titleHit || (r.textContent + ' ' + r.getAttribute('data-k')).toLowerCase().indexOf(q) !== -1;
+        r.hidden = !hit; if (hit) n++;
+        var l = r.querySelector('.lbl'); if (l) highlight(l, q);
+      });
+      g.querySelector('.inforce').hidden = !!q && !titleHit && n === 0;
+      g.hidden = n === 0; if (n) { shownG++; shownR += n; }
+      links[gi].hidden = n === 0;
+      links[gi].querySelector('.n').textContent = q && n ? '· ' + n : '';
+    });
+    document.getElementById('setEmpty').hidden = shownG !== 0;
+    document.getElementById('setCount').textContent = q
+      ? (shownR ? shownR + (shownR === 1 ? ' setting' : ' settings') + ' in ' + shownG + (shownG === 1 ? ' group' : ' groups') + ' match “' + sf.value.trim() + '”.' : 'Nothing matches “' + sf.value.trim() + '”.')
+      : '8 groups, ' + total + ' settings.';
+  }
+  sf.addEventListener('input', runFilter);
+  sf.addEventListener('keydown', function (e) { if (e.key === 'Escape') { sf.value = ''; runFilter(); } });
+  runFilter();
+
+  document.getElementById('settingsForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var g = +document.getElementById('sGrace').value, w = +document.getElementById('sWait').value;
+    var row = document.getElementById('f-grace'), err = document.getElementById('e-grace'), inp = document.getElementById('sGrace'), msg = document.getElementById('saveMsg');
+    if (g > w) {
+      row.classList.add('err'); err.hidden = false; inp.setAttribute('aria-invalid', 'true');
+      err.lastElementChild.textContent = 'The grace period cannot exceed the maximum wait of ' + w + ' seconds.';
+      if (sf.value) { sf.value = ''; runFilter(); }
+      msg.innerHTML = '<span class="dot failed" aria-hidden="true"></span><span>Not saved. The server refused one field in <a href="#sg-d">D, When idle models are unloaded</a>.</span>';
+      inp.focus();
+    } else {
+      row.classList.remove('err'); err.hidden = true; inp.removeAttribute('aria-invalid');
+      msg.innerHTML = '<span class="dot ready" aria-hidden="true"></span><span>Saved at 14:37. In force now; the bind address applies when Dessau next starts.</span>';
+    }
+  });
+
+  /* ── Find ────────────────────────────────────────────────────── */
+  var fi = document.getElementById('findInput');
+  function find() {
+    var q = fi.value.trim().toLowerCase(), n = 0;
+    document.querySelectorAll('#findList .res').forEach(function (r) {
+      var words = q.split(/\s+/), hay = (r.getAttribute('data-q') + ' ' + r.textContent).toLowerCase();
+      var hit = !q || words.every(function (w) { return hay.indexOf(w) !== -1; });
+      r.hidden = !hit; if (hit) n++;
+    });
+    document.getElementById('findCount').textContent = n + (n === 1 ? ' result' : ' results') + (q ? ' for “' + fi.value.trim() + '”.' : '.');
+  }
+  fi.addEventListener('input', find);
+  document.getElementById('findForm').addEventListener('submit', function (e) { e.preventDefault(); find(); });
+  document.getElementById('findList').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act=download]'); if (!b) return;
+    b.textContent = 'Queued'; b.className = 'btn'; b.disabled = true; say('Download queued. It appears in My Models.');
+  });
+
+  /* ── Chart ───────────────────────────────────────────────────── */
+  function series(n) {
+    var out = [], seed = 7;
+    for (var i = 0; i < n; i++) {
+      seed = (seed * 9301 + 49297) % 233280;
+      var day = (i + 6 - n % 7 + 70) % 7, weekend = day >= 5;
+      var base = 380 + i * (n > 30 ? 9 : 22) / (n / 30);
+      out.push(Math.round((weekend ? base * .55 : base) + (seed / 233280) * 260 + (n > 30 ? 0 : 520)));
+    }
+    return out;
+  }
+  var targets = { 7: 4320, 30: 18402, 90: 47115 };
+  function draw(n) {
+    var v = series(n), raw = v.reduce(function (a, b) { return a + b; }, 0);
+    v = v.map(function (x) { return Math.round(x * targets[n] / raw); });
+    v[v.length - 1] += targets[n] - v.reduce(function (a, b) { return a + b; }, 0);
+    var W = 720, H = 220, L = 44, R = 10, T = 12, B = 24;
+    var top = Math.ceil(Math.max.apply(null, v) / 500) * 500, sum = v.reduce(function (a, b) { return a + b; }, 0);
+    var x = function (i) { return L + (W - L - R) * i / (v.length - 1); }, y = function (val) { return T + (H - T - B) * (1 - val / top); };
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">';
+    for (var k = 0; k <= 4; k++) { var yy = y(top * k / 4); s += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '"/><text class="ax" x="' + (L - 8) + '" y="' + (yy + 4) + '" text-anchor="end">' + fmt(top * k / 4) + '</text>'; }
+    var pts = v.map(function (val, i) { return x(i).toFixed(1) + ',' + y(val).toFixed(1); });
+    s += '<path class="area" d="M' + x(0) + ',' + y(0) + ' L' + pts.join(' L') + ' L' + x(v.length - 1) + ',' + y(0) + ' Z"/>';
+    s += '<polyline class="line" points="' + pts.join(' ') + '"/>';
+    var labels = n === 7 ? ['4 Oct', '7 Oct', '10 Oct'] : n === 30 ? ['11 Sep', '26 Sep', '10 Oct'] : ['13 Jul', '26 Aug', '10 Oct'];
+    [0, Math.floor((v.length - 1) / 2), v.length - 1].forEach(function (i, j) { s += '<text class="ax" x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="' + (j === 0 ? 'start' : j === 2 ? 'end' : 'middle') + '">' + labels[j] + '</text>'; });
+    s += '<circle class="pt" cx="' + x(v.length - 1) + '" cy="' + y(v[v.length - 1]) + '" r="4"/>';
+    document.getElementById('chart').innerHTML = s + '</svg>';
+    var maxV = Math.max.apply(null, v);
+    document.getElementById('chartDesc').textContent = 'Requests per day over the last ' + n + ' days: ' + fmt(sum) + ' in all, at most ' + fmt(maxV) + ' in a day. Weekends are quieter.';
+    document.getElementById('kReq').textContent = fmt(sum);
+    document.getElementById('kRange').textContent = 'last ' + n + ' days';
+  }
+  draw(30);
+  document.querySelectorAll('[data-range]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('[data-range]').forEach(function (o) { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+      draw(+b.getAttribute('data-range'));
+    });
+  });
+  document.querySelectorAll('[data-code]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('[data-code]').forEach(function (o) { var on = o === b; o.setAttribute('aria-pressed', on ? 'true' : 'false'); document.getElementById('code-' + o.getAttribute('data-code')).hidden = !on; });
+    });
+  });
+
+  /* ── Clear records, revoke, copy ─────────────────────────────── */
+  var cb = document.getElementById('clearBox');
+  cb.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return; var a = b.getAttribute('data-act');
+    if (a === 'clear') { cb.innerHTML = '<div class="confirm" role="group" aria-label="Confirm clearing records"><p><strong>Clear all records?</strong> The 37 files are removed and cannot be recovered. Recording stays on.</p><div class="row"><button class="btn strong" type="button" data-act="yes">Clear records</button><button class="btn" type="button" data-act="no">Cancel</button></div></div>'; cb.querySelector('[data-act=no]').focus(); }
+    else if (a === 'no') { cb.innerHTML = '<button class="btn destructive" type="button" data-act="clear">Clear records…</button>'; cb.firstChild.focus(); }
+    else if (a === 'yes') { cb.innerHTML = '<p class="hint"><strong>Cleared.</strong> New requests are recorded from now.</p>'; say('Records cleared.'); }
+  });
+  document.getElementById('clientTable').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var td = b.parentNode, row = b.closest('tr'), name = row.querySelector('strong').textContent, a = b.getAttribute('data-act');
+    if (a === 'revoke') { td.innerHTML = '<span style="display:inline-flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn strong" type="button" data-act="yes">Revoke ' + esc(name) + '</button><button class="btn" type="button" data-act="no">Keep</button></span>'; td.querySelector('[data-act=no]').focus(); }
+    else if (a === 'no') { td.innerHTML = '<button class="btn" type="button" data-act="revoke">Revoke</button>'; td.firstChild.focus(); }
+    else if (a === 'yes') { row.cells[2].textContent = 'Revoked just now'; td.textContent = '—'; row.style.opacity = '.55'; say(name + ' revoked. It must pair again to connect.'); }
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-copy]'); if (!b) return;
+    try { navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function () { toast('Copied.'); }, function () { toast('Copied.'); }); } catch (x) { toast('Copied.'); }
+  });
+
+  find(); drawList(); drawDetail();
+  if (window.innerWidth >= 700) app.setAttribute('data-view', 'detail');
+})();
+</script>
+</body>
+</html>

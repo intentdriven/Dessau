@@ -1,0 +1,1607 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Dessau Server</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'><rect width='1024' height='1024' fill='%2317181d'/><polygon points='302,132 472,472 132,472' fill='%23F5C518'/><rect x='552' y='132' width='340' height='340' fill='%23B4B6BB'/><rect x='132' y='552' width='340' height='340' fill='%232B5DAA'/><circle cx='722' cy='722' r='170' fill='%23E63329'/></svg>">
+<style>
+/* Mockup 7 — "Home first". A bento Overview whose every card opens the place
+   it summarises; Settings as eight task cards that expand in place; a model
+   opens into a sheet of stacked cards. System palette and the Mac's accent;
+   the triad only in the mark and as the three status shapes, which are the
+   mark's own: ready = blue square, working = yellow triangle, failed = red
+   circle; idle = a hollow grey ring. Every status is a word beside its shape. */
+:root {
+  color-scheme: light dark;
+  --bg: #f2f2f7;
+  --card: #ffffff;
+  --inset: #f4f4f8;
+  --fill: rgba(118, 118, 128, .12);
+  --fill-2: rgba(118, 118, 128, .22);
+  --ink: #1d1d1f;
+  --ink-2: #48484d;
+  --ink-3: #5f5f66;
+  --line: rgba(60, 60, 67, .13);
+  --line-strong: rgba(60, 60, 67, .34);
+  --accent: #0066d6;
+  --accent-ink: #ffffff;
+  --accent-text: #0060c7;
+  --accent-soft: rgba(0, 102, 214, .12);
+  --ready: #2B5DAA;
+  --working: #F5C518;
+  --failed: #E63329;
+  --tri-edge: rgba(0, 0, 0, .55);
+  --ready-edge: none;
+  --elev: 0 0 0 1px rgba(0, 0, 0, .035), 0 1px 2px rgba(0, 0, 0, .04), 0 6px 20px rgba(0, 0, 0, .05);
+  --elev-hi: 0 0 0 1px rgba(0, 0, 0, .05), 0 2px 4px rgba(0, 0, 0, .05), 0 14px 36px rgba(0, 0, 0, .10);
+  --scrim: rgba(0, 0, 0, .32);
+  --r-card: 22px;
+  --r-inner: 14px;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --fs-body: clamp(1.0625rem, 1rem + .22vw, 1.1875rem);   /* 17 → 19 px */
+  --fs-small: clamp(.9375rem, .9rem + .12vw, 1rem);        /* 15 → 16 px */
+  --fs-title: clamp(1.25rem, 1.08rem + .5vw, 1.5rem);      /* 20 → 24 px */
+  --fs-fig: clamp(2rem, 1.45rem + 1.7vw, 3rem);            /* 32 → 48 px */
+  --fs-hero: clamp(1.875rem, 1.15rem + 2.6vw, 3.5rem);     /* 30 → 56 px */
+  --pad: clamp(20px, .9rem + .7vw, 28px);
+  --gap: clamp(16px, .75rem + .6vw, 24px);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0e10;
+    --card: #1c1c1f;
+    --inset: #26262a;
+    --fill: rgba(118, 118, 128, .24);
+    --fill-2: rgba(118, 118, 128, .36);
+    --ink: #f5f5f7;
+    --ink-2: #cacad0;
+    --ink-3: #a3a3aa;
+    --line: rgba(255, 255, 255, .09);
+    --line-strong: rgba(255, 255, 255, .26);
+    --accent: #0a6fe0;
+    --accent-text: #62adff;
+    --accent-soft: rgba(64, 156, 255, .18);
+    --tri-edge: none;
+    --ready-edge: rgba(255, 255, 255, .8);
+    --elev: 0 0 0 1px rgba(255, 255, 255, .07);
+    --elev-hi: 0 0 0 1px rgba(255, 255, 255, .15), 0 16px 40px rgba(0, 0, 0, .55);
+    --scrim: rgba(0, 0, 0, .58);
+  }
+}
+/* The Mac's own accent where the browser exposes it: fills and rings follow
+   it. Link text keeps a contrast-safe blue so it never drops below AA. */
+@supports (color: AccentColor) {
+  :root { --accent: AccentColor; --accent-ink: AccentColorText; --accent-soft: color-mix(in srgb, AccentColor 15%, transparent); }
+}
+@media (prefers-contrast: more) {
+  :root { --ink-2: var(--ink); --ink-3: var(--ink); --line: var(--line-strong); --elev: 0 0 0 1.5px var(--line-strong); }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 168px; scroll-padding-bottom: 120px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 var(--fs-body)/1.5 var(--sans); -webkit-font-smoothing: antialiased; font-feature-settings: "tnum" 1; overflow-x: hidden; }
+h1, h2, h3, h4, p, ul, ol, dl, dd, figure, pre { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--accent-text); text-underline-offset: 3px; }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 10px; }
+[hidden] { display: none !important; }
+.sr { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.muted { color: var(--ink-2); }
+.small { font-size: var(--fs-small); }
+
+/* ── Status shapes (the mark's own forms) ─────────────────────────── */
+.sh { width: 16px; height: 16px; flex: none; display: inline-block; vertical-align: -2px; }
+.sh .ready { fill: var(--ready); stroke: var(--ready-edge); stroke-width: 1.5; }
+.sh .working { fill: var(--working); stroke: var(--tri-edge); stroke-width: 1.2; stroke-linejoin: round; }
+.sh .failed { fill: var(--failed); }
+.sh .idle { fill: none; stroke: var(--ink-3); stroke-width: 2; }
+.sh .glyph { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.st { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.chip { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 2px 12px; border-radius: 999px; background: var(--fill); font-weight: 600; font-size: var(--fs-small); }
+
+/* ── Header and the five places ───────────────────────────────────── */
+.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 84%, transparent); -webkit-backdrop-filter: saturate(180%) blur(22px); backdrop-filter: saturate(180%) blur(22px); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1360px; margin: 0 auto; padding: 12px 16px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+@media (min-width: 700px) { .top-in { padding: 14px 24px 0; } }
+@media (min-width: 1100px) { .top-in { padding: 16px 40px 0; } }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand .logo { width: 36px; height: 36px; flex: none; }
+.brand h1 { font: 700 1.1875rem/1.2 var(--display); letter-spacing: -.01em; }
+.brand p { font-size: 15px; color: var(--ink-3); line-height: 1.3; }
+.top-end { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.pill { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--card); box-shadow: var(--elev); font-weight: 600; font-size: var(--fs-small); border: 0; cursor: pointer; text-decoration: none; color: var(--ink); }
+.pill:hover { box-shadow: var(--elev-hi); }
+.pill.url { font-family: var(--mono); font-size: 15px; }
+.pill.url .cp { font: 600 15px var(--sans); color: var(--accent-text); }
+@media (max-width: 799px) { .pill.url { display: none; } }
+@media (max-width: 420px) { .brand p { display: none; } }
+
+.tabs { flex-basis: 100%; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 6px 16px 12px; }
+.tabs::-webkit-scrollbar { display: none; }
+.tablist { display: flex; align-items: flex-end; gap: 12px; width: max-content; }
+@media (min-width: 1000px) { .tablist { margin: 0 auto; } }
+.tgroup { display: flex; flex-direction: column; gap: 4px; }
+.tcap { font-size: 14px; font-weight: 600; color: var(--ink-3); padding-left: 16px; line-height: 1.2; }
+.tpair { display: flex; gap: 2px; background: var(--fill); border-radius: 999px; padding: 3px; }
+.tab { min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: transparent; font-size: 1rem; font-weight: 600; color: var(--ink-2); cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+.tab:hover { color: var(--ink); background: var(--fill); }
+.tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.tab .n { min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px; background: var(--failed); color: #fff; font-size: 14px; display: inline-grid; place-items: center; }
+.tab:focus-visible { outline-offset: 1px; border-radius: 999px; }
+@media (max-width: 699px) { .tcap { display: none; } .tablist { gap: 8px; } }
+
+/* ── Page ─────────────────────────────────────────────────────────── */
+main { max-width: 1360px; margin: 0 auto; padding: 24px 16px 72px; }
+@media (min-width: 700px) { main { padding: 32px 24px 80px; } }
+@media (min-width: 1100px) { main { padding: 36px 40px 96px; } }
+.panel { display: none; }
+.panel.on { display: block; }
+.phead { margin-bottom: var(--gap); display: grid; gap: 8px; max-width: 72ch; }
+.phead h2 { font: 700 clamp(1.75rem, 1.3rem + 1.4vw, 2.5rem)/1.1 var(--display); letter-spacing: -.025em; }
+.phead h2:focus { outline: none; }
+.phead h2:focus-visible { outline: 3px solid var(--accent); }
+.phead p { color: var(--ink-2); }
+
+/* ── Cards ────────────────────────────────────────────────────────── */
+.card { position: relative; background: var(--card); border-radius: var(--r-card); box-shadow: var(--elev); padding: var(--pad); display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.card-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.card-t { font: 700 var(--fs-title)/1.2 var(--display); letter-spacing: -.015em; }
+.card-t .stretch { all: unset; cursor: pointer; }
+.card-t .stretch::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-card); z-index: 0; }
+.card-t .stretch:focus-visible { outline: none; }
+.card-t .stretch:focus-visible::after { outline: 3px solid var(--accent); outline-offset: 3px; }
+.card .lift { position: relative; z-index: 1; }
+.opens { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-small); font-weight: 600; color: var(--ink-3); white-space: nowrap; padding-top: 3px; }
+.opens svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .18s; }
+.card.link { cursor: pointer; transition: box-shadow .18s, transform .18s; }
+.card.link:hover { box-shadow: var(--elev-hi); }
+.card.link:hover .opens { color: var(--accent-text); }
+.card.link:hover .opens svg { transform: translateX(3px); }
+.card.link:active { transform: scale(.995); }
+@media (prefers-reduced-motion: no-preference) { .card.link:hover { transform: translateY(-2px); } }
+.card .sub { font-size: var(--fs-small); color: var(--ink-2); }
+.card .lede { max-width: 62ch; color: var(--ink-2); }
+.fig { display: grid; gap: 2px; }
+.fig b { font: 700 var(--fs-fig)/1.05 var(--display); letter-spacing: -.03em; }
+.fig b small { font-size: .45em; font-weight: 600; letter-spacing: 0; color: var(--ink-2); margin-left: 4px; }
+.fig span { font-size: var(--fs-small); color: var(--ink-2); }
+.inset { background: var(--inset); border-radius: var(--r-inner); padding: 16px; }
+
+/* Buttons */
+.btn { min-height: 44px; padding: 0 20px; border-radius: 12px; border: 0; background: var(--fill); color: var(--ink); font-weight: 600; font-size: 1rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; white-space: nowrap; transition: background .15s, transform .1s; }
+.btn:hover { background: var(--fill-2); }
+.btn:active { transform: scale(.97); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.quiet { background: none; color: var(--accent-text); padding: 0 12px; }
+.btn.quiet:hover { background: var(--accent-soft); }
+.btn.outline { background: none; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+.btn.outline:hover { background: var(--fill); }
+.btn.strong { background: var(--ink); color: var(--bg); }
+.btn[disabled] { opacity: .55; cursor: default; transform: none; }
+.btn[aria-disabled="true"] { cursor: default; color: var(--ink-2); background: none; transform: none; }
+.btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.confirm { border-radius: var(--r-inner); padding: 16px; background: var(--inset); display: grid; gap: 12px; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+
+/* Meters, progress, skeletons */
+.bar { height: 10px; border-radius: 999px; background: var(--fill-2); overflow: hidden; display: flex; gap: 2px; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.bar i.b2 { background: color-mix(in srgb, var(--accent) 55%, transparent); }
+.bar i.b3 { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.bar.thick { height: 14px; }
+.skel { border-radius: 10px; background: linear-gradient(90deg, var(--fill) 25%, var(--fill-2) 50%, var(--fill) 75%); background-size: 200% 100%; }
+@media (prefers-reduced-motion: no-preference) { .skel { animation: shimmer 1.3s linear infinite; } }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.bar.indet i { width: 35%; background: var(--working); }
+@media (prefers-reduced-motion: no-preference) { .bar.indet i { animation: indet 1.1s ease-in-out infinite alternate; } }
+@keyframes indet { from { transform: translateX(-10%); } to { transform: translateX(200%); } }
+
+/* ── Overview bento ───────────────────────────────────────────────── */
+.bento { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "h" "n" "m" "r" "d" "c" "x" "p"; }
+@media (min-width: 760px) {
+  .bento { grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "h h" "n m" "r r" "d c" "x x" "p p"; }
+}
+@media (min-width: 1180px) {
+  .bento { grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-areas:
+      "h h h h h h h h n n n n"
+      "m m m m r r r r r r r r"
+      "d d d d x x x x x x x x"
+      "c c c c c c p p p p p p"; }
+}
+.a-h { grid-area: h; } .a-n { grid-area: n; } .a-m { grid-area: m; } .a-r { grid-area: r; }
+.a-d { grid-area: d; } .a-c { grid-area: c; } .a-x { grid-area: x; } .a-p { grid-area: p; }
+
+.health { gap: 20px; }
+.health .hero { font: 700 var(--fs-hero)/1.06 var(--display); letter-spacing: -.03em; max-width: 18ch; }
+.health .figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 16px 24px; }
+.spark { display: grid; gap: 8px; }
+.spark svg { width: 100%; height: 64px; display: block; }
+.spark .area { fill: var(--accent-soft); }
+.spark .line { fill: none; stroke: var(--accent); stroke-width: 2.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.spark .cap { font-size: var(--fs-small); color: var(--ink-2); display: flex; justify-content: space-between; gap: 12px; }
+
+.needs .count { min-width: 32px; height: 32px; border-radius: 999px; display: inline-grid; place-items: center; background: var(--ink); color: var(--bg); font-weight: 700; font-size: 16px; padding: 0 8px; }
+.nlist { display: grid; gap: 8px; }
+.nitem { width: 100%; text-align: left; border: 0; background: var(--inset); border-radius: var(--r-inner); padding: 14px 16px; display: grid; grid-template-columns: 20px minmax(0, 1fr) 20px; gap: 4px 12px; align-items: start; cursor: pointer; min-height: 44px; transition: background .15s; }
+.nitem:hover { background: var(--fill-2); }
+.nitem .sh { margin-top: 4px; }
+.nitem b { font-weight: 600; overflow-wrap: anywhere; }
+.nitem span.s { grid-column: 2; font-size: var(--fs-small); color: var(--ink-2); }
+.nitem .chev { grid-column: 3; grid-row: 1; width: 18px; height: 18px; margin-top: 4px; fill: none; stroke: var(--ink-3); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.nitem .glyphwrap { color: var(--ink-2); }
+.empty { display: grid; justify-items: center; text-align: center; gap: 8px; padding: 24px 8px; color: var(--ink-2); }
+.empty .big { width: 48px; height: 48px; }
+.empty strong { color: var(--ink); font-size: 1.125rem; }
+
+.memwrap { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: center; justify-items: center; }
+@media (min-width: 420px) and (max-width: 759px), (min-width: 1180px) and (max-width: 1299px) { .memwrap { justify-items: stretch; } }
+.ring { position: relative; width: 176px; height: 176px; }
+.ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring .track { fill: none; stroke: var(--fill-2); stroke-width: 18; }
+.ring .seg { fill: none; stroke-width: 18; stroke-linecap: butt; }
+.ring .s0 { stroke: var(--accent); }
+.ring .s1 { stroke: color-mix(in srgb, var(--accent) 55%, transparent); }
+.ring .s2 { stroke: color-mix(in srgb, var(--accent) 30%, transparent); }
+.ring .mid { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.ring .mid b { font: 700 clamp(1.75rem, 1.4rem + .9vw, 2.25rem)/1 var(--display); letter-spacing: -.03em; }
+.ring .mid span { font-size: var(--fs-small); color: var(--ink-2); margin-top: 4px; }
+.legend { display: grid; gap: 8px; width: 100%; }
+.legend li { display: grid; grid-template-columns: 14px 1fr auto; gap: 10px; align-items: center; font-size: var(--fs-small); }
+.legend i { width: 14px; height: 14px; border-radius: 4px; }
+.legend .l0 { background: var(--accent); } .legend .l1 { background: color-mix(in srgb, var(--accent) 55%, transparent); } .legend .l2 { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.legend .free { background: var(--fill-2); }
+.legend b { font-weight: 600; }
+
+.rlist { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.ritem { width: 100%; text-align: left; border: 0; background: var(--inset); border-radius: var(--r-inner); padding: 16px; display: grid; gap: 6px; cursor: pointer; min-height: 44px; transition: background .15s; }
+.ritem:hover { background: var(--fill-2); }
+.ritem .nm { font-weight: 700; font-size: 1.0625rem; overflow-wrap: anywhere; }
+.ritem .ln { font-size: var(--fs-small); color: var(--ink-2); }
+.ritem .mm { font: 700 1.5rem/1.1 var(--display); letter-spacing: -.02em; }
+.ritem .mm small { font-size: .6em; color: var(--ink-2); font-weight: 600; }
+
+.people { display: grid; gap: 12px; }
+.people li { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; }
+.avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--fill-2); color: var(--ink); font-size: 1.0625rem; }
+.people .w { font-size: var(--fs-small); color: var(--ink-2); white-space: nowrap; }
+
+.events { display: grid; }
+.events li { display: grid; grid-template-columns: 56px 20px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; }
+.events time { color: var(--ink-3); font-size: var(--fs-small); padding-top: 2px; }
+.events .sh { margin-top: 5px; }
+@media (min-width: 760px) { .events.two { grid-template-columns: 1fr 1fr; column-gap: 32px; } }
+
+.urlline { font: 600 clamp(1.0625rem, .95rem + .5vw, 1.375rem)/1.35 var(--mono); overflow-wrap: anywhere; }
+.facts { display: grid; gap: 12px; }
+.facts li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; align-items: start; }
+.facts svg { width: 22px; height: 22px; fill: none; stroke: var(--ink-2); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; margin-top: 2px; }
+
+/* ── My Models ────────────────────────────────────────────────────── */
+.mhead { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); margin-bottom: var(--gap); }
+@media (min-width: 980px) { .mhead { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
+.roll .nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.roll .keyrow { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: var(--fs-small); color: var(--ink-2); }
+.roll .keyrow span { display: inline-flex; align-items: center; gap: 8px; }
+.roll .keyrow i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.mgrid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); align-items: start; }
+.mcard { cursor: pointer; transition: box-shadow .18s; }
+.mcard:hover { box-shadow: var(--elev-hi); }
+.mcard.failed:hover { box-shadow: var(--elev-hi), inset 0 0 0 2px color-mix(in srgb, var(--failed) 55%, transparent); }
+.mcard .org { font-size: var(--fs-small); color: var(--ink-3); font-weight: 600; }
+.mcard .card-t { overflow-wrap: anywhere; }
+.mcard .stl { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.mcard .stl .ln { color: var(--ink-2); font-size: var(--fs-small); }
+.mcard .meta { font-size: var(--fs-small); color: var(--ink-2); }
+.mcard .note { display: flex; gap: 10px; align-items: flex-start; background: var(--accent-soft); border-radius: 12px; padding: 12px 14px; font-weight: 600; font-size: var(--fs-small); }
+.mcard .note .sh { margin-top: 3px; color: var(--accent-text); }
+.mcard.failed { box-shadow: var(--elev), inset 0 0 0 2px color-mix(in srgb, var(--failed) 55%, transparent); }
+.foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; position: relative; z-index: 1; margin-top: 4px; }
+.morewrap { position: relative; }
+.morepop { position: absolute; left: 0; top: calc(100% + 6px); z-index: 6; background: var(--card); border-radius: 16px; box-shadow: var(--elev-hi); padding: 6px; display: grid; min-width: 240px; }
+@media (max-width: 420px) { .morepop { left: auto; right: 0; } }
+.morepop button { min-height: 44px; border: 0; background: none; text-align: left; padding: 0 14px; border-radius: 10px; font-weight: 600; cursor: pointer; }
+.morepop button:hover { background: var(--fill); }
+.morepop button.danger { color: var(--failed); }
+@media (prefers-color-scheme: dark) { .morepop button.danger { color: #ff7a70; } }
+.addcard { border: 2px dashed var(--line-strong); background: transparent; box-shadow: none; align-items: flex-start; justify-content: center; min-height: 220px; }
+.addcard .plus { width: 48px; height: 48px; border-radius: 14px; background: var(--fill); display: grid; place-items: center; }
+.addcard .plus svg { width: 24px; height: 24px; stroke: var(--ink-2); stroke-width: 2; fill: none; stroke-linecap: round; }
+
+/* ── Detail sheet ─────────────────────────────────────────────────── */
+.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 40; }
+.sheet { position: fixed; z-index: 41; top: 0; right: 0; bottom: 0; width: min(660px, 100%); background: var(--bg); overflow-y: auto; overscroll-behavior: contain; box-shadow: -20px 0 60px rgba(0, 0, 0, .18); }
+@media (max-width: 699px) { .sheet { top: 16px; left: 0; width: 100%; border-radius: 24px 24px 0 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  .sheet:not([hidden]) { animation: sheetIn .3s cubic-bezier(.2, .8, .2, 1); }
+  .scrim:not([hidden]) { animation: fadeIn .2s ease-out; }
+  @media (max-width: 699px) { .sheet:not([hidden]) { animation-name: sheetUp; } }
+}
+@keyframes sheetIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.sheet-bar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; background: color-mix(in srgb, var(--bg) 86%, transparent); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-bottom: 1px solid var(--line); }
+.sheet-bar .crumb { font-size: var(--fs-small); color: var(--ink-3); font-weight: 600; }
+.sheet-body { padding: 16px 16px 48px; display: grid; gap: 16px; }
+@media (min-width: 700px) { .sheet-body { padding: 20px 24px 56px; } }
+.sheet h2 { font: 700 clamp(1.5rem, 1.2rem + 1vw, 2rem)/1.15 var(--display); letter-spacing: -.02em; overflow-wrap: anywhere; }
+.sheet h2:focus { outline: none; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--inset); border-radius: var(--r-inner); padding: 14px 16px; display: grid; gap: 2px; }
+.tile span { font-size: var(--fs-small); color: var(--ink-2); }
+.tile b { font: 700 clamp(1.5rem, 1.25rem + .6vw, 1.875rem)/1.15 var(--display); letter-spacing: -.02em; }
+.tile b small { font-size: .55em; color: var(--ink-2); font-weight: 600; }
+.kv { display: grid; gap: 0; }
+.kv > div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); }
+.kv > div:first-child { border-top: 0; padding-top: 0; }
+.kv dt { color: var(--ink-2); }
+.kv dd { font-weight: 600; text-align: right; }
+.files { display: grid; gap: 4px; }
+.files li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; background: var(--inset); border-radius: 10px; font: 15px var(--mono); overflow-wrap: anywhere; }
+.files li span:last-child { font-family: var(--sans); color: var(--ink-2); white-space: nowrap; }
+pre.code { padding: 16px; border-radius: var(--r-inner); background: var(--inset); font: 15px/1.6 var(--mono); overflow-x: auto; white-space: pre; }
+
+/* ── Forms ─────────────────────────────────────────────────────────── */
+.fields { display: grid; gap: 4px; }
+.frow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 14px 0; border-top: 1px solid var(--line); }
+.frow:first-child { border-top: 0; padding-top: 4px; }
+@media (min-width: 760px) { .frow { grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 6px 28px; align-items: center; } .frow > .ferr { grid-column: 1 / -1; } }
+.fl { font-weight: 600; display: block; }
+.fh { display: block; font-size: var(--fs-small); color: var(--ink-2); margin-top: 2px; max-width: 60ch; }
+input[type=text], input[type=number], input[type=password], input[type=search], select {
+  width: 100%; min-height: 48px; padding: 8px 14px; border-radius: 12px; border: 1.5px solid var(--line-strong); background: var(--card); color: var(--ink); font-size: 1.0625rem; }
+.sheet input[type=text], .sheet input[type=number] { background: var(--card); }
+input::placeholder { color: var(--ink-3); }
+input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; border-color: var(--accent); border-radius: 12px; }
+.frow.err input { border-color: var(--failed); box-shadow: 0 0 0 1px var(--failed); }
+.ferr { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; font-size: var(--fs-small); background: color-mix(in srgb, var(--failed) 10%, transparent); border-radius: 10px; padding: 10px 12px; }
+.ferr .sh { margin-top: 3px; }
+.switch { justify-self: start; display: inline-flex; min-height: 44px; align-items: center; }
+@media (min-width: 760px) { .switch { justify-self: end; } }
+.switch input { appearance: none; -webkit-appearance: none; width: 52px; height: 32px; border-radius: 999px; background: var(--fill-2); position: relative; cursor: pointer; margin: 0; transition: background .18s; }
+.switch input::before { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .18s; }
+.switch input:checked { background: var(--accent); }
+.switch input:checked::before { transform: translateX(20px); }
+.switch input:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.checks { display: flex; flex-wrap: wrap; gap: 8px; }
+.checks label { display: inline-flex; gap: 10px; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 12px; background: var(--fill); font-size: var(--fs-small); font-weight: 600; cursor: pointer; }
+.checks input { accent-color: var(--accent); width: 20px; height: 20px; margin: 0; }
+
+/* ── Settings: eight task cards ───────────────────────────────────── */
+.setgrid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); align-items: start; }
+.scard { padding: 0; gap: 0; transition: opacity .2s, filter .2s, box-shadow .2s; scroll-margin-top: 170px; }
+.scard.open { grid-column: 1 / -1; box-shadow: var(--elev-hi), inset 0 0 0 2px var(--accent); }
+.setgrid.has-open .scard:not(.open) { opacity: .45; filter: saturate(.4); }
+.setgrid.has-open .scard:not(.open):hover, .setgrid.has-open .scard:not(.open):focus-within { opacity: .85; filter: none; }
+.sface { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 12px 16px; padding: var(--pad); border-radius: var(--r-card); width: 100%; min-height: 44px; }
+.sface:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.sface:hover .sopen { color: var(--accent-text); }
+.sicon { width: 48px; height: 48px; border-radius: 14px; background: var(--fill); display: grid; place-items: center; }
+.sicon svg { width: 26px; height: 26px; fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.open .sicon { background: var(--accent); }
+.open .sicon svg { stroke: var(--accent-ink); }
+.stitle { font: 700 var(--fs-title)/1.2 var(--display); letter-spacing: -.015em; align-self: center; }
+.snow { grid-column: 1 / -1; display: grid; gap: 2px; }
+.snow-k { font-size: 14px; font-weight: 700; color: var(--ink-3); letter-spacing: .02em; }
+.snow-v { font-weight: 500; }
+.sfoot { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: var(--fs-small); color: var(--ink-2); }
+.sopen { font-weight: 600; color: var(--ink-3); display: inline-flex; align-items: center; gap: 4px; }
+.sopen svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s; }
+.open .sopen svg { transform: rotate(90deg); }
+.scard .when-open { display: none; } .scard.open .when-open { display: inline; } .scard.open .when-closed { display: none; }
+.sbody { padding: 0 var(--pad) var(--pad); display: grid; gap: 12px; }
+.sbody .fields { background: var(--inset); border-radius: var(--r-inner); padding: 8px 20px; }
+.sbody-foot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.savebar { position: sticky; bottom: 16px; z-index: 10; margin-top: var(--gap); padding: 14px 16px 14px 20px; display: flex; gap: 12px 20px; align-items: center; flex-wrap: wrap;
+  background: color-mix(in srgb, var(--card) 90%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-radius: 20px; box-shadow: var(--elev-hi); }
+.savebar .msg { flex: 1 1 280px; display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.savebar .msg .sh { margin-top: 4px; }
+.savebar .msg span.t { flex: 1 1 200px; }
+.savebar .btn.primary { min-width: 180px; min-height: 48px; }
+
+/* ── Statistics ───────────────────────────────────────────────────── */
+.sgrid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+.sgrid .wide, .cgrid .wide { grid-column: 1 / -1; }
+.cgrid { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 980px) { .cgrid { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); } }
+@media (min-width: 1100px) { .sgrid.halves { grid-template-columns: 1fr 1fr; } }
+.seg { display: inline-flex; background: var(--fill); border-radius: 12px; padding: 3px; gap: 2px; }
+.seg button { min-height: 40px; border: 0; background: none; border-radius: 9px; padding: 0 14px; font-size: var(--fs-small); font-weight: 600; cursor: pointer; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: var(--elev); }
+.chart { display: grid; gap: 8px; }
+.chart .plot { position: relative; }
+.chart svg { width: 100%; height: clamp(180px, 22vw, 260px); display: block; }
+.chart .gl { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart .bars rect { fill: var(--accent); }
+.chart .bars rect.we { fill: color-mix(in srgb, var(--accent) 50%, transparent); }
+.chart .ymax { position: absolute; top: -2px; left: 0; font-size: 14px; color: var(--ink-3); background: var(--card); padding-right: 6px; }
+.chart .xl { display: flex; justify-content: space-between; font-size: 14px; color: var(--ink-3); }
+.chart .skel { height: clamp(180px, 22vw, 260px); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 14px; font-weight: 600; color: var(--ink-3); padding: 0 12px 10px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 14px 12px 14px 0; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+td.nm { font-weight: 600; overflow-wrap: anywhere; }
+.num { text-align: right; }
+@media (max-width: 700px) { .hide-sm { display: none; } }
+
+/* ── Find, Connect, Clients, Posture ──────────────────────────────── */
+.searchbox { position: relative; }
+.searchbox svg { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; stroke: var(--ink-3); fill: none; stroke-width: 2; stroke-linecap: round; }
+.searchbox input { min-height: 60px; padding-left: 52px; font-size: 1.1875rem; border-radius: 18px; background: var(--card); box-shadow: var(--elev); border-color: transparent; }
+.rgrid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.res .card-t { font-size: clamp(1.125rem, 1rem + .3vw, 1.3125rem); overflow-wrap: anywhere; }
+.res .fit { display: flex; gap: 10px; align-items: flex-start; font-size: var(--fs-small); color: var(--ink-2); }
+.res .fit .sh { margin-top: 3px; }
+.ccard .top2 { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 16px; align-items: center; }
+.ccard .avatar { width: 56px; height: 56px; font-size: 1.25rem; }
+.pgrid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+.fact .q { font-size: var(--fs-small); font-weight: 700; color: var(--ink-3); letter-spacing: .01em; }
+.fact .a { font: 600 clamp(1.1875rem, 1.05rem + .45vw, 1.4375rem)/1.3 var(--display); letter-spacing: -.01em; }
+.fact .foot { margin-top: auto; }
+.fp { font: 600 clamp(1rem, .9rem + .4vw, 1.25rem)/1.5 var(--mono); letter-spacing: .04em; overflow-wrap: anywhere; }
+.hero-card { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--card)), var(--card) 60%); }
+.hero-card .big { font: 700 clamp(1.75rem, 1.2rem + 2vw, 3rem)/1.1 var(--display); letter-spacing: -.03em; max-width: 20ch; }
+
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 60; background: var(--ink); color: var(--bg); padding: 12px 20px; border-radius: 999px; font-weight: 600; font-size: var(--fs-small); max-width: calc(100% - 32px); box-shadow: var(--elev-hi); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="page">
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true">
+      <polygon points="302,132 472,472 132,472" fill="#F5C518"/>
+      <rect x="552" y="132" width="340" height="340" fill="#B4B6BB"/>
+      <rect x="132" y="552" width="340" height="340" fill="#2B5DAA"/>
+      <circle cx="722" cy="722" r="170" fill="#E63329"/>
+    </svg>
+      <div>
+        <h1>Dessau Server</h1>
+        <p>On Alice’s Mac · 64 GB Apple Silicon</p>
+      </div>
+    </div>
+    <div class="top-end">
+      <span class="pill" id="hdrStatus" style="cursor:default"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><rect class="ready" x="2" y="2" width="12" height="12" rx="2.5"/></svg>Ready</span>
+      <button class="pill url" type="button" data-copy="http://alices-mac.local:8080/v1" aria-label="Copy the endpoint URL, http://alices-mac.local:8080/v1">alices-mac.local:8080 <span class="cp">Copy</span></button>
+    </div>
+    <nav class="tabs" aria-label="Control panel">
+      <div class="tablist" role="tablist" aria-label="Control panel places">
+        <span class="tpair" role="none"><button class="tab" role="tab" id="t-overview" aria-controls="p-overview" aria-selected="true" tabindex="0">Overview</button></span>
+        <span class="tgroup" role="none"><span class="tcap" aria-hidden="true">Models</span><span class="tpair" role="none">
+          <button class="tab" role="tab" id="t-models" aria-controls="p-models" aria-selected="false" tabindex="-1">My Models</button>
+          <button class="tab" role="tab" id="t-find" aria-controls="p-find" aria-selected="false" tabindex="-1">Find Models</button>
+        </span></span>
+        <span class="tpair" role="none"><button class="tab" role="tab" id="t-stats" aria-controls="p-stats" aria-selected="false" tabindex="-1">Statistics</button></span>
+        <span class="tgroup" role="none"><span class="tcap" aria-hidden="true">Sharing</span><span class="tpair" role="none">
+          <button class="tab" role="tab" id="t-connect" aria-controls="p-connect" aria-selected="false" tabindex="-1">Connect</button>
+          <button class="tab" role="tab" id="t-clients" aria-controls="p-clients" aria-selected="false" tabindex="-1">Clients</button>
+          <button class="tab" role="tab" id="t-posture" aria-controls="p-posture" aria-selected="false" tabindex="-1">Posture</button>
+        </span></span>
+        <span class="tpair" role="none"><button class="tab" role="tab" id="t-settings" aria-controls="p-settings" aria-selected="false" tabindex="-1">Settings <span class="n" id="setBadge" aria-label="1 field refused">1</span></button></span>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<p class="sr" role="status" aria-live="polite" id="live"></p>
+
+<main id="main">
+
+  <!-- ═══════════════ Overview ═══════════════ -->
+  <section class="panel on" id="p-overview" role="tabpanel" aria-labelledby="t-overview" tabindex="-1">
+    <h2 class="sr" id="h-overview">Overview</h2>
+    <div class="bento">
+
+      <article class="card link health a-h">
+        <div class="card-h">
+          <h3 class="card-t"><button class="stretch" type="button" data-goto="stats">Is everything all right?</button></h3>
+          <span class="opens" aria-hidden="true">Statistics<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+        </div>
+        <p class="hero" id="ovHero">Serving 2 models to 3 devices on your network.</p>
+        <p class="row" style="gap:8px 16px"><span class="chip"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><rect class="ready" x="2" y="2" width="12" height="12" rx="2.5"/></svg>Ready</span><span class="muted">Running for 2 days 6 hours, since Thursday 08:21.</span></p>
+        <div class="figs">
+          <div class="fig"><b>1,284</b><span>requests today, 18 % more than last Saturday</span></div>
+          <div class="fig"><b>0.38<small>s</small></b><span>to the first word, typically</span></div>
+          <div class="fig"><b>41<small>tok/s</small></b><span>while writing an answer</span></div>
+        </div>
+        <div class="spark">
+          <svg viewBox="0 0 280 60" preserveAspectRatio="none" aria-hidden="true" id="spark"></svg>
+          <p class="cap"><span>Requests each hour since midnight</span><span>Busiest 13:00–14:00</span></p>
+        </div>
+      </article>
+
+      <article class="card needs a-n" aria-labelledby="needsH">
+        <div class="card-h">
+          <h3 class="card-t" id="needsH">Needs you</h3>
+          <span class="count" id="needsCount" aria-label="3 things">3</span>
+        </div>
+        <div id="needsList"></div>
+      </article>
+
+      <article class="card link a-m">
+        <div class="card-h">
+          <h3 class="card-t"><button class="stretch" type="button" data-goto="models">Memory</button></h3>
+          <span class="opens" aria-hidden="true">My Models<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+        </div>
+        <div class="memwrap">
+          <div class="ring" id="ring" role="meter" aria-label="Memory in use by loaded models" aria-valuemin="0" aria-valuemax="48" aria-valuenow="15.2" aria-valuetext="15.2 GB of the 48 GB budget"></div>
+          <ul class="legend" id="ringLegend"></ul>
+        </div>
+        <p class="sub">The budget is the default share of this Mac’s 64 GB.</p>
+      </article>
+
+      <article class="card link a-r">
+        <div class="card-h">
+          <h3 class="card-t"><button class="stretch" type="button" data-goto="models">Ready to answer</button></h3>
+          <span class="opens" aria-hidden="true">My Models<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+        </div>
+        <p class="sub" id="readySub">Loaded now and answering at once. Any other model loads when someone asks for it.</p>
+        <div class="rlist lift" id="readyList"></div>
+      </article>
+
+      <article class="card link a-d">
+        <div class="card-h">
+          <h3 class="card-t"><button class="stretch" type="button" data-goto="clients">Who is using it</button></h3>
+          <span class="opens" aria-hidden="true">Clients<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+        </div>
+        <ul class="people" id="peopleList"></ul>
+        <p class="sub" id="peopleSub">3 devices in the last hour · 4 paired.</p>
+      </article>
+
+      <article class="card link a-x">
+        <div class="card-h">
+          <h3 class="card-t"><button class="stretch" type="button" data-goto="models">What changed today</button></h3>
+          <span class="opens" aria-hidden="true">My Models<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+        </div>
+        <ol class="events two">
+          <li><time>14:33</time><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><rect class="ready" x="2" y="2" width="12" height="12" rx="2.5"/></svg><span>gemma-3-12b-it-4bit loaded in 4.1 seconds.</span></li>
+          <li><time>14:10</time><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><circle class="idle" cx="8" cy="8" r="5.5"/></svg><span>Llama-3.2-3B-Instruct-4bit unloaded after 10 minutes idle.</span></li>
+          <li><time>13:58</time><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><polygon class="working" points="8,1.8 14.8,14 1.2,14"/></svg><span>Download started: Qwen2.5-Coder-14B-Instruct-4bit.</span></li>
+          <li><time>13:07</time><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><circle class="failed" cx="8" cy="8" r="6.5"/></svg><span>Phi-4-mini-instruct-4bit would not start.</span></li>
+          <li><time>13:05</time><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><rect class="ready" x="2" y="2" width="12" height="12" rx="2.5"/></svg><span>Download finished: Phi-4-mini-instruct-4bit, 2.2 GB.</span></li>
+          <li><time>09:00</time><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><circle class="idle" cx="8" cy="8" r="5.5"/></svg><span>Update check: Qwen3-8B-4bit has 3 changed files.</span></li>
+        </ol>
+      </article>
+
+      <article class="card link a-c">
+        <div class="card-h">
+          <h3 class="card-t"><button class="stretch" type="button" data-goto="connect">Point an app here</button></h3>
+          <span class="opens" aria-hidden="true">Connect<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+        </div>
+        <p class="urlline">http://alices-mac.local:8080/v1</p>
+        <p class="sub">Any app that speaks the OpenAI API works. It must send the API key.</p>
+        <div class="foot"><button class="btn primary" type="button" data-copy="http://alices-mac.local:8080/v1">Copy the address</button></div>
+      </article>
+
+      <article class="card link a-p">
+        <div class="card-h">
+          <h3 class="card-t"><button class="stretch" type="button" data-goto="posture">Who can reach this server</button></h3>
+          <span class="opens" aria-hidden="true">Posture<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+        </div>
+        <ul class="facts">
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z"/></svg><span>Anyone on your network, on port 8080, if they send the API key.</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>This panel opens only on this Mac. Bob and Carol never see it.</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Counts and timings are recorded here; no prompt and no answer.</span></li>
+        </ul>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ═══════════════ My Models ═══════════════ -->
+  <section class="panel" id="p-models" role="tabpanel" aria-labelledby="t-models" tabindex="-1">
+    <header class="phead">
+      <h2 id="h-models" tabindex="-1">My Models</h2>
+      <p>Every model on this Mac. Open a card to see everything about it; loading and unloading happen from the card itself.</p>
+    </header>
+    <div class="mhead">
+      <article class="card roll" aria-labelledby="rollH">
+        <div class="card-h"><h3 class="card-t" id="rollH">How much room is left</h3></div>
+        <div class="nums">
+          <div class="fig"><b id="rBudget">48<small>GB</small></b><span>budget</span></div>
+          <div class="fig"><b id="rUsed">15.2<small>GB</small></b><span>in use</span></div>
+          <div class="fig"><b id="rFree">32.8<small>GB</small></b><span>free</span></div>
+        </div>
+        <div class="bar thick" id="rBar" role="meter" aria-label="Memory in use" aria-valuemin="0" aria-valuemax="48" aria-valuenow="15.2"></div>
+        <p class="keyrow" id="rKey"></p>
+      </article>
+      <article class="card link" style="justify-content:space-between">
+        <div class="card-h">
+          <h3 class="card-t"><button class="stretch" type="button" data-goto="find">Add a model</button></h3>
+          <span class="opens" aria-hidden="true">Find Models<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+        </div>
+        <p class="lede">This Mac can run models up to about 40 GB. 32.8 GB is free right now.</p>
+      </article>
+    </div>
+    <div class="mgrid" id="mgrid"></div>
+  </section>
+
+  <!-- ═══════════════ Find Models ═══════════════ -->
+  <section class="panel" id="p-find" role="tabpanel" aria-labelledby="t-find" tabindex="-1">
+    <header class="phead">
+      <h2 id="h-find" tabindex="-1">Find Models</h2>
+      <p>Search the <code>mlx-community</code> organisation on HuggingFace, or type a repository id in full, such as <code>alice/Bonsai-27B-mlx-4bit</code>, to fetch that exact model.</p>
+    </header>
+    <div style="display:grid;gap:var(--gap)">
+      <article class="card hero-card">
+        <p class="big">This Mac can run models up to about 40 GB.</p>
+        <p class="lede">64 GB of unified memory, a 48 GB budget for models, and room kept for the conversation each model holds. Each result below says whether it fits.</p>
+      </article>
+      <form class="searchbox" role="search" id="findForm">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+        <label class="sr" for="findInput">Search MLX models</label>
+        <input id="findInput" type="search" value="gemma 3" placeholder="Search models, for example qwen3" autocomplete="off" aria-describedby="findCount">
+      </form>
+      <p class="muted" id="findCount" aria-live="polite">4 results for “gemma 3”.</p>
+      <div class="rgrid" id="findList">
+        <article class="card res" data-q="gemma 3 4b google"><p class="org muted small">mlx-community</p><h3 class="card-t">gemma-3-4b-it-4bit</h3><div class="fig"><b>3.0<small>GB</small></b></div><p class="fit"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><rect class="ready" x="2" y="2" width="12" height="12" rx="2.5"/></svg><span>Fits alongside everything loaded now.</span></p><p class="small muted">Chat and images · 211k downloads · updated 3 Sep</p><div class="foot"><button class="btn primary" type="button" data-dl>Download</button></div></article>
+        <article class="card res" data-q="gemma 3 12b google"><p class="org muted small">mlx-community</p><h3 class="card-t">gemma-3-12b-it-4bit</h3><div class="fig"><b>8.1<small>GB</small></b></div><p class="fit"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><rect class="ready" x="2" y="2" width="12" height="12" rx="2.5"/></svg><span>Already on this Mac, and loaded.</span></p><p class="small muted">Chat and images · 158k downloads</p><div class="foot"><button class="btn" type="button" data-model="gemma">Open in My Models</button></div></article>
+        <article class="card res" data-q="gemma 3 27b google"><p class="org muted small">mlx-community</p><h3 class="card-t">gemma-3-27b-it-4bit</h3><div class="fig"><b>16.9<small>GB</small></b></div><p class="fit"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><rect class="ready" x="2" y="2" width="12" height="12" rx="2.5"/></svg><span>Fits. Qwen3-8B unloads if both are asked for at once.</span></p><p class="small muted">Chat and images · 97k downloads · updated 21 Aug</p><div class="foot"><button class="btn primary" type="button" data-dl>Download</button></div></article>
+        <article class="card res" data-q="gemma 3 27b 8bit google"><p class="org muted small">mlx-community</p><h3 class="card-t">gemma-3-27b-it-8bit</h3><div class="fig"><b>30.4<small>GB</small></b></div><p class="fit"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><circle class="idle" cx="8" cy="8" r="5.5"/></svg><span>Fits only on its own. Every other model unloads while it answers.</span></p><p class="small muted">Chat and images · 18k downloads</p><div class="foot"><button class="btn primary" type="button" data-dl>Download</button></div></article>
+        <article class="card res" data-q="qwen3 32b alibaba" hidden><p class="org muted small">mlx-community</p><h3 class="card-t">Qwen3-32B-4bit</h3><div class="fig"><b>18.4<small>GB</small></b></div><p class="fit"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><rect class="ready" x="2" y="2" width="12" height="12" rx="2.5"/></svg><span>Fits alongside everything loaded now.</span></p><p class="small muted">Chat · 71k downloads</p><div class="foot"><button class="btn primary" type="button" data-dl>Download</button></div></article>
+        <article class="card res" data-q="llama 3.3 70b meta" hidden><p class="org muted small">mlx-community</p><h3 class="card-t">Llama-3.3-70B-Instruct-4bit</h3><div class="fig"><b>39.7<small>GB</small></b></div><p class="fit"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><circle class="idle" cx="8" cy="8" r="5.5"/></svg><span>Fits only on its own, with a short conversation length.</span></p><p class="small muted">Chat · 64k downloads</p><div class="foot"><button class="btn primary" type="button" data-dl>Download</button></div></article>
+      </div>
+      <div class="card" id="findEmpty" hidden><div class="empty"><svg class="big" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:var(--ink-3);stroke-width:1.6;stroke-linecap:round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5M8.5 11h5"/></svg><strong>Nothing matches.</strong><span>Try a shorter word, a family name such as “llama”, or a repository id in full.</span></div></div>
+
+      <article class="card" id="popular" aria-labelledby="popH" aria-busy="false">
+        <div class="card-h"><h3 class="card-t" id="popH">Popular this week</h3></div>
+        <div id="popBody"></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ═══════════════ Statistics ═══════════════ -->
+  <section class="panel" id="p-stats" role="tabpanel" aria-labelledby="t-stats" tabindex="-1">
+    <header class="phead">
+      <h2 id="h-stats" tabindex="-1">Statistics</h2>
+      <p>Recorded on this Mac. Counts and timings only: no prompt, no answer and no client’s address is recorded, so none can be shown.</p>
+    </header>
+    <div class="sgrid">
+      <article class="card"><div class="fig"><b id="kReq">18,402</b><span id="kRange">requests in the last 30 days</span></div></article>
+      <article class="card"><div class="fig"><b>6.1<small>M</small></b><span>words written (tokens); 41.3 M read</span></div></article>
+      <article class="card"><div class="fig"><b>0.41<small>s</small></b><span>to the first word, typically; 1.18 s at the slow end</span></div></article>
+      <article class="card"><div class="fig"><b>0.6<small>%</small></b><span>refused or failed — 112 requests</span></div></article>
+
+      <article class="card wide" id="chartCard" aria-busy="false">
+        <div class="card-h" style="flex-wrap:wrap">
+          <h3 class="card-t" id="chartH">Requests per day</h3>
+          <div class="seg" role="group" aria-label="Range">
+            <button type="button" aria-pressed="false" data-range="7">7 days</button>
+            <button type="button" aria-pressed="true" data-range="30">30 days</button>
+            <button type="button" aria-pressed="false" data-range="90">90 days</button>
+          </div>
+        </div>
+        <div class="chart" id="chart" role="img" aria-labelledby="chartH chartDesc"></div>
+        <p class="sub" id="chartDesc"></p>
+      </article>
+
+      <article class="card wide" aria-labelledby="pmH">
+        <h3 class="card-t" id="pmH">Each model, last 30 days</h3>
+        <div class="scroll">
+          <table>
+            <thead><tr><th scope="col">Model</th><th class="num" scope="col">Requests</th><th class="num hide-sm" scope="col">Tokens written</th><th class="num" scope="col">First word</th><th class="num hide-sm" scope="col">Writing speed</th><th class="num hide-sm" scope="col">Longest prompt</th></tr></thead>
+            <tbody>
+              <tr><td class="nm">gemma-3-12b-it-4bit</td><td class="num">8,911</td><td class="num hide-sm">3.2 M</td><td class="num">0.52 s</td><td class="num hide-sm">34 tok/s</td><td class="num hide-sm">29,410</td></tr>
+              <tr><td class="nm">Qwen3-8B-4bit</td><td class="num">7,604</td><td class="num hide-sm">2.4 M</td><td class="num">0.29 s</td><td class="num hide-sm">68 tok/s</td><td class="num hide-sm">31,872</td></tr>
+              <tr><td class="nm">Llama-3.2-3B-Instruct-4bit</td><td class="num">1,822</td><td class="num hide-sm">0.5 M</td><td class="num">0.14 s</td><td class="num hide-sm">121 tok/s</td><td class="num hide-sm">6,204</td></tr>
+              <tr><td class="nm">Phi-4-mini-instruct-4bit</td><td class="num">65</td><td class="num hide-sm">—</td><td class="num">—</td><td class="num hide-sm">—</td><td class="num hide-sm">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </div>
+    <div class="sgrid halves" style="margin-top:var(--gap)">
+      <article class="card" aria-labelledby="stH">
+        <h3 class="card-t" id="stH">Self-test, this morning</h3>
+        <p class="sub">Run while this Mac was quiet. It stands down the moment anyone sends a request.</p>
+        <dl class="kv">
+          <div><dt>Qwen3-8B-4bit · 07:12</dt><dd>loads in 2.3 s · 68 tok/s</dd></div>
+          <div><dt>gemma-3-12b-it-4bit · 06:40</dt><dd>loads in 4.1 s · 34 tok/s</dd></div>
+          <div><dt>Llama-3.2-3B-Instruct-4bit · 06:21</dt><dd>loads in 1.1 s · 121 tok/s</dd></div>
+        </dl>
+      </article>
+      <article class="card" aria-labelledby="storeH">
+        <h3 class="card-t" id="storeH">Where the records are kept</h3>
+        <p><strong>38.6 MB</strong> of the 512 MB allowed, in 37 files in your Dessau data folder. The oldest is from 3 September 2026; records are kept for 6 months.</p>
+        <div class="bar" role="meter" aria-label="Record store size" aria-valuemin="0" aria-valuemax="512" aria-valuenow="38.6" aria-valuetext="38.6 MB of 512 MB"><i style="width:7.5%"></i></div>
+        <div id="clearBox"><button class="btn outline" type="button" data-clear="ask">Clear records…</button></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ═══════════════ Connect ═══════════════ -->
+  <section class="panel" id="p-connect" role="tabpanel" aria-labelledby="t-connect" tabindex="-1">
+    <header class="phead">
+      <h2 id="h-connect" tabindex="-1">Connect</h2>
+      <p>Dessau speaks the OpenAI API. Anything that can talk to ChatGPT can talk to this Mac: give it the address and the key.</p>
+    </header>
+    <div class="cgrid">
+      <article class="card wide hero-card" aria-labelledby="urlH">
+        <h3 class="card-t" id="urlH">The address</h3>
+        <p class="urlline" style="font-size:clamp(1.25rem, 1rem + 1.2vw, 2rem)">http://alices-mac.local:8080/v1</p>
+        <p class="lede">Also answering on <code>http://192.0.2.24:8080/v1</code>, and on this Mac itself at <code>http://127.0.0.1:8080/v1</code>.</p>
+        <div class="foot"><button class="btn primary" type="button" data-copy="http://alices-mac.local:8080/v1">Copy the address</button></div>
+      </article>
+      <article class="card" aria-labelledby="keyH">
+        <h3 class="card-t" id="keyH">The API key</h3>
+        <p class="st"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><rect class="ready" x="2" y="2" width="12" height="12" rx="2.5"/></svg>Set, and required on port 8080</p>
+        <p class="urlline" style="font-size:1.125rem">sk-dessau-••••••••3f9a</p>
+        <p class="sub">Paired chat clients use keys of their own on port 8081 and never send this one.</p>
+        <div class="foot"><button class="btn primary" type="button" data-copy="sk-dessau-example-key-3f9a">Copy the key</button><button class="btn quiet" type="button" data-goto="settings" data-group="sg-a">Change it in Settings</button></div>
+      </article>
+      <article class="card" aria-labelledby="exH" id="exCard">
+        <div class="card-h" style="flex-wrap:wrap">
+          <h3 class="card-t" id="exH">Try it</h3>
+          <div class="seg" role="group" aria-label="Example language"><button type="button" aria-pressed="true" data-code="curl">curl</button><button type="button" aria-pressed="false" data-code="py">Python</button></div>
+        </div>
+<pre class="code" id="code-curl">curl http://alices-mac.local:8080/v1/chat/completions \
+  -H "Authorization: Bearer $DESSAU_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "mlx-community/Qwen3-8B-4bit",
+       "messages": [{"role": "user", "content": "Hello"}]}'</pre>
+<pre class="code" id="code-py" hidden>import os
+from openai import OpenAI
+
+client = OpenAI(base_url="http://alices-mac.local:8080/v1",
+                api_key=os.environ["DESSAU_KEY"])
+r = client.chat.completions.create(
+    model="mlx-community/gemma-3-12b-it-4bit",
+    messages=[{"role": "user", "content": "Hello"}])
+print(r.choices[0].message.content)</pre>
+        <p class="sub">The model named in a request is loaded for it if it is not loaded already.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ═══════════════ Clients ═══════════════ -->
+  <section class="panel" id="p-clients" role="tabpanel" aria-labelledby="t-clients" tabindex="-1">
+    <header class="phead">
+      <h2 id="h-clients" tabindex="-1">Clients</h2>
+      <p>Chat apps paired with this server. A paired client proves itself with a key of its own. Anything on your network that reaches this server can pair, so revoke anything you do not recognise.</p>
+    </header>
+    <div style="display:grid;gap:var(--gap)">
+      <article class="card" aria-labelledby="fpH">
+        <h3 class="card-t" id="fpH">How a client knows it reached this Mac</h3>
+        <p class="fp">SHA256 3F9A 7C21 B04E 66D8 91AF 2C5B 0E73 D4A9</p>
+        <p class="sub">Compare this with the fingerprint the chat app shows. If the two differ, the app is talking to something else.</p>
+      </article>
+      <div class="pgrid" id="clientGrid"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ Posture ═══════════════ -->
+  <section class="panel" id="p-posture" role="tabpanel" aria-labelledby="t-posture" tabindex="-1">
+    <header class="phead">
+      <h2 id="h-posture" tabindex="-1">Posture</h2>
+      <p>Where this server stands, as Dessau sees it now, and where its view stops. Nothing here is a warning, and nothing here changes a setting; each card opens the setting that governs it.</p>
+    </header>
+    <div class="pgrid">
+      <article class="card fact"><p class="q">Who can reach the API</p><p class="a">Anyone on your network, on port 8080, if they send the API key.</p><p class="sub">Bound to 0.0.0.0. Dessau cannot see your router or firewall.</p><div class="foot"><button class="btn quiet" type="button" data-goto="settings" data-group="sg-a">Who can reach this server ›</button></div></article>
+      <article class="card fact"><p class="q">Paired chat clients</p><p class="a">4 clients may connect on port 8081 with keys of their own.</p><p class="sub">Pairing is first come, first served: anything that reaches port 8081 can pair.</p><div class="foot"><button class="btn quiet" type="button" data-goto="clients">Clients ›</button></div></article>
+      <article class="card fact"><p class="q">Who can open this panel</p><p class="a">Only someone sitting at this Mac.</p><p class="sub">Bob and Carol reach the API, never the panel.</p></article>
+      <article class="card fact"><p class="q">How it is found</p><p class="a">Announced over Bonjour as alices-mac.local.</p><p class="sub">Announcing is how a server is found, never what it allows.</p><div class="foot"><button class="btn quiet" type="button" data-goto="settings" data-group="sg-a">Who can reach this server ›</button></div></article>
+      <article class="card fact"><p class="q">What is recorded</p><p class="a">Counts and timings, on this Mac, kept for 6 months.</p><p class="sub">No prompt, no answer and no client’s address. Anyone who can open this panel can read them.</p><div class="foot"><button class="btn quiet" type="button" data-goto="settings" data-group="sg-f">Statistics and logging ›</button></div></article>
+      <article class="card fact"><p class="q">Transcripts</p><p class="a">No model keeps a transcript; debug logging is off for every model.</p><div class="foot"><button class="btn quiet" type="button" data-goto="settings" data-group="sg-f">Statistics and logging ›</button></div></article>
+      <article class="card fact"><p class="q">What leaves this Mac</p><p class="a">Model names go to HuggingFace once a day, for the update check.</p><p class="sub">The Discord bridge is off, so no message passes through Discord.</p><div class="foot"><button class="btn quiet" type="button" data-goto="settings" data-group="sg-h">Downloading and updating ›</button></div></article>
+    </div>
+  </section>
+
+  <!-- ═══════════════ Settings ═══════════════ -->
+  <section class="panel" id="p-settings" role="tabpanel" aria-labelledby="t-settings" tabindex="-1">
+    <header class="phead">
+      <h2 id="h-settings" tabindex="-1">Settings</h2>
+      <p>Eight jobs the server does. Each card says what is in force right now; open one to change it. Escape or Done closes it again.</p>
+    </header>
+    <form id="settingsForm" novalidate>
+      <div class="setgrid" id="setgrid">
+
+        <section class="card scard" id="sg-a">
+          <button class="sface" type="button" aria-expanded="false" aria-controls="sg-a-body">
+            <span class="sicon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z"/></svg></span>
+            <span class="stitle">Who can reach this server</span>
+            <span class="snow"><span class="snow-k">Right now</span><span class="snow-v">Reachable from your network on port 8080, with an API key. Paired clients on 8081.</span></span>
+            <span class="sfoot"><span>5 settings</span><span class="sopen"><span class="when-closed">Change</span><span class="when-open">Close</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span></span>
+          </button>
+          <div class="sbody" id="sg-a-body" hidden>
+            <div class="fields">
+              <div class="frow"><label for="sHost"><span class="fl">Bind address</span><span class="fh">Which network this server listens on. Applies when Dessau next starts.</span></label><select id="sHost"><option selected>0.0.0.0 — your whole network</option><option>127.0.0.1 — this Mac only</option><option>192.0.2.24 — one private network</option></select></div>
+              <div class="frow"><label for="sPort"><span class="fl">Port</span></label><input id="sPort" type="number" value="8080"></div>
+              <div class="frow"><label for="sTLS"><span class="fl">Port for paired clients</span><span class="fh">0 is the port just above; −1 serves no paired clients.</span></label><input id="sTLS" type="number" value="0"></div>
+              <div class="frow"><label for="sKey"><span class="fl">API key</span><span class="fh">Blank means anyone on your network can use this server.</span></label><input id="sKey" type="password" value="sk-dessau-example-key-3f9a" autocomplete="off"></div>
+              <div class="frow"><label for="sAdv"><span class="fl">Announce this server on the local network</span><span class="fh">Over Bonjour — how it is found, never what it allows.</span></label><span class="switch"><input id="sAdv" type="checkbox" role="switch" checked></span></div>
+            </div>
+            <div class="sbody-foot"><button class="btn" type="button" data-close-group>Done</button></div>
+          </div>
+        </section>
+
+        <section class="card scard" id="sg-b">
+          <button class="sface" type="button" aria-expanded="false" aria-controls="sg-b-body">
+            <span class="sicon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></span>
+            <span class="stitle">Memory and how many models stay loaded</span>
+            <span class="snow"><span class="snow-k">Right now</span><span class="snow-v">Models may use 48 GB of this Mac’s 64 GB. gemma-3-12b is pinned.</span></span>
+            <span class="sfoot"><span>4 settings</span><span class="sopen"><span class="when-closed">Change</span><span class="when-open">Close</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span></span>
+          </button>
+          <div class="sbody" id="sg-b-body" hidden>
+            <div class="fields">
+              <div class="frow"><label for="sBudget"><span class="fl">Memory for loaded models (GB)</span><span class="fh">Blank uses the default share: 48 GB.</span></label><input id="sBudget" type="number" step="any" placeholder="48 — the default"></div>
+              <div class="frow"><label for="sConc"><span class="fl">Batched requests</span><span class="fh">How many requests one model answers at once. Each holds its own memory.</span></label><input id="sConc" type="number" value="1"></div>
+              <div class="frow"><span id="pinL"><span class="fl">Pinned models</span><span class="fh">Never unloaded to make room. 9.6 GB pinned.</span></span><div class="checks" role="group" aria-labelledby="pinL"><label><input type="checkbox" checked>gemma-3-12b</label><label><input type="checkbox">Qwen3-8B</label><label><input type="checkbox">Llama-3.2-3B</label></div></div>
+              <div class="frow"><span><span class="fl">Served context</span><span class="fh">How much a model can read at once is set per model, on its card in My Models.</span></span><button class="btn quiet" type="button" data-goto="models" style="justify-self:start">Open My Models</button></div>
+            </div>
+            <div class="sbody-foot"><button class="btn" type="button" data-close-group>Done</button></div>
+          </div>
+        </section>
+
+        <section class="card scard" id="sg-c">
+          <button class="sface" type="button" aria-expanded="false" aria-controls="sg-c-body">
+            <span class="sicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h12M12 3l4 4-4 4M20 17H8M12 13l-4 4 4 4"/></svg></span>
+            <span class="stitle">How requests are handled</span>
+            <span class="snow"><span class="snow-k">Right now</span><span class="snow-v">Temperature 0.7 unless a request sets its own. System messages merged for Phi-4-mini.</span></span>
+            <span class="sfoot"><span>8 settings</span><span class="sopen"><span class="when-closed">Change</span><span class="when-open">Close</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span></span>
+          </button>
+          <div class="sbody" id="sg-c-body" hidden>
+            <div class="fields">
+              <div class="frow"><label for="sTemp"><span class="fl">Temperature</span><span class="fh">A request that sets its own value always wins.</span></label><input id="sTemp" type="number" step="any" value="0.7"></div>
+              <div class="frow"><label for="sTopP"><span class="fl">Top-p</span></label><input id="sTopP" type="number" step="any" placeholder="1"></div>
+              <div class="frow"><label for="sTopK"><span class="fl">Top-k</span></label><input id="sTopK" type="number" placeholder="0 — off"></div>
+              <div class="frow"><label for="sMinP"><span class="fl">Min-p</span></label><input id="sMinP" type="number" step="any" placeholder="0 — off"></div>
+              <div class="frow"><label for="sMax"><span class="fl">Maximum completion tokens</span></label><input id="sMax" type="number" placeholder="the served window"></div>
+              <div class="frow"><span id="mergeL"><span class="fl">Merge system messages</span><span class="fh">For models that refuse instructions anywhere but the top.</span></span><div class="checks" role="group" aria-labelledby="mergeL"><label><input type="checkbox">gemma-3-12b</label><label><input type="checkbox">Qwen3-8B</label><label><input type="checkbox" checked>Phi-4-mini</label></div></div>
+              <div class="frow"><label for="sPipes"><span class="fl">Pipeline tags that count as chat</span></label><input id="sPipes" type="text" value="text-generation, image-text-to-text"></div>
+              <div class="frow"><label for="sTags"><span class="fl">Tags a chat model must carry</span></label><input id="sTags" type="text" value="conversational"></div>
+            </div>
+            <div class="sbody-foot"><button class="btn" type="button" data-close-group>Done</button></div>
+          </div>
+        </section>
+
+        <section class="card scard" id="sg-d">
+          <button class="sface" type="button" aria-expanded="false" aria-controls="sg-d-body">
+            <span class="sicon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            <span class="stitle">When idle models are unloaded</span>
+            <span class="snow"><span class="snow-k">Right now</span><span class="snow-v">Idle models unload after 10 minutes. A request waits at most 300 seconds.</span></span>
+            <span class="sfoot"><span class="st" id="dFlag"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><circle class="failed" cx="8" cy="8" r="6.5"/></svg>1 field refused</span><span class="sopen"><span class="when-closed">Change</span><span class="when-open">Close</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span></span>
+          </button>
+          <div class="sbody" id="sg-d-body" hidden>
+            <div class="fields">
+              <div class="frow"><label for="sIdle"><span class="fl">Unload models after idle</span><span class="fh">Seconds; 0 means never.</span></label><input id="sIdle" type="number" value="600"></div>
+              <div class="frow"><label for="sGraceOn"><span class="fl">Wait for a model to fall idle instead of unloading one that just finished</span></label><span class="switch"><input id="sGraceOn" type="checkbox" role="switch" checked></span></div>
+              <div class="frow err" id="f-grace"><label for="sGrace"><span class="fl">Protect a model that just finished for</span><span class="fh">Seconds.</span></label><input id="sGrace" type="number" value="420" aria-invalid="true" aria-describedby="e-grace">
+                <p class="ferr" id="e-grace"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><circle class="failed" cx="8" cy="8" r="6.5"/></svg><span>The grace period cannot exceed the maximum wait of 300 seconds.</span></p></div>
+              <div class="frow"><label for="sWait"><span class="fl">Wait at most</span><span class="fh">Seconds a request waits for room before it is refused.</span></label><input id="sWait" type="number" value="300"></div>
+              <div class="frow"><label for="sApiUnload"><span class="fl">Let a program unload a model it has finished with</span><span class="fh">With <code>POST /v1/dessau/unload</code>.</span></label><span class="switch"><input id="sApiUnload" type="checkbox" role="switch" checked></span></div>
+            </div>
+            <div class="sbody-foot"><button class="btn" type="button" data-close-group>Done</button></div>
+          </div>
+        </section>
+
+        <section class="card scard" id="sg-e">
+          <button class="sface" type="button" aria-expanded="false" aria-controls="sg-e-body">
+            <span class="sicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><path d="M4 20h16"/></svg></span>
+            <span class="stitle">Checks and measurements</span>
+            <span class="snow"><span class="snow-k">Right now</span><span class="snow-v">Self-test after 30 minutes of quiet, each model once a day. The context probe is off.</span></span>
+            <span class="sfoot"><span>4 settings</span><span class="sopen"><span class="when-closed">Change</span><span class="when-open">Close</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span></span>
+          </button>
+          <div class="sbody" id="sg-e-body" hidden>
+            <div class="fields">
+              <div class="frow"><label for="sST"><span class="fl">Test the models when this Mac is idle</span><span class="fh">Counts and timings only, never a prompt or an answer.</span></label><span class="switch"><input id="sST" type="checkbox" role="switch" checked></span></div>
+              <div class="frow"><label for="sSTI"><span class="fl">Self-test idle threshold</span><span class="fh">Seconds, 60 to 86,400.</span></label><input id="sSTI" type="number" value="1800"></div>
+              <div class="frow"><label for="sCP"><span class="fl">Measure each model’s context window when this Mac is idle</span><span class="fh">About forty minutes of GPU for each model.</span></label><span class="switch"><input id="sCP" type="checkbox" role="switch"></span></div>
+              <div class="frow"><label for="sCPI"><span class="fl">Context probe idle threshold</span><span class="fh">Seconds, 60 to 86,400.</span></label><input id="sCPI" type="number" value="900"></div>
+            </div>
+            <div class="sbody-foot"><button class="btn" type="button" data-close-group>Done</button></div>
+          </div>
+        </section>
+
+        <section class="card scard" id="sg-f">
+          <button class="sface" type="button" aria-expanded="false" aria-controls="sg-f-body">
+            <span class="sicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+            <span class="stitle">Statistics and logging</span>
+            <span class="snow"><span class="snow-k">Right now</span><span class="snow-v">Recording on this Mac for 6 months, up to 512 MB. The log is sparse. No transcript is kept.</span></span>
+            <span class="sfoot"><span>5 settings</span><span class="sopen"><span class="when-closed">Change</span><span class="when-open">Close</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span></span>
+          </button>
+          <div class="sbody" id="sg-f-body" hidden>
+            <div class="fields">
+              <div class="frow"><label for="sStats"><span class="fl">Record request statistics on this Mac</span><span class="fh">Anyone who can open this panel can read them.</span></label><span class="switch"><input id="sStats" type="checkbox" role="switch" checked></span></div>
+              <div class="frow"><label for="sMonths"><span class="fl">Keep records for (months)</span></label><input id="sMonths" type="number" value="6"></div>
+              <div class="frow"><label for="sMB"><span class="fl">Never use more than (MB)</span></label><input id="sMB" type="number" value="512"></div>
+              <div class="frow"><label for="sLog"><span class="fl">How much the log says</span><span class="fh">Never a prompt, an answer, a key or a client’s address.</span></label><select id="sLog"><option selected>Sparse — one line per event</option><option>Detailed — with the figures</option></select></div>
+              <div class="frow"><span id="trL"><span class="fl">Keep no transcript for</span><span class="fh">Holds a model off the Discord bridge and debug logging.</span></span><div class="checks" role="group" aria-labelledby="trL"><label><input type="checkbox">gemma-3-12b</label><label><input type="checkbox">Qwen3-8B</label><label><input type="checkbox">Llama-3.2-3B</label></div></div>
+            </div>
+            <div class="sbody-foot"><button class="btn" type="button" data-close-group>Done</button></div>
+          </div>
+        </section>
+
+        <section class="card scard" id="sg-g">
+          <button class="sface" type="button" aria-expanded="false" aria-controls="sg-g-body">
+            <span class="sicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12Z"/></svg></span>
+            <span class="stitle">Discord bridge</span>
+            <span class="snow"><span class="snow-k">Right now</span><span class="snow-v">Off. Nothing passes through Discord.</span></span>
+            <span class="sfoot"><span>2 settings</span><span class="sopen"><span class="when-closed">Change</span><span class="when-open">Close</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span></span>
+          </button>
+          <div class="sbody" id="sg-g-body" hidden>
+            <div class="fields">
+              <div class="frow"><label for="sDisc"><span class="fl">Answer Discord direct messages and mentions with a model on this Mac</span><span class="fh">While it is on, messages and answers pass through Discord and are kept under Discord’s terms.</span></label><span class="switch"><input id="sDisc" type="checkbox" role="switch"></span></div>
+              <div class="frow"><label for="sDiscT"><span class="fl">Discord bot token</span></label><input id="sDiscT" type="password" placeholder="No token" autocomplete="off"></div>
+            </div>
+            <div class="sbody-foot"><button class="btn" type="button" data-close-group>Done</button></div>
+          </div>
+        </section>
+
+        <section class="card scard" id="sg-h">
+          <button class="sface" type="button" aria-expanded="false" aria-controls="sg-h-body">
+            <span class="sicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span>
+            <span class="stitle">Downloading and updating models</span>
+            <span class="snow"><span class="snow-k">Right now</span><span class="snow-v">Checking for newer versions every 24 hours, last at 09:00. A HuggingFace token is set.</span></span>
+            <span class="sfoot"><span>3 settings</span><span class="sopen"><span class="when-closed">Change</span><span class="when-open">Close</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span></span>
+          </button>
+          <div class="sbody" id="sg-h-body" hidden>
+            <div class="fields">
+              <div class="frow"><label for="sHF"><span class="fl">HuggingFace token</span><span class="fh">Only needed for gated models.</span></label><input id="sHF" type="password" value="hf_example_token" autocomplete="off"></div>
+              <div class="frow"><label for="sUpd"><span class="fl">Check the models you downloaded for newer versions</span></label><span class="switch"><input id="sUpd" type="checkbox" role="switch" checked></span></div>
+              <div class="frow"><label for="sUpdI"><span class="fl">Check every (hours)</span><span class="fh">1 to 720; 0 or blank is daily.</span></label><input id="sUpdI" type="number" value="24"></div>
+            </div>
+            <div class="sbody-foot"><button class="btn" type="button" data-close-group>Done</button></div>
+          </div>
+        </section>
+
+      </div>
+
+      <div class="savebar" role="region" aria-label="Save settings">
+        <p class="msg" id="saveMsg" aria-live="polite"><svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><circle class="failed" cx="8" cy="8" r="6.5"/></svg><span class="t">Not saved. The server refused one field in “When idle models are unloaded”.</span><button class="btn quiet" type="button" data-show-err>Show me</button></p>
+        <button class="btn primary" type="submit">Save settings</button>
+      </div>
+    </form>
+  </section>
+
+</main>
+</div>
+
+<!-- ═══════════════ Model sheet ═══════════════ -->
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <div class="sheet-bar">
+    <span class="crumb">My Models</span>
+    <button class="btn" type="button" id="sheetClose"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>Close</button>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Helpers ───────────────────────────────────────────────────── */
+  function $(s, r) { return (r || document).querySelector(s); }
+  function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function fmt(n) { return Number(n).toLocaleString('en-GB'); }
+  function gb(n) { return (Math.round(n * 10) / 10).toFixed(1); }
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var live = $('#live');
+  function say(t) { live.textContent = ''; setTimeout(function () { live.textContent = t; }, 40); }
+  var toastTimer;
+  function toast(t) { var el = $('#toast'); el.textContent = t; el.hidden = false; say(t); clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.hidden = true; }, 2600); }
+
+  var SH = {
+    ready: '<svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><rect class="ready" x="2" y="2" width="12" height="12" rx="2.5"/></svg>',
+    working: '<svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><polygon class="working" points="8,1.8 14.8,14 1.2,14"/></svg>',
+    failed: '<svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><circle class="failed" cx="8" cy="8" r="6.5"/></svg>',
+    idle: '<svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><circle class="idle" cx="8" cy="8" r="5.5"/></svg>',
+    update: '<svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><path class="glyph" d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>',
+    device: '<svg class="sh" viewBox="0 0 16 16" aria-hidden="true"><path class="glyph" d="M2.5 3.5h11v7h-11zM1 13h14"/></svg>'
+  };
+  var CHEV = '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+  var BUDGET = 48;
+
+  /* ── Mock state: the same server as every other mockup ─────────── */
+  var models = [
+    { id: 'gemma', name: 'gemma-3-12b-it-4bit', st: 'ready', word: 'Answering', line: 'Pinned · answering 1 request for Carol’s iPad',
+      disk: 8.1, mem: 9.6, w: 8.1, c: 1.5, q: '4-bit', kind: 'Chat and images', declared: 131072, measured: null, served: 32768, pinned: true,
+      today: { req: 611, tok: '188k', ft: '0.52 s', rate: '34 tok/s' } },
+    { id: 'qwen3', name: 'Qwen3-8B-4bit', st: 'ready', word: 'Loaded', line: 'Idle 3 minutes · unloads after 10 minutes',
+      disk: 4.6, mem: 5.6, w: 4.6, c: 1.0, q: '4-bit', kind: 'Chat', declared: 40960, measured: 38912, served: 32768,
+      update: [['tokenizer_config.json', '11 KB'], ['chat_template.jinja', '4 KB'], ['generation_config.json', '1 KB']],
+      today: { req: 498, tok: '162k', ft: '0.29 s', rate: '68 tok/s' } },
+    { id: 'coder', name: 'Qwen2.5-Coder-14B-Instruct-4bit', st: 'working', word: 'Downloading 63 %', line: '5.2 of 8.3 GB · about 4 minutes left',
+      disk: 8.3, mem: 9.4, q: '4-bit', kind: 'Chat and code', pct: 63, dl: true },
+    { id: 'llama', name: 'Llama-3.2-3B-Instruct-4bit', st: 'idle', word: 'On disk', line: 'Unloaded after 10 minutes idle, at 14:10',
+      disk: 1.8, mem: 2.3, w: 1.8, c: 0.5, q: '4-bit', kind: 'Chat', declared: 131072, measured: null, served: 131072,
+      today: { req: 175, tok: '61k', ft: '0.14 s', rate: '121 tok/s' } },
+    { id: 'phi', name: 'Phi-4-mini-instruct-4bit', st: 'failed', word: 'Would not start', line: 'At 13:07, two minutes after its download finished',
+      disk: 2.2, mem: 2.9, w: 2.2, c: 0.7, q: '4-bit', kind: 'Chat', declared: 131072, measured: null, served: 65536, merge: true,
+      today: { req: 0, tok: '0', ft: '—', rate: '—' } }
+  ];
+  var clients = [
+    { id: 'bob', name: 'Bob’s laptop', i: 'B', paired: '2 Oct', seen: '2 min ago', req: '2,140', recent: true },
+    { id: 'carol', name: 'Carol’s iPad', i: 'C', paired: '5 Oct', seen: '14 min ago', req: '612', recent: true },
+    { id: 'alice', name: 'Alice’s iPhone', i: 'A', paired: '19 Sep', seen: '41 min ago', req: '388', recent: true },
+    { id: 'carolold', name: 'Carol’s old laptop', i: 'C', paired: '28 Aug', seen: '23 days ago', req: '0', stale: true }
+  ];
+  function byId(id) { for (var i = 0; i < models.length; i++) if (models[i].id === id) return models[i]; return null; }
+  function loaded() { return models.filter(function (m) { return m.st === 'ready'; }); }
+
+  /* ── Overview ──────────────────────────────────────────────────── */
+  function drawSpark() {
+    var v = [18, 11, 7, 5, 4, 6, 26, 71, 128, 163, 181, 149, 172, 196, 147];
+    var W = 280, H = 60, max = 200;
+    var pts = v.map(function (y, i) { return (i * W / (v.length - 1)).toFixed(1) + ',' + (H - 4 - (H - 8) * y / max).toFixed(1); });
+    $('#spark').innerHTML = '<path class="area" d="M0,' + H + ' L' + pts.join(' L') + ' L' + W + ',' + H + ' Z"/><polyline class="line" points="' + pts.join(' ') + '"/>';
+  }
+
+  function needs() {
+    var out = [];
+    models.forEach(function (m) {
+      if (m.st === 'failed') out.push({ sh: SH.failed, t: m.name + ' would not start', s: 'The model server stopped while loading. See why, and what to do.', model: m.id });
+    });
+    models.forEach(function (m) {
+      if (m.update) out.push({ sh: '<span class="glyphwrap">' + SH.update + '</span>', t: 'An update is ready for ' + m.name, s: m.update.length + ' files changed. The weights are the same.', model: m.id });
+    });
+    clients.forEach(function (c) {
+      if (c.stale) out.push({ sh: '<span class="glyphwrap">' + SH.device + '</span>', t: c.name + ' has not been seen for 23 days', s: 'Revoke it if nobody uses it any more.', go: 'clients' });
+    });
+    return out;
+  }
+
+  function renderOverview() {
+    var L = loaded(), used = L.reduce(function (a, m) { return a + m.mem; }, 0);
+    var recent = clients.filter(function (c) { return c.recent; }).length;
+    $('#ovHero').textContent = L.length
+      ? 'Serving ' + L.length + ' model' + (L.length === 1 ? '' : 's') + ' to ' + recent + ' device' + (recent === 1 ? '' : 's') + ' on your network.'
+      : 'Ready. No model is loaded; the first request loads one.';
+
+    /* Needs you */
+    var n = needs(), nl = $('#needsList');
+    $('#needsCount').textContent = n.length;
+    $('#needsCount').setAttribute('aria-label', n.length + (n.length === 1 ? ' thing' : ' things'));
+    $('#needsCount').hidden = n.length === 0;
+    if (!n.length) {
+      nl.innerHTML = '<div class="empty"><svg class="big" viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="8" width="32" height="32" rx="6" fill="var(--ready)"/><path d="m16 24 6 6 11-12" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg><strong>Nothing needs you.</strong><span>Every model is running as you set it.</span></div>';
+    } else {
+      nl.innerHTML = '<ul class="nlist">' + n.map(function (x) {
+        var attr = x.model ? ' data-model="' + x.model + '"' : ' data-goto="' + x.go + '"';
+        return '<li><button class="nitem" type="button"' + attr + '>' + x.sh + '<b>' + esc(x.t) + '</b>' + CHEV + '<span class="s">' + esc(x.s) + '</span></button></li>';
+      }).join('') + '</ul>';
+    }
+
+    /* Memory ring */
+    var C = 2 * Math.PI * 64, off = 0, segs = '';
+    L.forEach(function (m, i) {
+      var len = m.mem / BUDGET * C;
+      segs += '<circle class="seg s' + Math.min(i, 2) + '" cx="80" cy="80" r="64" stroke-dasharray="' + Math.max(len - 3, 1).toFixed(1) + ' ' + (C - Math.max(len - 3, 1)).toFixed(1) + '" stroke-dashoffset="' + (-off).toFixed(1) + '"/>';
+      off += len;
+    });
+    var ring = $('#ring');
+    ring.innerHTML = '<svg viewBox="0 0 160 160" aria-hidden="true"><circle class="track" cx="80" cy="80" r="64"/>' + segs + '</svg><div class="mid" aria-hidden="true"><b>' + gb(used) + ' GB</b><span>of ' + BUDGET + ' GB in use</span></div>';
+    ring.setAttribute('aria-valuenow', gb(used));
+    ring.setAttribute('aria-valuetext', gb(used) + ' GB of the ' + BUDGET + ' GB budget');
+    $('#ringLegend').innerHTML = L.map(function (m, i) {
+      return '<li><i class="l' + Math.min(i, 2) + '"></i><span>' + esc(m.name.replace(/-4bit$/, '')) + '</span><b>' + gb(m.mem) + ' GB</b></li>';
+    }).join('') + '<li><i class="free"></i><span>Free</span><b>' + gb(BUDGET - used) + ' GB</b></li>';
+
+    /* Ready to answer */
+    var rl = $('#readyList'), html = '';
+    L.forEach(function (m) {
+      html += '<button class="ritem" type="button" data-model="' + m.id + '"><span class="st">' + SH.ready + esc(m.word) + '</span><span class="nm">' + esc(m.name) + '</span><span class="ln">' + esc(m.line) + '</span><span class="mm">' + gb(m.mem) + ' <small>GB</small></span></button>';
+    });
+    models.forEach(function (m) {
+      if (m.dl) html += '<button class="ritem" type="button" data-model="' + m.id + '"><span class="st">' + SH.working + esc(m.word) + '</span><span class="nm">' + esc(m.name) + '</span><span class="ln">On its way · ' + esc(m.line) + '</span><span class="bar" aria-hidden="true"><i style="width:' + m.pct + '%;background:var(--working)"></i></span></button>';
+    });
+    if (!html) html = '<div class="empty"><strong>No model is loaded.</strong><span>The first request for a model loads it.</span></div>';
+    rl.innerHTML = html;
+
+    /* Who is using it */
+    $('#peopleList').innerHTML = clients.filter(function (c) { return c.recent; }).map(function (c) {
+      return '<li><span class="avatar" aria-hidden="true">' + c.i + '</span><span>' + esc(c.name) + '</span><span class="w">' + esc(c.seen) + '</span></li>';
+    }).join('') || '<li><span class="muted">No device in the last hour.</span></li>';
+    $('#peopleSub').textContent = recent + ' device' + (recent === 1 ? '' : 's') + ' in the last hour · ' + clients.length + ' paired.';
+  }
+
+  /* ── My Models ─────────────────────────────────────────────────── */
+  var KEYCOL = ['var(--accent)', 'color-mix(in srgb, var(--accent) 55%, transparent)', 'color-mix(in srgb, var(--accent) 30%, transparent)'];
+  function renderRoll() {
+    var L = loaded(), used = L.reduce(function (a, m) { return a + m.mem; }, 0);
+    $('#rUsed').innerHTML = gb(used) + '<small>GB</small>';
+    $('#rFree').innerHTML = gb(BUDGET - used) + '<small>GB</small>';
+    $('#rBar').innerHTML = L.map(function (m, i) { return '<i class="b' + (Math.min(i, 2) + 1) + '" style="width:' + (m.mem / BUDGET * 100).toFixed(1) + '%"></i>'; }).join('');
+    $('#rBar').setAttribute('aria-valuenow', gb(used));
+    $('#rBar').setAttribute('aria-valuetext', gb(used) + ' GB of ' + BUDGET + ' GB');
+    $('#rKey').innerHTML = L.map(function (m, i) { return '<span><i style="background:' + KEYCOL[Math.min(i, 2)] + '"></i>' + esc(m.name) + ' · ' + gb(m.mem) + ' GB</span>'; }).join('') +
+      '<span><i style="background:var(--fill-2)"></i>Free · ' + gb(BUDGET - used) + ' GB</span>';
+  }
+
+  function primaryFor(m) {
+    if (m.busy) return { a: 'none', label: m.word, cls: 'btn', dis: true };
+    if (m.dl) return { a: 'pause', label: m.paused ? 'Resume download' : 'Pause download', cls: 'btn' };
+    if (m.st === 'failed') return { a: 'retry', label: 'Try again', cls: 'btn primary' };
+    if (m.update) return { a: 'update', label: 'Update now', cls: 'btn primary' };
+    if (m.st === 'ready') return { a: 'unload', label: 'Unload', cls: 'btn' };
+    return { a: 'load', label: 'Load', cls: 'btn primary' };
+  }
+  function moreFor(m) {
+    var out = [['open', 'Everything about it']];
+    if (!m.dl) out.push(['settings', 'Settings for this model']);
+    if (m.update && m.st === 'ready' && !m.busy) out.push(['unload', 'Unload']);
+    if (m.update && m.st === 'idle' && !m.busy) out.push(['load', 'Load']);
+    out.push(['delete', m.dl ? 'Cancel and delete…' : 'Delete from this Mac…', 'danger']);
+    return out;
+  }
+  function figFor(m) {
+    if (m.dl) return '<div class="fig"><b>' + m.pct + '<small>%</small></b><span>of ' + gb(m.disk) + ' GB fetched</span></div>';
+    if (m.busy) return '<div class="fig"><b>' + gb(m.mem) + '<small>GB</small></b><span>being read into memory</span></div>';
+    if (m.st === 'ready') return '<div class="fig"><b>' + gb(m.mem) + '<small>GB</small></b><span>of memory in use</span></div>';
+    if (m.st === 'failed') return '<div class="fig"><b>' + gb(m.disk) + '<small>GB</small></b><span>on disk, not running</span></div>';
+    return '<div class="fig"><b>' + gb(m.mem) + '<small>GB</small></b><span>of memory when loaded</span></div>';
+  }
+  function confirmHTML(m, where) {
+    return '<div class="confirm" role="group" aria-label="Confirm delete"><p><strong>Delete ' + esc(m.name) + ' from this Mac?</strong> ' +
+      (m.dl ? 'The download stops and the ' + '5.2 GB fetched so far is removed.' : 'Its ' + gb(m.disk) + ' GB of files are removed, and clients stop seeing it at once. Downloading it again fetches them afresh.') +
+      '</p><div class="row"><button class="btn strong" type="button" data-act="really-delete" data-id="' + m.id + '" data-fk="' + where + ':' + m.id + ':really-delete">Delete model</button>' +
+      '<button class="btn" type="button" data-act="keep" data-id="' + m.id + '" data-fk="' + where + ':' + m.id + ':keep">Keep it</button></div></div>';
+  }
+
+  function modelCard(m) {
+    var p = primaryFor(m), more = moreFor(m);
+    var h = '<article class="card mcard' + (m.st === 'failed' ? ' failed' : '') + '" data-id="' + m.id + '">' +
+      '<div><p class="org">mlx-community</p><h3 class="card-t"><button class="stretch" type="button" data-act="open" data-id="' + m.id + '" data-fk="c:' + m.id + ':open">' + esc(m.name) + '</button></h3></div>' +
+      '<p class="stl"><span class="st">' + SH[m.st] + esc(m.word) + '</span><span class="ln">' + esc(m.line) + '</span></p>' + figFor(m);
+    if (m.dl) h += '<div class="bar" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + m.pct + '"><i style="width:' + m.pct + '%;background:var(--working)"></i></div>';
+    if (m.busy && !m.dl) h += '<div class="bar indet" aria-hidden="true"><i></i></div>';
+    if (m.update) h += '<p class="note">' + SH.update + '<span>Update ready — ' + m.update.length + ' files changed</span></p>';
+    h += '<p class="meta">' + (m.dl ? gb(m.disk) + ' GB when complete' : gb(m.disk) + ' GB on disk') + ' · ' + m.q + ' · ' + esc(m.kind) + '</p>';
+    if (m.confirmC) {
+      h += '<div class="foot">' + confirmHTML(m, 'c') + '</div>';
+    } else {
+      h += '<div class="foot"><button class="' + p.cls + '" type="button" data-act="' + p.a + '" data-id="' + m.id + '" data-fk="c:' + m.id + ':' + p.a + '"' + (p.dis ? ' disabled' : '') + '>' + esc(p.label) + '</button>' +
+        '<span class="morewrap"><button class="btn outline" type="button" data-act="more" data-id="' + m.id + '" aria-expanded="false" aria-controls="more-' + m.id + '" data-fk="c:' + m.id + ':more">More<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>' +
+        '<span class="morepop" id="more-' + m.id + '" hidden>' + more.map(function (x) { return '<button type="button" class="' + (x[2] || '') + '" data-act="' + x[0] + '" data-id="' + m.id + '" data-fk="c:' + m.id + ':' + x[0] + '">' + esc(x[1]) + '</button>'; }).join('') + '</span></span></div>';
+    }
+    return h + '</article>';
+  }
+  function renderModels() {
+    var g = $('#mgrid');
+    if (!models.length) {
+      g.innerHTML = '<article class="card"><div class="empty"><strong>No models on this Mac yet.</strong><span>Find one to download; it appears here as it arrives.</span><button class="btn primary" type="button" data-goto="find">Find Models</button></div></article>';
+    } else {
+      g.innerHTML = models.map(modelCard).join('') +
+        '<article class="card link addcard"><span class="plus" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><h3 class="card-t"><button class="stretch" type="button" data-goto="find">Find another model</button></h3><p class="sub">Search HuggingFace for an MLX model that fits.</p></article>';
+    }
+    renderRoll();
+  }
+
+  /* ── Model sheet ───────────────────────────────────────────────── */
+  var sheetId = null, sheetOpener = null;
+  function frow(id, label, hint, ph, val) {
+    return '<div class="frow"><label for="' + id + '"><span class="fl">' + label + '</span>' + (hint ? '<span class="fh">' + hint + '</span>' : '') + '</label><input id="' + id + '" type="number" step="any" placeholder="' + esc(ph) + '"' + (val != null ? ' value="' + val + '"' : '') + '></div>';
+  }
+  function fswitch(id, label, hint, on) {
+    return '<div class="frow"><label for="' + id + '"><span class="fl">' + label + '</span>' + (hint ? '<span class="fh">' + hint + '</span>' : '') + '</label><span class="switch"><input id="' + id + '" type="checkbox" role="switch"' + (on ? ' checked' : '') + '></span></div>';
+  }
+  function renderSheet() {
+    var m = byId(sheetId), b = $('#sheetBody');
+    if (!m) return;
+    var p = primaryFor(m), k = 's:' + m.id + ':';
+    var h = '<article class="card"><div><p class="org muted small">mlx-community</p><h2 id="sheetTitle" tabindex="-1">' + esc(m.name) + '</h2></div>' +
+      '<p class="stl row"><span class="st">' + SH[m.st] + esc(m.word) + '</span><span class="muted small">' + esc(m.line) + '</span></p>';
+    if (m.dl) {
+      h += '<div class="bar thick" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + m.pct + '"><i style="width:' + m.pct + '%;background:var(--working)"></i></div>';
+    } else {
+      h += '<div class="tiles"><div class="tile"><span>On disk</span><b>' + gb(m.disk) + ' <small>GB</small></b></div>' +
+        '<div class="tile"><span>' + (m.st === 'ready' ? 'In memory' : 'Needs when loaded') + '</span><b>' + gb(m.mem) + ' <small>GB</small></b></div>' +
+        '<div class="tile"><span>Reads at once</span><b>' + fmt(m.served) + ' <small>tokens</small></b></div>' +
+        '<div class="tile"><span>Requests today</span><b>' + fmt(m.today.req) + '</b></div></div>';
+    }
+    h += '<div class="row"><button class="' + p.cls + '" type="button" data-act="' + p.a + '" data-id="' + m.id + '" data-fk="' + k + p.a + '"' + (p.dis ? ' disabled' : '') + '>' + esc(p.label) + '</button>' +
+      (m.update && m.st === 'ready' && !m.busy ? '<button class="btn" type="button" data-act="unload" data-id="' + m.id + '" data-fk="' + k + 'unload">Unload</button>' : '') + '</div></article>';
+
+    if (m.st === 'failed' && !m.busy) {
+      h += '<article class="card" style="box-shadow:var(--elev), inset 0 0 0 2px color-mix(in srgb, var(--failed) 55%, transparent)"><h3 class="card-t st">' + SH.failed + 'Why it would not start</h3>' +
+        '<pre class="code">ValueError: Model type phi3_v not supported.\nmodel server exited with status 1 after 2.4 s</pre>' +
+        '<p>This version of the MLX runtime cannot run this model. Nothing else was affected. Deleting it frees 2.2 GB; a newer conversion may run.</p>' +
+        '<p class="sub">The full log sits beside the model servers’ logs in your Dessau data folder.</p></article>';
+    }
+    if (m.update) {
+      h += '<article class="card"><h3 class="card-t">What the update changes</h3><p><strong>' + m.update.length + ' files changed</strong> on HuggingFace since you downloaded this model, checked at 09:00. The weights are the same.</p>' +
+        '<ul class="files">' + m.update.map(function (f) { return '<li><span>' + esc(f[0]) + '</span><span>' + f[1] + '</span></li>'; }).join('') + '</ul>' +
+        '<p class="sub">The loaded copy keeps answering; the update applies the next time it loads.</p>' +
+        '<div class="row"><button class="btn primary" type="button" data-act="update" data-id="' + m.id + '" data-fk="' + k + 'update2">Update — 16 KB</button></div></article>';
+    }
+    if (m.dl) {
+      h += '<article class="card"><h3 class="card-t">Download</h3><dl class="kv"><div><dt>Fetched</dt><dd>5.2 of 8.3 GB</dd></div><div><dt>Files</dt><dd>3 of 5</dd></div><div><dt>Speed</dt><dd>13 MB/s</dd></div><div><dt>Will need in memory</dt><dd>about 9.4 GB</dd></div></dl>' +
+        '<p class="sub">A stopped download resumes from where it left off. Clients see the model once every file is here.</p></article>';
+    } else {
+      var wp = (m.w / m.mem * 100).toFixed(1), cp = (m.c / m.mem * 100).toFixed(1);
+      h += '<article class="card"><h3 class="card-t">What it holds in memory</h3>' +
+        '<div class="bar thick" role="img" aria-label="' + m.w + ' GB of weights and ' + m.c + ' GB for the conversation"><i style="width:' + wp + '%"></i><i class="b2" style="width:' + cp + '%"></i></div>' +
+        '<dl class="kv"><div><dt>The model itself (weights)</dt><dd>' + gb(m.w) + ' GB</dd></div><div><dt>Room for the conversation</dt><dd>' + gb(m.c) + ' GB</dd></div><div><dt>Pinned</dt><dd>' + (m.pinned ? 'Yes — never unloaded to make room' : 'No') + '</dd></div></dl></article>';
+
+      h += '<article class="card"><h3 class="card-t">How much it can read at once</h3><dl class="kv">' +
+        '<div><dt>The model says</dt><dd>' + fmt(m.declared) + ' tokens</dd></div>' +
+        '<div><dt>Measured on this Mac</dt><dd>' + (m.measured ? fmt(m.measured) + ' · 8 Oct' : (m.measuring ? 'Measuring…' : 'Not measured')) + '</dd></div>' +
+        '<div><dt>Served</dt><dd>' + fmt(m.served) + (m.served < m.declared ? ' — what the budget has room for' : ' — all of it') + '</dd></div></dl>' +
+        '<div class="row">' + (m.measured && m.served !== m.measured ? '<button class="btn" type="button" data-act="usewin" data-id="' + m.id + '" data-fk="' + k + 'usewin">Serve the measured window</button>' : '') +
+        '<button class="btn quiet" type="button" data-act="measure" data-id="' + m.id + '" data-fk="' + k + 'measure"' + (m.measuring ? ' aria-disabled="true">' + SH.working + 'Measuring — stands down if anyone sends a request' : '>Measure it now') + '</button>' + '</div></article>';
+
+      h += '<article class="card"><h3 class="card-t">Today</h3><div class="tiles"><div class="tile"><span>Requests</span><b>' + fmt(m.today.req) + '</b></div><div class="tile"><span>Tokens written</span><b>' + m.today.tok + '</b></div><div class="tile"><span>First word</span><b>' + m.today.ft + '</b></div><div class="tile"><span>Writing speed</span><b>' + m.today.rate + '</b></div></div></article>';
+
+      h += '<article class="card" id="sh-set"><h3 class="card-t" tabindex="-1" id="sh-set-h">Settings for this model</h3><p class="sub">Blank keeps the machine-wide value.</p><div class="fields">' +
+        frow('m-ctx', 'Served context (tokens)', 'Larger windows take more of the budget.', fmt(m.served) + ' — the default') +
+        frow('m-temp', 'Temperature', '', 'machine-wide (0.7)') +
+        frow('m-max', 'Maximum completion tokens', '', 'the served window') +
+        fswitch('m-pin', 'Pin this model', 'Never unloaded to make room for another.', m.pinned) +
+        fswitch('m-merge', 'Merge system messages', 'For a model that refuses instructions mid-conversation.', m.merge) +
+        fswitch('m-trans', 'Keep no transcript', 'Held off the Discord bridge and debug logging.', false) +
+        '</div><div class="row"><button class="btn primary" type="button" data-act="apply" data-id="' + m.id + '" data-fk="' + k + 'apply">Apply</button><button class="btn quiet" type="button" data-goto="settings" data-group="sg-c">Machine-wide defaults</button></div>' +
+        '<p class="sub" id="applyOut">' + (m.applied ? 'Applied. It reaches ' + esc(m.name) + ' the next time it loads.' : 'Changes reach the model the next time it loads.') + '</p></article>';
+    }
+    h += '<article class="card"><h3 class="card-t">Remove from this Mac</h3>' +
+      (m.confirmS ? confirmHTML(m, 's') : '<p class="sub">Frees ' + gb(m.disk) + ' GB of disk. Clients stop seeing it at once.</p><div class="row"><button class="btn outline" type="button" data-act="delete" data-id="' + m.id + '" data-fk="' + k + 'delete">' + (m.dl ? 'Cancel and delete…' : 'Delete…') + '</button></div>') + '</article>';
+    b.innerHTML = h;
+  }
+  function openSheet(id, section, opener) {
+    if (!byId(id)) return;
+    closeMores();
+    sheetId = id; sheetOpener = opener || document.activeElement;
+    renderSheet();
+    $('#scrim').hidden = false; $('#sheet').hidden = false;
+    var page = $('#page'); page.inert = true; page.setAttribute('aria-hidden', 'true');
+    document.documentElement.style.overflow = 'hidden';
+    $('#sheet').scrollTop = 0;
+    if (section && $('#' + section)) { $('#' + section).scrollIntoView({ block: 'start' }); $('#sh-set-h').focus(); }
+    else $('#sheetTitle').focus();
+    say(byId(id).name + ', ' + byId(id).word + '.');
+  }
+  function closeSheet(silent) {
+    if (sheetId === null) return;
+    sheetId = null;
+    $('#scrim').hidden = true; $('#sheet').hidden = true;
+    var page = $('#page'); page.inert = false; page.removeAttribute('aria-hidden');
+    document.documentElement.style.overflow = '';
+    var o = sheetOpener;
+    if (o && document.body.contains(o)) o.focus();
+    else if (o && o.getAttribute && o.getAttribute('data-fk')) { var again = $('[data-fk="' + o.getAttribute('data-fk') + '"]'); if (again) again.focus(); }
+    if (!silent) say('Closed.');
+  }
+  $('#sheetClose').addEventListener('click', function () { closeSheet(); });
+  $('#scrim').addEventListener('click', function () { closeSheet(); });
+
+  /* ── Model actions, from a card or from the sheet ──────────────── */
+  function refresh(focusKey) {
+    var a = document.activeElement, key = focusKey || (a && a.getAttribute && a.getAttribute('data-fk'));
+    renderModels(); renderOverview(); if (sheetId) renderSheet();
+    if (key) {
+      var el = $('[data-fk="' + key + '"]');
+      if (!el || el.disabled || el.offsetParent === null) { var parts = key.split(':'); el = parts[0] === 's' ? ($('#sheetBody .card .row > button:not([disabled])') || $('#sheetTitle')) : ($('.mcard[data-id="' + parts[1] + '"] .foot > button:not([disabled])') || $('[data-fk="c:' + parts[1] + ':open"]')); }
+      if (el) el.focus({ preventScroll: true });
+    }
+  }
+  function act(a, m, where, btn) {
+    var k = where + ':' + m.id + ':';
+    switch (a) {
+      case 'open': openSheet(m.id, null, btn); return;
+      case 'settings': openSheet(m.id, 'sh-set', $('[data-fk="c:' + m.id + ':more"]') || btn); return;
+      case 'more': toggleMore(btn); return;
+      case 'unload':
+        m.st = 'idle'; m.word = 'On disk'; m.line = 'Unloaded just now';
+        say(m.name + ' unloaded. ' + gb(m.mem) + ' GB freed.'); break;
+      case 'load':
+        m.st = 'working'; m.busy = true; m.word = 'Loading…'; m.line = 'Reading ' + gb(m.w) + ' GB of weights into memory';
+        say('Loading ' + m.name + '.');
+        setTimeout(function () { m.busy = false; m.st = 'ready'; m.word = 'Loaded'; m.line = 'Loaded just now · unloads after 10 minutes idle'; refresh(); say(m.name + ' is loaded and ready to answer.'); }, 1200);
+        break;
+      case 'retry':
+        m.st = 'working'; m.busy = true; m.word = 'Starting…'; m.line = 'Starting the model server';
+        say('Trying ' + m.name + ' again.');
+        setTimeout(function () { m.busy = false; m.st = 'failed'; m.word = 'Would not start'; m.line = 'Tried again at 14:38 · the same error'; refresh(); say(m.name + ' would not start. The same error.'); }, 1400);
+        break;
+      case 'pause':
+        m.paused = !m.paused; m.word = m.paused ? 'Paused at 63 %' : 'Downloading 63 %';
+        m.line = m.paused ? 'Resumes from where it stopped' : '5.2 of 8.3 GB · about 4 minutes left';
+        say(m.paused ? 'Download paused.' : 'Download resumed.'); break;
+      case 'update': case 'update2':
+        delete m.update; toast('Updated: 3 files replaced. It applies the next time ' + m.name + ' loads.');
+        refresh(k + (m.st === 'ready' ? 'unload' : 'load')); return;
+      case 'delete': m['confirm' + (where === 'c' ? 'C' : 'S')] = true; refresh(k + 'keep'); return;
+      case 'keep': m['confirm' + (where === 'c' ? 'C' : 'S')] = false; refresh(k + 'delete'); if (where === 'c') { var mb = $('[data-fk="c:' + m.id + ':more"]'); if (mb) mb.focus(); } return;
+      case 'really-delete':
+        models = models.filter(function (x) { return x !== m; });
+        if (sheetId === m.id) { sheetOpener = null; closeSheet(true); }
+        refresh(); var first = $('#mgrid .stretch'); if (where === 'c' && first) first.focus(); else if (!sheetId) { var hm = $('#h-models'); if ($('#p-models').classList.contains('on')) hm.focus(); }
+        toast(m.name + ' deleted from this Mac.'); return;
+      case 'usewin': m.served = m.measured; say('Serving ' + fmt(m.measured) + ' tokens from the next load.'); refresh(k + 'measure'); return;
+      case 'measure': if (m.measuring) return; m.measuring = true; say('Measuring ' + m.name + '’s context window.'); refresh(k + 'measure'); return;
+      case 'apply': m.applied = true; say('Applied. It reaches ' + m.name + ' the next time it loads.'); break;
+      default: return;
+    }
+    refresh();
+  }
+  function onModelClick(e, where) {
+    var b = e.target.closest('[data-act]'); if (!b) return;
+    var m = byId(b.getAttribute('data-id')); if (!m) return;
+    e.stopPropagation();
+    act(b.getAttribute('data-act'), m, where, b);
+  }
+  $('#mgrid').addEventListener('click', function (e) { onModelClick(e, 'c'); });
+  $('#sheetBody').addEventListener('click', function (e) { onModelClick(e, 's'); });
+
+  function closeMores(except) {
+    $$('.morepop').forEach(function (p) { if (p !== except) { p.hidden = true; var b = $('[aria-controls="' + p.id + '"]'); if (b) b.setAttribute('aria-expanded', 'false'); } });
+  }
+  function toggleMore(btn) {
+    var pop = document.getElementById(btn.getAttribute('aria-controls'));
+    var open = pop.hidden; closeMores(pop);
+    pop.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) pop.querySelector('button').focus();
+  }
+  document.addEventListener('click', function (e) { if (!e.target.closest('.morewrap')) closeMores(); });
+
+  /* ── Tabs ──────────────────────────────────────────────────────── */
+  var tabs = $$('[role=tab]');
+  function selectTab(tab, focusTab) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false'); t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).classList.toggle('on', on);
+    });
+    closeMores();
+    if (focusTab) { tab.focus(); tab.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { selectTab(t, false); window.scrollTo(0, 0); });
+    t.addEventListener('keydown', function (e) {
+      var n = null;
+      if (e.key === 'ArrowRight') n = tabs[(i + 1) % tabs.length];
+      else if (e.key === 'ArrowLeft') n = tabs[(i - 1 + tabs.length) % tabs.length];
+      else if (e.key === 'Home') n = tabs[0];
+      else if (e.key === 'End') n = tabs[tabs.length - 1];
+      if (n) { e.preventDefault(); selectTab(n, true); window.scrollTo(0, 0); }
+    });
+  });
+  function goto(name, group) {
+    if (sheetId) { sheetOpener = null; closeSheet(true); }
+    var tab = document.getElementById('t-' + name);
+    selectTab(tab, false);
+    if (group) { openGroup(group, true); return; }
+    window.scrollTo(0, 0);
+    var h = document.getElementById('h-' + name); if (h && h.tabIndex === -1) h.focus({ preventScroll: true });
+    say(tab.textContent.trim().replace(/\s*\d+$/, '') + '.');
+  }
+  document.addEventListener('click', function (e) {
+    var cp = e.target.closest('[data-copy]');
+    if (cp) {
+      var done = function () { toast('Copied.'); };
+      try { navigator.clipboard.writeText(cp.getAttribute('data-copy')).then(done, done); } catch (x) { done(); }
+      e.stopPropagation(); return;
+    }
+    var mm = e.target.closest('[data-model]');
+    if (mm) { e.preventDefault(); goto('models'); openSheet(mm.getAttribute('data-model'), null, $('[data-fk="c:' + mm.getAttribute('data-model') + ':open"]')); return; }
+    var g = e.target.closest('[data-goto]');
+    if (g) { e.preventDefault(); goto(g.getAttribute('data-goto'), g.getAttribute('data-group')); }
+  });
+
+  /* ── Settings: eight cards, one open at a time ─────────────────── */
+  var grid = $('#setgrid');
+  function openGroup(id, focusFirst) {
+    $$('.scard').forEach(function (c) {
+      var on = c.id === id;
+      c.classList.toggle('open', on);
+      $('.sface', c).setAttribute('aria-expanded', on ? 'true' : 'false');
+      $('.sbody', c).hidden = !on;
+    });
+    grid.classList.toggle('has-open', !!id);
+    if (id) {
+      var card = document.getElementById(id);
+      card.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+      if (focusFirst) { var f = $('.sbody input, .sbody select', card); if (f) f.focus({ preventScroll: true }); }
+      say($('.stitle', card).textContent + ', open.');
+    }
+  }
+  $$('.sface').forEach(function (f) {
+    f.addEventListener('click', function () {
+      var card = f.closest('.scard');
+      if (card.classList.contains('open')) { openGroup(null); f.focus(); say('Closed.'); }
+      else openGroup(card.id, false);
+    });
+  });
+  grid.addEventListener('click', function (e) {
+    var d = e.target.closest('[data-close-group]'); if (!d) return;
+    var card = d.closest('.scard'); openGroup(null); $('.sface', card).focus(); say('Closed.');
+  });
+
+  var form = $('#settingsForm');
+  function showError() {
+    openGroup('sg-d', false);
+    var inp = $('#sGrace'); inp.focus({ preventScroll: true });
+  }
+  form.addEventListener('click', function (e) { if (e.target.closest('[data-show-err]')) showError(); });
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var g = +$('#sGrace').value, w = +$('#sWait').value;
+    var row = $('#f-grace'), err = $('#e-grace'), inp = $('#sGrace'), msg = $('#saveMsg');
+    if (g > w) {
+      row.classList.add('err'); err.hidden = false; inp.setAttribute('aria-invalid', 'true');
+      $('span', err).textContent = 'The grace period cannot exceed the maximum wait of ' + w + ' seconds.';
+      $('#dFlag').hidden = false; $('#setBadge').hidden = false;
+      msg.innerHTML = SH.failed + '<span class="t">Not saved. The server refused one field in “When idle models are unloaded”.</span><button class="btn quiet" type="button" data-show-err>Show me</button>';
+      showError();
+    } else {
+      row.classList.remove('err'); err.hidden = true; inp.removeAttribute('aria-invalid');
+      $('#dFlag').hidden = true; $('#setBadge').hidden = true;
+      $('#sg-d .snow-v').textContent = 'Idle models unload after ' + Math.round(+$('#sIdle').value / 60) + ' minutes. A model that just finished is protected for ' + g + ' seconds.';
+      msg.innerHTML = SH.ready + '<span class="t">Saved at 14:37. In force now; the bind address applies when Dessau next starts.</span>';
+    }
+  });
+
+  /* ── Escape: the innermost open thing closes ───────────────────── */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Tab' && sheetId) {
+      var f = $$('#sheet button:not([disabled]), #sheet input, #sheet select, #sheet [tabindex="-1"]').filter(function (x) { return x.offsetParent !== null || x === document.activeElement; });
+      var focusables = f.filter(function (x) { return x.tabIndex >= 0; });
+      if (!focusables.length) return;
+      var first = focusables[0], last = focusables[focusables.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !$('#sheet').contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      return;
+    }
+    if (e.key !== 'Escape') return;
+    var openPop = $$('.morepop').filter(function (p) { return !p.hidden; })[0];
+    if (openPop) { var b = $('[aria-controls="' + openPop.id + '"]'); closeMores(); if (b) b.focus(); return; }
+    if (sheetId) { closeSheet(); return; }
+    var open = $('.scard.open');
+    if (open && $('#p-settings').classList.contains('on')) { openGroup(null); $('.sface', open).focus(); say('Closed.'); }
+  });
+
+  /* ── Statistics ────────────────────────────────────────────────── */
+  function series(n) {
+    var out = [], seed = 7;
+    for (var i = 0; i < n; i++) {
+      seed = (seed * 9301 + 49297) % 233280;
+      var day = (i + 6 - n % 7 + 70) % 7, weekend = day >= 5;
+      var base = 380 + i * (n > 30 ? 9 : 22) / (n / 30);
+      out.push({ v: Math.round((weekend ? base * .55 : base) + (seed / 233280) * 260 + (n > 30 ? 0 : 520)), we: weekend });
+    }
+    return out;
+  }
+  var targets = { 7: 4320, 30: 18402, 90: 47115 };
+  function drawChart(n) {
+    var s = series(n), raw = s.reduce(function (a, b) { return a + b.v; }, 0);
+    s.forEach(function (d) { d.v = Math.round(d.v * targets[n] / raw); });
+    s[s.length - 1].v += targets[n] - s.reduce(function (a, b) { return a + b.v; }, 0);
+    var W = 720, H = 240, max = Math.ceil(Math.max.apply(null, s.map(function (d) { return d.v; })) / 500) * 500;
+    var bw = W / n, svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">';
+    for (var k = 1; k <= 4; k++) { var y = H - H * k / 4 + .5; svg += '<line class="gl" x1="0" x2="' + W + '" y1="' + y + '" y2="' + y + '"/>'; }
+    svg += '<g class="bars">';
+    s.forEach(function (d, i) { var h = H * d.v / max; svg += '<rect' + (d.we ? ' class="we"' : '') + ' x="' + (i * bw + bw * .16).toFixed(1) + '" y="' + (H - h).toFixed(1) + '" width="' + (bw * .68).toFixed(1) + '" height="' + h.toFixed(1) + '" rx="' + Math.min(4, bw * .2).toFixed(1) + '"/>'; });
+    svg += '</g></svg>';
+    var labels = n === 7 ? ['4 Oct', '7 Oct', 'Today'] : n === 30 ? ['11 Sep', '26 Sep', 'Today'] : ['13 Jul', '26 Aug', 'Today'];
+    $('#chart').innerHTML = '<div class="plot"><span class="ymax" aria-hidden="true">' + fmt(max) + ' a day</span>' + svg + '</div><p class="xl" aria-hidden="true"><span>' + labels[0] + '</span><span>' + labels[1] + '</span><span>' + labels[2] + '</span></p>';
+    var sum = targets[n], top = Math.max.apply(null, s.map(function (d) { return d.v; }));
+    $('#chartDesc').textContent = fmt(sum) + ' requests over the last ' + n + ' days, at most ' + fmt(top) + ' in a day. Lighter bars are weekends, which are quieter.';
+    $('#kReq').textContent = fmt(sum); $('#kRange').textContent = 'requests in the last ' + n + ' days';
+  }
+  drawChart(30);
+  $$('[data-range]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('[data-range]').forEach(function (o) { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+      var card = $('#chartCard'); card.setAttribute('aria-busy', 'true');
+      $('#chart').innerHTML = '<div class="skel" aria-hidden="true"></div><p class="xl" aria-hidden="true"><span>&nbsp;</span></p>';
+      $('#chartDesc').textContent = 'Reading the records…';
+      setTimeout(function () { drawChart(+b.getAttribute('data-range')); card.setAttribute('aria-busy', 'false'); say('Showing the last ' + b.getAttribute('data-range') + ' days.'); }, 650);
+    });
+  });
+  var cb = $('#clearBox');
+  cb.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-clear]'); if (!b) return; var a = b.getAttribute('data-clear');
+    if (a === 'ask') { cb.innerHTML = '<div class="confirm" role="group" aria-label="Confirm clearing records"><p><strong>Clear all records?</strong> The 37 files are removed and cannot be recovered. Recording stays on.</p><div class="row"><button class="btn strong" type="button" data-clear="yes">Clear records</button><button class="btn" type="button" data-clear="no">Keep them</button></div></div>'; $('[data-clear=no]', cb).focus(); }
+    else if (a === 'no') { cb.innerHTML = '<button class="btn outline" type="button" data-clear="ask">Clear records…</button>'; cb.firstChild.focus(); }
+    else if (a === 'yes') { cb.innerHTML = '<p class="st">' + SH.ready + 'Cleared. New requests are recorded from now.</p>'; say('Records cleared.'); }
+  });
+
+  /* ── Connect ───────────────────────────────────────────────────── */
+  $$('[data-code]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('[data-code]').forEach(function (o) { var on = o === b; o.setAttribute('aria-pressed', on ? 'true' : 'false'); $('#code-' + o.getAttribute('data-code')).hidden = !on; });
+    });
+  });
+
+  /* ── Clients ───────────────────────────────────────────────────── */
+  function renderClients() {
+    var g = $('#clientGrid');
+    if (!clients.length) {
+      g.innerHTML = '<article class="card"><div class="empty"><strong>No paired clients.</strong><span>A chat app pairs itself the first time it connects on port 8081.</span></div></article>';
+      return;
+    }
+    g.innerHTML = clients.map(function (c) {
+      var st = c.stale ? '<span class="st">' + SH.idle + 'Not seen for 23 days</span>' : '<span class="st">' + SH.ready + 'Seen ' + esc(c.seen) + '</span>';
+      var foot = c.confirm
+        ? '<div class="confirm" role="group" aria-label="Confirm revoke"><p><strong>Revoke ' + esc(c.name) + '?</strong> It stops at once and must pair again to connect.</p><div class="row"><button class="btn strong" type="button" data-cact="yes" data-id="' + c.id + '">Revoke</button><button class="btn" type="button" data-cact="no" data-id="' + c.id + '">Keep it</button></div></div>'
+        : '<div class="foot"><button class="btn outline" type="button" data-cact="ask" data-id="' + c.id + '">Revoke…</button></div>';
+      return '<article class="card ccard"><div class="top2"><span class="avatar" aria-hidden="true">' + c.i + '</span><div><h3 class="card-t">' + esc(c.name) + '</h3><p class="sub">Paired ' + esc(c.paired) + '</p></div></div>' + st +
+        '<dl class="kv"><div><dt>Last seen</dt><dd>' + esc(c.seen) + '</dd></div><div><dt>Requests, last 7 days</dt><dd>' + c.req + '</dd></div></dl>' + foot + '</article>';
+    }).join('');
+  }
+  $('#clientGrid').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-cact]'); if (!b) return;
+    var id = b.getAttribute('data-id'), a = b.getAttribute('data-cact'), c = clients.filter(function (x) { return x.id === id; })[0];
+    if (!c) return;
+    if (a === 'ask') { c.confirm = true; renderClients(); $('[data-cact=no][data-id="' + id + '"]').focus(); }
+    else if (a === 'no') { c.confirm = false; renderClients(); $('[data-cact=ask][data-id="' + id + '"]').focus(); }
+    else if (a === 'yes') {
+      clients = clients.filter(function (x) { return x !== c; }); renderClients(); renderOverview();
+      var next = $('#clientGrid [data-cact]'); if (next) next.focus(); else $('#h-clients').focus();
+      toast(c.name + ' revoked. It must pair again to connect.');
+    }
+  });
+
+  /* ── Find Models ───────────────────────────────────────────────── */
+  var fi = $('#findInput');
+  function find() {
+    var q = fi.value.trim().toLowerCase(), n = 0;
+    $$('#findList .res').forEach(function (r) {
+      var hay = (r.getAttribute('data-q') + ' ' + r.textContent).toLowerCase();
+      var hit = !q || q.split(/\s+/).every(function (w) { return hay.indexOf(w) !== -1; });
+      r.hidden = !hit; if (hit) n++;
+    });
+    $('#findEmpty').hidden = n !== 0;
+    $('#findCount').textContent = n ? n + (n === 1 ? ' result' : ' results') + (q ? ' for “' + fi.value.trim() + '”.' : '.') : 'No results for “' + fi.value.trim() + '”.';
+  }
+  fi.addEventListener('input', find);
+  fi.addEventListener('keydown', function (e) { if (e.key === 'Escape' && fi.value) { e.stopPropagation(); fi.value = ''; find(); } });
+  $('#findForm').addEventListener('submit', function (e) { e.preventDefault(); find(); });
+  $('#findList').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-dl]'); if (!b) return;
+    var foot = b.parentNode;
+    foot.innerHTML = '<span class="st">' + SH.working + 'Queued</span><button class="btn quiet" type="button" data-goto="models">See it in My Models</button>';
+    $('button', foot).focus();
+    say('Download queued. It appears in My Models.');
+  });
+
+  var pop = $('#popBody');
+  function popError() {
+    pop.innerHTML = '<div class="inset" style="display:grid;gap:12px"><p class="st">' + SH.failed + 'HuggingFace did not answer.</p>' +
+      '<p class="sub">The list could not be fetched just now. Search still works, and a repository id typed in full always does.</p>' +
+      '<div class="row"><button class="btn" type="button" data-pop="retry">Try again</button></div></div>';
+  }
+  function popLoading() {
+    $('#popular').setAttribute('aria-busy', 'true');
+    pop.innerHTML = '<div class="rgrid" aria-hidden="true">' + [0, 1, 2].map(function () { return '<div class="inset" style="display:grid;gap:12px"><div class="skel" style="height:22px;width:70%"></div><div class="skel" style="height:40px;width:40%"></div><div class="skel" style="height:18px"></div></div>'; }).join('') + '</div><p class="sr">Loading.</p>';
+  }
+  function popLoaded() {
+    $('#popular').setAttribute('aria-busy', 'false');
+    var rows = [['Qwen3-14B-4bit', '8.3', 'Fits alongside everything loaded now.', 'ready'], ['Mistral-Small-3.2-24B-Instruct-2506-4bit', '13.3', 'Fits alongside everything loaded now.', 'ready'], ['Llama-3.3-70B-Instruct-4bit', '39.7', 'Fits only on its own, with a short conversation length.', 'idle']];
+    pop.innerHTML = '<div class="rgrid">' + rows.map(function (r) {
+      return '<div class="inset" style="display:grid;gap:8px"><p class="small muted">mlx-community</p><p style="font-weight:700;overflow-wrap:anywhere">' + r[0] + '</p><p class="fig"><b style="font-size:2rem">' + r[1] + '<small>GB</small></b></p><p class="small st" style="font-weight:500">' + SH[r[3]] + r[2] + '</p></div>';
+    }).join('') + '</div>';
+    say('Popular this week: 3 models.');
+  }
+  pop.addEventListener('click', function (e) {
+    if (!e.target.closest('[data-pop=retry]')) return;
+    popLoading(); say('Trying HuggingFace again.');
+    setTimeout(function () { popLoaded(); var h = $('#popH'); h.tabIndex = -1; h.focus(); }, 1100);
+  });
+  popError();
+
+  /* ── First paint ───────────────────────────────────────────────── */
+  drawSpark(); renderModels(); renderOverview(); renderClients(); find();
+})();
+</script>
+</body>
+</html>
